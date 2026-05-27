@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.schemas.collection import DataFormCreate, SubmissionCreate, SubmissionReviewAction
+from app.services.form_engine import FormEngine
 
 
 def test_enterprise_roles_have_collection_permissions() -> None:
@@ -89,3 +90,39 @@ def test_submission_review_actions_are_limited_to_workflow_events() -> None:
 
     with pytest.raises(ValidationError):
         SubmissionReviewAction(action="delete", comment="Nope")
+
+
+def test_form_engine_validates_schema_and_submission_payloads() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "name": "Inspection",
+            "slug": "inspection",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": {"en": "Main"},
+                        "fields": [
+                            {"id": "score", "type": "number", "label": {"en": "Score"}, "required": True, "validation": {"min": 0, "max": 10}},
+                            {"id": "site", "type": "gps", "label": {"en": "Site"}, "required": True, "validation": {"accuracyMax": 20}},
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    engine = FormEngine()
+
+    assert engine.validate_schema(schema) == []
+    issues = engine.validate_submission(schema, {"score": 14, "site": {"accuracy": 35}})
+
+    assert {issue.field_id for issue in issues} == {"score", "site"}
+
+
+def test_form_engine_evaluates_xlsform_style_relevance_subset() -> None:
+    engine = FormEngine()
+
+    assert engine.evaluate_relevance("${visit_type} = 'field_visit'", {"visit_type": "field_visit"})
+    assert not engine.evaluate_relevance("${visit_type} = 'field_visit'", {"visit_type": "phone"})
+    assert engine.evaluate_relevance("${consent} != 'no'", {"consent": "yes"})

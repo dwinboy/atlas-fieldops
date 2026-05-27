@@ -21,22 +21,61 @@ export const starterForms: DynamicForm[] = [
     id: "vehicle-inspection",
     name: "Vehicle inspection",
     status: "published",
+    version: 3,
+    activeVersion: 3,
+    defaultLanguage: "en",
+    languages: ["en", "fr"],
     updatedAt: "2026-05-27T08:00:00.000Z",
+    sections: [
+      { id: "vehicle", title: "Vehicle details", description: "Core inspection metadata" },
+      { id: "media", title: "Media and location", description: "Automatic GPS and inspection evidence" }
+    ],
     fields: [
-      { id: "plate", label: "Plate number", type: "text", required: true },
-      { id: "mileage", label: "Mileage", type: "number", required: true },
-      { id: "photo", label: "Vehicle photo", type: "photo", required: false }
+      { id: "plate", label: "Plate number", type: "text", required: true, sectionId: "vehicle", validation: { pattern: "^[A-Z0-9-]+$" } },
+      { id: "mileage", label: "Mileage", type: "number", required: true, sectionId: "vehicle", validation: { min: 0 } },
+      {
+        id: "condition",
+        label: "Roadworthy?",
+        type: "radio",
+        required: true,
+        sectionId: "vehicle",
+        options: ["Yes", "No"]
+      },
+      {
+        id: "vehicle-photo",
+        label: "Vehicle photo",
+        type: "photo",
+        required: false,
+        sectionId: "media",
+        logic: [{ id: "photo-required", kind: "required", expression: "${condition} = 'No'", message: "Photo required when not roadworthy" }]
+      },
+      { id: "inspection-gps", label: "Inspection GPS", type: "gps", required: true, sectionId: "media", validation: { accuracyMax: 20 } }
     ]
   },
   {
     id: "site-survey",
     name: "Site survey",
     status: "draft",
+    version: 2,
+    activeVersion: 1,
+    defaultLanguage: "en",
+    languages: ["en"],
     updatedAt: "2026-05-27T09:30:00.000Z",
+    sections: [{ id: "site", title: "Site profile", description: "Field location and observations" }],
     fields: [
-      { id: "gps", label: "GPS location", type: "gps", required: true },
-      { id: "notes", label: "Field notes", type: "text", required: false }
+      { id: "gps", label: "GPS location", type: "gps", required: true, sectionId: "site", validation: { accuracyMax: 30 } },
+      { id: "notes", label: "Field notes", type: "textarea", required: false, sectionId: "site" },
+      {
+        id: "household-members",
+        label: "Household members",
+        type: "repeat_group",
+        required: false,
+        sectionId: "site",
+        children: [
+          { id: "member-name", label: "Member name", type: "text", required: true, sectionId: "site" },
+          { id: "member-age", label: "Age", type: "number", required: true, sectionId: "site", validation: { min: 0, max: 120 } }
+        ]
+      }
     ]
   }
 ];
-
