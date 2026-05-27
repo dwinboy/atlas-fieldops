@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ClipboardList, Plus, Trash2, UploadCloud } from "lucide-react";
+import { Calendar, Camera, Check, ClipboardList, GripVertical, Hash, ListFilter, MapPin, Plus, Settings2, Trash2, Type, UploadCloud } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,14 @@ import { starterForms } from "@/lib/mockData";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 const fieldTypes: FieldType[] = ["text", "number", "date", "photo", "gps", "select"];
+const fieldTypeIcons = {
+  text: Type,
+  number: Hash,
+  date: Calendar,
+  photo: Camera,
+  gps: MapPin,
+  select: ListFilter
+} satisfies Record<FieldType, typeof Type>;
 
 export function DynamicForms() {
   const [forms, setForms] = useState<DynamicForm[]>(starterForms);
@@ -43,7 +51,7 @@ export function DynamicForms() {
         </Button>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[300px_1fr] 2xl:grid-cols-[300px_1fr_280px]">
         <aside className="rounded-lg border bg-panel p-3">
           <div className="mb-3 flex items-center gap-2">
             <ClipboardList aria-hidden="true" size={18} />
@@ -59,8 +67,11 @@ export function DynamicForms() {
                 onClick={() => setSelectedFormId(form.id)}
                 type="button"
               >
-                <span className="block font-medium">{form.name}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="block font-medium">{form.name}</span>
+                  <Badge tone={form.status === "published" ? "success" : "neutral"}>{form.status}</Badge>
+                </span>
+                <span className="mt-2 block text-xs text-muted-foreground">
                   {form.fields.length} fields · {form.status}
                 </span>
               </button>
@@ -95,7 +106,7 @@ export function DynamicForms() {
               </div>
 
               <form
-                className="mt-5 grid gap-3 md:grid-cols-[1fr_160px_140px_auto]"
+                className="mt-5 grid gap-3 md:grid-cols-[1fr_160px_128px_auto]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   updateSelectedForm(
@@ -149,22 +160,35 @@ export function DynamicForms() {
             </section>
 
             <section className="rounded-lg border bg-panel" aria-labelledby="field-list-title">
-              <div className="border-b p-4">
-                <h2 id="field-list-title" className="text-sm font-semibold">
-                  Fields
-                </h2>
+              <div className="flex items-center justify-between border-b p-4">
+                <div>
+                  <h2 id="field-list-title" className="text-sm font-semibold">
+                    Capture schema
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Field order, type, and validation state</p>
+                </div>
+                <Badge tone="accent">{selectedForm.fields.length} fields</Badge>
               </div>
               <div className="divide-y">
-                {selectedForm.fields.map((field) => (
+                {selectedForm.fields.map((field, index) => {
+                  const FieldIcon = fieldTypeIcons[field.type];
+                  return (
                   <div key={field.id} className="flex items-center justify-between gap-4 p-4 transition hover:bg-muted/35">
-                    <div>
-                      <p className="flex items-center gap-2 text-sm font-medium">
-                        {field.required ? <Check aria-hidden="true" className="text-success" size={14} /> : null}
-                        {field.label}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {field.type} · {field.required ? "required" : "optional"}
-                      </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <GripVertical aria-hidden="true" className="text-muted-foreground" size={15} />
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
+                        <FieldIcon aria-hidden="true" size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-sm font-medium">
+                          <span className="font-mono text-[11px] text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
+                          {field.label}
+                          {field.required ? <Check aria-hidden="true" className="text-success" size={14} /> : null}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {field.type} · {field.required ? "required" : "optional"}
+                        </p>
+                      </div>
                     </div>
                     <Button
                       aria-label={`Remove ${field.label}`}
@@ -176,10 +200,33 @@ export function DynamicForms() {
                       <Trash2 aria-hidden="true" />
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </div>
+        ) : null}
+
+        {selectedForm ? (
+          <aside className="rounded-lg border bg-panel p-4 xl:col-span-2 2xl:col-span-1">
+            <div className="flex items-center gap-2">
+              <Settings2 aria-hidden="true" size={17} />
+              <h2 className="text-sm font-semibold">Validation policy</h2>
+            </div>
+            <div className="mt-5 space-y-4 text-sm">
+              {[
+                ["Autosave", "Every 8 seconds"],
+                ["Offline mode", "SQLite draft queue"],
+                ["Media rules", "Photo fields retain EXIF"],
+                ["Approval trigger", selectedForm.status === "published" ? "Active" : "Draft only"]
+              ].map(([label, value]) => (
+                <div key={label} className="border-t pt-4 first:border-t-0 first:pt-0">
+                  <p className="font-medium">{label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{value}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
         ) : null}
       </div>
     </section>

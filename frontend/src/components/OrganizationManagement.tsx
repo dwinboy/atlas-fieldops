@@ -73,6 +73,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     {
       key: "name",
       header: "User",
+      value: (user) => `${user.full_name} ${user.id}`,
       render: (user) => (
         <div>
           <p className="font-medium">{user.full_name}</p>
@@ -80,10 +81,11 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         </div>
       )
     },
-    { key: "email", header: "Email", render: (user) => user.email },
+    { key: "email", header: "Email", value: (user) => user.email, render: (user) => user.email },
     {
       key: "status",
       header: "Status",
+      value: (user) => (user.is_active ? "active" : "inactive"),
       render: (user) => <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Active" : "Inactive"}</Badge>
     }
   ];

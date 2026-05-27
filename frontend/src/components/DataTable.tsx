@@ -1,5 +1,8 @@
-import { ArrowDownUp, Filter, Search } from "lucide-react";
+"use client";
+
+import { ArrowDownUp, Columns3, Filter, Search } from "lucide-react";
 import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +13,7 @@ export type TableColumn<T> = {
   header: string;
   render: (row: T) => ReactNode;
   align?: "left" | "right";
+  value?: (row: T) => string;
 };
 
 export function DataTable<T>({
@@ -25,6 +29,21 @@ export function DataTable<T>({
   searchLabel: string;
   title: string;
 }) {
+  const [query, setQuery] = useState("");
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return rows;
+    }
+
+    return rows.filter((row) =>
+      columns.some((column) => {
+        const value = column.value?.(row);
+        return value?.toLowerCase().includes(normalizedQuery);
+      })
+    );
+  }, [columns, query, rows]);
+
   return (
     <section className="overflow-hidden rounded-lg border bg-panel" aria-labelledby={`${title}-title`}>
       <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -32,17 +51,22 @@ export function DataTable<T>({
           <h2 id={`${title}-title`} className="text-sm font-semibold">
             {title}
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">{rows.length} records in current view</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {filteredRows.length} of {rows.length} records in current view
+          </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-64">
             <span className="sr-only">{searchLabel}</span>
             <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-            <Input className="pl-9" placeholder={searchLabel} />
+            <Input className="pl-9" placeholder={searchLabel} value={query} onChange={(event) => setQuery(event.target.value)} />
           </label>
           <Button size="sm" variant="secondary">
             <Filter aria-hidden="true" />
             Filters
+          </Button>
+          <Button aria-label="Configure visible columns" size="icon" variant="secondary">
+            <Columns3 aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -53,16 +77,16 @@ export function DataTable<T>({
             <tr>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-2.5 font-medium">
-                  <span className={column.align === "right" ? "flex justify-end" : "flex items-center gap-1.5"}>
+                  <span className={column.align === "right" ? "flex justify-end gap-1.5" : "flex items-center gap-1.5"}>
                     {column.header}
-                    <ArrowDownUp aria-hidden="true" size={12} />
+                    {column.value ? <ArrowDownUp aria-hidden="true" size={12} /> : null}
                   </span>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.map((row, index) => (
+            {filteredRows.map((row, index) => (
               <tr key={index} className="transition-colors hover:bg-muted/35">
                 {columns.map((column) => (
                   <td key={column.key} className={column.align === "right" ? "px-4 py-3 text-right" : "px-4 py-3"}>
@@ -71,10 +95,10 @@ export function DataTable<T>({
                 ))}
               </tr>
             ))}
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-muted-foreground" colSpan={columns.length}>
-                  <Badge>{emptyLabel}</Badge>
+                  <Badge>{query ? "No matching records" : emptyLabel}</Badge>
                 </td>
               </tr>
             ) : null}
@@ -84,4 +108,3 @@ export function DataTable<T>({
     </section>
   );
 }
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Sparkles } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, GitPullRequestArrow, LayoutDashboard, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,12 +9,12 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
-const commands: { label: string; hint: string; view: WorkspaceView; group: string }[] = [
-  { label: "Open dashboard", hint: "Review executive operations", view: "dashboard", group: "Navigate" },
-  { label: "Manage organizations", hint: "Tenants, users, and roles", view: "organizations", group: "Navigate" },
-  { label: "Build forms", hint: "Schema design and publishing", view: "forms", group: "Navigate" },
-  { label: "View analytics", hint: "Realtime throughput and lag", view: "analytics", group: "Navigate" },
-  { label: "Review workflows", hint: "Approvals and escalations", view: "workflows", group: "Navigate" }
+const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard }[] = [
+  { label: "Open operations", hint: "Review throughput, sync, and review queues", view: "dashboard", group: "Workspace", icon: LayoutDashboard },
+  { label: "Manage tenants", hint: "Users, roles, and organization access", view: "organizations", group: "Admin", icon: Building2 },
+  { label: "Edit form schemas", hint: "Field rules, offline capture, and publishing", view: "forms", group: "Studio", icon: ClipboardList },
+  { label: "Inspect analytics", hint: "Realtime ingestion, validation, and lag", view: "analytics", group: "Signal", icon: BarChart3 },
+  { label: "Review approval paths", hint: "SLA queues, escalations, and workflow health", view: "workflows", group: "Control", icon: GitPullRequestArrow }
 ];
 
 export function CommandPalette() {
@@ -48,7 +48,7 @@ export function CommandPalette() {
       description="Search navigation and operational commands."
       open={commandOpen}
       onOpenChange={setCommandOpen}
-      title="Command palette"
+      title="Command center"
     >
       <div className="border-b p-4">
         <label className="sr-only" htmlFor="command-search">
@@ -67,7 +67,9 @@ export function CommandPalette() {
         </div>
       </div>
       <div className="max-h-[420px] overflow-y-auto p-2 product-scrollbar">
-        {filtered.map((command) => (
+        {filtered.map((command) => {
+          const Icon = command.icon;
+          return (
           <button
             key={command.label}
             className="flex w-full items-center justify-between gap-4 rounded-md px-3 py-3 text-left transition-colors hover:bg-muted"
@@ -80,7 +82,7 @@ export function CommandPalette() {
           >
             <span className="flex min-w-0 items-center gap-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-panel">
-                <Sparkles aria-hidden="true" size={15} />
+                <Icon aria-hidden="true" size={15} />
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium">{command.label}</span>
@@ -89,10 +91,11 @@ export function CommandPalette() {
             </span>
             <Badge>{command.group}</Badge>
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
-        <span>Press Enter to run selected action</span>
+        <span>Type to narrow the workspace surface</span>
         <Button size="sm" variant="ghost" onClick={() => setCommandOpen(false)}>
           Esc
         </Button>
@@ -100,4 +103,3 @@ export function CommandPalette() {
     </Modal>
   );
 }
-

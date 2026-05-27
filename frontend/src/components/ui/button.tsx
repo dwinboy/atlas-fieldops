@@ -9,7 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/92",
+        primary: "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
         secondary: "border-border bg-panel text-foreground shadow-line hover:bg-muted/60",
         ghost: "border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
         danger: "border-danger bg-danger text-white hover:bg-danger/90"
@@ -39,4 +39,3 @@ export function Button({ asChild, className, size, variant, ...props }: ButtonPr
 }
 
 export { buttonVariants };
-

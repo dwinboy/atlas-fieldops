@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,15 +19,20 @@ export function NotificationCenter() {
     accent: "Workspace"
   } as const;
 
+  useEffect(() => {
+    const timers = toasts.map((toast) => window.setTimeout(() => dismissToast(toast.id), 4200));
+    return () => timers.forEach(window.clearTimeout);
+  }, [dismissToast, toasts]);
+
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2 sm:bottom-auto sm:top-20">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[calc(100vw-2rem)] max-w-xs flex-col gap-2">
       <AnimatePresence initial={false}>
         {toasts.map((toast) => (
           <motion.div
             key={toast.id}
-            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
             className="pointer-events-auto rounded-lg border bg-panel/95 p-3 shadow-elevated backdrop-blur-xl"
             role="status"

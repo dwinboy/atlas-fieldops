@@ -26,6 +26,7 @@ const columns: TableColumn<WorkflowRow>[] = [
   {
     key: "name",
     header: "Workflow",
+    value: (row) => `${row.name} ${row.id}`,
     render: (row) => (
       <div>
         <p className="font-medium">{row.name}</p>
@@ -33,18 +34,19 @@ const columns: TableColumn<WorkflowRow>[] = [
       </div>
     )
   },
-  { key: "owner", header: "Owner", render: (row) => row.owner },
+  { key: "owner", header: "Owner", value: (row) => row.owner, render: (row) => row.owner },
   {
     key: "status",
     header: "Status",
+    value: (row) => row.status,
     render: (row) => (
       <Badge tone={row.status === "healthy" ? "success" : row.status === "attention" ? "warning" : "danger"}>
         {row.status}
       </Badge>
     )
   },
-  { key: "sla", header: "SLA", render: (row) => row.sla },
-  { key: "queue", header: "Queue", align: "right", render: (row) => row.queue.toLocaleString() }
+  { key: "sla", header: "SLA", value: (row) => row.sla, render: (row) => row.sla },
+  { key: "queue", header: "Queue", align: "right", value: (row) => String(row.queue), render: (row) => row.queue.toLocaleString() }
 ];
 
 export function WorkflowManagement() {

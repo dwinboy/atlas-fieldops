@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import { dashboardMetrics } from "@/lib/mockData";
+import { cn } from "@/lib/utils";
 
 const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 
@@ -14,9 +15,9 @@ export function Dashboard() {
     <section aria-labelledby="dashboard-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Command center</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Operations</p>
           <h1 id="dashboard-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Dashboard
+            Live command center
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
             Realtime operational posture across ingestion, validation, field sync, and tenant activity.
@@ -38,6 +39,15 @@ export function Dashboard() {
                 <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
               </div>
               <p className="mt-3 text-2xl font-semibold tracking-tight">{metric.value}</p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    metric.tone === "good" ? "bg-success" : metric.tone === "warn" ? "bg-warning" : "bg-muted-foreground"
+                  )}
+                  style={{ width: `${[84, 62, 74, 28][index] ?? 50}%` }}
+                />
+              </div>
               <div className="mt-3 flex items-center justify-between">
                 <Badge tone={metric.tone === "good" ? "success" : metric.tone === "warn" ? "warning" : "neutral"}>
                   {metric.delta}

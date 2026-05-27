@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { DatabaseZap, Fingerprint, LogIn, ShieldCheck } from "lucide-react";
+import { Activity, DatabaseZap, Fingerprint, LogIn, RadioTower, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -32,35 +32,66 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
   return (
     <section className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
-      <div className="flex items-center px-6 py-10">
+      <div className="relative flex items-center overflow-hidden px-6 py-10">
+        <div className="absolute inset-x-8 top-8 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent lg:block" />
         <motion.div
-          className="mx-auto max-w-3xl"
+          className="mx-auto grid w-full max-w-4xl gap-10 xl:grid-cols-[1fr_320px] xl:items-end"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24 }}
         >
-          <Badge tone="accent" className="mb-8 gap-2">
-            <ShieldCheck aria-hidden="true" size={14} />
-            Secure enterprise workspace
-          </Badge>
-          <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-            Operational data collection, governed from one place.
-          </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
-            Secure access to tenant collection workflows, field teams, validation queues, and live
-            submission analytics.
-          </p>
-          <div className="mt-10 grid gap-3 text-sm sm:grid-cols-3">
-            {[
-              ["Tenant scoped", "Every action carries org context"],
-              ["Audit ready", "Immutable security trail"],
-              ["Offline aware", "Designed for field reliability"]
-            ].map(([label, detail]) => (
-              <div key={label} className="rounded-lg border bg-panel p-4 shadow-line">
-                <p className="font-medium">{label}</p>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
-              </div>
-            ))}
+          <div>
+            <Badge tone="accent" className="mb-8 gap-2">
+              <ShieldCheck aria-hidden="true" size={14} />
+              Atlas FieldOps
+            </Badge>
+            <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+              Govern field data from capture to approval.
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
+              A tenant-scoped operating layer for collection teams, validation queues, audit trails, and realtime submission flow.
+            </p>
+            <div className="mt-10 grid max-w-2xl grid-cols-3 border-y py-5 text-sm">
+              {[
+                ["128.4k", "accepted today"],
+                ["96.8%", "validation accuracy"],
+                ["182ms", "P95 API latency"]
+              ].map(([value, label]) => (
+                <div key={label} className="border-r px-4 first:pl-0 last:border-r-0">
+                  <p className="text-xl font-semibold tracking-tight">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden rounded-lg border bg-panel p-4 shadow-line xl:block">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Live controls</p>
+              <Badge tone="success" className="gap-1.5">
+                <RadioTower aria-hidden="true" size={13} />
+                Online
+              </Badge>
+            </div>
+            <div className="mt-5 space-y-4">
+              {[
+                ["Tenant context", "Required", "100%"],
+                ["Audit trail", "Streaming", "24 ms"],
+                ["Offline sync", "Backlog", "812"]
+              ].map(([label, status, value]) => (
+                <div key={label} className="grid grid-cols-[1fr_auto] gap-3 border-t pt-4 first:border-t-0 first:pt-0">
+                  <div>
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{status}</p>
+                  </div>
+                  <p className="font-mono text-xs text-muted-foreground">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              <Activity aria-hidden="true" size={14} />
+              Policy engine healthy · RBAC enforced
+            </div>
           </div>
         </motion.div>
       </div>
