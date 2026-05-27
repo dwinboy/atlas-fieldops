@@ -9,13 +9,15 @@ import {
   GitPullRequestArrow,
   LayoutDashboard,
   LogOut,
+  Map,
   Menu,
   Moon,
   PanelLeftClose,
   RadioTower,
   ShieldCheck,
   Sun,
-  UsersRound
+  UsersRound,
+  Wifi
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -36,12 +38,18 @@ type AppShellProps = {
 
 const navItems = [
   { id: "dashboard", label: "Home", hint: "Today’s work", icon: LayoutDashboard },
+  { id: "programs", label: "Programs", hint: "Projects & donors", icon: Building2 },
+  { id: "beneficiaries", label: "Beneficiaries", hint: "People & households", icon: UsersRound },
+  { id: "indicators", label: "Indicators", hint: "Targets & results", icon: BarChart3 },
   { id: "submissions", label: "Review", hint: "Approve data", icon: ShieldCheck },
   { id: "forms", label: "Forms", hint: "Build surveys", icon: ClipboardList },
   { id: "officers", label: "Field team", hint: "People & sync", icon: UsersRound },
+  { id: "cases", label: "Cases", hint: "Follow-ups", icon: GitPullRequestArrow },
+  { id: "map", label: "Map", hint: "Coverage", icon: Map },
   { id: "organizations", label: "Organization", hint: "Team & roles", icon: Building2 },
-  { id: "analytics", label: "Reports", hint: "Progress", icon: BarChart3 },
-  { id: "workflows", label: "Approvals", hint: "Rules", icon: GitPullRequestArrow }
+  { id: "analytics", label: "Reports", hint: "Donors & exports", icon: BarChart3 },
+  { id: "workflows", label: "Approvals", hint: "Rules", icon: GitPullRequestArrow },
+  { id: "connectivity", label: "Connectivity", hint: "Offline & alerts", icon: Wifi }
 ] satisfies { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard }[];
 
 export function AppShell({ children, onSignOut, organizationLabel }: AppShellProps) {

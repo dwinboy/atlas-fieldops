@@ -17,6 +17,16 @@ class Permission(StrEnum):
     SUBMISSION_CREATE = "submission:create"
     SUBMISSION_REVIEW = "submission:review"
     SYNC_MOBILE = "sync:mobile"
+    BENEFICIARY_READ = "beneficiary:read"
+    BENEFICIARY_MANAGE = "beneficiary:manage"
+    PROGRAM_READ = "program:read"
+    PROGRAM_MANAGE = "program:manage"
+    INDICATOR_READ = "indicator:read"
+    INDICATOR_MANAGE = "indicator:manage"
+    CASE_READ = "case:read"
+    CASE_MANAGE = "case:manage"
+    REPORT_READ = "report:read"
+    REPORT_MANAGE = "report:manage"
 
 
 ROLE_PERMISSIONS: dict[str, set[Permission]] = {
@@ -33,6 +43,16 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.OFFICER_MANAGE,
         Permission.SUBMISSION_READ,
         Permission.SUBMISSION_REVIEW,
+        Permission.BENEFICIARY_READ,
+        Permission.BENEFICIARY_MANAGE,
+        Permission.PROGRAM_READ,
+        Permission.PROGRAM_MANAGE,
+        Permission.INDICATOR_READ,
+        Permission.INDICATOR_MANAGE,
+        Permission.CASE_READ,
+        Permission.CASE_MANAGE,
+        Permission.REPORT_READ,
+        Permission.REPORT_MANAGE,
     },
     "admin": {
         Permission.ORGANIZATION_READ,
@@ -46,6 +66,16 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.OFFICER_MANAGE,
         Permission.SUBMISSION_READ,
         Permission.SUBMISSION_REVIEW,
+        Permission.BENEFICIARY_READ,
+        Permission.BENEFICIARY_MANAGE,
+        Permission.PROGRAM_READ,
+        Permission.PROGRAM_MANAGE,
+        Permission.INDICATOR_READ,
+        Permission.INDICATOR_MANAGE,
+        Permission.CASE_READ,
+        Permission.CASE_MANAGE,
+        Permission.REPORT_READ,
+        Permission.REPORT_MANAGE,
     },
     "supervisor": {
         Permission.ORGANIZATION_READ,
@@ -55,6 +85,12 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.OFFICER_READ,
         Permission.SUBMISSION_READ,
         Permission.SUBMISSION_REVIEW,
+        Permission.BENEFICIARY_READ,
+        Permission.PROGRAM_READ,
+        Permission.INDICATOR_READ,
+        Permission.CASE_READ,
+        Permission.CASE_MANAGE,
+        Permission.REPORT_READ,
     },
     "manager": {
         Permission.ORGANIZATION_READ,
@@ -63,17 +99,26 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.FORM_READ,
         Permission.OFFICER_READ,
         Permission.SUBMISSION_READ,
+        Permission.BENEFICIARY_READ,
+        Permission.PROGRAM_READ,
+        Permission.INDICATOR_READ,
+        Permission.CASE_READ,
+        Permission.REPORT_READ,
     },
     "field_officer": {
         Permission.ORGANIZATION_READ,
         Permission.FORM_READ,
         Permission.SUBMISSION_CREATE,
+        Permission.BENEFICIARY_READ,
+        Permission.CASE_READ,
         Permission.SYNC_MOBILE,
     },
     "collector": {
         Permission.ORGANIZATION_READ,
         Permission.FORM_READ,
         Permission.SUBMISSION_CREATE,
+        Permission.BENEFICIARY_READ,
+        Permission.CASE_READ,
         Permission.SYNC_MOBILE,
     },
 }

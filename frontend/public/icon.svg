@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Atlas FieldOps">
+  <rect width="128" height="128" rx="28" fill="#0f766e"/>
+  <path d="M34 36h60v14H34V36Zm0 24h60v14H34V60Zm0 24h38v14H34V84Z" fill="#ffffff"/>
+  <path d="M82 83l9 9 18-24" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -94,6 +94,31 @@ export type SubmissionRead = {
   payload_json: Record<string, unknown>;
 };
 
+export type OperationsSummary = {
+  beneficiaries: number;
+  active_programs: number;
+  indicators: number;
+  open_cases: number;
+  quality_flags: number;
+  sync_health_percent: number;
+  offline_ready: boolean;
+};
+
+export type BeneficiaryRead = {
+  id: string;
+  beneficiary_uid: string;
+  beneficiary_type: string;
+  display_name: string;
+  region: string | null;
+  community: string | null;
+  enrollment_status: string;
+  vulnerability_score: number;
+  duplicate_risk_score: number;
+  latitude: number | null;
+  longitude: number | null;
+  last_visit_at: string | null;
+};
+
 const apiBaseUrl =
   process.env.INTERNAL_API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -188,12 +213,22 @@ export async function reviewSubmission(
   });
 }
 
+export async function getOperationsSummary(token: string): Promise<OperationsSummary> {
+  return request<OperationsSummary>("/operations/summary", { token });
+}
+
+export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[]> {
+  return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
+}
+
 export const api = {
   createOrganization,
   createUser,
   getCurrentPrincipal,
   getHealth,
   inviteFieldOfficer,
+  getOperationsSummary,
+  listBeneficiaries,
   listFieldOfficers,
   listRoles,
   listSubmissions,

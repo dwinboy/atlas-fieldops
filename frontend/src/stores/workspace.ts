@@ -5,12 +5,18 @@ import { create } from "zustand";
 export type ThemeMode = "light" | "dark";
 export type WorkspaceView =
   | "dashboard"
+  | "programs"
+  | "beneficiaries"
+  | "indicators"
+  | "cases"
+  | "map"
   | "organizations"
   | "officers"
   | "forms"
   | "submissions"
   | "analytics"
-  | "workflows";
+  | "workflows"
+  | "connectivity";
 
 type Toast = {
   id: string;

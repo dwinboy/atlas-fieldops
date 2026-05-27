@@ -75,3 +75,117 @@ export const starterForms: DynamicForm[] = [
     ]
   }
 ];
+
+export const beneficiaries = [
+  {
+    id: "ben-001",
+    uid: "HH-2026-0001",
+    name: "Amina Diallo household",
+    type: "Household",
+    program: "Climate-smart agriculture",
+    region: "Northwest",
+    community: "Bamenda II",
+    status: "Active",
+    vulnerability: 72,
+    duplicateRisk: 8,
+    lastVisit: "2 days ago",
+    coordinates: "5.9631, 10.1591"
+  },
+  {
+    id: "ben-002",
+    uid: "FARM-2026-0142",
+    name: "Musa Kamga farm",
+    type: "Farmer",
+    program: "Input voucher support",
+    region: "Littoral",
+    community: "Dibombari",
+    status: "Active",
+    vulnerability: 44,
+    duplicateRisk: 18,
+    lastVisit: "6 days ago",
+    coordinates: "4.1782, 9.6567"
+  },
+  {
+    id: "ben-003",
+    uid: "COOP-2026-0031",
+    name: "Women growers cooperative",
+    type: "Cooperative",
+    program: "Market access",
+    region: "West",
+    community: "Bafoussam",
+    status: "Needs update",
+    vulnerability: 36,
+    duplicateRisk: 4,
+    lastVisit: "18 days ago",
+    coordinates: "5.4798, 10.4176"
+  }
+];
+
+export const programs = [
+  {
+    id: "prog-001",
+    name: "Climate-smart agriculture",
+    donor: "FAO",
+    region: "Northwest",
+    budget: "$1.8M",
+    coverage: "42 villages",
+    beneficiaries: 18420,
+    progress: 68,
+    nextMilestone: "Quarterly yield verification"
+  },
+  {
+    id: "prog-002",
+    name: "Community health outreach",
+    donor: "UNICEF",
+    region: "Littoral",
+    budget: "$940k",
+    coverage: "18 clinics",
+    beneficiaries: 31200,
+    progress: 74,
+    nextMilestone: "Vaccination follow-up review"
+  },
+  {
+    id: "prog-003",
+    name: "School attendance recovery",
+    donor: "World Bank",
+    region: "Far North",
+    budget: "$2.4M",
+    coverage: "96 schools",
+    beneficiaries: 48600,
+    progress: 52,
+    nextMilestone: "District supervisor spot checks"
+  }
+];
+
+export const indicators = [
+  { code: "AG.YIELD", name: "Average crop yield increase", baseline: 1.8, current: 2.6, target: 3.2, unit: "tons/ha", progress: 57 },
+  { code: "HEALTH.VAX", name: "Children fully vaccinated", baseline: 42, current: 71, target: 90, unit: "%", progress: 60 },
+  { code: "EDU.ATTEND", name: "Monthly school attendance", baseline: 64, current: 78, target: 88, unit: "%", progress: 58 },
+  { code: "WASH.ACCESS", name: "Households with clean water access", baseline: 38, current: 56, target: 75, unit: "%", progress: 49 }
+];
+
+export const cases = [
+  { id: "CASE-001", title: "Missing input voucher follow-up", type: "Complaint", beneficiary: "Musa Kamga farm", priority: "High", status: "Open", due: "Today" },
+  { id: "CASE-002", title: "Clinic referral confirmation", type: "Referral", beneficiary: "Amina Diallo household", priority: "Normal", status: "Waiting", due: "Tomorrow" },
+  { id: "CASE-003", title: "Boundary photo correction", type: "Data correction", beneficiary: "Women growers cooperative", priority: "Normal", status: "In progress", due: "3 days" }
+];
+
+export const dataQualitySignals = [
+  { signal: "Possible duplicate household", severity: "High", confidence: "91%", action: "Review identity details" },
+  { signal: "Impossible travel speed", severity: "Medium", confidence: "78%", action: "Check field officer route" },
+  { signal: "Photo reused across visits", severity: "High", confidence: "88%", action: "Request fresh evidence" },
+  { signal: "GPS outside project area", severity: "Medium", confidence: "82%", action: "Confirm village assignment" }
+];
+
+export const mapCoverage = [
+  { region: "Northwest", submissions: 18420, coverage: 72, sync: "Good" },
+  { region: "Littoral", submissions: 13980, coverage: 64, sync: "Good" },
+  { region: "Far North", submissions: 22110, coverage: 58, sync: "Patchy" },
+  { region: "West", submissions: 16400, coverage: 69, sync: "Good" }
+];
+
+export const donorReports = [
+  { name: "FAO Q2 agriculture progress", donor: "FAO", type: "Indicator report", period: "Apr-Jun 2026", status: "Ready for review", formats: "PDF, Excel" },
+  { name: "UNICEF vaccination coverage", donor: "UNICEF", type: "Narrative report", period: "May 2026", status: "Draft", formats: "PDF" },
+  { name: "World Bank school attendance", donor: "World Bank", type: "Logframe export", period: "Q2 2026", status: "Needs data", formats: "Excel" }
+];

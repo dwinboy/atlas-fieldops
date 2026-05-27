@@ -10,9 +10,17 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
 import { DynamicForms } from "@/components/DynamicForms";
 import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
+import {
+  BeneficiaryRegistry,
+  CaseManagement,
+  ConnectivityCenter,
+  GeospatialIntelligence,
+  IndicatorTracking,
+  ProgramManagement,
+  ReportingCenter
+} from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
-import { RealtimeAnalytics } from "@/components/RealtimeAnalytics";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { getCurrentPrincipal } from "@/lib/api";
@@ -58,12 +66,18 @@ export function WorkspaceApp() {
 
   const content = {
     dashboard: <Dashboard />,
+    programs: <ProgramManagement />,
+    beneficiaries: <BeneficiaryRegistry />,
+    indicators: <IndicatorTracking />,
     organizations: <OrganizationManagement token={token} />,
     officers: <FieldOfficerOperations token={token} />,
     forms: <DynamicForms />,
     submissions: <SubmissionReview token={token} />,
-    analytics: <RealtimeAnalytics />,
-    workflows: <WorkflowManagement />
+    cases: <CaseManagement />,
+    map: <GeospatialIntelligence />,
+    analytics: <ReportingCenter />,
+    workflows: <WorkflowManagement />,
+    connectivity: <ConnectivityCenter />
   } satisfies Record<WorkspaceView, React.ReactNode>;
 
   return (

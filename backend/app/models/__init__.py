@@ -12,21 +12,39 @@ from app.models.collection import (
     SubmissionVersion,
 )
 from app.models.identity import Membership, Organization, Role, User
+from app.models.operations import (
+    Beneficiary,
+    CaseRecord,
+    DataQualitySignal,
+    DonorReport,
+    MonitoringIndicator,
+    OfflineSyncPolicy,
+    OrganizationBranding,
+    VisitRecord,
+)
 
 __all__ = [
     "AuditLog",
     "Base",
+    "Beneficiary",
+    "CaseRecord",
     "DataForm",
     "DataFormVersion",
+    "DataQualitySignal",
+    "DonorReport",
     "FieldOfficerProfile",
     "Membership",
     "MobileSyncBatch",
+    "MonitoringIndicator",
+    "OfflineSyncPolicy",
     "OfficerAssignment",
     "Organization",
+    "OrganizationBranding",
     "Project",
     "Role",
     "Submission",
     "SubmissionStatusHistory",
     "SubmissionVersion",
     "User",
+    "VisitRecord",
 ]
