@@ -1,0 +1,18 @@
+[project]
+name = "enterprise-data-pipelines"
+version = "0.1.0"
+description = "Kafka data pipelines for enterprise data platform"
+requires-python = ">=3.12"
+dependencies = [
+  "aiokafka>=0.10",
+  "pydantic>=2.7",
+  "structlog>=24.1"
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

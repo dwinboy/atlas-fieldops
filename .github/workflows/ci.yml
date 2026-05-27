@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - working-directory: backend
+        run: pip install -e ".[dev]"
+      - working-directory: backend
+        run: ruff check app tests alembic
+      - working-directory: backend
+        run: mypy app
+      - working-directory: backend
+        run: alembic upgrade head --sql
+      - working-directory: backend
+        run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - working-directory: frontend
+        run: npm install
+      - working-directory: frontend
+        run: npm run lint
+      - working-directory: frontend
+        run: npm test -- --run
+      - working-directory: frontend
+        run: npm run build
+
+  ai-services:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - working-directory: ai-services
+        run: pip install -e ".[dev]"
+      - working-directory: ai-services
+        run: ruff check app tests
+      - working-directory: ai-services
+        run: mypy app
+      - working-directory: ai-services
+        run: pytest

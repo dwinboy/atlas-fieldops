@@ -1,0 +1,42 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from app.api.v1.router import api_router
+from app.core.config import settings
+from app.core.events import event_publisher
+from app.core.logging import configure_logging
+from app.core.middleware import request_context_middleware
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    if settings.app_env != "test":
+        await event_publisher.start()
+    try:
+        yield
+    finally:
+        await event_publisher.stop()
+
+
+def create_app() -> FastAPI:
+    configure_logging()
+    app = FastAPI(
+        title=settings.app_name,
+        version="0.1.0",
+        openapi_url="/api/v1/openapi.json",
+        docs_url="/api/v1/docs",
+        lifespan=lifespan,
+    )
+    app.middleware("http")(request_context_middleware)
+    app.include_router(api_router, prefix="/api/v1")
+    FastAPIInstrumentor.instrument_app(app)
+    Instrumentator().instrument(app).expose(app)
+
+    return app
+
+
+app = create_app()

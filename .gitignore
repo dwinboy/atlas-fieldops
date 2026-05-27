@@ -1,0 +1,15 @@
+.env
+.venv/
+.venv*/
+node_modules/
+.next/
+dist/
+build/
+coverage/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.expo/
+.DS_Store
