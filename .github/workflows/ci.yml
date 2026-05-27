@@ -38,6 +38,8 @@ jobs:
         run: npm test -- --run
       - working-directory: frontend
         run: npm run build
+      - working-directory: frontend
+        run: npm run build-storybook
 
   ai-services:
     runs-on: ubuntu-latest
