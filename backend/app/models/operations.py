@@ -137,3 +137,73 @@ class OfflineSyncPolicy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_photo_size_kb: Mapped[int] = mapped_column(Integer, default=480)
     retry_window_hours: Mapped[int] = mapped_column(Integer, default=72)
     conflict_strategy: Mapped[str] = mapped_column(String(80), default="server_review")
+
+
+class DataImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "data_import_jobs"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    dataset_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_name: Mapped[str] = mapped_column(String(240), nullable=False)
+    source_format: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, default=0)
+    error_rows: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_rows: Mapped[int] = mapped_column(Integer, default=0)
+    mapping_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    summary_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    rollback_available: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DataImportIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "data_import_issues"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    import_job_id: Mapped[UUID] = mapped_column(ForeignKey("data_import_jobs.id"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    issue_type: Mapped[str] = mapped_column(String(80), index=True)
+    severity: Mapped[str] = mapped_column(String(40), default="error", index=True)
+    message: Mapped[str] = mapped_column(String(400), nullable=False)
+    suggested_fix: Mapped[str | None] = mapped_column(String(400), nullable=True)
+
+
+class DataMappingTemplate(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "data_mapping_templates"
+    __table_args__ = (UniqueConstraint("organization_id", "name"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    dataset_type: Mapped[str] = mapped_column(String(80), index=True)
+    mapping_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DataExportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "data_export_jobs"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    requested_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    dataset_type: Mapped[str] = mapped_column(String(80), index=True)
+    export_format: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
+    filtered_view_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    download_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class BulkEditBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "bulk_edit_batches"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    edited_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    dataset_type: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    total_records: Mapped[int] = mapped_column(Integer, default=0)
+    changed_records: Mapped[int] = mapped_column(Integer, default=0)
+    conflict_count: Mapped[int] = mapped_column(Integer, default=0)
+    change_set_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    undo_available: Mapped[bool] = mapped_column(Boolean, default=True)

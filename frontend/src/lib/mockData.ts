@@ -189,3 +189,45 @@ export const donorReports = [
   { name: "UNICEF vaccination coverage", donor: "UNICEF", type: "Narrative report", period: "May 2026", status: "Draft", formats: "PDF" },
   { name: "World Bank school attendance", donor: "World Bank", type: "Logframe export", period: "Q2 2026", status: "Needs data", formats: "Excel" }
 ];
+
+export const importJobs = [
+  { id: "IMP-1042", file: "farmer-registry-may.xlsx", type: "Beneficiaries", rows: 18420, valid: 17984, issues: 436, status: "Needs fixes" },
+  { id: "IMP-1041", file: "q2-indicators.csv", type: "Indicators", rows: 84, valid: 84, issues: 0, status: "Ready to import" },
+  { id: "IMP-1040", file: "farm-boundaries.geojson", type: "Map data", rows: 1290, valid: 1282, issues: 8, status: "Importing" }
+];
+
+export const importColumns = [
+  { source: "Farmer Name", target: "beneficiary.display_name", confidence: "High", required: true },
+  { source: "Household ID", target: "beneficiary.beneficiary_uid", confidence: "High", required: true },
+  { source: "Village", target: "beneficiary.community", confidence: "Medium", required: false },
+  { source: "GPS Lat", target: "beneficiary.latitude", confidence: "High", required: false },
+  { source: "GPS Long", target: "beneficiary.longitude", confidence: "High", required: false }
+];
+
+export const importValidationIssues = [
+  { row: 14, field: "Phone", issue: "Phone number looks too short", fix: "Add country code or correct the number", severity: "Warning" },
+  { row: 28, field: "GPS Lat", issue: "Latitude is outside valid range", fix: "Use decimal coordinates between -90 and 90", severity: "Error" },
+  { row: 31, field: "Household ID", issue: "Duplicate ID in uploaded file", fix: "Merge duplicate or use a unique ID", severity: "Warning" },
+  { row: 47, field: "Farmer Name", issue: "Required value is missing", fix: "Add the beneficiary name", severity: "Error" }
+];
+
+export const editableRows = [
+  { id: "HH-2026-0001", name: "Amina Diallo household", village: "Bamenda II", phone: "+237 600 000 121", status: "Active", sync: "Saved locally" },
+  { id: "HH-2026-0002", name: "Musa Kamga farm", village: "Dibombari", phone: "+237 600 000 122", status: "Needs review", sync: "Waiting to sync" },
+  { id: "HH-2026-0003", name: "Women growers cooperative", village: "Bafoussam", phone: "+237 600 000 123", status: "Active", sync: "Synced" }
+];
+
+export const exportJobs = [
+  { id: "EXP-882", name: "Beneficiary registry", format: "XLSX", filter: "Active beneficiaries", status: "Ready", schedule: "Manual" },
+  { id: "EXP-881", name: "Farm boundary map", format: "GeoJSON", filter: "Northwest program", status: "Ready", schedule: "Weekly" },
+  { id: "EXP-880", name: "Donor indicator report", format: "PDF", filter: "Q2 approved data", status: "Queued", schedule: "Monthly" }
+];
+
+export const migrationSources = [
+  "KoboToolbox exports",
+  "ODK Central CSV archives",
+  "DHIS2 indicator exports",
+  "Excel beneficiary lists",
+  "GeoJSON farm boundaries",
+  "Access database migrations"
+];

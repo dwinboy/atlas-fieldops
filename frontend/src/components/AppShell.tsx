@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ClipboardList,
   Command,
+  Database,
   GitPullRequestArrow,
   LayoutDashboard,
   LogOut,
@@ -38,6 +39,7 @@ type AppShellProps = {
 
 const navItems = [
   { id: "dashboard", label: "Home", hint: "Today’s work", icon: LayoutDashboard },
+  { id: "data", label: "Data", hint: "Import & export", icon: Database },
   { id: "programs", label: "Programs", hint: "Projects & donors", icon: Building2 },
   { id: "beneficiaries", label: "Beneficiaries", hint: "People & households", icon: UsersRound },
   { id: "indicators", label: "Indicators", hint: "Targets & results", icon: BarChart3 },

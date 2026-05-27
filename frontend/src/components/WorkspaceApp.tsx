@@ -14,6 +14,7 @@ import {
   BeneficiaryRegistry,
   CaseManagement,
   ConnectivityCenter,
+  DataInteroperabilityCenter,
   GeospatialIntelligence,
   IndicatorTracking,
   ProgramManagement,
@@ -66,6 +67,7 @@ export function WorkspaceApp() {
 
   const content = {
     dashboard: <Dashboard />,
+    data: <DataInteroperabilityCenter />,
     programs: <ProgramManagement />,
     beneficiaries: <BeneficiaryRegistry />,
     indicators: <IndicatorTracking />,

@@ -4,8 +4,8 @@ from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
-from app.schemas.operations import BeneficiaryCreate, CaseCreate, IndicatorCreate
-from app.services.operations import indicator_progress
+from app.schemas.operations import BeneficiaryCreate, CaseCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
+from app.services.operations import indicator_progress, infer_mapping, validate_sample_rows
 
 
 def test_me_permissions_are_role_scoped() -> None:
@@ -15,6 +15,8 @@ def test_me_permissions_are_role_scoped() -> None:
     assert Permission.BENEFICIARY_MANAGE in admin_permissions
     assert Permission.PROGRAM_MANAGE in admin_permissions
     assert Permission.REPORT_MANAGE in admin_permissions
+    assert Permission.DATA_IMPORT in admin_permissions
+    assert Permission.DATA_BULK_EDIT in admin_permissions
     assert Permission.BENEFICIARY_READ in officer_permissions
     assert Permission.REPORT_MANAGE not in officer_permissions
 
@@ -72,3 +74,33 @@ def test_indicator_and_case_payloads_use_plain_english_fields() -> None:
 
     assert indicator.name == "Children vaccinated"
     assert case.status == "open"
+
+
+def test_import_mapping_and_validation_catch_operational_data_errors() -> None:
+    mapping = infer_mapping("beneficiaries", ["Farmer Name", "Household ID", "Latitude", "Longitude", "Phone"])
+    issues = validate_sample_rows(
+        "beneficiaries",
+        [
+            {"Farmer Name": "Amina", "Household ID": "HH-1", "Latitude": "5.1", "Longitude": "10.2", "Phone": "+237600000000"},
+            {"Farmer Name": "", "Household ID": "HH-1", "Latitude": "500", "Longitude": "10.2", "Phone": "12"},
+        ],
+        mapping,
+    )
+
+    assert mapping[0].target_field == "display_name"
+    assert {issue.issue_type for issue in issues} == {"missing_required", "duplicate_row", "invalid_coordinate", "invalid_phone"}
+
+
+def test_import_and_export_payloads_enforce_supported_formats() -> None:
+    payload = ImportJobCreate(
+        dataset_type="beneficiaries",
+        source_name="farmer-list.xlsx",
+        source_format="xlsx",
+        total_rows=120,
+    )
+    preview = ImportPreviewRequest(dataset_type="beneficiaries", columns=["Farmer Name"], sample_rows=[])
+    export = ExportJobCreate(dataset_type="geospatial", export_format="geojson")
+
+    assert payload.source_format == "xlsx"
+    assert preview.dataset_type == "beneficiaries"
+    assert export.export_format == "geojson"

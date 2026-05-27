@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, ClipboardList, GitPullRequestArrow, LayoutDashboard, Map, Search, ShieldCheck, UsersRound, Wifi } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, Database, GitPullRequestArrow, LayoutDashboard, Map, Search, ShieldCheck, UsersRound, Wifi } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard }[] = [
   { label: "Open home", hint: "See today’s submissions, reviews, and sync status", view: "dashboard", group: "Daily work", icon: LayoutDashboard },
+  { label: "Manage data", hint: "Import, map, clean, edit, export, and sync datasets", view: "data", group: "Data", icon: Database },
   { label: "Open programs", hint: "Projects, donors, milestones, and coverage", view: "programs", group: "M&E", icon: Building2 },
   { label: "Find beneficiaries", hint: "Households, farmers, groups, and visit history", view: "beneficiaries", group: "M&E", icon: UsersRound },
   { label: "Track indicators", hint: "Baselines, targets, progress, and SDG mapping", view: "indicators", group: "M&E", icon: BarChart3 },

@@ -5,12 +5,17 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Bell,
+  CheckCircle2,
+  Columns3,
   Download,
+  FileSpreadsheet,
   MapPin,
   MessageCircle,
   Plus,
   RefreshCw,
+  Save,
   Smartphone,
+  UploadCloud,
   UsersRound
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -24,8 +29,14 @@ import {
   cases,
   dataQualitySignals,
   donorReports,
+  editableRows,
+  exportJobs,
+  importColumns,
+  importJobs,
+  importValidationIssues,
   indicators,
   mapCoverage,
+  migrationSources,
   programs
 } from "@/lib/mockData";
 
@@ -34,6 +45,9 @@ type Program = (typeof programs)[number];
 type Indicator = (typeof indicators)[number];
 type CaseItem = (typeof cases)[number];
 type DonorReport = (typeof donorReports)[number];
+type ImportJob = (typeof importJobs)[number];
+type EditableRow = (typeof editableRows)[number];
+type ExportJob = (typeof exportJobs)[number];
 
 function PageHeader({
   eyebrow,
@@ -350,6 +364,178 @@ export function ConnectivityCenter() {
             </div>
           ))}
         </div>
+      </section>
+    </section>
+  );
+}
+
+export function DataInteroperabilityCenter() {
+  const importColumnsDef: TableColumn<ImportJob>[] = [
+    {
+      key: "file",
+      header: "Upload",
+      value: (row) => `${row.file} ${row.type}`,
+      render: (row) => (
+        <div>
+          <p className="font-medium">{row.file}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{row.type} · {row.rows.toLocaleString()} rows</p>
+        </div>
+      )
+    },
+    { key: "valid", header: "Valid rows", value: (row) => String(row.valid), render: (row) => row.valid.toLocaleString() },
+    {
+      key: "issues",
+      header: "Needs fixing",
+      value: (row) => String(row.issues),
+      render: (row) => <Badge tone={row.issues > 0 ? "warning" : "success"}>{row.issues.toLocaleString()} rows</Badge>
+    },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "Ready to import" ? "success" : row.status === "Importing" ? "accent" : "warning"}>{row.status}</Badge> }
+  ];
+  const editableColumns: TableColumn<EditableRow>[] = [
+    { key: "id", header: "ID", value: (row) => row.id, render: (row) => <span className="font-mono text-xs">{row.id}</span> },
+    { key: "name", header: "Name", value: (row) => row.name, render: (row) => <input aria-label={`Name for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.name} /> },
+    { key: "village", header: "Village", value: (row) => row.village, render: (row) => <input aria-label={`Village for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.village} /> },
+    { key: "phone", header: "Phone", value: (row) => row.phone, render: (row) => <input aria-label={`Phone for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.phone} /> },
+    { key: "sync", header: "Save status", value: (row) => row.sync, render: (row) => <Badge tone={row.sync === "Synced" ? "success" : row.sync === "Waiting to sync" ? "warning" : "neutral"}>{row.sync}</Badge> }
+  ];
+  const exportColumns: TableColumn<ExportJob>[] = [
+    { key: "name", header: "Dataset", value: (row) => row.name, render: (row) => row.name },
+    { key: "format", header: "Format", value: (row) => row.format, render: (row) => row.format },
+    { key: "filter", header: "View", value: (row) => row.filter, render: (row) => row.filter },
+    { key: "schedule", header: "Schedule", value: (row) => row.schedule, render: (row) => row.schedule },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "Ready" ? "success" : "accent"}>{row.status}</Badge> }
+  ];
+
+  return (
+    <section className="space-y-5">
+      <PageHeader
+        eyebrow="Data"
+        title="Import, clean, edit, and export"
+        description="Bring in spreadsheets, map files, historical exports, and operational datasets with safe validation, mapping, bulk edits, and rollback."
+        action={<Button variant="primary"><UploadCloud aria-hidden="true" /> Upload data</Button>}
+      />
+
+      <div className="grid gap-3 md:grid-cols-4">
+        {[
+          ["Supported imports", "CSV, XLSX, JSON, GeoJSON", FileSpreadsheet],
+          ["Rows waiting", "18,864", RefreshCw],
+          ["Bulk edits", "3 batches", Columns3],
+          ["Rollback", "Available", CheckCircle2]
+        ].map(([label, value, Icon]) => (
+          <article key={label as string} className="rounded-lg border bg-panel p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">{label as string}</p>
+              <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
+            </div>
+            <p className="mt-3 text-lg font-semibold tracking-tight">{value as string}</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <aside className="space-y-4">
+          <section className="rounded-lg border bg-panel p-4">
+            <h2 className="text-sm font-semibold">Safe import steps</h2>
+            <div className="mt-4 space-y-3">
+              {[
+                ["1", "Upload file", "CSV, Excel, JSON, map files, or historical exports."],
+                ["2", "Match columns", "Save mappings for repeated beneficiary or indicator imports."],
+                ["3", "Fix issues", "Review missing names, invalid GPS, duplicates, and bad dates."],
+                ["4", "Import safely", "Partial import, version tracking, and rollback stay available."]
+              ].map(([step, title, copy]) => (
+                <div key={step} className="grid grid-cols-[28px_1fr] gap-3 rounded-md border bg-background p-3">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">{step}</span>
+                  <span>
+                    <span className="block text-sm font-medium">{title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{copy}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="rounded-lg border bg-panel p-4">
+            <h2 className="text-sm font-semibold">Migration sources</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {migrationSources.map((source) => <Badge key={source} tone="neutral">{source}</Badge>)}
+            </div>
+          </section>
+        </aside>
+
+        <div className="space-y-5">
+          <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
+
+          <section className="rounded-lg border bg-panel p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Column mapping</h2>
+                <p className="mt-1 text-xs text-muted-foreground">The system suggests matches. Users can adjust and save the mapping for next time.</p>
+              </div>
+              <Button size="sm"><Save aria-hidden="true" /> Save mapping</Button>
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {importColumns.map((column) => (
+                <div key={column.source} className="rounded-md border bg-background p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">{column.source}</p>
+                    <Badge tone={column.confidence === "High" ? "success" : "warning"}>{column.confidence}</Badge>
+                  </div>
+                  <p className="mt-2 rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">{column.target}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
+        <section className="rounded-lg border bg-panel p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Validation issues</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Row-level feedback keeps imports understandable and safe.</p>
+            </div>
+            <Button size="sm" variant="secondary"><RefreshCw aria-hidden="true" /> Recheck</Button>
+          </div>
+          <div className="space-y-2">
+            {importValidationIssues.map((issue) => (
+              <div key={`${issue.row}-${issue.field}`} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[80px_120px_1fr_auto] md:items-center">
+                <span className="text-sm font-medium">Row {issue.row}</span>
+                <span className="text-sm text-muted-foreground">{issue.field}</span>
+                <span>
+                  <span className="block text-sm font-medium">{issue.issue}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{issue.fix}</span>
+                </span>
+                <Badge tone={issue.severity === "Error" ? "danger" : "warning"}>{issue.severity}</Badge>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <aside className="rounded-lg border bg-panel p-4">
+          <h2 className="text-sm font-semibold">Conflict resolution</h2>
+          <div className="mt-4 space-y-3 text-sm">
+            {["Update existing records by ID", "Flag duplicate beneficiaries", "Keep prior version for rollback", "Ask supervisor before overwriting reviewed data"].map((item) => (
+              <div key={item} className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden="true" className="text-success" size={16} />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <DataTable columns={editableColumns} emptyLabel="No rows ready for editing" rows={editableRows} searchLabel="Search editable rows" title="Spreadsheet editing preview" />
+
+      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
+        <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={exportJobs} searchLabel="Search exports" title="Exports and scheduled files" />
+        <aside className="rounded-lg border bg-panel p-4">
+          <h2 className="text-sm font-semibold">Export formats</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Prepare filtered CSV, XLSX, PDF, JSON, and GeoJSON exports for donors, supervisors, or external systems.</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {["CSV", "XLSX", "PDF", "JSON", "GeoJSON"].map((format) => <Badge key={format} tone="accent">{format}</Badge>)}
+          </div>
+          <Button className="mt-5 w-full"><Download aria-hidden="true" /> Create export</Button>
+        </aside>
       </section>
     </section>
   );

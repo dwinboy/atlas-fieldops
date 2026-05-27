@@ -27,6 +27,9 @@ class Permission(StrEnum):
     CASE_MANAGE = "case:manage"
     REPORT_READ = "report:read"
     REPORT_MANAGE = "report:manage"
+    DATA_IMPORT = "data:import"
+    DATA_EXPORT = "data:export"
+    DATA_BULK_EDIT = "data:bulk_edit"
 
 
 ROLE_PERMISSIONS: dict[str, set[Permission]] = {
@@ -53,6 +56,9 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.CASE_MANAGE,
         Permission.REPORT_READ,
         Permission.REPORT_MANAGE,
+        Permission.DATA_IMPORT,
+        Permission.DATA_EXPORT,
+        Permission.DATA_BULK_EDIT,
     },
     "admin": {
         Permission.ORGANIZATION_READ,
@@ -76,6 +82,9 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.CASE_MANAGE,
         Permission.REPORT_READ,
         Permission.REPORT_MANAGE,
+        Permission.DATA_IMPORT,
+        Permission.DATA_EXPORT,
+        Permission.DATA_BULK_EDIT,
     },
     "supervisor": {
         Permission.ORGANIZATION_READ,
@@ -91,6 +100,9 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.CASE_READ,
         Permission.CASE_MANAGE,
         Permission.REPORT_READ,
+        Permission.DATA_IMPORT,
+        Permission.DATA_EXPORT,
+        Permission.DATA_BULK_EDIT,
     },
     "manager": {
         Permission.ORGANIZATION_READ,
@@ -104,6 +116,7 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
         Permission.INDICATOR_READ,
         Permission.CASE_READ,
         Permission.REPORT_READ,
+        Permission.DATA_EXPORT,
     },
     "field_officer": {
         Permission.ORGANIZATION_READ,

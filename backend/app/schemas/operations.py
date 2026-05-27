@@ -3,6 +3,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+SUPPORTED_DATASET_TYPES = {
+    "beneficiaries",
+    "submissions",
+    "geospatial",
+    "media",
+    "indicators",
+    "programs",
+    "cases",
+    "field_officers",
+    "historical_migration",
+}
+
+SUPPORTED_IMPORT_FORMATS = {"csv", "xlsx", "xls", "json", "geojson", "kml", "shapefile", "google_sheet"}
+SUPPORTED_EXPORT_FORMATS = {"csv", "xlsx", "pdf", "json", "geojson"}
+
 
 class ProgramCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
@@ -160,3 +175,122 @@ class OperationsSummary(BaseModel):
     quality_flags: int
     sync_health_percent: float
     offline_ready: bool
+
+
+class ColumnMapping(BaseModel):
+    source_column: str = Field(min_length=1, max_length=160)
+    target_field: str = Field(min_length=1, max_length=160)
+    required: bool = False
+    transform: str | None = Field(default=None, max_length=160)
+
+
+class ImportJobCreate(BaseModel):
+    dataset_type: str = Field(min_length=2, max_length=80)
+    source_name: str = Field(min_length=2, max_length=240)
+    source_format: str = Field(min_length=2, max_length=40)
+    total_rows: int = Field(default=0, ge=0)
+    mapping: list[ColumnMapping] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def supported_import(self) -> "ImportJobCreate":
+        if self.dataset_type not in SUPPORTED_DATASET_TYPES:
+            raise ValueError(f"Unsupported dataset type: {self.dataset_type}")
+        if self.source_format not in SUPPORTED_IMPORT_FORMATS:
+            raise ValueError(f"Unsupported import format: {self.source_format}")
+        return self
+
+
+class ImportJobRead(BaseModel):
+    id: UUID
+    dataset_type: str
+    source_name: str
+    source_format: str
+    status: str
+    total_rows: int
+    valid_rows: int
+    error_rows: int
+    duplicate_rows: int
+    rollback_available: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ImportValidationIssue(BaseModel):
+    row_number: int
+    field_name: str | None = None
+    issue_type: str
+    severity: str = "error"
+    message: str
+    suggested_fix: str | None = None
+
+
+class ImportPreviewRequest(BaseModel):
+    dataset_type: str = Field(min_length=2, max_length=80)
+    columns: list[str] = Field(min_length=1)
+    sample_rows: list[dict[str, object]] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def supported_dataset(self) -> "ImportPreviewRequest":
+        if self.dataset_type not in SUPPORTED_DATASET_TYPES:
+            raise ValueError(f"Unsupported dataset type: {self.dataset_type}")
+        return self
+
+
+class ImportPreviewResponse(BaseModel):
+    suggested_mapping: list[ColumnMapping]
+    issues: list[ImportValidationIssue]
+    valid_rows: int
+    error_rows: int
+    duplicate_rows: int
+
+
+class MappingTemplateCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=180)
+    dataset_type: str = Field(min_length=2, max_length=80)
+    mapping: list[ColumnMapping] = Field(min_length=1)
+    is_default: bool = False
+
+
+class ExportJobCreate(BaseModel):
+    dataset_type: str = Field(min_length=2, max_length=80)
+    export_format: str = Field(min_length=2, max_length=40)
+    filtered_view: dict[str, object] = Field(default_factory=dict)
+    scheduled: bool = False
+
+    @model_validator(mode="after")
+    def supported_export(self) -> "ExportJobCreate":
+        if self.dataset_type not in SUPPORTED_DATASET_TYPES:
+            raise ValueError(f"Unsupported dataset type: {self.dataset_type}")
+        if self.export_format not in SUPPORTED_EXPORT_FORMATS:
+            raise ValueError(f"Unsupported export format: {self.export_format}")
+        return self
+
+
+class ExportJobRead(BaseModel):
+    id: UUID
+    dataset_type: str
+    export_format: str
+    status: str
+    download_url: str | None
+    scheduled: bool
+
+    model_config = {"from_attributes": True}
+
+
+class BulkEditRequest(BaseModel):
+    dataset_type: str = Field(min_length=2, max_length=80)
+    record_ids: list[str] = Field(min_length=1)
+    changes: dict[str, object] = Field(min_length=1)
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class BulkEditRead(BaseModel):
+    id: UUID
+    dataset_type: str
+    status: str
+    total_records: int
+    changed_records: int
+    conflict_count: int
+    undo_available: bool
+
+    model_config = {"from_attributes": True}

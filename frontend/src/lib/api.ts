@@ -119,6 +119,57 @@ export type BeneficiaryRead = {
   last_visit_at: string | null;
 };
 
+export type ImportPreviewRequest = {
+  dataset_type: string;
+  columns: string[];
+  sample_rows: Record<string, unknown>[];
+};
+
+export type ImportPreviewResponse = {
+  suggested_mapping: { source_column: string; target_field: string; required: boolean; transform?: string | null }[];
+  issues: { row_number: number; field_name: string | null; issue_type: string; severity: string; message: string; suggested_fix: string | null }[];
+  valid_rows: number;
+  error_rows: number;
+  duplicate_rows: number;
+};
+
+export type ImportJobCreate = {
+  dataset_type: string;
+  source_name: string;
+  source_format: string;
+  total_rows: number;
+  mapping?: { source_column: string; target_field: string; required?: boolean; transform?: string | null }[];
+};
+
+export type ImportJobRead = {
+  id: string;
+  dataset_type: string;
+  source_name: string;
+  source_format: string;
+  status: string;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  duplicate_rows: number;
+  rollback_available: boolean;
+};
+
+export type ExportJobCreate = {
+  dataset_type: string;
+  export_format: string;
+  filtered_view?: Record<string, unknown>;
+  scheduled?: boolean;
+};
+
+export type ExportJobRead = {
+  id: string;
+  dataset_type: string;
+  export_format: string;
+  status: string;
+  download_url: string | null;
+  scheduled: boolean;
+};
+
 const apiBaseUrl =
   process.env.INTERNAL_API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -221,8 +272,22 @@ export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
 
+export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
+  return request<ImportPreviewResponse>("/operations/data/imports/preview", { method: "POST", token, bodyJson: payload });
+}
+
+export async function createImportJob(token: string, payload: ImportJobCreate): Promise<ImportJobRead> {
+  return request<ImportJobRead>("/operations/data/imports", { method: "POST", token, bodyJson: payload });
+}
+
+export async function createExportJob(token: string, payload: ExportJobCreate): Promise<ExportJobRead> {
+  return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
+}
+
 export const api = {
   createOrganization,
+  createExportJob,
+  createImportJob,
   createUser,
   getCurrentPrincipal,
   getHealth,
@@ -234,5 +299,6 @@ export const api = {
   listSubmissions,
   listUsers,
   login,
+  previewImport,
   reviewSubmission
 };

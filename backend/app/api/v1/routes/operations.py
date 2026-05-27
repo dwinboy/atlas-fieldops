@@ -11,12 +11,21 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryRead,
+    BulkEditRead,
+    BulkEditRequest,
     CaseCreate,
     CaseRead,
     DonorReportCreate,
     DonorReportRead,
+    ExportJobCreate,
+    ExportJobRead,
+    ImportJobCreate,
+    ImportJobRead,
+    ImportPreviewRequest,
+    ImportPreviewResponse,
     IndicatorCreate,
     IndicatorRead,
+    MappingTemplateCreate,
     OperationsSummary,
     ProgramCreate,
     ProgramRead,
@@ -28,6 +37,10 @@ router = APIRouter()
 
 def organization_uuid(principal: CurrentPrincipal) -> UUID:
     return UUID(principal.organization_id)
+
+
+def user_uuid(principal: CurrentPrincipal) -> UUID:
+    return UUID(principal.user_id)
 
 
 @router.get("/summary", response_model=OperationsSummary, summary="Get M&E operations summary")
@@ -134,3 +147,65 @@ async def create_report(
 ) -> DonorReportRead:
     report = await OperationsService(session).create_report(organization_uuid(principal), payload)
     return DonorReportRead.model_validate(report)
+
+
+@router.post("/data/imports/preview", response_model=ImportPreviewResponse, summary="Preview and validate imported data")
+async def preview_import(
+    payload: ImportPreviewRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportPreviewResponse:
+    _ = principal
+    return await OperationsService(session).preview_import(payload)
+
+
+@router.get("/data/imports", response_model=list[ImportJobRead], summary="List import jobs")
+async def list_import_jobs(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportJobRead]:
+    return await OperationsService(session).list_import_jobs(organization_uuid(principal))
+
+
+@router.post("/data/imports", response_model=ImportJobRead, status_code=status.HTTP_201_CREATED, summary="Create import job")
+async def create_import_job(
+    payload: ImportJobCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportJobRead:
+    return await OperationsService(session).create_import_job(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/data/mapping-templates", status_code=status.HTTP_204_NO_CONTENT, summary="Save import mapping template")
+async def create_mapping_template(
+    payload: MappingTemplateCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    await OperationsService(session).create_mapping_template(organization_uuid(principal), payload)
+
+
+@router.get("/data/exports", response_model=list[ExportJobRead], summary="List export jobs")
+async def list_export_jobs(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ExportJobRead]:
+    return await OperationsService(session).list_export_jobs(organization_uuid(principal))
+
+
+@router.post("/data/exports", response_model=ExportJobRead, status_code=status.HTTP_201_CREATED, summary="Create export job")
+async def create_export_job(
+    payload: ExportJobCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_EXPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ExportJobRead:
+    return await OperationsService(session).create_export_job(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/data/bulk-edits", response_model=BulkEditRead, status_code=status.HTTP_201_CREATED, summary="Create bulk edit batch")
+async def create_bulk_edit_batch(
+    payload: BulkEditRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_BULK_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BulkEditRead:
+    return await OperationsService(session).create_bulk_edit_batch(organization_uuid(principal), user_uuid(principal), payload)
