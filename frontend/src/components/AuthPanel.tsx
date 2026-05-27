@@ -1,11 +1,15 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LogIn, ShieldCheck } from "lucide-react";
+import { motion } from "framer-motion";
+import { DatabaseZap, Fingerprint, LogIn, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/Button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { login } from "@/lib/api";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type AuthPanelProps = {
   onAuthenticated: (token: string) => void;
@@ -16,62 +20,89 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const [password, setPassword] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("acme");
 
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+
   const mutation = useMutation({
     mutationFn: login,
-    onSuccess: (response) => onAuthenticated(response.access_token)
+    onSuccess: (response) => {
+      pushToast({ title: "Signed in", description: "Tenant workspace unlocked", tone: "success" });
+      onAuthenticated(response.access_token);
+    }
   });
 
   return (
-    <section className="grid min-h-screen bg-slate-50 lg:grid-cols-[1fr_480px]">
+    <section className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
       <div className="flex items-center px-6 py-10">
-        <div className="mx-auto max-w-2xl">
-          <div className="mb-8 inline-flex h-12 w-12 items-center justify-center rounded border border-teal-200 bg-teal-50 text-teal-800">
-            <ShieldCheck aria-hidden="true" size={24} />
-          </div>
-          <h1 className="text-3xl font-semibold text-slate-950">Enterprise data operations</h1>
-          <p className="mt-3 max-w-xl text-base leading-7 text-slate-600">
+        <motion.div
+          className="mx-auto max-w-3xl"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24 }}
+        >
+          <Badge tone="accent" className="mb-8 gap-2">
+            <ShieldCheck aria-hidden="true" size={14} />
+            Secure enterprise workspace
+          </Badge>
+          <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+            Operational data collection, governed from one place.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
             Secure access to tenant collection workflows, field teams, validation queues, and live
             submission analytics.
           </p>
-          <div className="mt-8 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
-            {["Tenant scoped", "Audit ready", "Offline aware"].map((label) => (
-              <div key={label} className="rounded border border-slate-200 bg-white p-4">
-                {label}
+          <div className="mt-10 grid gap-3 text-sm sm:grid-cols-3">
+            {[
+              ["Tenant scoped", "Every action carries org context"],
+              ["Audit ready", "Immutable security trail"],
+              ["Offline aware", "Designed for field reliability"]
+            ].map(([label, detail]) => (
+              <div key={label} className="rounded-lg border bg-panel p-4 shadow-line">
+                <p className="font-medium">{label}</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <form
-        className="flex items-center border-l border-slate-200 bg-white px-6 py-10"
+        className="flex items-center border-l bg-panel px-6 py-10 shadow-elevated"
         onSubmit={(event) => {
           event.preventDefault();
           mutation.mutate({ email, password, organization_slug: organizationSlug });
         }}
       >
         <div className="mx-auto w-full max-w-sm">
-          <h2 className="text-xl font-semibold text-slate-950">Sign in</h2>
-          <p className="mt-2 text-sm text-slate-600">Use a tenant account to continue.</p>
+          <div className="mb-8 flex items-center justify-between">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <DatabaseZap aria-hidden="true" size={21} />
+            </div>
+            <Badge tone="success" className="gap-2">
+              <Fingerprint aria-hidden="true" size={13} />
+              RBAC
+            </Badge>
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Use a tenant account to continue.</p>
 
-          <label className="mt-6 block text-sm font-medium text-slate-700" htmlFor="organization">
+          <label className="mt-6 block text-sm font-medium" htmlFor="organization">
             Organization
           </label>
-          <input
+          <Input
             id="organization"
-            className="mt-2 h-11 w-full rounded border border-slate-300 px-3 text-sm"
+            className="mt-2 h-10"
             value={organizationSlug}
             onChange={(event) => setOrganizationSlug(event.target.value)}
             autoComplete="organization"
             required
           />
 
-          <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="email">
+          <label className="mt-4 block text-sm font-medium" htmlFor="email">
             Email
           </label>
-          <input
+          <Input
             id="email"
-            className="mt-2 h-11 w-full rounded border border-slate-300 px-3 text-sm"
+            className="mt-2 h-10"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -79,12 +110,12 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             required
           />
 
-          <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="password">
+          <label className="mt-4 block text-sm font-medium" htmlFor="password">
             Password
           </label>
-          <input
+          <Input
             id="password"
-            className="mt-2 h-11 w-full rounded border border-slate-300 px-3 text-sm"
+            className="mt-2 h-10"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -94,7 +125,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           />
 
           {mutation.isError ? (
-            <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+            <p className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
               Sign in failed. Check the organization, email, and password.
             </p>
           ) : null}
@@ -102,15 +133,28 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           <Button
             className="mt-6 w-full"
             disabled={mutation.isPending}
-            icon={<LogIn aria-hidden="true" size={18} />}
             type="submit"
             variant="primary"
           >
+            <LogIn aria-hidden="true" />
             {mutation.isPending ? "Signing in" : "Sign in"}
           </Button>
+          <Button
+            className="mt-3 w-full"
+            onClick={() => {
+              pushToast({ title: "Preview mode", description: "Loaded demo workspace without backend credentials", tone: "neutral" });
+              onAuthenticated("preview-token");
+            }}
+            type="button"
+            variant="secondary"
+          >
+            Preview workspace
+          </Button>
+          <p className="mt-4 text-xs leading-5 text-muted-foreground">
+            Access is tenant-scoped and activity is recorded to the audit trail.
+          </p>
         </div>
       </form>
     </section>
   );
 }
-

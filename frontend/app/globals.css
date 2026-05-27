@@ -2,13 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: 210 20% 98%;
+  --foreground: 222 28% 10%;
+  --panel: 0 0% 100%;
+  --panel-foreground: 222 28% 10%;
+  --muted: 210 18% 94%;
+  --muted-foreground: 216 10% 43%;
+  --border: 214 18% 88%;
+  --input: 214 18% 86%;
+  --ring: 180 70% 28%;
+  --primary: 180 72% 25%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 216 20% 18%;
+  --accent-foreground: 0 0% 100%;
+  --success: 158 58% 36%;
+  --warning: 39 87% 48%;
+  --danger: 0 72% 48%;
+  --radius: 8px;
+}
+
+.dark {
+  --background: 220 22% 8%;
+  --foreground: 210 25% 94%;
+  --panel: 220 20% 11%;
+  --panel-foreground: 210 25% 94%;
+  --muted: 220 16% 16%;
+  --muted-foreground: 215 12% 65%;
+  --border: 220 13% 21%;
+  --input: 220 13% 24%;
+  --ring: 178 72% 38%;
+  --primary: 178 72% 34%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 210 18% 88%;
+  --accent-foreground: 220 22% 8%;
+  --success: 158 58% 45%;
+  --warning: 39 87% 55%;
+  --danger: 0 72% 58%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
 body {
-  background: #f7faf9;
-  color: #172026;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(15, 118, 110, 0.05), transparent 28rem),
+    hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings:
+    "cv02" 1,
+    "cv03" 1,
+    "cv04" 1,
+    "cv11" 1;
+  letter-spacing: 0;
 }
 
 :focus-visible {
-  outline: 3px solid #0f766e;
+  outline: 3px solid hsl(var(--ring) / 0.35);
   outline-offset: 2px;
 }
 
@@ -17,4 +68,33 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: hsl(var(--primary));
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.18);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.product-scrollbar {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

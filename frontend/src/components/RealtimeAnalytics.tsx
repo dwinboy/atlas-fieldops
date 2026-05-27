@@ -1,57 +1,80 @@
-import { RadioTower } from "lucide-react";
+import { ArrowUpRight, RadioTower, Waves } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/ui/status-dot";
 import { analyticsSeries } from "@/lib/mockData";
 
 export function RealtimeAnalytics() {
   const max = Math.max(...analyticsSeries.map((point) => point.submissions));
 
   return (
-    <section aria-labelledby="analytics-title" className="space-y-6">
-      <div>
-        <h1 id="analytics-title" className="text-2xl font-semibold">
-          Realtime analytics
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">Live submission flow, validation progress, and operational lag.</p>
+    <section aria-labelledby="analytics-title" className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Signal layer</p>
+          <h1 id="analytics-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Realtime analytics
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Monitor live submission flow, validation progress, and regional operational lag.
+          </p>
+        </div>
+        <Button>
+          Open explorer
+          <ArrowUpRight aria-hidden="true" />
+        </Button>
       </div>
 
-      <section className="rounded border border-slate-200 bg-white p-5" aria-labelledby="stream-title">
-        <div className="flex items-center gap-2">
-          <RadioTower aria-hidden="true" className="text-teal-700" size={18} />
-          <h2 id="stream-title" className="text-base font-semibold">
-            Ingestion stream
-          </h2>
+      <section className="rounded-lg border bg-panel p-4" aria-labelledby="stream-title">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <RadioTower aria-hidden="true" className="text-primary" size={18} />
+            <div>
+              <h2 id="stream-title" className="text-sm font-semibold">
+                Ingestion stream
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">Submissions accepted per two-hour window</p>
+            </div>
+          </div>
+          <Badge tone="success" className="gap-1.5">
+            <StatusDot tone="online" />
+            Healthy
+          </Badge>
         </div>
         <div className="mt-6 space-y-4">
           {analyticsSeries.map((point) => (
             <div key={point.label} className="grid gap-2 sm:grid-cols-[72px_1fr_96px] sm:items-center">
-              <span className="text-sm text-slate-600">{point.label}</span>
-              <div className="h-9 rounded bg-slate-100">
+              <span className="text-sm text-muted-foreground">{point.label}</span>
+              <div className="h-8 rounded-md bg-muted">
                 <div
                   aria-label={`${point.submissions} submissions, ${point.validated} validated`}
-                  className="h-9 rounded bg-teal-700"
+                  className="h-8 rounded-md bg-primary transition-all"
                   role="img"
                   style={{ width: `${Math.max(8, (point.submissions / max) * 100)}%` }}
                 />
               </div>
-              <span className="text-sm font-medium">{point.submissions.toLocaleString()}</span>
+              <span className="text-sm font-medium tabular-nums">{point.submissions.toLocaleString()}</span>
             </div>
           ))}
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         {[
           ["P95 API latency", "182 ms"],
           ["Validation accuracy", "96.8%"],
           ["Kafka consumer lag", "1,245"]
         ].map(([label, value]) => (
-          <article key={label} className="rounded border border-slate-200 bg-white p-5">
-            <p className="text-sm text-slate-600">{label}</p>
-            <p className="mt-3 text-2xl font-semibold">{value}</p>
+          <article key={label} className="rounded-lg border bg-panel p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Waves aria-hidden="true" className="text-muted-foreground" size={16} />
+            </div>
+            <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
           </article>
         ))}
       </div>
     </section>
   );
 }
-

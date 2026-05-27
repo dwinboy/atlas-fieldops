@@ -1,11 +1,14 @@
 "use client";
 
-import { ClipboardList, Plus, Trash2, UploadCloud } from "lucide-react";
+import { Check, ClipboardList, Plus, Trash2, UploadCloud } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/Button";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import { addField, publishForm, removeField, type DynamicForm, type FieldType } from "@/lib/forms";
 import { starterForms } from "@/lib/mockData";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 const fieldTypes: FieldType[] = ["text", "number", "date", "photo", "gps", "select"];
 
@@ -15,6 +18,7 @@ export function DynamicForms() {
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldType, setFieldType] = useState<FieldType>("text");
   const [required, setRequired] = useState(true);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const selectedForm = useMemo(() => forms.find((form) => form.id === selectedFormId) ?? forms[0], [forms, selectedFormId]);
 
   function updateSelectedForm(nextForm: DynamicForm) {
@@ -22,32 +26,41 @@ export function DynamicForms() {
   }
 
   return (
-    <section aria-labelledby="forms-title" className="space-y-6">
-      <div>
-        <h1 id="forms-title" className="text-2xl font-semibold">
-          Dynamic forms
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">Design offline-ready collection templates with typed fields.</p>
+    <section aria-labelledby="forms-title" className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Schema studio</p>
+          <h1 id="forms-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Dynamic forms
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Build offline-ready collection templates with validation, media capture, and GPS-aware fields.
+          </p>
+        </div>
+        <Button variant="primary">
+          <Plus aria-hidden="true" />
+          New template
+        </Button>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
-        <aside className="rounded border border-slate-200 bg-white p-4">
+      <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
+        <aside className="rounded-lg border bg-panel p-3">
           <div className="mb-3 flex items-center gap-2">
             <ClipboardList aria-hidden="true" size={18} />
-            <h2 className="text-base font-semibold">Templates</h2>
+            <h2 className="text-sm font-semibold">Templates</h2>
           </div>
           <div className="space-y-2">
             {forms.map((form) => (
               <button
                 key={form.id}
-                className={`w-full rounded border px-3 py-3 text-left text-sm ${
-                  selectedForm?.id === form.id ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"
+                className={`w-full rounded-md border px-3 py-3 text-left text-sm transition ${
+                  selectedForm?.id === form.id ? "border-primary/35 bg-primary/10 text-primary" : "bg-background hover:bg-muted/60"
                 }`}
                 onClick={() => setSelectedFormId(form.id)}
                 type="button"
               >
                 <span className="block font-medium">{form.name}</span>
-                <span className="mt-1 block text-xs text-slate-500">
+                  <span className="mt-1 block text-xs text-muted-foreground">
                   {form.fields.length} fields · {form.status}
                 </span>
               </button>
@@ -57,22 +70,28 @@ export function DynamicForms() {
 
         {selectedForm ? (
           <div className="space-y-4">
-            <section className="rounded border border-slate-200 bg-white p-5" aria-labelledby="builder-title">
+            <section className="rounded-lg border bg-panel p-4" aria-labelledby="builder-title">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 id="builder-title" className="text-base font-semibold">
+                  <h2 id="builder-title" className="text-sm font-semibold">
                     {selectedForm.name}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">Updated {new Date(selectedForm.updatedAt).toLocaleString()}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Updated {new Date(selectedForm.updatedAt).toLocaleString()}</p>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Badge tone={selectedForm.status === "published" ? "success" : "neutral"}>{selectedForm.status}</Badge>
                 <Button
-                  icon={<UploadCloud aria-hidden="true" size={18} />}
-                  onClick={() => updateSelectedForm(publishForm(selectedForm))}
+                  onClick={() => {
+                    updateSelectedForm(publishForm(selectedForm));
+                    pushToast({ title: "Form published", description: selectedForm.name, tone: "success" });
+                  }}
                   type="button"
                   variant="primary"
                 >
+                  <UploadCloud aria-hidden="true" />
                   Publish
                 </Button>
+                </div>
               </div>
 
               <form
@@ -90,19 +109,19 @@ export function DynamicForms() {
                   setFieldLabel("");
                 }}
               >
-                <label className="text-sm font-medium text-slate-700">
+                <label className="text-sm font-medium">
                   Field label
-                  <input
-                    className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+                  <Input
+                    className="mt-2"
                     value={fieldLabel}
                     onChange={(event) => setFieldLabel(event.target.value)}
                     required
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-700">
+                <label className="text-sm font-medium">
                   Type
-                  <select
-                    className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+                  <Select
+                    className="mt-2"
                     value={fieldType}
                     onChange={(event) => setFieldType(event.target.value as FieldType)}
                   >
@@ -111,9 +130,9 @@ export function DynamicForms() {
                         {type}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
-                <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
+                <label className="flex items-end gap-2 pb-2 text-sm font-medium">
                   <input
                     checked={required}
                     className="h-4 w-4"
@@ -122,36 +141,39 @@ export function DynamicForms() {
                   />
                   Required
                 </label>
-                <Button className="self-end" icon={<Plus aria-hidden="true" size={18} />} type="submit">
+                <Button className="self-end" type="submit">
+                  <Plus aria-hidden="true" />
                   Add
                 </Button>
               </form>
             </section>
 
-            <section className="rounded border border-slate-200 bg-white" aria-labelledby="field-list-title">
-              <div className="border-b border-slate-200 p-5">
-                <h2 id="field-list-title" className="text-base font-semibold">
+            <section className="rounded-lg border bg-panel" aria-labelledby="field-list-title">
+              <div className="border-b p-4">
+                <h2 id="field-list-title" className="text-sm font-semibold">
                   Fields
                 </h2>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y">
                 {selectedForm.fields.map((field) => (
-                  <div key={field.id} className="flex items-center justify-between gap-4 p-5">
+                  <div key={field.id} className="flex items-center justify-between gap-4 p-4 transition hover:bg-muted/35">
                     <div>
-                      <p className="text-sm font-medium">{field.label}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        {field.required ? <Check aria-hidden="true" className="text-success" size={14} /> : null}
+                        {field.label}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {field.type} · {field.required ? "required" : "optional"}
                       </p>
                     </div>
                     <Button
                       aria-label={`Remove ${field.label}`}
-                      className="w-10 px-0"
-                      icon={<Trash2 aria-hidden="true" size={18} />}
+                      size="icon"
                       onClick={() => updateSelectedForm(removeField(selectedForm, field.id))}
                       type="button"
                       variant="ghost"
                     >
-                      <span className="sr-only">Remove</span>
+                      <Trash2 aria-hidden="true" />
                     </Button>
                   </div>
                 ))}
@@ -163,4 +185,3 @@ export function DynamicForms() {
     </section>
   );
 }
-

@@ -4,8 +4,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Building2, Plus, UserPlus } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/Button";
-import { createOrganization, createUser, listRoles, listUsers, type RoleRead } from "@/lib/api";
+import { DataTable, type TableColumn } from "@/components/DataTable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { createOrganization, createUser, listRoles, listUsers, type RoleRead, type UserRead } from "@/lib/api";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type OrganizationManagementProps = {
   token: string | null;
@@ -17,6 +21,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [roleName, setRoleName] = useState("collector");
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const usersQuery = useQuery({
     queryKey: ["users", token],
@@ -35,6 +40,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     onSuccess: () => {
       setOrganizationName("");
       setOrganizationSlug("");
+      pushToast({ title: "Organization created", description: "Default roles were provisioned", tone: "success" });
     }
   });
 
@@ -49,6 +55,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     onSuccess: async () => {
       setEmail("");
       setFullName("");
+      pushToast({ title: "User invited", description: `${fullName || email} was added to this tenant`, tone: "success" });
       await usersQuery.refetch();
     }
   });
@@ -62,18 +69,43 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
       permissions: []
     }));
 
+  const userColumns: TableColumn<UserRead>[] = [
+    {
+      key: "name",
+      header: "User",
+      render: (user) => (
+        <div>
+          <p className="font-medium">{user.full_name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{user.id.slice(0, 8)}</p>
+        </div>
+      )
+    },
+    { key: "email", header: "Email", render: (user) => user.email },
+    {
+      key: "status",
+      header: "Status",
+      render: (user) => <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Active" : "Inactive"}</Badge>
+    }
+  ];
+
   return (
-    <section aria-labelledby="organization-title" className="space-y-6">
-      <div>
-        <h1 id="organization-title" className="text-2xl font-semibold">
-          Organization management
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">Provision tenants, invite users, and inspect role coverage.</p>
+    <section aria-labelledby="organization-title" className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Tenant administration</p>
+          <h1 id="organization-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Organization management
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Provision tenants, invite operators, and manage role coverage from a single control surface.
+          </p>
+        </div>
+        <Badge tone="accent">{roles.length} roles available</Badge>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2">
         <form
-          className="rounded border border-slate-200 bg-white p-5"
+          className="rounded-lg border bg-panel p-4"
           onSubmit={(event) => {
             event.preventDefault();
             organizationMutation.mutate({ name: organizationName, slug: organizationSlug });
@@ -81,22 +113,22 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         >
           <div className="mb-4 flex items-center gap-2">
             <Building2 aria-hidden="true" size={18} />
-            <h2 className="text-base font-semibold">Create organization</h2>
+            <h2 className="text-sm font-semibold">Create organization</h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium">
               Name
-              <input
-                className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+              <Input
+                className="mt-2"
                 value={organizationName}
                 onChange={(event) => setOrganizationName(event.target.value)}
                 required
               />
             </label>
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium">
               Slug
-              <input
-                className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+              <Input
+                className="mt-2"
                 value={organizationSlug}
                 onChange={(event) => setOrganizationSlug(event.target.value)}
                 pattern="[a-z0-9-]+"
@@ -105,23 +137,23 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
             </label>
           </div>
           {organizationMutation.isError ? (
-            <p className="mt-3 text-sm text-red-700" role="alert">
+            <p className="mt-3 text-sm text-danger" role="alert">
               Organization could not be created.
             </p>
           ) : null}
           <Button
             className="mt-5"
             disabled={organizationMutation.isPending}
-            icon={<Plus aria-hidden="true" size={18} />}
             type="submit"
             variant="primary"
           >
+            <Plus aria-hidden="true" />
             Create
           </Button>
         </form>
 
         <form
-          className="rounded border border-slate-200 bg-white p-5"
+          className="rounded-lg border bg-panel p-4"
           onSubmit={(event) => {
             event.preventDefault();
             userMutation.mutate();
@@ -129,32 +161,32 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         >
           <div className="mb-4 flex items-center gap-2">
             <UserPlus aria-hidden="true" size={18} />
-            <h2 className="text-base font-semibold">Invite user</h2>
+            <h2 className="text-sm font-semibold">Invite user</h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium">
               Full name
-              <input
-                className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+              <Input
+                className="mt-2"
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
                 required
               />
             </label>
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium">
               Email
-              <input
-                className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+              <Input
+                className="mt-2"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
               />
             </label>
-            <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+            <label className="block text-sm font-medium sm:col-span-2">
               Role
-              <select
-                className="mt-2 h-10 w-full rounded border border-slate-300 px-3"
+              <Select
+                className="mt-2"
                 value={roleName}
                 onChange={(event) => setRoleName(event.target.value)}
               >
@@ -163,56 +195,22 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
                     {role.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
           <Button
             className="mt-5"
             disabled={!token || userMutation.isPending}
-            icon={<UserPlus aria-hidden="true" size={18} />}
             type="submit"
             variant="primary"
           >
+            <UserPlus aria-hidden="true" />
             Invite
           </Button>
         </form>
       </div>
 
-      <section className="rounded border border-slate-200 bg-white" aria-labelledby="users-title">
-        <div className="border-b border-slate-200 p-5">
-          <h2 id="users-title" className="text-base font-semibold">
-            Users
-          </h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Email</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(usersQuery.data ?? []).map((user) => (
-                <tr key={user.id}>
-                  <td className="px-5 py-3">{user.full_name}</td>
-                  <td className="px-5 py-3">{user.email}</td>
-                  <td className="px-5 py-3">{user.is_active ? "Active" : "Inactive"}</td>
-                </tr>
-              ))}
-              {!usersQuery.data?.length ? (
-                <tr>
-                  <td className="px-5 py-6 text-slate-500" colSpan={3}>
-                    No users loaded yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={usersQuery.data ?? []} searchLabel="Search users" title="Users" />
     </section>
   );
 }
-
