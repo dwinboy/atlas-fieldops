@@ -434,3 +434,56 @@ export const formTemplates: FormTemplateCard[] = [
     repeatGroups: 0
   }
 ];
+
+export const operationalFlow = [
+  { id: "organization", label: "Organization", detail: "Tenant, roles, governance", count: "1", status: "Healthy" },
+  { id: "projects", label: "Programs & Projects", detail: "Donors, geography, workflows", count: "3", status: "Active" },
+  { id: "indicators", label: "Indicators & Targets", detail: "Baseline, target, progress", count: "4", status: "Active" },
+  { id: "field-team", label: "Field Team", detail: "Officers, supervisors, regions", count: "1,204", status: "Active" },
+  { id: "beneficiaries", label: "Beneficiaries", detail: "Living operational profiles", count: "98.2k", status: "Core" },
+  { id: "forms", label: "Forms & Surveys", detail: "Offline operational transactions", count: "42", status: "Ready" },
+  { id: "submissions", label: "Submissions", detail: "GPS, media, evidence", count: "128.4k", status: "Live" },
+  { id: "quality", label: "Validation & Approval", detail: "Fraud, quality, review queues", count: "214", status: "Needs review" },
+  { id: "reports", label: "Analytics & Reports", detail: "Dashboards, donors, decisions", count: "18", status: "Synced" },
+  { id: "followups", label: "Interventions", detail: "Cases, corrections, action", count: "37", status: "Open" }
+];
+
+export const operationalEvents = [
+  {
+    event: "Submission approved",
+    source: "Review",
+    effects: ["Indicators recalculated", "Officer score updated", "Donor report refreshed"],
+    priority: "Normal",
+    age: "2 min ago"
+  },
+  {
+    event: "Duplicate beneficiary risk",
+    source: "Data quality",
+    effects: ["Supervisor queue opened", "Registry merge review created", "Dashboard flag updated"],
+    priority: "High",
+    age: "8 min ago"
+  },
+  {
+    event: "Farmer registration synced",
+    source: "Mobile sync",
+    effects: ["Beneficiary profile updated", "Farm map layer refreshed", "Project coverage updated"],
+    priority: "Normal",
+    age: "14 min ago"
+  },
+  {
+    event: "Correction requested",
+    source: "Approval workflow",
+    effects: ["Field officer notified", "SLA timer started", "Submission reopened"],
+    priority: "High",
+    age: "22 min ago"
+  }
+];
+
+export const beneficiaryProfileConnections = [
+  { label: "Projects", value: "2 active", note: "Climate-smart agriculture, input vouchers" },
+  { label: "Submissions", value: "18 records", note: "Registration, visits, yield checks" },
+  { label: "Cases", value: "1 open", note: "Missing input voucher follow-up" },
+  { label: "Indicators", value: "4 linked", note: "Yield, adoption, income, vulnerability" },
+  { label: "Map history", value: "7 visits", note: "GPS trail and farm boundary evidence" },
+  { label: "Reports", value: "3 outputs", note: "FAO Q2, supervisor summary, donor export" }
+];

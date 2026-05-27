@@ -22,8 +22,15 @@ from app.schemas.operations import (
     IndicatorCreate,
     IndicatorRead,
     MappingTemplateCreate,
+    EcosystemEdge,
+    EcosystemNode,
+    OperationalEcosystemRead,
+    OperationalEffect,
+    OperationalEventCreate,
+    OperationalEventRead,
     OperationsSummary,
     ProgramCreate,
+    WorkflowQueueItemRead,
     ColumnMapping,
 )
 
@@ -152,12 +159,23 @@ class OperationsService:
         self.session = session
         self.repository = OperationsRepository(session)
 
-    async def create_program(self, organization_id: UUID, payload: ProgramCreate) -> Project:
+    async def create_program(self, organization_id: UUID, payload: ProgramCreate, actor_user_id: UUID | None = None) -> Project:
         program = await self.repository.create_program(
             organization_id=organization_id,
             name=payload.name,
             slug=payload.slug,
             region=payload.region,
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalEventCreate(
+                event_type="program.created",
+                source_module="programs",
+                project_id=program.id,
+                summary=f"Program {program.name} is now connected to forms, beneficiaries, indicators, geography, and reports.",
+                payload={"program_slug": program.slug, "region": program.region or "all regions"},
+            ),
         )
         await self.session.commit()
         await event_publisher.publish("program.created", {"organization_id": str(organization_id), "program_id": str(program.id)})
@@ -166,10 +184,33 @@ class OperationsService:
     async def list_programs(self, organization_id: UUID) -> list[Project]:
         return await self.repository.list_programs(organization_id)
 
-    async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate) -> Beneficiary:
+    async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate, actor_user_id: UUID | None = None) -> Beneficiary:
         beneficiary = await self.repository.create_beneficiary(
             organization_id=organization_id,
             values=payload.model_dump(),
+        )
+        if beneficiary.project_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=beneficiary.project_id,
+                source_type="project",
+                source_id=str(beneficiary.project_id),
+                target_type="beneficiary",
+                target_id=str(beneficiary.id),
+                relationship_type="enrolls",
+                metadata_json={"beneficiary_uid": beneficiary.beneficiary_uid},
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalEventCreate(
+                event_type="beneficiary.enrolled",
+                source_module="beneficiaries",
+                project_id=beneficiary.project_id,
+                beneficiary_id=beneficiary.id,
+                summary=f"{beneficiary.display_name} was added to the operational registry.",
+                payload={"beneficiary_uid": beneficiary.beneficiary_uid, "region": beneficiary.region or "unassigned"},
+            ),
         )
         await self.session.commit()
         await event_publisher.publish(
@@ -181,8 +222,30 @@ class OperationsService:
     async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
         return await self.repository.list_beneficiaries(organization_id)
 
-    async def create_indicator(self, organization_id: UUID, payload: IndicatorCreate) -> IndicatorRead:
+    async def create_indicator(self, organization_id: UUID, payload: IndicatorCreate, actor_user_id: UUID | None = None) -> IndicatorRead:
         indicator = await self.repository.create_indicator(organization_id=organization_id, values=payload.model_dump())
+        if indicator.project_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=indicator.project_id,
+                source_type="project",
+                source_id=str(indicator.project_id),
+                target_type="indicator",
+                target_id=str(indicator.id),
+                relationship_type="measures",
+                metadata_json={"indicator_code": indicator.code},
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalEventCreate(
+                event_type="indicator.created",
+                source_module="indicators",
+                project_id=indicator.project_id,
+                summary=f"Indicator {indicator.code} is connected to dashboards, submissions, and donor reporting.",
+                payload={"indicator_name": indicator.name, "unit": indicator.unit},
+            ),
+        )
         await self.session.commit()
         await event_publisher.publish("indicator.created", {"organization_id": str(organization_id), "indicator_id": str(indicator.id)})
         return self.to_indicator_read(indicator)
@@ -191,8 +254,32 @@ class OperationsService:
         indicators = await self.repository.list_indicators(organization_id)
         return [self.to_indicator_read(indicator) for indicator in indicators]
 
-    async def create_case(self, organization_id: UUID, payload: CaseCreate) -> CaseRecord:
+    async def create_case(self, organization_id: UUID, payload: CaseCreate, actor_user_id: UUID | None = None) -> CaseRecord:
         case = await self.repository.create_case(organization_id=organization_id, values=payload.model_dump())
+        if case.beneficiary_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=case.project_id,
+                source_type="beneficiary",
+                source_id=str(case.beneficiary_id),
+                target_type="case",
+                target_id=str(case.id),
+                relationship_type="has_follow_up",
+                metadata_json={"case_number": case.case_number, "priority": case.priority},
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalEventCreate(
+                event_type="case.opened",
+                source_module="cases",
+                project_id=case.project_id,
+                beneficiary_id=case.beneficiary_id,
+                summary=f"Case {case.case_number} opened and added to supervisor follow-up.",
+                priority=case.priority,
+                payload={"case_type": case.case_type, "status": case.status},
+            ),
+        )
         await self.session.commit()
         await event_publisher.publish("case.opened", {"organization_id": str(organization_id), "case_id": str(case.id)})
         return case
@@ -256,6 +343,17 @@ class OperationsService:
             mapping_json=mapping_json,
             summary_json=summary_json,
         )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data_import.created",
+                source_module="data",
+                summary=f"{payload.source_name} is mapped into {payload.dataset_type} workflows.",
+                priority="high" if job.error_rows else "normal",
+                payload={"dataset_type": payload.dataset_type, "rows": payload.total_rows, "status": job.status},
+            ),
+        )
         await self.session.commit()
         await event_publisher.publish("data_import.created", {"organization_id": str(organization_id), "import_job_id": str(job.id)})
         return ImportJobRead.model_validate(job)
@@ -284,6 +382,16 @@ class OperationsService:
             filtered_view_json=payload.filtered_view,
             scheduled=payload.scheduled,
         )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data_export.queued",
+                source_module="reporting",
+                summary=f"{payload.dataset_type} export queued for reports, GIS, or partner systems.",
+                payload={"dataset_type": payload.dataset_type, "format": payload.export_format, "scheduled": payload.scheduled},
+            ),
+        )
         await self.session.commit()
         await event_publisher.publish("data_export.queued", {"organization_id": str(organization_id), "export_job_id": str(job.id)})
         return ExportJobRead.model_validate(job)
@@ -306,9 +414,142 @@ class OperationsService:
             total_records=len(payload.record_ids),
             change_set_json=change_set,
         )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="bulk_edit.created",
+                source_module="data",
+                summary=f"{len(payload.record_ids)} {payload.dataset_type} records are staged for connected workflow updates.",
+                priority="high" if len(payload.record_ids) > 100 else "normal",
+                payload={"dataset_type": payload.dataset_type, "records": len(payload.record_ids)},
+            ),
+        )
         await self.session.commit()
         await event_publisher.publish("bulk_edit.created", {"organization_id": str(organization_id), "batch_id": str(batch.id)})
         return BulkEditRead.model_validate(batch)
+
+    async def record_operational_event(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID | None,
+        payload: OperationalEventCreate,
+    ) -> OperationalEventRead:
+        effects = [effect.model_dump() for effect in self.effects_for_event(payload)]
+        event = await self.repository.create_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            event_type=payload.event_type,
+            source_module=payload.source_module,
+            summary=payload.summary,
+            effects=effects,
+            project_id=payload.project_id,
+            beneficiary_id=payload.beneficiary_id,
+            submission_id=payload.submission_id,
+            priority=payload.priority,
+            payload_json=payload.payload,
+        )
+        if payload.project_id and payload.beneficiary_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=payload.project_id,
+                source_type="project",
+                source_id=str(payload.project_id),
+                target_type="beneficiary",
+                target_id=str(payload.beneficiary_id),
+                relationship_type="operational_context",
+            )
+        if payload.priority in {"high", "urgent"} or any(effect["module"] == "approvals" for effect in effects):
+            await self.repository.create_workflow_queue_item(
+                organization_id=organization_id,
+                project_id=payload.project_id,
+                beneficiary_id=payload.beneficiary_id,
+                submission_id=payload.submission_id,
+                queue_type="supervisor_review",
+                trigger_event_type=payload.event_type,
+                title=payload.summary,
+                next_action=self.next_action_for_event(payload.event_type),
+                priority=payload.priority,
+                context_json=payload.payload,
+            )
+        return OperationalEventRead.model_validate(event)
+
+    async def ecosystem(self, organization_id: UUID) -> OperationalEcosystemRead:
+        beneficiaries = await self.repository.count(Beneficiary, organization_id)
+        projects = await self.repository.count(Project, organization_id)
+        indicators = await self.repository.count(MonitoringIndicator, organization_id)
+        forms = await self.repository.count_forms(organization_id)
+        submissions = await self.repository.count_submissions(organization_id)
+        officers = await self.repository.count_field_officers(organization_id)
+        cases = await self.repository.count_open_cases(organization_id)
+        quality_flags = await self.repository.count(DataQualitySignal, organization_id)
+        recent_events = [OperationalEventRead.model_validate(event) for event in await self.repository.list_recent_events(organization_id)]
+        workflow_queue = [WorkflowQueueItemRead.model_validate(item) for item in await self.repository.list_workflow_queue(organization_id)]
+        nodes = [
+            EcosystemNode(id="organization", label="Organization", node_type="tenant", status="active", count=1),
+            EcosystemNode(id="projects", label="Programs & Projects", node_type="program", status="active", count=projects),
+            EcosystemNode(id="indicators", label="Indicators & Targets", node_type="indicator", status="active", count=indicators),
+            EcosystemNode(id="field-team", label="Field Officers", node_type="team", status="active", count=officers),
+            EcosystemNode(id="beneficiaries", label="Beneficiaries", node_type="beneficiary", status="active", count=beneficiaries),
+            EcosystemNode(id="forms", label="Forms & Surveys", node_type="form", status="active", count=forms),
+            EcosystemNode(id="submissions", label="Field Submissions", node_type="submission", status="active", count=submissions),
+            EcosystemNode(id="quality", label="Validation & Approval", node_type="workflow", status="attention" if quality_flags else "healthy", count=quality_flags),
+            EcosystemNode(id="reports", label="Analytics & Reporting", node_type="report", status="active", count=indicators + submissions),
+            EcosystemNode(id="follow-ups", label="Interventions & Follow-ups", node_type="case", status="attention" if cases else "healthy", count=cases),
+        ]
+        edges = [
+            EcosystemEdge(source="organization", target="projects", label="funds and governs"),
+            EcosystemEdge(source="projects", target="indicators", label="sets targets"),
+            EcosystemEdge(source="projects", target="field-team", label="assigns teams"),
+            EcosystemEdge(source="projects", target="beneficiaries", label="enrolls people"),
+            EcosystemEdge(source="beneficiaries", target="forms", label="drives data needs"),
+            EcosystemEdge(source="forms", target="submissions", label="captures transactions"),
+            EcosystemEdge(source="submissions", target="quality", label="triggers validation"),
+            EcosystemEdge(source="quality", target="reports", label="approves trusted data"),
+            EcosystemEdge(source="reports", target="follow-ups", label="guides action"),
+        ]
+        attention_items = [
+            "Quality flags feed supervisor review queues automatically." if quality_flags else "No open quality flags are blocking approvals.",
+            "Open cases remain linked to beneficiary and project context." if cases else "No open follow-up cases are waiting.",
+            "Recent events are available for dashboards and reporting." if recent_events else "No operational events recorded yet.",
+        ]
+        return OperationalEcosystemRead(nodes=nodes, edges=edges, recent_events=recent_events, workflow_queue=workflow_queue, attention_items=attention_items)
+
+    @staticmethod
+    def effects_for_event(payload: OperationalEventCreate) -> list[OperationalEffect]:
+        defaults = [
+            OperationalEffect(module="dashboards", action="refresh", status="queued", detail="Update operational overview and project dashboard."),
+            OperationalEffect(module="analytics", action="recalculate", status="queued", detail="Refresh trends, counts, and risk signals."),
+            OperationalEffect(module="reporting", action="invalidate_cache", status="queued", detail="Ensure donor reports read the latest trusted data."),
+        ]
+        event_effects: dict[str, list[OperationalEffect]] = {
+            "beneficiary.enrolled": [
+                OperationalEffect(module="geospatial", action="update_layer", detail="Add beneficiary point to coverage maps."),
+                OperationalEffect(module="field_operations", action="sync_profile", detail="Prepare beneficiary profile for offline mobile sync."),
+            ],
+            "case.opened": [
+                OperationalEffect(module="approvals", action="route_to_supervisor", detail="Add follow-up to the supervisor queue."),
+                OperationalEffect(module="notifications", action="notify_owner", detail="Notify the assigned team about the next action."),
+            ],
+            "data_import.created": [
+                OperationalEffect(module="data_quality", action="validate_rows", detail="Check duplicates, missing fields, and reference consistency."),
+                OperationalEffect(module="workflows", action="prepare_conflict_review", detail="Create review tasks for risky imported records."),
+            ],
+            "bulk_edit.created": [
+                OperationalEffect(module="audit", action="track_version", detail="Store rollback metadata before connected records change."),
+                OperationalEffect(module="sync", action="queue_delta", detail="Prepare offline devices to receive changed records."),
+            ],
+        }
+        return [*defaults, *event_effects.get(payload.event_type, [])]
+
+    @staticmethod
+    def next_action_for_event(event_type: str) -> str:
+        return {
+            "case.opened": "Review case owner, due date, and beneficiary history.",
+            "data_import.created": "Resolve validation issues before applying imported records.",
+            "bulk_edit.created": "Approve or reject the staged bulk changes.",
+        }.get(event_type, "Review the operational context and choose the next step.")
 
     @staticmethod
     def to_indicator_read(indicator: MonitoringIndicator) -> IndicatorRead:

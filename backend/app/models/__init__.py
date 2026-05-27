@@ -26,8 +26,11 @@ from app.models.operations import (
     DonorReport,
     MonitoringIndicator,
     OfflineSyncPolicy,
+    OperationalEvent,
+    OperationalLink,
     OrganizationBranding,
     VisitRecord,
+    WorkflowQueueItem,
 )
 
 __all__ = [
@@ -51,6 +54,8 @@ __all__ = [
     "MobileSyncBatch",
     "MonitoringIndicator",
     "OfflineSyncPolicy",
+    "OperationalEvent",
+    "OperationalLink",
     "OfficerAssignment",
     "Organization",
     "OrganizationBranding",
@@ -61,4 +66,5 @@ __all__ = [
     "SubmissionVersion",
     "User",
     "VisitRecord",
+    "WorkflowQueueItem",
 ]

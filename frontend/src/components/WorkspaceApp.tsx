@@ -18,6 +18,7 @@ import {
   DataInteroperabilityCenter,
   GeospatialIntelligence,
   IndicatorTracking,
+  OperationalEcosystem,
   ProgramManagement,
   ReportingCenter
 } from "@/components/MEOperations";
@@ -68,6 +69,7 @@ export function WorkspaceApp() {
 
   const content = {
     dashboard: <Dashboard />,
+    ecosystem: <OperationalEcosystem />,
     data: <DataInteroperabilityCenter />,
     programs: <ProgramManagement />,
     beneficiaries: <BeneficiaryRegistry />,

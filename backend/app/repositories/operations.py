@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import Project
+from app.models.collection import DataForm, FieldOfficerProfile, Submission
 from app.models.operations import (
     Beneficiary,
     BulkEditBatch,
@@ -14,6 +15,9 @@ from app.models.operations import (
     DataQualitySignal,
     DonorReport,
     MonitoringIndicator,
+    OperationalEvent,
+    OperationalLink,
+    WorkflowQueueItem,
 )
 
 
@@ -116,6 +120,153 @@ class OperationsRepository:
             )
         )
         return int(result.scalar_one())
+
+    async def count_forms(self, organization_id: UUID) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(DataForm)
+            .where(DataForm.organization_id == organization_id, DataForm.deleted_at.is_(None))
+        )
+        return int(result.scalar_one())
+
+    async def count_submissions(self, organization_id: UUID) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(Submission)
+            .where(Submission.organization_id == organization_id, Submission.deleted_at.is_(None))
+        )
+        return int(result.scalar_one())
+
+    async def count_field_officers(self, organization_id: UUID) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(FieldOfficerProfile)
+            .where(FieldOfficerProfile.organization_id == organization_id, FieldOfficerProfile.deleted_at.is_(None))
+        )
+        return int(result.scalar_one())
+
+    async def create_operational_event(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID | None,
+        event_type: str,
+        source_module: str,
+        summary: str,
+        effects: list[dict[str, object]],
+        project_id: UUID | None = None,
+        beneficiary_id: UUID | None = None,
+        submission_id: UUID | None = None,
+        priority: str = "normal",
+        payload_json: dict[str, object] | None = None,
+    ) -> OperationalEvent:
+        event = OperationalEvent(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            project_id=project_id,
+            beneficiary_id=beneficiary_id,
+            submission_id=submission_id,
+            event_type=event_type,
+            source_module=source_module,
+            summary=summary,
+            priority=priority,
+            payload_json=payload_json or {},
+            effects_json=effects,
+        )
+        self.session.add(event)
+        await self.session.flush()
+        return event
+
+    async def upsert_operational_link(
+        self,
+        *,
+        organization_id: UUID,
+        source_type: str,
+        source_id: str,
+        target_type: str,
+        target_id: str,
+        relationship_type: str,
+        project_id: UUID | None = None,
+        metadata_json: dict[str, object] | None = None,
+    ) -> OperationalLink:
+        result = await self.session.execute(
+            select(OperationalLink).where(
+                OperationalLink.organization_id == organization_id,
+                OperationalLink.source_type == source_type,
+                OperationalLink.source_id == source_id,
+                OperationalLink.target_type == target_type,
+                OperationalLink.target_id == target_id,
+                OperationalLink.relationship_type == relationship_type,
+            )
+        )
+        link = result.scalar_one_or_none()
+        if link is None:
+            link = OperationalLink(
+                organization_id=organization_id,
+                source_type=source_type,
+                source_id=source_id,
+                target_type=target_type,
+                target_id=target_id,
+                relationship_type=relationship_type,
+                project_id=project_id,
+                metadata_json=metadata_json or {},
+            )
+            self.session.add(link)
+        else:
+            link.project_id = project_id
+            link.metadata_json = metadata_json or link.metadata_json
+        await self.session.flush()
+        return link
+
+    async def create_workflow_queue_item(
+        self,
+        *,
+        organization_id: UUID,
+        queue_type: str,
+        trigger_event_type: str,
+        title: str,
+        next_action: str,
+        project_id: UUID | None = None,
+        beneficiary_id: UUID | None = None,
+        submission_id: UUID | None = None,
+        assigned_to_user_id: UUID | None = None,
+        priority: str = "normal",
+        context_json: dict[str, object] | None = None,
+    ) -> WorkflowQueueItem:
+        item = WorkflowQueueItem(
+            organization_id=organization_id,
+            queue_type=queue_type,
+            trigger_event_type=trigger_event_type,
+            title=title,
+            next_action=next_action,
+            project_id=project_id,
+            beneficiary_id=beneficiary_id,
+            submission_id=submission_id,
+            assigned_to_user_id=assigned_to_user_id,
+            priority=priority,
+            context_json=context_json or {},
+        )
+        self.session.add(item)
+        await self.session.flush()
+        return item
+
+    async def list_recent_events(self, organization_id: UUID) -> list[OperationalEvent]:
+        result = await self.session.execute(
+            select(OperationalEvent)
+            .where(OperationalEvent.organization_id == organization_id)
+            .order_by(OperationalEvent.created_at.desc())
+            .limit(20)
+        )
+        return list(result.scalars())
+
+    async def list_workflow_queue(self, organization_id: UUID) -> list[WorkflowQueueItem]:
+        result = await self.session.execute(
+            select(WorkflowQueueItem)
+            .where(WorkflowQueueItem.organization_id == organization_id, WorkflowQueueItem.status == "open")
+            .order_by(WorkflowQueueItem.created_at.desc())
+            .limit(20)
+        )
+        return list(result.scalars())
 
     async def create_import_job(
         self,

@@ -26,6 +26,9 @@ from app.schemas.operations import (
     IndicatorCreate,
     IndicatorRead,
     MappingTemplateCreate,
+    OperationalEcosystemRead,
+    OperationalEventCreate,
+    OperationalEventRead,
     OperationsSummary,
     ProgramCreate,
     ProgramRead,
@@ -51,6 +54,33 @@ async def operations_summary(
     return await OperationsService(session).summary(organization_uuid(principal))
 
 
+@router.get("/ecosystem", response_model=OperationalEcosystemRead, summary="Get connected operational ecosystem graph")
+async def operational_ecosystem(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalEcosystemRead:
+    return await OperationsService(session).ecosystem(organization_uuid(principal))
+
+
+@router.post("/events", response_model=OperationalEventRead, status_code=status.HTTP_201_CREATED, summary="Record an operational event")
+async def record_operational_event(
+    payload: OperationalEventCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalEventRead:
+    try:
+        event = await OperationsService(session).record_operational_event(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            payload=payload,
+        )
+        await session.commit()
+        return event
+    except Exception:
+        await session.rollback()
+        raise
+
+
 @router.get("/programs", response_model=list[ProgramRead], summary="List programs")
 async def list_programs(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_READ))],
@@ -66,7 +96,7 @@ async def create_program(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProgramRead:
-    program = await OperationsService(session).create_program(organization_uuid(principal), payload)
+    program = await OperationsService(session).create_program(organization_uuid(principal), payload, user_uuid(principal))
     return ProgramRead.model_validate(program)
 
 
@@ -90,7 +120,7 @@ async def create_beneficiary(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BeneficiaryRead:
-    beneficiary = await OperationsService(session).create_beneficiary(organization_uuid(principal), payload)
+    beneficiary = await OperationsService(session).create_beneficiary(organization_uuid(principal), payload, user_uuid(principal))
     return BeneficiaryRead.model_validate(beneficiary)
 
 
@@ -108,7 +138,7 @@ async def create_indicator(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> IndicatorRead:
-    return await OperationsService(session).create_indicator(organization_uuid(principal), payload)
+    return await OperationsService(session).create_indicator(organization_uuid(principal), payload, user_uuid(principal))
 
 
 @router.get("/cases", response_model=list[CaseRead], summary="List cases")
@@ -126,7 +156,7 @@ async def create_case(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CaseRead:
-    case = await OperationsService(session).create_case(organization_uuid(principal), payload)
+    case = await OperationsService(session).create_case(organization_uuid(principal), payload, user_uuid(principal))
     return CaseRead.model_validate(case)
 
 

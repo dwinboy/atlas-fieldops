@@ -101,6 +101,56 @@ class DataQualitySignal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     evidence_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class OperationalEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "operational_events"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    submission_id: Mapped[UUID | None] = mapped_column(ForeignKey("submissions.id"), index=True, nullable=True)
+    actor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(100), index=True)
+    source_module: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="processed", index=True)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", index=True)
+    summary: Mapped[str] = mapped_column(String(320), nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    effects_json: Mapped[list[dict[str, Any]]] = mapped_column(JsonType, default=list)
+
+
+class OperationalLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "operational_links"
+    __table_args__ = (UniqueConstraint("organization_id", "source_type", "source_id", "target_type", "target_id", "relationship_type"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_id: Mapped[str] = mapped_column(String(160), index=True)
+    target_type: Mapped[str] = mapped_column(String(80), index=True)
+    target_id: Mapped[str] = mapped_column(String(160), index=True)
+    relationship_type: Mapped[str] = mapped_column(String(100), index=True)
+    strength: Mapped[float] = mapped_column(Float, default=1)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class WorkflowQueueItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "workflow_queue_items"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    submission_id: Mapped[UUID | None] = mapped_column(ForeignKey("submissions.id"), index=True, nullable=True)
+    assigned_to_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    queue_type: Mapped[str] = mapped_column(String(80), index=True)
+    trigger_event_type: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", index=True)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    next_action: Mapped[str] = mapped_column(String(240), nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
 class DonorReport(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "donor_reports"
 

@@ -104,6 +104,44 @@ export type OperationsSummary = {
   offline_ready: boolean;
 };
 
+export type OperationalEventRead = {
+  id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  submission_id: string | null;
+  actor_user_id: string | null;
+  event_type: string;
+  source_module: string;
+  status: string;
+  priority: string;
+  summary: string;
+  effects_json: Record<string, unknown>[];
+  created_at: string;
+};
+
+export type WorkflowQueueItemRead = {
+  id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  submission_id: string | null;
+  queue_type: string;
+  trigger_event_type: string;
+  status: string;
+  priority: string;
+  title: string;
+  next_action: string;
+  due_at: string | null;
+  created_at: string;
+};
+
+export type OperationalEcosystemRead = {
+  nodes: { id: string; label: string; node_type: string; status: string; count: number }[];
+  edges: { source: string; target: string; label: string; health: string }[];
+  recent_events: OperationalEventRead[];
+  workflow_queue: WorkflowQueueItemRead[];
+  attention_items: string[];
+};
+
 export type BeneficiaryRead = {
   id: string;
   beneficiary_uid: string;
@@ -303,6 +341,10 @@ export async function getOperationsSummary(token: string): Promise<OperationsSum
   return request<OperationsSummary>("/operations/summary", { token });
 }
 
+export async function getOperationalEcosystem(token: string): Promise<OperationalEcosystemRead> {
+  return request<OperationalEcosystemRead>("/operations/ecosystem", { token });
+}
+
 export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[]> {
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
@@ -354,6 +396,7 @@ export const api = {
   getCurrentPrincipal,
   getHealth,
   getFormTemplate,
+  getOperationalEcosystem,
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,

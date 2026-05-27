@@ -5,6 +5,7 @@ import { create } from "zustand";
 export type ThemeMode = "light" | "dark";
 export type WorkspaceView =
   | "dashboard"
+  | "ecosystem"
   | "data"
   | "programs"
   | "beneficiaries"

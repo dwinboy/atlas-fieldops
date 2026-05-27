@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Bell,
+  Boxes,
   CheckCircle2,
   Columns3,
   Download,
@@ -26,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
   beneficiaries,
+  beneficiaryProfileConnections,
   cases,
   dataQualitySignals,
   donorReports,
@@ -37,6 +39,8 @@ import {
   indicators,
   mapCoverage,
   migrationSources,
+  operationalEvents,
+  operationalFlow,
   programs
 } from "@/lib/mockData";
 
@@ -77,6 +81,114 @@ function ProgressBar({ value }: { value: number }) {
     <div className="h-2 overflow-hidden rounded-full bg-muted" aria-label={`${value}% progress`} role="img">
       <div className="h-full rounded-full bg-primary" style={{ width: `${value}%` }} />
     </div>
+  );
+}
+
+export function OperationalEcosystem() {
+  return (
+    <section aria-labelledby="ecosystem-title" className="space-y-5">
+      <PageHeader
+        eyebrow="Operational ecosystem"
+        title="One connected field operations system"
+        description="See how programs, people, forms, submissions, approvals, analytics, and follow-ups work together as one operational chain."
+        action={<Button variant="primary"><RefreshCw aria-hidden="true" /> Recalculate live context</Button>}
+      />
+
+      <div className="rounded-lg border bg-panel p-4 shadow-line">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Connected workflow chain</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Each step feeds the next. Forms act as operational transactions, not isolated surveys.
+            </p>
+          </div>
+          <Badge tone="success"><CheckCircle2 aria-hidden="true" size={12} /> Event-driven</Badge>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {operationalFlow.map((node, index) => (
+            <article className="relative rounded-lg border bg-background p-3" key={node.id}>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Boxes aria-hidden="true" size={16} />
+                </span>
+                <Badge tone={node.status === "Needs review" || node.status === "Open" ? "warning" : "neutral"}>{node.status}</Badge>
+              </div>
+              <p className="text-sm font-semibold">{node.label}</p>
+              <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">{node.detail}</p>
+              <p className="mt-3 text-lg font-semibold tracking-tight">{node.count}</p>
+              {index < operationalFlow.length - 1 ? (
+                <span className="absolute -right-2 top-1/2 hidden h-px w-4 bg-border xl:block" aria-hidden="true" />
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
+        <section className="rounded-lg border bg-panel p-4 shadow-line">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Realtime event propagation</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Operational actions automatically update connected systems.</p>
+            </div>
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <StatusDot tone="online" />
+              Live
+            </span>
+          </div>
+          <div className="mt-4 divide-y rounded-lg border bg-background">
+            {operationalEvents.map((item) => (
+              <div className="grid gap-3 p-4 md:grid-cols-[180px_1fr_92px]" key={`${item.event}-${item.age}`}>
+                <div>
+                  <p className="text-sm font-medium">{item.event}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.source}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {item.effects.map((effect) => (
+                    <Badge key={effect} tone="accent">{effect}</Badge>
+                  ))}
+                </div>
+                <div className="text-right text-xs text-muted-foreground">
+                  <Badge tone={item.priority === "High" ? "warning" : "neutral"}>{item.priority}</Badge>
+                  <p className="mt-2">{item.age}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <aside className="rounded-lg border bg-panel p-4 shadow-line">
+          <h2 className="text-sm font-semibold">Living beneficiary profile</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Beneficiaries aggregate every operational signal: projects, visits, submissions, GPS, cases, indicators, and reports.
+          </p>
+          <div className="mt-4 space-y-3">
+            {beneficiaryProfileConnections.map((item) => (
+              <div className="rounded-md border bg-background p-3" key={item.label}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">{item.label}</p>
+                  <Badge tone="neutral">{item.value}</Badge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.note}</p>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          ["Project-driven", "Projects control assigned forms, officers, beneficiaries, geography, indicators, and reports."],
+          ["Approval-aware", "Quality flags, GPS anomalies, duplicate risks, and corrections all feed supervisor queues."],
+          ["Report-ready", "Dashboards and donor reports read live trusted operational data instead of disconnected exports."]
+        ].map(([title, text]) => (
+          <article className="rounded-lg border bg-panel p-4 shadow-line" key={title}>
+            <h2 className="text-sm font-semibold">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -177,6 +177,92 @@ class OperationsSummary(BaseModel):
     offline_ready: bool
 
 
+class OperationalEffect(BaseModel):
+    module: str
+    action: str
+    status: str = "queued"
+    detail: str
+
+
+class OperationalEventCreate(BaseModel):
+    event_type: str = Field(min_length=2, max_length=100)
+    source_module: str = Field(min_length=2, max_length=80)
+    summary: str = Field(min_length=2, max_length=320)
+    project_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    submission_id: UUID | None = None
+    priority: str = Field(default="normal", pattern=r"^(low|normal|high|urgent)$")
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class OperationalEventRead(BaseModel):
+    id: UUID
+    project_id: UUID | None
+    beneficiary_id: UUID | None
+    submission_id: UUID | None
+    actor_user_id: UUID | None
+    event_type: str
+    source_module: str
+    status: str
+    priority: str
+    summary: str
+    effects_json: list[dict[str, object]]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OperationalLinkRead(BaseModel):
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    relationship_type: str
+    strength: float
+
+    model_config = {"from_attributes": True}
+
+
+class WorkflowQueueItemRead(BaseModel):
+    id: UUID
+    project_id: UUID | None
+    beneficiary_id: UUID | None
+    submission_id: UUID | None
+    queue_type: str
+    trigger_event_type: str
+    status: str
+    priority: str
+    title: str
+    next_action: str
+    due_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EcosystemNode(BaseModel):
+    id: str
+    label: str
+    node_type: str
+    status: str
+    count: int = 0
+
+
+class EcosystemEdge(BaseModel):
+    source: str
+    target: str
+    label: str
+    health: str = "connected"
+
+
+class OperationalEcosystemRead(BaseModel):
+    nodes: list[EcosystemNode]
+    edges: list[EcosystemEdge]
+    recent_events: list[OperationalEventRead]
+    workflow_queue: list[WorkflowQueueItemRead]
+    attention_items: list[str]
+
+
 class ColumnMapping(BaseModel):
     source_column: str = Field(min_length=1, max_length=160)
     target_field: str = Field(min_length=1, max_length=160)

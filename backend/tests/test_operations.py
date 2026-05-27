@@ -5,7 +5,8 @@ from pydantic import ValidationError
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
 from app.schemas.operations import BeneficiaryCreate, CaseCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
-from app.services.operations import indicator_progress, infer_mapping, validate_sample_rows
+from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate
+from app.services.operations import OperationsService, indicator_progress, infer_mapping, validate_sample_rows
 
 
 def test_me_permissions_are_role_scoped() -> None:
@@ -104,3 +105,29 @@ def test_import_and_export_payloads_enforce_supported_formats() -> None:
     assert payload.source_format == "xlsx"
     assert preview.dataset_type == "beneficiaries"
     assert export.export_format == "geojson"
+
+
+def test_operational_events_fan_out_to_connected_systems() -> None:
+    event = OperationalEventCreate(
+        event_type="beneficiary.enrolled",
+        source_module="beneficiaries",
+        summary="A farmer profile was updated from a registration form.",
+        payload={"beneficiary_uid": "FARM-001"},
+    )
+
+    effects = OperationsService.effects_for_event(event)
+
+    assert {effect.module for effect in effects} >= {"dashboards", "analytics", "reporting", "geospatial", "field_operations"}
+    assert OperationsService.next_action_for_event("data_import.created").startswith("Resolve validation")
+
+
+def test_ecosystem_graph_describes_the_operational_chain() -> None:
+    nodes = [
+        EcosystemNode(id="projects", label="Programs & Projects", node_type="program", status="active", count=2),
+        EcosystemNode(id="beneficiaries", label="Beneficiaries", node_type="beneficiary", status="active", count=200),
+    ]
+    edge = EcosystemEdge(source="projects", target="beneficiaries", label="enrolls people")
+
+    assert nodes[0].label == "Programs & Projects"
+    assert edge.source == "projects"
+    assert edge.target == "beneficiaries"
