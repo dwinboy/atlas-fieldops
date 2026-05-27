@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_auth_events_topic: str = "identity.events.v1"
+    kafka_submission_events_topic: str = "collection.events.v1"
     jwt_secret: str = Field(default="", min_length=0)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60

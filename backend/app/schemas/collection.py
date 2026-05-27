@@ -1,0 +1,206 @@
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class FormStatus(StrEnum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class SubmissionStatus(StrEnum):
+    DRAFT = "draft"
+    PENDING_SYNC = "pending_sync"
+    SYNCED = "synced"
+    SUBMITTED = "submitted"
+    UNDER_REVIEW = "under_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CORRECTION_REQUESTED = "correction_requested"
+    RESUBMITTED = "resubmitted"
+
+
+class LocationCapture(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    altitude: float | None = None
+    accuracy: float | None = Field(default=None, ge=0)
+    timestamp: datetime
+
+
+class DeviceMetadata(BaseModel):
+    device_id: str = Field(min_length=2, max_length=160)
+    platform: str | None = Field(default=None, max_length=80)
+    app_version: str | None = Field(default=None, max_length=80)
+    os_version: str | None = Field(default=None, max_length=80)
+
+
+class FormField(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    type: str = Field(min_length=2, max_length=80)
+    label: dict[str, str]
+    required: bool = False
+    validation: dict[str, Any] = Field(default_factory=dict)
+    visibility: dict[str, Any] = Field(default_factory=dict)
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    calculation: str | None = None
+
+
+class FormSection(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    title: dict[str, str]
+    fields: list[FormField] = Field(default_factory=list)
+
+
+class FormSchema(BaseModel):
+    version_label: str | None = None
+    default_language: str = "en"
+    languages: list[str] = Field(default_factory=lambda: ["en"])
+    sections: list[FormSection] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def ensure_offline_safe_fields(self) -> "FormSchema":
+        supported = {
+            "text",
+            "textarea",
+            "number",
+            "phone",
+            "email",
+            "select",
+            "multiselect",
+            "radio",
+            "checkbox",
+            "gps",
+            "photo",
+            "signature",
+            "barcode",
+            "qr",
+            "datetime",
+            "repeatable_group",
+            "calculated",
+        }
+        for section in self.sections:
+            for field in section.fields:
+                if field.type not in supported:
+                    raise ValueError(f"Unsupported field type: {field.type}")
+        return self
+
+
+class DataFormCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    slug: str = Field(min_length=2, max_length=140, pattern=r"^[a-z0-9-]+$")
+    description: str | None = Field(default=None, max_length=2000)
+    form_schema: FormSchema = Field(alias="schema")
+    publish: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
+class DataFormRead(BaseModel):
+    id: UUID
+    name: str
+    slug: str
+    description: str | None
+    status: str
+    current_version: int
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class FieldOfficerInvite(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    full_name: str = Field(min_length=2, max_length=200)
+    phone_number: str | None = Field(default=None, max_length=40)
+    employee_code: str | None = Field(default=None, max_length=80)
+    home_region: str | None = Field(default=None, max_length=160)
+    temporary_password: str = Field(min_length=12)
+
+
+class FieldOfficerRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    email: str
+    full_name: str
+    phone_number: str | None
+    employee_code: str | None
+    home_region: str | None
+    last_sync_at: datetime | None
+    last_seen_at: datetime | None
+    last_latitude: float | None
+    last_longitude: float | None
+    device_id: str | None
+    is_active: bool
+
+
+class SubmissionCreate(BaseModel):
+    client_submission_id: str = Field(min_length=4, max_length=160)
+    form_id: UUID
+    form_version: int
+    payload: dict[str, Any]
+    captured_at: datetime
+    submitted_at: datetime
+    offline_created: bool = False
+    device: DeviceMetadata
+    location: LocationCapture
+
+    @model_validator(mode="after")
+    def require_system_metadata(self) -> "SubmissionCreate":
+        if not self.device.device_id:
+            raise ValueError("device_id is required")
+        return self
+
+
+class SubmissionRead(BaseModel):
+    id: UUID
+    client_submission_id: str
+    form_id: UUID
+    field_officer_id: UUID
+    status: str
+    server_sequence: int
+    captured_at: datetime
+    submitted_at: datetime
+    sync_received_at: datetime
+    offline_created: bool
+    latitude: float
+    longitude: float
+    accuracy: float | None
+    payload_json: dict[str, Any]
+
+    model_config = {"from_attributes": True}
+
+
+class SubmissionReviewAction(BaseModel):
+    action: str = Field(pattern=r"^(approve|reject|request_correction|start_review)$")
+    comment: str = Field(min_length=2, max_length=4000)
+
+
+class SubmissionHistoryRead(BaseModel):
+    id: UUID
+    from_status: str | None
+    to_status: str
+    actor_user_id: UUID
+    comment: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SyncBatchCreate(BaseModel):
+    client_batch_id: str = Field(min_length=4, max_length=160)
+    device: DeviceMetadata
+    cursor: datetime | None = None
+    submissions: list[SubmissionCreate] = Field(default_factory=list)
+
+
+class SyncBatchRead(BaseModel):
+    batch_id: UUID
+    processed_count: int
+    conflict_count: int
+    server_time: datetime
+    submissions: list[SubmissionRead]
+    next_cursor: datetime

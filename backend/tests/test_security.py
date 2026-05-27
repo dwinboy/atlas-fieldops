@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -39,7 +40,8 @@ def test_access_token_requires_configured_secret(monkeypatch: pytest.MonkeyPatch
 def test_decode_rejects_tampered_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "jwt_secret", "test-secret-with-enough-length")
     token = create_access_token("user-1", "org-1", ["admin"])
-    tampered_token = f"{token[:-1]}x"
+    header, payload, signature = token.split(".")
+    tampered_token = f"{header}.{payload[:-2]}xx.{signature}"
 
     with pytest.raises(ValueError, match="Invalid access token"):
         decode_access_token(tampered_token)
@@ -135,7 +137,7 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(settings, "jwt_secret", "test-secret-with-enough-length")
     password_hash = hash_password("correct horse battery staple")
     service = object.__new__(AuthService)
-    service.users = FakeUserRepository(build_identity(password_hash=password_hash, role_name="admin"))
+    service.users = cast(Any, FakeUserRepository(build_identity(password_hash=password_hash, role_name="admin")))
 
     token_response = await service.login(
         email="user@example.com",
@@ -183,7 +185,7 @@ async def test_auth_service_rejects_invalid_or_inactive_accounts(
     password: str,
 ) -> None:
     service = object.__new__(AuthService)
-    service.users = FakeUserRepository(identity)
+    service.users = cast(Any, FakeUserRepository(identity))
 
     with pytest.raises(AuthenticationError):
         await service.login(email="user@example.com", password=password, organization_slug="acme")

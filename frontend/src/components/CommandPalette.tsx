@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, ClipboardList, GitPullRequestArrow, LayoutDashboard, Search } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, GitPullRequestArrow, LayoutDashboard, Search, ShieldCheck, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,9 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard }[] = [
   { label: "Open operations", hint: "Review throughput, sync, and review queues", view: "dashboard", group: "Workspace", icon: LayoutDashboard },
   { label: "Manage tenants", hint: "Users, roles, and organization access", view: "organizations", group: "Admin", icon: Building2 },
+  { label: "Monitor field officers", hint: "Roster, sync health, GPS status, and activity", view: "officers", group: "Field", icon: UsersRound },
   { label: "Edit form schemas", hint: "Field rules, offline capture, and publishing", view: "forms", group: "Studio", icon: ClipboardList },
+  { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", group: "Review", icon: ShieldCheck },
   { label: "Inspect analytics", hint: "Realtime ingestion, validation, and lag", view: "analytics", group: "Signal", icon: BarChart3 },
   { label: "Review approval paths", hint: "SLA queues, escalations, and workflow health", view: "workflows", group: "Control", icon: GitPullRequestArrow }
 ];

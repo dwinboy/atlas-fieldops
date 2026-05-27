@@ -3,7 +3,14 @@
 import { create } from "zustand";
 
 export type ThemeMode = "light" | "dark";
-export type WorkspaceView = "dashboard" | "organizations" | "forms" | "analytics" | "workflows";
+export type WorkspaceView =
+  | "dashboard"
+  | "organizations"
+  | "officers"
+  | "forms"
+  | "submissions"
+  | "analytics"
+  | "workflows";
 
 type Toast = {
   id: string;
@@ -48,4 +55,3 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     })),
   dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }))
 }));
-

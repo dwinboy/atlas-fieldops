@@ -1,0 +1,140 @@
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
+
+from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
+
+JsonType = JSON().with_variant(JSONB, "postgresql")
+
+
+class Project(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("organization_id", "slug"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False)
+    region: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "field_officer_profiles"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    employee_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    home_region: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    device_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    user = relationship("User")
+
+
+class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "officer_assignments"
+    __table_args__ = (UniqueConstraint("organization_id", "officer_id", "project_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    region: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "data_forms"
+    __table_args__ = (UniqueConstraint("organization_id", "slug"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(140), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "data_form_versions"
+    __table_args__ = (UniqueConstraint("form_id", "version"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    form_id: Mapped[UUID] = mapped_column(ForeignKey("data_forms.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
+    offline_compatible: Mapped[bool] = mapped_column(Boolean, default=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "submissions"
+    __table_args__ = (UniqueConstraint("organization_id", "client_submission_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    form_id: Mapped[UUID] = mapped_column(ForeignKey("data_forms.id"), index=True)
+    form_version_id: Mapped[UUID] = mapped_column(ForeignKey("data_form_versions.id"), index=True)
+    field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    client_submission_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    server_sequence: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(40), default="submitted", index=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sync_received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    offline_created: Mapped[bool] = mapped_column(Boolean, default=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    altitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location_captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SubmissionVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_versions"
+    __table_args__ = (UniqueConstraint("submission_id", "version"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
+    changed_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SubmissionStatusHistory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_status_history"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    actor_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MobileSyncBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "mobile_sync_batches"
+    __table_args__ = (UniqueConstraint("organization_id", "device_id", "client_batch_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    device_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    client_batch_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="processed")
+    processed_count: Mapped[int] = mapped_column(Integer, default=0)
+    conflict_count: Mapped[int] = mapped_column(Integer, default=0)

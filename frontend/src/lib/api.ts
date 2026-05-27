@@ -52,6 +52,48 @@ export type RoleRead = {
   permissions: string[];
 };
 
+export type FieldOfficerInvite = {
+  email: string;
+  full_name: string;
+  phone_number?: string;
+  employee_code?: string;
+  home_region?: string;
+  temporary_password: string;
+};
+
+export type FieldOfficerRead = {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  phone_number: string | null;
+  employee_code: string | null;
+  home_region: string | null;
+  last_sync_at: string | null;
+  last_seen_at: string | null;
+  last_latitude: number | null;
+  last_longitude: number | null;
+  device_id: string | null;
+  is_active: boolean;
+};
+
+export type SubmissionRead = {
+  id: string;
+  client_submission_id: string;
+  form_id: string;
+  field_officer_id: string;
+  status: string;
+  server_sequence: number;
+  captured_at: string;
+  submitted_at: string;
+  sync_received_at: string;
+  offline_created: boolean;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  payload_json: Record<string, unknown>;
+};
+
 const apiBaseUrl =
   process.env.INTERNAL_API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -121,12 +163,41 @@ export async function listRoles(token: string): Promise<RoleRead[]> {
   return request<RoleRead[]>("/roles", { token });
 }
 
+export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {
+  return request<FieldOfficerRead[]>("/field-officers", { token });
+}
+
+export async function inviteFieldOfficer(token: string, payload: FieldOfficerInvite): Promise<FieldOfficerRead> {
+  return request<FieldOfficerRead>("/field-officers", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listSubmissions(token: string, status?: string): Promise<SubmissionRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<SubmissionRead[]>(`/submissions${query}`, { token });
+}
+
+export async function reviewSubmission(
+  token: string,
+  submissionId: string,
+  payload: { action: "approve" | "reject" | "request_correction" | "start_review"; comment: string }
+): Promise<SubmissionRead> {
+  return request<SubmissionRead>(`/submissions/${submissionId}/review`, {
+    method: "POST",
+    token,
+    bodyJson: payload
+  });
+}
+
 export const api = {
   createOrganization,
   createUser,
   getCurrentPrincipal,
   getHealth,
+  inviteFieldOfficer,
+  listFieldOfficers,
   listRoles,
+  listSubmissions,
   listUsers,
-  login
+  login,
+  reviewSubmission
 };

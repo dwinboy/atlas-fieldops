@@ -14,7 +14,8 @@ import {
   PanelLeftClose,
   RadioTower,
   ShieldCheck,
-  Sun
+  Sun,
+  UsersRound
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -36,7 +37,9 @@ type AppShellProps = {
 const navItems = [
   { id: "dashboard", label: "Operations", hint: "Live posture", icon: LayoutDashboard },
   { id: "organizations", label: "Tenants", hint: "Access control", icon: Building2 },
+  { id: "officers", label: "Field officers", hint: "Mobile teams", icon: UsersRound },
   { id: "forms", label: "Form studio", hint: "Schemas", icon: ClipboardList },
+  { id: "submissions", label: "Review queue", hint: "Approvals", icon: ShieldCheck },
   { id: "analytics", label: "Analytics", hint: "Signal layer", icon: BarChart3 },
   { id: "workflows", label: "Workflows", hint: "Approvals", icon: GitPullRequestArrow }
 ] satisfies { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard }[];

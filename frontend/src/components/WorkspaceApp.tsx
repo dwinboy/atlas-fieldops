@@ -9,9 +9,11 @@ import { AuthPanel } from "@/components/AuthPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
 import { DynamicForms } from "@/components/DynamicForms";
+import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { RealtimeAnalytics } from "@/components/RealtimeAnalytics";
+import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { getCurrentPrincipal } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
@@ -57,7 +59,9 @@ export function WorkspaceApp() {
   const content = {
     dashboard: <Dashboard />,
     organizations: <OrganizationManagement token={token} />,
+    officers: <FieldOfficerOperations token={token} />,
     forms: <DynamicForms />,
+    submissions: <SubmissionReview token={token} />,
     analytics: <RealtimeAnalytics />,
     workflows: <WorkflowManagement />
   } satisfies Record<WorkspaceView, React.ReactNode>;
