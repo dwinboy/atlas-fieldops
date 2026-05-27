@@ -19,7 +19,9 @@ from app.schemas.collection import (
     SubmissionReviewAction,
     SyncBatchCreate,
     SyncBatchRead,
+    TemplateDuplicateRequest,
 )
+from app.services.template_library import TemplateLibraryService
 
 
 class CollectionNotFoundError(Exception):
@@ -131,6 +133,52 @@ class FormService:
 
     async def list_forms(self, organization_id: UUID) -> list[object]:
         return list(await self.forms.list(organization_id))
+
+    async def duplicate_template(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        template_id_or_slug: str,
+        payload: TemplateDuplicateRequest,
+    ) -> object:
+        template = TemplateLibraryService().get_template(template_id_or_slug)
+        name = payload.name or template.name
+        slug = payload.slug or f"{template.slug}-{str(organization_id)[:8]}"
+        form, _version = await self.forms.create(
+            organization_id=organization_id,
+            created_by_user_id=actor_user_id,
+            name=name,
+            slug=slug,
+            description=template.description,
+            schema_json=template.template_schema.model_dump(mode="json"),
+            publish=payload.publish,
+        )
+        await self.forms.record_template_usage(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            template_slug=template.slug,
+            created_form_id=form.id,
+            metadata={"template_name": template.name, "category": template.category, "published": payload.publish},
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form_template.duplicated",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={"template_slug": template.slug, "category": template.category},
+        )
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "form_template.duplicated",
+                "organization_id": str(organization_id),
+                "form_id": str(form.id),
+                "template_slug": template.slug,
+            },
+        )
+        return form
 
 
 class SubmissionService:

@@ -53,6 +53,43 @@ class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Ba
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class FormTemplate(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "form_templates"
+    __table_args__ = (UniqueConstraint("slug", "version"),)
+
+    organization_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizations.id"), index=True, nullable=True)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(140), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
+    tags_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    recommended_for_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    estimated_minutes: Mapped[int] = mapped_column(Integer, default=12)
+    field_count: Mapped[int] = mapped_column(Integer, default=0)
+    repeat_group_count: Mapped[int] = mapped_column(Integer, default=0)
+    has_gps: Mapped[bool] = mapped_column(Boolean, default=True)
+    has_media: Mapped[bool] = mapped_column(Boolean, default=False)
+    offline_compatible: Mapped[bool] = mapped_column(Boolean, default=True)
+    popularity_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class FormTemplateUsage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "form_template_usage"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    template_id: Mapped[UUID | None] = mapped_column(ForeignKey("form_templates.id"), index=True, nullable=True)
+    template_slug: Mapped[str] = mapped_column(String(140), nullable=False, index=True)
+    actor_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    created_form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    action: Mapped[str] = mapped_column(String(40), default="duplicated", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, default=dict)
+
+
 class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "data_forms"
     __table_args__ = (UniqueConstraint("organization_id", "slug"),)

@@ -68,20 +68,31 @@ class FormSchema(BaseModel):
             "text",
             "textarea",
             "number",
+            "decimal",
+            "currency",
             "phone",
             "email",
+            "password",
             "select",
             "multiselect",
             "radio",
             "checkbox",
             "gps",
             "photo",
+            "image",
             "signature",
             "barcode",
             "qr",
+            "audio",
+            "video",
+            "file",
+            "date",
+            "time",
             "datetime",
+            "repeat_group",
             "repeatable_group",
             "calculated",
+            "grid",
         }
         for section in self.sections:
             for field in section.fields:
@@ -110,6 +121,46 @@ class DataFormRead(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class TemplateFieldSummary(BaseModel):
+    field_count: int
+    repeat_group_count: int
+    has_gps: bool
+    has_media: bool
+    offline_compatible: bool
+
+
+class FormTemplateRead(BaseModel):
+    id: str
+    name: str
+    slug: str
+    category: str
+    description: str
+    version: int
+    tags: list[str]
+    recommended_for: list[str]
+    estimated_minutes: int
+    popularity_score: int
+    is_featured: bool
+    summary: TemplateFieldSummary
+
+
+class FormTemplateDetail(FormTemplateRead):
+    template_schema: FormSchema
+    logic_overview: list[str] = Field(default_factory=list)
+    mobile_preview_fields: list[str] = Field(default_factory=list)
+
+
+class TemplateDuplicateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    slug: str | None = Field(default=None, min_length=2, max_length=140, pattern=r"^[a-z0-9-]+$")
+    publish: bool = False
+
+
+class TemplateRecommendationRequest(BaseModel):
+    organization_type: str | None = Field(default=None, max_length=80)
+    recently_used_categories: list[str] = Field(default_factory=list, max_length=8)
 
 
 class FieldOfficerInvite(BaseModel):

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, ClipboardList, Database, GitPullRequestArrow, LayoutDashboard, Map, Search, ShieldCheck, UsersRound, Wifi } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, Database, Files, GitPullRequestArrow, LayoutDashboard, Map, Search, ShieldCheck, UsersRound, Wifi } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ const commands: { label: string; hint: string; view: WorkspaceView; group: strin
   { label: "Find beneficiaries", hint: "Households, farmers, groups, and visit history", view: "beneficiaries", group: "M&E", icon: UsersRound },
   { label: "Track indicators", hint: "Baselines, targets, progress, and SDG mapping", view: "indicators", group: "M&E", icon: BarChart3 },
   { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", group: "Review", icon: ShieldCheck },
+  { label: "Browse templates", hint: "Start from ready-made forms for field operations", view: "templates", group: "Setup", icon: Files },
   { label: "Build forms", hint: "Add questions, rules, and offline-ready checks", view: "forms", group: "Setup", icon: ClipboardList },
   { label: "Manage field team", hint: "Invite officers and check sync status", view: "officers", group: "Field work", icon: UsersRound },
   { label: "Open cases", hint: "Complaints, referrals, corrections, and follow-ups", view: "cases", group: "Field work", icon: GitPullRequestArrow },

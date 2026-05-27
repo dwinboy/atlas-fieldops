@@ -231,3 +231,206 @@ export const migrationSources = [
   "GeoJSON farm boundaries",
   "Access database migrations"
 ];
+
+export type FormTemplateCard = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  fields: number;
+  minutes: number;
+  popularity: number;
+  recommendedFor: string[];
+  tags: string[];
+  hasGps: boolean;
+  hasMedia: boolean;
+  repeatGroups: number;
+  featured?: boolean;
+};
+
+export const formTemplateCategories = [
+  "Recommended",
+  "Agriculture",
+  "Health",
+  "Education",
+  "Humanitarian & NGO",
+  "Monitoring & Evaluation",
+  "Government & Community",
+  "Business & Operations"
+];
+
+export const formTemplates: FormTemplateCard[] = [
+  {
+    id: "farmer-registration-form",
+    name: "Farmer Registration Form",
+    category: "Agriculture",
+    description: "Register farmers, farm profile, crops, GPS, and consent in one field-ready workflow.",
+    fields: 14,
+    minutes: 18,
+    popularity: 98,
+    recommendedFor: ["Agriculture programs", "NGOs"],
+    tags: ["farmer", "registration", "GPS"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 1,
+    featured: true
+  },
+  {
+    id: "crop-monitoring-form",
+    name: "Crop Monitoring Form",
+    category: "Agriculture",
+    description: "Monitor crop condition, pest risk, photos, extension advice, and follow-up actions.",
+    fields: 16,
+    minutes: 21,
+    popularity: 95,
+    recommendedFor: ["Agriculture programs"],
+    tags: ["crop", "pest", "field visit"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 1,
+    featured: true
+  },
+  {
+    id: "vaccination-tracking-form",
+    name: "Vaccination Tracking Form",
+    category: "Health",
+    description: "Track doses, missed children, referrals, follow-up dates, and outreach location.",
+    fields: 15,
+    minutes: 17,
+    popularity: 92,
+    recommendedFor: ["Health programs", "Government"],
+    tags: ["vaccination", "outreach", "follow-up"],
+    hasGps: true,
+    hasMedia: false,
+    repeatGroups: 0,
+    featured: true
+  },
+  {
+    id: "nutrition-assessment-form",
+    name: "Nutrition Assessment Form",
+    category: "Health",
+    description: "Capture screening results, risk level, referrals, counselling, and next visit.",
+    fields: 13,
+    minutes: 16,
+    popularity: 86,
+    recommendedFor: ["Health programs", "Humanitarian teams"],
+    tags: ["nutrition", "screening", "referral"],
+    hasGps: true,
+    hasMedia: false,
+    repeatGroups: 0
+  },
+  {
+    id: "school-inspection-form",
+    name: "School Inspection Form",
+    category: "Education",
+    description: "Inspect attendance, infrastructure, teacher presence, safety, and urgent repairs.",
+    fields: 17,
+    minutes: 23,
+    popularity: 84,
+    recommendedFor: ["Education programs", "Government"],
+    tags: ["school", "inspection", "attendance"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  },
+  {
+    id: "household-vulnerability-assessment",
+    name: "Household Vulnerability Assessment",
+    category: "Humanitarian & NGO",
+    description: "Assess household needs, vulnerability score, assistance eligibility, and verification.",
+    fields: 18,
+    minutes: 25,
+    popularity: 96,
+    recommendedFor: ["Humanitarian teams", "NGOs"],
+    tags: ["household", "vulnerability", "assistance"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 1,
+    featured: true
+  },
+  {
+    id: "food-distribution-tracking",
+    name: "Food Distribution Tracking",
+    category: "Humanitarian & NGO",
+    description: "Track ration receipt, household verification, exceptions, signatures, and distribution GPS.",
+    fields: 12,
+    minutes: 14,
+    popularity: 88,
+    recommendedFor: ["Humanitarian teams"],
+    tags: ["food", "distribution", "signature"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  },
+  {
+    id: "baseline-survey",
+    name: "Baseline Survey",
+    category: "Monitoring & Evaluation",
+    description: "Collect initial respondent profile, indicator values, evidence, and quality notes.",
+    fields: 20,
+    minutes: 32,
+    popularity: 91,
+    recommendedFor: ["M&E teams", "NGOs"],
+    tags: ["baseline", "indicators", "survey"],
+    hasGps: true,
+    hasMedia: false,
+    repeatGroups: 1,
+    featured: true
+  },
+  {
+    id: "kpi-tracking-form",
+    name: "KPI Tracking Form",
+    category: "Monitoring & Evaluation",
+    description: "Capture KPI values, targets, sources, calculated progress, and reviewer notes.",
+    fields: 11,
+    minutes: 12,
+    popularity: 89,
+    recommendedFor: ["M&E teams", "Program managers"],
+    tags: ["KPI", "indicator", "reporting"],
+    hasGps: true,
+    hasMedia: false,
+    repeatGroups: 0
+  },
+  {
+    id: "community-needs-assessment",
+    name: "Community Needs Assessment",
+    category: "Government & Community",
+    description: "Collect priority needs, service gaps, community requests, evidence, and next actions.",
+    fields: 14,
+    minutes: 20,
+    popularity: 82,
+    recommendedFor: ["Government", "NGOs"],
+    tags: ["community", "needs", "planning"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  },
+  {
+    id: "field-activity-report",
+    name: "Field Activity Report",
+    category: "Business & Operations",
+    description: "Report daily field work, blockers, location, proof, and supervisor follow-up.",
+    fields: 10,
+    minutes: 9,
+    popularity: 80,
+    recommendedFor: ["Field teams", "Operations"],
+    tags: ["activity", "field team", "report"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  },
+  {
+    id: "vehicle-inspection-form",
+    name: "Vehicle Inspection Form",
+    category: "Business & Operations",
+    description: "Inspect mileage, safety status, defects, photos, and service recommendations.",
+    fields: 13,
+    minutes: 15,
+    popularity: 78,
+    recommendedFor: ["Operations", "Fleet teams"],
+    tags: ["vehicle", "inspection", "fleet"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  }
+];

@@ -10,6 +10,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
 import { DynamicForms } from "@/components/DynamicForms";
 import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
+import { FormTemplateLibrary } from "@/components/FormTemplateLibrary";
 import {
   BeneficiaryRegistry,
   CaseManagement,
@@ -73,6 +74,7 @@ export function WorkspaceApp() {
     indicators: <IndicatorTracking />,
     organizations: <OrganizationManagement token={token} />,
     officers: <FieldOfficerOperations token={token} />,
+    templates: <FormTemplateLibrary />,
     forms: <DynamicForms />,
     submissions: <SubmissionReview token={token} />,
     cases: <CaseManagement />,

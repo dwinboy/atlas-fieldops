@@ -15,6 +15,7 @@ export type WorkspaceView =
   | "officers"
   | "forms"
   | "submissions"
+  | "templates"
   | "analytics"
   | "workflows"
   | "connectivity";

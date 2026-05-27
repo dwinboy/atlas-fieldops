@@ -170,6 +170,41 @@ export type ExportJobRead = {
   scheduled: boolean;
 };
 
+export type TemplateFieldSummary = {
+  field_count: number;
+  repeat_group_count: number;
+  has_gps: boolean;
+  has_media: boolean;
+  offline_compatible: boolean;
+};
+
+export type FormTemplateRead = {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  description: string;
+  version: number;
+  tags: string[];
+  recommended_for: string[];
+  estimated_minutes: number;
+  popularity_score: number;
+  is_featured: boolean;
+  summary: TemplateFieldSummary;
+};
+
+export type FormTemplateDetail = FormTemplateRead & {
+  template_schema: Record<string, unknown>;
+  logic_overview: string[];
+  mobile_preview_fields: string[];
+};
+
+export type TemplateDuplicateRequest = {
+  name?: string;
+  slug?: string;
+  publish?: boolean;
+};
+
 const apiBaseUrl =
   process.env.INTERNAL_API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -284,17 +319,46 @@ export async function createExportJob(token: string, payload: ExportJobCreate): 
   return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listFormTemplates(
+  token: string,
+  params: { category?: string; search?: string; organization_type?: string } = {}
+): Promise<FormTemplateRead[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      query.set(key, value);
+    }
+  }
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<FormTemplateRead[]>(`/forms/templates${suffix}`, { token });
+}
+
+export async function getFormTemplate(token: string, templateId: string): Promise<FormTemplateDetail> {
+  return request<FormTemplateDetail>(`/forms/templates/${templateId}`, { token });
+}
+
+export async function duplicateFormTemplate(
+  token: string,
+  templateId: string,
+  payload: TemplateDuplicateRequest
+): Promise<{ id: string; name: string; slug: string; status: string; current_version: number; is_active: boolean }> {
+  return request(`/forms/templates/${templateId}/duplicate`, { method: "POST", token, bodyJson: payload });
+}
+
 export const api = {
   createOrganization,
   createExportJob,
+  duplicateFormTemplate,
   createImportJob,
   createUser,
   getCurrentPrincipal,
   getHealth,
+  getFormTemplate,
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,
   listFieldOfficers,
+  listFormTemplates,
   listRoles,
   listSubmissions,
   listUsers,

@@ -11,6 +11,7 @@ from app.models.collection import (
     DataForm,
     DataFormVersion,
     FieldOfficerProfile,
+    FormTemplateUsage,
     MobileSyncBatch,
     Submission,
     SubmissionStatusHistory,
@@ -149,6 +150,28 @@ class FormRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def record_template_usage(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        template_slug: str,
+        created_form_id: UUID,
+        metadata: dict[str, Any],
+    ) -> FormTemplateUsage:
+        usage = FormTemplateUsage(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            template_id=None,
+            template_slug=template_slug,
+            created_form_id=created_form_id,
+            action="duplicated",
+            metadata_json=metadata,
+        )
+        self.session.add(usage)
+        await self.session.flush()
+        return usage
 
 
 class SubmissionRepository:
