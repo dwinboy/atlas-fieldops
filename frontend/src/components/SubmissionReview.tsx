@@ -64,18 +64,24 @@ const statusTone = {
 } as const;
 
 const reviewMetrics = [
-  ["Under review", (submission: SubmissionRead) => submission.status === "under_review", ShieldAlert],
+  ["Need review", (submission: SubmissionRead) => submission.status === "under_review", ShieldAlert],
   ["Approved", (submission: SubmissionRead) => submission.status === "approved", CheckCircle2],
-  ["Corrections", (submission: SubmissionRead) => submission.status === "correction_requested", MessageSquareWarning],
-  ["Offline captured", (submission: SubmissionRead) => submission.offline_created, RotateCcw]
+  ["Need correction", (submission: SubmissionRead) => submission.status === "correction_requested", MessageSquareWarning],
+  ["Collected offline", (submission: SubmissionRead) => submission.offline_created, RotateCcw]
 ] as const;
 
 const reviewActions = [
-  ["approve", CheckCircle2, "primary"],
-  ["request_correction", MessageSquareWarning, "secondary"],
-  ["reject", XCircle, "danger"],
-  ["start_review", ShieldAlert, "secondary"]
+  ["approve", "Approve", CheckCircle2, "primary"],
+  ["request_correction", "Ask for correction", MessageSquareWarning, "secondary"],
+  ["reject", "Reject", XCircle, "danger"],
+  ["start_review", "Start review", ShieldAlert, "secondary"]
 ] as const;
+
+function formatStatus(status: string) {
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export function SubmissionReview({ token }: SubmissionReviewProps) {
   const [selectedId, setSelectedId] = useState(previewSubmissions[0]?.id ?? "");
@@ -110,7 +116,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
       render: (submission) => (
         <button className="text-left" onClick={() => setSelectedId(submission.id)} type="button">
           <span className="block font-medium">{submission.client_submission_id}</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">v{submission.server_sequence} · {submission.form_id}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">Version {submission.server_sequence} · {submission.form_id}</span>
         </button>
       )
     },
@@ -119,7 +125,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
       header: "Status",
       value: (submission) => submission.status,
       render: (submission) => (
-        <Badge tone={statusTone[submission.status as keyof typeof statusTone] ?? "neutral"}>{submission.status.replace("_", " ")}</Badge>
+        <Badge tone={statusTone[submission.status as keyof typeof statusTone] ?? "neutral"}>{formatStatus(submission.status)}</Badge>
       )
     },
     {
@@ -157,7 +163,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
             Submission review
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Inspect incoming field submissions, verify automatic GPS/device metadata, and route corrections back to mobile officers.
+            Check incoming field data, approve good submissions, and send clear correction requests back to the field.
           </p>
         </div>
         <Button>
@@ -189,8 +195,8 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
           {selected ? (
             <div className="space-y-4 p-4">
               <div className="flex items-center justify-between">
-                <Badge tone={statusTone[selected.status as keyof typeof statusTone] ?? "neutral"}>{selected.status.replace("_", " ")}</Badge>
-                <span className="text-xs text-muted-foreground">v{selected.server_sequence}</span>
+                <Badge tone={statusTone[selected.status as keyof typeof statusTone] ?? "neutral"}>{formatStatus(selected.status)}</Badge>
+                <span className="text-xs text-muted-foreground">Version {selected.server_sequence}</span>
               </div>
               <div className="rounded-md border bg-background p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
@@ -210,7 +216,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
                 ))}
               </div>
               <div className="grid grid-cols-2 gap-2 pt-2">
-                {reviewActions.map(([action, Icon, variant]) => (
+                {reviewActions.map(([action, label, Icon, variant]) => (
                   <Button
                     key={action}
                     className={cn(action === "request_correction" && "col-span-2")}
@@ -219,7 +225,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
                     variant={variant}
                   >
                     <Icon aria-hidden="true" />
-                    {action.replace("_", " ")}
+                    {label}
                   </Button>
                 ))}
               </div>

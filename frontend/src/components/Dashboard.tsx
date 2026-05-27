@@ -15,16 +15,16 @@ export function Dashboard() {
     <section aria-labelledby="dashboard-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Operations</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Today</p>
           <h1 id="dashboard-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Live command center
+            Today’s field work
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Realtime operational posture across ingestion, validation, field sync, and tenant activity.
+            The clearest view of incoming submissions, pending reviews, field team activity, and sync issues.
           </p>
         </div>
         <Button variant="primary">
-          Executive report
+          Open report
           <ArrowUpRight aria-hidden="true" />
         </Button>
       </div>
@@ -64,13 +64,13 @@ export function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h2 id="throughput-title" className="text-sm font-semibold">
-                Throughput
+                Submissions received
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">Submissions accepted and validated</p>
+              <p className="mt-1 text-xs text-muted-foreground">Saved submissions by time of day</p>
             </div>
             <Badge tone="accent" className="gap-1.5">
               <StatusDot tone="syncing" />
-              Streaming
+              Updating
             </Badge>
           </div>
           <div className="mt-5 grid h-64 grid-cols-12 items-end gap-2">
@@ -79,7 +79,7 @@ export function Dashboard() {
                 <div
                   className="w-full rounded-t-md bg-primary/85 transition-all hover:bg-primary"
                   style={{ height: `${height}%` }}
-                  aria-label={`${height}% throughput`}
+                  aria-label={`${height}% of today’s expected submissions`}
                   role="img"
                 />
               </div>
@@ -87,9 +87,9 @@ export function Dashboard() {
           </div>
           <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
             {[
-              ["P95 latency", "182 ms"],
-              ["Validation accuracy", "96.8%"],
-              ["Queue drain", "4.2 min"]
+              ["App response", "182 ms"],
+              ["Clean submissions", "96.8%"],
+              ["Review wait", "4.2 min"]
             ].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -105,18 +105,18 @@ export function Dashboard() {
         <section className="rounded-lg border bg-panel p-4" aria-labelledby="work-queue-title">
           <div className="mb-3 flex items-center justify-between">
             <h2 id="work-queue-title" className="text-sm font-semibold">
-              Work queue
+              Needs attention
             </h2>
             <Button size="sm" variant="ghost">
-              Triage
+              Review
               <ArrowUpRight aria-hidden="true" />
             </Button>
           </div>
           <div className="divide-y">
             {([
-              ["OCR confidence below threshold", "1,216 records", "2h SLA", "warning" as const],
-              ["Duplicate identity candidate", "128 records", "45m SLA", "danger" as const],
-              ["Supervisor approval required", "74 records", "4h SLA", "neutral" as const]
+              ["Answers need a closer look", "1,216 submissions", "2h target", "warning" as const],
+              ["Possible duplicate records", "128 submissions", "45m target", "danger" as const],
+              ["Waiting for supervisor approval", "74 submissions", "4h target", "neutral" as const]
             ] as const).map(([item, count, sla, tone]) => (
               <div key={item} className="grid grid-cols-[1fr_auto] gap-4 py-3 text-sm">
                 <div>
@@ -133,20 +133,20 @@ export function Dashboard() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 id="sync-title" className="text-sm font-semibold">
-                Offline sync
+                Offline data
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">Mobile edge reliability</p>
+              <p className="mt-1 text-xs text-muted-foreground">Data saved on phones and waiting to upload</p>
             </div>
             <Gauge aria-hidden="true" className="text-muted-foreground" size={17} />
           </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-md border bg-background p-3">
-              <dt className="text-muted-foreground">Pending</dt>
+              <dt className="text-muted-foreground">Waiting to sync</dt>
               <dd className="mt-2 text-xl font-semibold">812</dd>
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
             <div className="rounded-md border bg-background p-3">
-              <dt className="text-muted-foreground">Failed</dt>
+              <dt className="text-muted-foreground">Need retry</dt>
               <dd className="mt-2 text-xl font-semibold">37</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>

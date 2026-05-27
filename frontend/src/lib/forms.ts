@@ -62,8 +62,6 @@ export type DynamicForm = {
   status: "draft" | "published" | "archived";
   version: number;
   activeVersion: number;
-  defaultLanguage: string;
-  languages: string[];
   sections: FormSection[];
   fields: FormField[];
   updatedAt: string;
@@ -74,7 +72,7 @@ export const fieldCatalog: {
   fields: { type: FieldType; label: string; description: string }[];
 }[] = [
   {
-    group: "Basic",
+    group: "Common questions",
     fields: [
       { type: "text", label: "Short text", description: "Names, IDs, short answers" },
       { type: "textarea", label: "Long text", description: "Narrative notes and observations" },
@@ -85,7 +83,7 @@ export const fieldCatalog: {
     ]
   },
   {
-    group: "Choice",
+    group: "Choice questions",
     fields: [
       { type: "select", label: "Select", description: "Single choice dropdown" },
       { type: "multiselect", label: "Multiselect", description: "Multiple choice list" },
@@ -94,7 +92,7 @@ export const fieldCatalog: {
     ]
   },
   {
-    group: "Advanced",
+    group: "Field work",
     fields: [
       { type: "gps", label: "GPS location", description: "Automatic coordinate capture" },
       { type: "photo", label: "Image upload", description: "Offline media queue" },
@@ -205,19 +203,18 @@ export function toMobileSchema(form: DynamicForm) {
     id: form.id,
     name: form.name,
     version: form.version,
-    default_language: form.defaultLanguage,
-    languages: form.languages,
+    language: "en",
     offline_compatible: true,
     sections: form.sections.map((section) => ({
       id: section.id,
-      title: { [form.defaultLanguage]: section.title },
+      title: section.title,
       description: section.description,
       fields: form.fields
         .filter((field) => field.sectionId === section.id)
         .map((field) => ({
           id: field.id,
           type: field.type,
-          label: { [form.defaultLanguage]: field.label },
+          label: field.label,
           hint: field.hint,
           required: field.required,
           options: field.options?.map((option) => ({ label: option, value: option.toLowerCase().replaceAll(" ", "_") })) ?? [],

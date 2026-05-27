@@ -10,13 +10,13 @@ import { Input } from "@/components/ui/input";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard }[] = [
-  { label: "Open operations", hint: "Review throughput, sync, and review queues", view: "dashboard", group: "Workspace", icon: LayoutDashboard },
-  { label: "Manage tenants", hint: "Users, roles, and organization access", view: "organizations", group: "Admin", icon: Building2 },
-  { label: "Monitor field officers", hint: "Roster, sync health, GPS status, and activity", view: "officers", group: "Field", icon: UsersRound },
-  { label: "Edit form schemas", hint: "Field rules, offline capture, and publishing", view: "forms", group: "Studio", icon: ClipboardList },
+  { label: "Open home", hint: "See today’s submissions, reviews, and sync status", view: "dashboard", group: "Daily work", icon: LayoutDashboard },
   { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", group: "Review", icon: ShieldCheck },
-  { label: "Inspect analytics", hint: "Realtime ingestion, validation, and lag", view: "analytics", group: "Signal", icon: BarChart3 },
-  { label: "Review approval paths", hint: "SLA queues, escalations, and workflow health", view: "workflows", group: "Control", icon: GitPullRequestArrow }
+  { label: "Build forms", hint: "Add questions, rules, and offline-ready checks", view: "forms", group: "Setup", icon: ClipboardList },
+  { label: "Manage field team", hint: "Invite officers and check sync status", view: "officers", group: "Field work", icon: UsersRound },
+  { label: "Manage organization", hint: "Users, roles, and access", view: "organizations", group: "Admin", icon: Building2 },
+  { label: "Open reports", hint: "Track submissions, data quality, and field progress", view: "analytics", group: "Reports", icon: BarChart3 },
+  { label: "Review approval rules", hint: "Correction paths, review steps, and overdue work", view: "workflows", group: "Approvals", icon: GitPullRequestArrow }
 ];
 
 export function CommandPalette() {
@@ -47,10 +47,10 @@ export function CommandPalette() {
 
   return (
     <Modal
-      description="Search navigation and operational commands."
+      description="Search pages and common actions."
       open={commandOpen}
       onOpenChange={setCommandOpen}
-      title="Command center"
+      title="Quick search"
     >
       <div className="border-b p-4">
         <label className="sr-only" htmlFor="command-search">
@@ -61,7 +61,7 @@ export function CommandPalette() {
           <Input
             id="command-search"
             className="pl-9"
-            placeholder="Search commands, workflows, and views"
+            placeholder="Search pages and actions"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
@@ -97,7 +97,7 @@ export function CommandPalette() {
         })}
       </div>
       <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
-        <span>Type to narrow the workspace surface</span>
+        <span>Type to find the next place to work</span>
         <Button size="sm" variant="ghost" onClick={() => setCommandOpen(false)}>
           Esc
         </Button>

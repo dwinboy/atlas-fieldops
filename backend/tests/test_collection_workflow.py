@@ -27,16 +27,14 @@ def test_form_schema_accepts_offline_supported_field_types() -> None:
             "slug": "farmer-onboarding",
             "publish": True,
             "schema": {
-                "default_language": "en",
-                "languages": ["en", "fr"],
                 "sections": [
                     {
                         "id": "identity",
-                        "title": {"en": "Identity"},
+                        "title": "Identity",
                         "fields": [
-                            {"id": "name", "type": "text", "label": {"en": "Name"}, "required": True},
-                            {"id": "farm_gps", "type": "gps", "label": {"en": "Farm GPS"}, "required": True},
-                            {"id": "signature", "type": "signature", "label": {"en": "Signature"}},
+                            {"id": "name", "type": "text", "label": "Name", "required": True},
+                            {"id": "farm_gps", "type": "gps", "label": "Farm GPS", "required": True},
+                            {"id": "signature", "type": "signature", "label": "Signature"},
                         ],
                     }
                 ],
@@ -58,8 +56,8 @@ def test_form_schema_rejects_unsupported_field_types() -> None:
                     "sections": [
                         {
                             "id": "main",
-                            "title": {"en": "Main"},
-                            "fields": [{"id": "custom", "type": "unsafe_plugin", "label": {"en": "Custom"}}],
+                            "title": "Main",
+                            "fields": [{"id": "custom", "type": "unsafe_plugin", "label": "Custom"}],
                         }
                     ]
                 },
@@ -101,10 +99,10 @@ def test_form_engine_validates_schema_and_submission_payloads() -> None:
                 "sections": [
                     {
                         "id": "main",
-                        "title": {"en": "Main"},
+                        "title": "Main",
                         "fields": [
-                            {"id": "score", "type": "number", "label": {"en": "Score"}, "required": True, "validation": {"min": 0, "max": 10}},
-                            {"id": "site", "type": "gps", "label": {"en": "Site"}, "required": True, "validation": {"accuracyMax": 20}},
+                            {"id": "score", "type": "number", "label": "Score", "required": True, "validation": {"min": 0, "max": 10}},
+                            {"id": "site", "type": "gps", "label": "Site", "required": True, "validation": {"accuracyMax": 20}},
                         ],
                     }
                 ]

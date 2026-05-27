@@ -69,7 +69,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
         temporary_password: "ChangeMe12345!"
       }),
     onSuccess: async () => {
-      pushToast({ title: "Field officer invited", description: `${fullName} can sync assigned forms`, tone: "success" });
+      pushToast({ title: "Field officer invited", description: `${fullName} can sign in and sync assigned forms`, tone: "success" });
       setFullName("");
       setEmail("");
       setRegion("");
@@ -129,17 +129,17 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
     <section aria-labelledby="officers-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Field force</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Field team</p>
           <h1 id="officers-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Field officer operations
+            Field team
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Invite officers, monitor sync health, inspect GPS presence, and keep mobile collection teams accountable.
+            Invite officers, check who has synced recently, and see where field work is happening.
           </p>
         </div>
         <Button variant="primary">
           <RotateCcw aria-hidden="true" />
-          Refresh sync state
+          Refresh status
         </Button>
       </div>
 
@@ -147,7 +147,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
         {[
           ["Active officers", String(activeCount), ShieldCheck],
           ["Synced last hour", String(officers.filter((officer) => officer.last_sync_at).length), RadioTower],
-          ["GPS reporting", String(officers.filter((officer) => officer.last_latitude && officer.last_longitude).length), MapPin],
+          ["Recent location", String(officers.filter((officer) => officer.last_latitude && officer.last_longitude).length), MapPin],
           ["Correction queue", "17", RotateCcw]
         ].map(([label, value, Icon]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
@@ -196,7 +196,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
             Invite officer
           </Button>
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Officers receive mobile-ready credentials and can sync assigned forms offline.
+            Officers receive sign-in details and can keep collecting data when the internet is unreliable.
           </p>
         </form>
 

@@ -53,8 +53,8 @@ export function WorkspaceApp() {
   }
 
   const organizationLabel = principalQuery.data?.organization_id
-    ? `Tenant ${principalQuery.data.organization_id.slice(0, 8)}`
-    : "Tenant context";
+    ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
+    : "Organization workspace";
 
   const content = {
     dashboard: <Dashboard />,

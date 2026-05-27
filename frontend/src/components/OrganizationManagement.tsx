@@ -55,7 +55,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     onSuccess: async () => {
       setEmail("");
       setFullName("");
-      pushToast({ title: "User invited", description: `${fullName || email} was added to this tenant`, tone: "success" });
+      pushToast({ title: "User invited", description: `${fullName || email} was added to this organization`, tone: "success" });
       await usersQuery.refetch();
     }
   });
@@ -94,12 +94,12 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     <section aria-labelledby="organization-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Tenant administration</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Organization</p>
           <h1 id="organization-title" className="mt-2 text-2xl font-semibold tracking-tight">
             Organization management
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Provision tenants, invite operators, and manage role coverage from a single control surface.
+            Create organizations, invite teammates, and choose what each person can access.
           </p>
         </div>
         <Badge tone="accent">{roles.length} roles available</Badge>

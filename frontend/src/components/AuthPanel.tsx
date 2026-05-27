@@ -25,7 +25,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: (response) => {
-      pushToast({ title: "Signed in", description: "Tenant workspace unlocked", tone: "success" });
+      pushToast({ title: "Signed in", description: "Workspace ready", tone: "success" });
       onAuthenticated(response.access_token);
     }
   });
@@ -46,16 +46,16 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               Atlas FieldOps
             </Badge>
             <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
-              Govern field data from capture to approval.
+              Field data your team can trust.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
-              A tenant-scoped operating layer for collection teams, validation queues, audit trails, and realtime submission flow.
+              Build forms, guide field officers, review submissions, and keep work moving even when connectivity is unreliable.
             </p>
             <div className="mt-10 grid max-w-2xl grid-cols-3 border-y py-5 text-sm">
               {[
-                ["128.4k", "accepted today"],
-                ["96.8%", "validation accuracy"],
-                ["182ms", "P95 API latency"]
+                ["128.4k", "saved today"],
+                ["96.8%", "clean submissions"],
+                ["812", "waiting to sync"]
               ].map(([value, label]) => (
                 <div key={label} className="border-r px-4 first:pl-0 last:border-r-0">
                   <p className="text-xl font-semibold tracking-tight">{value}</p>
@@ -67,7 +67,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
           <div className="hidden rounded-lg border bg-panel p-4 shadow-line xl:block">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Live controls</p>
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Today’s status</p>
               <Badge tone="success" className="gap-1.5">
                 <RadioTower aria-hidden="true" size={13} />
                 Online
@@ -75,9 +75,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </div>
             <div className="mt-5 space-y-4">
               {[
-                ["Tenant context", "Required", "100%"],
-                ["Audit trail", "Streaming", "24 ms"],
-                ["Offline sync", "Backlog", "812"]
+                ["Organization", "Ready", "100%"],
+                ["Review history", "Recording", "Live"],
+                ["Offline sync", "Waiting", "812"]
               ].map(([label, status, value]) => (
                 <div key={label} className="grid grid-cols-[1fr_auto] gap-3 border-t pt-4 first:border-t-0 first:pt-0">
                   <div>
@@ -90,7 +90,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </div>
             <div className="mt-5 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
               <Activity aria-hidden="true" size={14} />
-              Policy engine healthy · RBAC enforced
+              Access rules and review history are active
             </div>
           </div>
         </motion.div>
@@ -110,11 +110,11 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </div>
             <Badge tone="success" className="gap-2">
               <Fingerprint aria-hidden="true" size={13} />
-              RBAC
+              Secure access
             </Badge>
           </div>
           <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Use a tenant account to continue.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Use your organization account to continue.</p>
 
           <label className="mt-6 block text-sm font-medium" htmlFor="organization">
             Organization
@@ -182,7 +182,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             Preview workspace
           </Button>
           <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            Access is tenant-scoped and activity is recorded to the audit trail.
+            Access is limited to your organization, and important actions are recorded for review.
           </p>
         </div>
       </form>

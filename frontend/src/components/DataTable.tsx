@@ -4,7 +4,6 @@ import { ArrowDownUp, Columns3, Filter, Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -52,7 +51,7 @@ export function DataTable<T>({
             {title}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {filteredRows.length} of {rows.length} records in current view
+            Showing {filteredRows.length} of {rows.length}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -63,16 +62,17 @@ export function DataTable<T>({
           </label>
           <Button size="sm" variant="secondary">
             <Filter aria-hidden="true" />
-            Filters
+            Filter
           </Button>
-          <Button aria-label="Configure visible columns" size="icon" variant="secondary">
+          <Button aria-label="Choose visible columns" size="sm" variant="secondary">
             <Columns3 aria-hidden="true" />
+            Columns
           </Button>
         </div>
       </div>
 
       <div className="overflow-x-auto product-scrollbar">
-        <table className="w-full min-w-[720px] text-left text-[13px]">
+        <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="bg-muted/55 text-muted-foreground">
             <tr>
               {columns.map((column) => (
@@ -98,7 +98,12 @@ export function DataTable<T>({
             {filteredRows.length === 0 ? (
               <tr>
                 <td className="px-4 py-10 text-center text-muted-foreground" colSpan={columns.length}>
-                  <Badge>{query ? "No matching records" : emptyLabel}</Badge>
+                  <div className="mx-auto max-w-sm">
+                    <p className="font-medium text-foreground">{query ? "No matches found" : emptyLabel}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {query ? "Try a different search term or clear the search." : "New records will appear here when they are available."}
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : null}

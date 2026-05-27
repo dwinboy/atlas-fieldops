@@ -35,13 +35,13 @@ type AppShellProps = {
 };
 
 const navItems = [
-  { id: "dashboard", label: "Operations", hint: "Live posture", icon: LayoutDashboard },
-  { id: "organizations", label: "Tenants", hint: "Access control", icon: Building2 },
-  { id: "officers", label: "Field officers", hint: "Mobile teams", icon: UsersRound },
-  { id: "forms", label: "Form studio", hint: "Schemas", icon: ClipboardList },
-  { id: "submissions", label: "Review queue", hint: "Approvals", icon: ShieldCheck },
-  { id: "analytics", label: "Analytics", hint: "Signal layer", icon: BarChart3 },
-  { id: "workflows", label: "Workflows", hint: "Approvals", icon: GitPullRequestArrow }
+  { id: "dashboard", label: "Home", hint: "Today’s work", icon: LayoutDashboard },
+  { id: "submissions", label: "Review", hint: "Approve data", icon: ShieldCheck },
+  { id: "forms", label: "Forms", hint: "Build surveys", icon: ClipboardList },
+  { id: "officers", label: "Field team", hint: "People & sync", icon: UsersRound },
+  { id: "organizations", label: "Organization", hint: "Team & roles", icon: Building2 },
+  { id: "analytics", label: "Reports", hint: "Progress", icon: BarChart3 },
+  { id: "workflows", label: "Approvals", hint: "Rules", icon: GitPullRequestArrow }
 ] satisfies { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard }[];
 
 export function AppShell({ children, onSignOut, organizationLabel }: AppShellProps) {
@@ -114,18 +114,18 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
           type="button"
         >
           <Command aria-hidden="true" size={15} />
-          <span className={cn("min-w-0 flex-1 truncate", collapsedSidebar && "sr-only")}>Command center</span>
+          <span className={cn("min-w-0 flex-1 truncate", collapsedSidebar && "sr-only")}>Search</span>
           <kbd className={cn("rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]", collapsedSidebar && "sr-only")}>
             ⌘K
           </kbd>
         </button>
         <div className={cn("mb-4 rounded-lg border bg-background p-3", collapsedSidebar && "hidden")}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Ingestion</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Today</span>
             <StatusDot tone="online" />
           </div>
-          <p className="mt-2 text-sm font-semibold">128.4k accepted</p>
-          <p className="mt-1 text-xs text-muted-foreground">Kafka lag 1,245 · P95 182 ms</p>
+          <p className="mt-2 text-sm font-semibold">128.4k submissions saved</p>
+          <p className="mt-1 text-xs text-muted-foreground">812 waiting to sync · 37 need retry</p>
         </div>
         {navigation}
         <div className="absolute bottom-3 left-3 right-3 space-y-2">
@@ -157,16 +157,16 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
               <Menu aria-hidden="true" />
             </Button>
             <div>
-              <p className="text-sm font-semibold tracking-normal">Enterprise collection workspace</p>
+              <p className="text-sm font-semibold tracking-normal">Field data workspace</p>
               <p className="hidden text-xs text-muted-foreground sm:block">
-                {organizationLabel} · multi-tenant control plane
+                {organizationLabel} · Forms, teams, reviews, and reports
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge tone="success" className="hidden gap-1.5 sm:inline-flex">
               <RadioTower aria-hidden="true" size={13} />
-              Live
+              Online
             </Badge>
             <Button aria-label="Open command palette" size="icon" variant="ghost" onClick={() => setCommandOpen(true)}>
               <Command aria-hidden="true" />

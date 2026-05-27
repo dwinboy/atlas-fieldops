@@ -42,7 +42,8 @@ class DeviceMetadata(BaseModel):
 class FormField(BaseModel):
     id: str = Field(min_length=1, max_length=120)
     type: str = Field(min_length=2, max_length=80)
-    label: dict[str, str]
+    label: str = Field(min_length=1, max_length=240)
+    hint: str | None = Field(default=None, max_length=500)
     required: bool = False
     validation: dict[str, Any] = Field(default_factory=dict)
     visibility: dict[str, Any] = Field(default_factory=dict)
@@ -52,14 +53,13 @@ class FormField(BaseModel):
 
 class FormSection(BaseModel):
     id: str = Field(min_length=1, max_length=120)
-    title: dict[str, str]
+    title: str = Field(min_length=1, max_length=240)
+    description: str | None = Field(default=None, max_length=1000)
     fields: list[FormField] = Field(default_factory=list)
 
 
 class FormSchema(BaseModel):
     version_label: str | None = None
-    default_language: str = "en"
-    languages: list[str] = Field(default_factory=lambda: ["en"])
     sections: list[FormSection] = Field(min_length=1)
 
     @model_validator(mode="after")

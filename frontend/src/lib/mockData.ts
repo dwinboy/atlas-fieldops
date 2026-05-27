@@ -1,10 +1,10 @@
 import type { DynamicForm } from "@/lib/forms";
 
 export const dashboardMetrics = [
-  { label: "Submissions today", value: "128.4k", delta: "+12.6%", tone: "good" },
-  { label: "Validation queue", value: "2,418", delta: "-8.1%", tone: "warn" },
-  { label: "Active collectors", value: "1,204", delta: "+4.3%", tone: "good" },
-  { label: "Sync failures", value: "37", delta: "-2.7%", tone: "neutral" }
+  { label: "Submissions received", value: "128.4k", delta: "+12.6%", tone: "good" },
+  { label: "Need review", value: "2,418", delta: "-8.1%", tone: "warn" },
+  { label: "Active field officers", value: "1,204", delta: "+4.3%", tone: "good" },
+  { label: "Sync problems", value: "37", delta: "-2.7%", tone: "neutral" }
 ];
 
 export const analyticsSeries = [
@@ -23,8 +23,6 @@ export const starterForms: DynamicForm[] = [
     status: "published",
     version: 3,
     activeVersion: 3,
-    defaultLanguage: "en",
-    languages: ["en", "fr"],
     updatedAt: "2026-05-27T08:00:00.000Z",
     sections: [
       { id: "vehicle", title: "Vehicle details", description: "Core inspection metadata" },
@@ -58,8 +56,6 @@ export const starterForms: DynamicForm[] = [
     status: "draft",
     version: 2,
     activeVersion: 1,
-    defaultLanguage: "en",
-    languages: ["en"],
     updatedAt: "2026-05-27T09:30:00.000Z",
     sections: [{ id: "site", title: "Site profile", description: "Field location and observations" }],
     fields: [

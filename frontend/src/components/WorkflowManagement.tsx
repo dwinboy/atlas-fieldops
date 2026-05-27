@@ -16,10 +16,10 @@ type WorkflowRow = {
 };
 
 const workflows: WorkflowRow[] = [
-  { id: "wf-1", name: "High-confidence auto approval", owner: "Validation Ops", status: "healthy", sla: "4m", queue: 1842 },
-  { id: "wf-2", name: "Duplicate identity review", owner: "Risk", status: "attention", sla: "42m", queue: 128 },
-  { id: "wf-3", name: "Regional supervisor approval", owner: "Field Ops", status: "healthy", sla: "2h", queue: 74 },
-  { id: "wf-4", name: "Escalated fraud investigation", owner: "Trust", status: "blocked", sla: "6h", queue: 11 }
+  { id: "wf-1", name: "Good submissions can be approved quickly", owner: "Review team", status: "healthy", sla: "4m", queue: 1842 },
+  { id: "wf-2", name: "Possible duplicates need review", owner: "Data quality", status: "attention", sla: "42m", queue: 128 },
+  { id: "wf-3", name: "Regional supervisors approve exceptions", owner: "Field team", status: "healthy", sla: "2h", queue: 74 },
+  { id: "wf-4", name: "High-risk cases need manager approval", owner: "Program team", status: "blocked", sla: "6h", queue: 11 }
 ];
 
 const columns: TableColumn<WorkflowRow>[] = [
@@ -41,12 +41,12 @@ const columns: TableColumn<WorkflowRow>[] = [
     value: (row) => row.status,
     render: (row) => (
       <Badge tone={row.status === "healthy" ? "success" : row.status === "attention" ? "warning" : "danger"}>
-        {row.status}
+        {row.status === "healthy" ? "Healthy" : row.status === "attention" ? "Needs attention" : "Overdue"}
       </Badge>
     )
   },
-  { key: "sla", header: "SLA", value: (row) => row.sla, render: (row) => row.sla },
-  { key: "queue", header: "Queue", align: "right", value: (row) => String(row.queue), render: (row) => row.queue.toLocaleString() }
+  { key: "sla", header: "Target time", value: (row) => row.sla, render: (row) => row.sla },
+  { key: "queue", header: "Waiting", align: "right", value: (row) => String(row.queue), render: (row) => row.queue.toLocaleString() }
 ];
 
 export function WorkflowManagement() {
@@ -54,12 +54,12 @@ export function WorkflowManagement() {
     <section aria-labelledby="workflows-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Control plane</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Approvals</p>
           <h1 id="workflows-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Workflow management
+            Approval rules
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Route submissions through automated checks, human review, and policy-based approval chains.
+            Decide which submissions can move quickly and which ones need a supervisor or program manager.
           </p>
         </div>
         <Button variant="primary">
@@ -72,8 +72,8 @@ export function WorkflowManagement() {
         {([
           ["Auto approved", "92.4%", CheckCircle2, "success" as const],
           ["Needs review", "2,145", ShieldAlert, "warning" as const],
-          ["Median cycle", "8m 12s", TimerReset, "neutral" as const],
-          ["Blocked", "11", ShieldAlert, "danger" as const]
+          ["Typical review time", "8m 12s", TimerReset, "neutral" as const],
+          ["Overdue", "11", ShieldAlert, "danger" as const]
         ] as const).map(([label, value, Icon, tone]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">
@@ -83,7 +83,7 @@ export function WorkflowManagement() {
             <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
             <Badge tone={tone} className="mt-3">
               <StatusDot tone={tone === "danger" ? "offline" : tone === "warning" ? "warning" : "online"} />
-              Live policy
+              Active rule
             </Badge>
           </article>
         ))}
@@ -96,10 +96,10 @@ export function WorkflowManagement() {
 
       <section className="rounded-lg border bg-panel p-4" aria-labelledby="approval-path-title">
         <h2 id="approval-path-title" className="text-sm font-semibold">
-          Approval path preview
+          Approval path
         </h2>
         <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-center">
-          {["Capture", "AI validation", "Supervisor approval"].map((step, index) => (
+          {["Collected in the field", "Data quality check", "Supervisor approval"].map((step, index) => (
             <div key={step} className="rounded-md border bg-background p-4">
               <p className="text-xs text-muted-foreground">Step {index + 1}</p>
               <p className="mt-1 text-sm font-medium">{step}</p>

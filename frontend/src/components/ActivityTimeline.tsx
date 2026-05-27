@@ -5,29 +5,29 @@ import { Badge } from "@/components/ui/badge";
 const events = [
   {
     icon: CheckCircle2,
-    title: "OCR validation passed",
-    detail: "1,842 records cleared automated review",
+    title: "Data quality check passed",
+    detail: "1,842 submissions are ready for review",
     time: "2m ago",
     tone: "success" as const
   },
   {
     icon: ShieldAlert,
-    title: "Policy exception opened",
-    detail: "Duplicate ID confidence reached 91%",
+    title: "Possible duplicate found",
+    detail: "One ID may already exist in this project",
     time: "11m ago",
     tone: "warning" as const
   },
   {
     icon: GitBranch,
-    title: "Approval route changed",
-    detail: "High-risk submissions now require regional manager",
+    title: "Approval rule updated",
+    detail: "High-risk submissions now go to a regional manager",
     time: "32m ago",
     tone: "neutral" as const
   },
   {
     icon: Clock3,
-    title: "Sync backlog decreasing",
-    detail: "Mobile queue drain time is now 4.2 minutes",
+    title: "Offline uploads improving",
+    detail: "Most phones are syncing again within 4.2 minutes",
     time: "48m ago",
     tone: "success" as const
   }
@@ -41,7 +41,7 @@ export function ActivityTimeline() {
           <h2 id="activity-title" className="text-sm font-semibold">
             Activity
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">Operational changes and review events</p>
+          <p className="mt-1 text-xs text-muted-foreground">Recent review, sync, and quality updates</p>
         </div>
         <Badge tone="accent">Live</Badge>
       </div>
@@ -65,4 +65,3 @@ export function ActivityTimeline() {
     </section>
   );
 }
-

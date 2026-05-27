@@ -57,7 +57,6 @@ import {
   publishForm,
   removeField,
   reorderFields,
-  toMobileSchema,
   updateField,
   type DynamicForm,
   type FieldType,
@@ -167,7 +166,6 @@ export function DynamicForms() {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const selectedForm = useMemo(() => forms.find((form) => form.id === selectedFormId) ?? forms[0], [forms, selectedFormId]);
   const selectedField = selectedForm?.fields.find((field) => field.id === selectedFieldId) ?? selectedForm?.fields[0];
-  const mobileSchema = selectedForm ? toMobileSchema(selectedForm) : null;
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -198,23 +196,22 @@ export function DynamicForms() {
     <section aria-labelledby="forms-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Schema studio</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Forms</p>
           <h1 id="forms-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Enterprise form builder
+            Form builder
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Design mobile-ready XLSForm-style schemas with repeat groups, relevance logic, validations, media capture, and
-            immutable published versions.
+            Build clear, offline-ready forms your field team can use confidently on mobile devices.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button>
             <FileDown aria-hidden="true" />
-            Export schema
+            Export
           </Button>
           <Button>
             <FileUp aria-hidden="true" />
-            Import XLSForm
+            Import
           </Button>
           <Button variant="primary">
             <Plus aria-hidden="true" />
@@ -246,10 +243,10 @@ export function DynamicForms() {
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="block font-medium">{form.name}</span>
-                    <Badge tone={form.status === "published" ? "success" : "neutral"}>v{form.version}</Badge>
+                    <Badge tone={form.status === "published" ? "success" : "neutral"}>Version {form.version}</Badge>
                   </span>
                   <span className="mt-2 block text-xs text-muted-foreground">
-                    {form.fields.length} fields · {form.status}
+                    {form.fields.length} questions · {form.status}
                   </span>
                 </button>
               ))}
@@ -259,7 +256,7 @@ export function DynamicForms() {
           <section className="rounded-lg border bg-panel p-3">
             <div className="mb-3 flex items-center gap-2">
               <Plus aria-hidden="true" size={18} />
-              <h2 className="text-sm font-semibold">Field palette</h2>
+              <h2 className="text-sm font-semibold">Add a question</h2>
             </div>
             <div className="space-y-4">
               {fieldCatalog.map((group) => (
@@ -298,22 +295,21 @@ export function DynamicForms() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-base font-semibold">{selectedForm.name}</h2>
                     <Badge tone={selectedForm.status === "published" ? "success" : "neutral"}>{selectedForm.status}</Badge>
-                    <Badge tone="accent">active v{selectedForm.activeVersion}</Badge>
+                    <Badge tone="accent">Live version {selectedForm.activeVersion}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {selectedForm.languages.join(", ").toUpperCase()} · offline compatible · updated{" "}
-                    {new Date(selectedForm.updatedAt).toLocaleString()}
+                    Offline-ready · updated {new Date(selectedForm.updatedAt).toLocaleString()}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => {
                       updateSelectedForm(createDraftVersion(selectedForm));
-                      pushToast({ title: "Draft version created", description: `${selectedForm.name} is editable`, tone: "success" });
+                      pushToast({ title: "Draft ready to edit", description: `${selectedForm.name} can now be updated`, tone: "success" });
                     }}
                   >
                     <GitBranch aria-hidden="true" />
-                    New draft
+                    Edit draft
                   </Button>
                   <Button>
                     <Archive aria-hidden="true" />
@@ -322,7 +318,7 @@ export function DynamicForms() {
                   <Button
                     onClick={() => {
                       updateSelectedForm(publishForm(selectedForm));
-                      pushToast({ title: "Immutable version published", description: `${selectedForm.name} v${selectedForm.version}`, tone: "success" });
+                      pushToast({ title: "Form published", description: `${selectedForm.name} version ${selectedForm.version} is live`, tone: "success" });
                     }}
                     variant="primary"
                   >
@@ -337,11 +333,11 @@ export function DynamicForms() {
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div>
                   <h2 id="canvas-title" className="text-sm font-semibold">
-                    Builder canvas
+                    Questions
                   </h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Drag fields to reorder. Select a field to edit logic and validation.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Drag questions to reorder. Select one to edit details and rules.</p>
                 </div>
-                <Badge tone="accent">{selectedForm.fields.length} fields</Badge>
+                <Badge tone="accent">{selectedForm.fields.length} questions</Badge>
               </div>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                 <SortableContext items={selectedForm.fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
@@ -365,8 +361,8 @@ export function DynamicForms() {
             <section className="rounded-lg border bg-panel p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold">Live preview</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Simulate mobile rendering, required rules, and repeat groups.</p>
+                  <h2 className="text-sm font-semibold">Phone preview</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Check how this form will feel for a field officer.</p>
                 </div>
                 <div className="flex rounded-md border bg-background p-1">
                   {(["mobile", "desktop"] as const).map((mode) => (
@@ -387,7 +383,7 @@ export function DynamicForms() {
               <div className={cn("mt-4 rounded-xl border bg-background p-4", previewMode === "mobile" && "mx-auto max-w-sm")}>
                 <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
                   <Smartphone aria-hidden="true" size={14} />
-                  Field officer mobile preview · schema v{selectedForm.version}
+                  Field officer preview · version {selectedForm.version}
                 </div>
                 <div className="space-y-4">
                   {selectedForm.fields.slice(0, 6).map((field) => (
@@ -396,10 +392,10 @@ export function DynamicForms() {
                       {field.required ? <span className="text-danger"> *</span> : null}
                       <div className="mt-2 rounded-md border bg-panel px-3 py-2 text-sm text-muted-foreground">
                         {field.type === "repeat_group"
-                          ? "Repeat group: add one or more records"
+                          ? "Add one or more records"
                           : field.type === "gps"
                             ? "GPS captured automatically"
-                            : field.options?.join(" / ") ?? field.hint ?? "Field input"}
+                            : field.options?.join(" / ") ?? field.hint ?? "Answer goes here"}
                       </div>
                     </label>
                   ))}
@@ -454,18 +450,18 @@ export function DynamicForms() {
             <section className="rounded-lg border bg-panel p-4">
               <div className="flex items-center gap-2">
                 <GitBranch aria-hidden="true" size={17} />
-                <h2 className="text-sm font-semibold">Logic editor</h2>
+                <h2 className="text-sm font-semibold">Question rules</h2>
               </div>
               <div className="mt-4 space-y-3">
                 {[
-                  ["Visibility", "${consent} = 'yes'"],
-                  ["Required-if", "${visit_type} = 'field_visit'"],
-                  ["Validation", ". >= 0 and . <= 100"],
-                  ["Calculation", "sum(${crop_area})"]
-                ].map(([label, expression]) => (
+                  ["Show this question when", "Only show it after a specific earlier answer."],
+                  ["Make it required when", "Ask for an answer only in situations that need it."],
+                  ["Check the answer", "Set safe ranges, formats, or accuracy limits."],
+                  ["Calculate a value", "Add totals or scores from previous answers."]
+                ].map(([label, helper]) => (
                   <div key={label} className="rounded-md border bg-background p-3">
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
-                    <code className="mt-2 block rounded bg-muted px-2 py-1 font-mono text-xs text-foreground">{expression}</code>
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</p>
                   </div>
                 ))}
               </div>
@@ -473,12 +469,22 @@ export function DynamicForms() {
 
             <section className="rounded-lg border bg-panel p-4">
               <div className="flex items-center gap-2">
-                <Braces aria-hidden="true" size={17} />
-                <h2 className="text-sm font-semibold">Mobile schema</h2>
+                <Check aria-hidden="true" size={17} />
+                <h2 className="text-sm font-semibold">Offline readiness</h2>
               </div>
-              <pre className="mt-4 max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs text-muted-foreground product-scrollbar">
-                {JSON.stringify(mobileSchema, null, 2).slice(0, 1800)}
-              </pre>
+              <div className="mt-4 space-y-2">
+                {[
+                  "Works without internet",
+                  "GPS is captured automatically",
+                  "Photos and signatures can retry upload",
+                  "Published versions stay stable on mobile"
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                    <Check aria-hidden="true" className="text-success" size={15} />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
             </section>
           </aside>
         ) : null}

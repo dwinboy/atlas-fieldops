@@ -12,16 +12,16 @@ export function RealtimeAnalytics() {
     <section aria-labelledby="analytics-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Signal layer</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Reports</p>
           <h1 id="analytics-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Realtime analytics
+            Field progress reports
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Monitor live submission flow, validation progress, and regional operational lag.
+            Track submission progress, data quality, and field activity as teams work.
           </p>
         </div>
         <Button>
-          Open explorer
+          Explore data
           <ArrowUpRight aria-hidden="true" />
         </Button>
       </div>
@@ -32,9 +32,9 @@ export function RealtimeAnalytics() {
             <RadioTower aria-hidden="true" className="text-primary" size={18} />
             <div>
               <h2 id="stream-title" className="text-sm font-semibold">
-                Ingestion stream
+                Submissions over time
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">Submissions accepted per two-hour window</p>
+              <p className="mt-1 text-xs text-muted-foreground">Submissions received every two hours</p>
             </div>
           </div>
           <Badge tone="success" className="gap-1.5">
@@ -62,9 +62,9 @@ export function RealtimeAnalytics() {
 
       <div className="grid gap-3 md:grid-cols-3">
         {[
-          ["P95 API latency", "182 ms"],
-          ["Validation accuracy", "96.8%"],
-          ["Kafka consumer lag", "1,245"]
+          ["App response", "182 ms"],
+          ["Clean submissions", "96.8%"],
+          ["Waiting to process", "1,245"]
         ].map(([label, value]) => (
           <article key={label} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">

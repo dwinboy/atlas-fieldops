@@ -18,8 +18,6 @@ const baseForm: DynamicForm = {
   status: "draft",
   version: 1,
   activeVersion: 0,
-  defaultLanguage: "en",
-  languages: ["en"],
   sections: [{ id: "main", title: "Main" }],
   updatedAt: "2026-05-27T00:00:00.000Z",
   fields: []
@@ -97,6 +95,9 @@ describe("dynamic form helpers", () => {
     const schema = toMobileSchema(form);
 
     expect(schema.offline_compatible).toBe(true);
+    expect(schema.language).toBe("en");
+    expect(schema.sections[0]?.title).toBe("Main");
+    expect(schema.sections[0]?.fields[0]?.label).toBe("Farm GPS");
     expect(schema.sections[0]?.fields[0]?.type).toBe("gps");
     expect(schema.sections[0]?.fields[0]?.validation).toEqual({ accuracyMax: 20 });
   });
