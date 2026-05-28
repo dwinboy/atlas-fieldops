@@ -58,7 +58,7 @@ class UserAccessGrant(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base
     scope_type: Mapped[str] = mapped_column(String(40), nullable=False)
     geography_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    organization_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organization_units.id"), nullable=True, index=True)
+    organization_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), nullable=True, index=True)
 
 
 class WorkflowPermission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):

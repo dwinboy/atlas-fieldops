@@ -21,3 +21,17 @@ def test_openapi_is_versioned_under_api_v1() -> None:
     response = client.get("/api/v1/openapi.json")
     assert response.status_code == 200
     assert "/api/v1/health" in response.json()["paths"]
+
+
+def test_frontend_origin_can_preflight_api_requests() -> None:
+    client = TestClient(create_app())
+    response = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": "http://127.0.0.1:3001",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3001"

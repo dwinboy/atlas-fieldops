@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.types import TypeEngine
 
 revision: str = "20260528_0009"
 down_revision: str | None = "20260528_0008"
@@ -25,7 +26,7 @@ def timestamp_cols() -> list[sa.Column]:
     ]
 
 
-def json_type() -> sa.TypeEngine[object]:
+def json_type() -> TypeEngine[object]:
     return sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 
 
