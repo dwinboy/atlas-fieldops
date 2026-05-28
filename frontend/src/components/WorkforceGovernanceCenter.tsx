@@ -48,6 +48,8 @@ type WorkforceGovernanceCenterProps = {
   token: string | null;
 };
 
+type WorkforceSection = "setup" | "access" | "directory" | "security";
+
 function slugify(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "new-item";
 }
@@ -68,6 +70,7 @@ function safeCode(value: string, fallback: string): string {
 }
 
 export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterProps) {
+  const [activeSection, setActiveSection] = useState<WorkforceSection>("setup");
   const [departmentName, setDepartmentName] = useState("Monitoring and Evaluation");
   const [teamName, setTeamName] = useState("District M&E Team");
   const [teamRegion, setTeamRegion] = useState("district-default");
@@ -274,18 +277,48 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     { label: "Delegations", value: summary?.active_delegations ?? 0, icon: KeyRound },
     { label: "Devices", value: summary?.devices ?? 0, icon: Smartphone }
   ];
+  const setupProgress = Math.round(
+    ([
+      Boolean(summary?.departments),
+      Boolean(summary?.teams),
+      Boolean(summary?.workforce_profiles),
+      Boolean(summary?.approval_matrices),
+      Boolean(summary?.clearance_levels),
+      Boolean(summary?.devices)
+    ].filter(Boolean).length /
+      6) *
+      100
+  );
+  const nextBestAction =
+    !summary?.departments
+      ? "Create your first department"
+      : !summary.teams
+        ? "Create an operational team"
+        : !summary.workforce_profiles
+          ? "Assign a user to a team"
+          : !summary.approval_matrices
+            ? "Add an approval rule"
+            : !summary.clearance_levels || !summary.devices
+              ? "Add safeguards"
+              : "Test a user's access";
+  const sections: { id: WorkforceSection; label: string; hint: string }[] = [
+    { id: "setup", label: "Setup", hint: "Departments, teams, people" },
+    { id: "access", label: "Access", hint: "Requests, delegation, simulation" },
+    { id: "directory", label: "Directory", hint: "Tables and assignments" },
+    { id: "security", label: "Security", hint: "Devices, sessions, clearances" }
+  ];
 
   return (
     <section aria-labelledby="workforce-title" className="space-y-5">
       <div className="surface-premium overflow-hidden rounded-2xl p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+          <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Organizational governance</p>
             <h1 id="workforce-title" className="mt-2 text-2xl font-semibold tracking-tight">Workforce command center</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               Set up teams, assign people, review access requests, and test exactly what each user can see before they start working.
-          </p>
-        </div>
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={summary?.attention_items.length ? "warning" : "success"}>{summary?.governance_score ?? 0}% governed</Badge>
             <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>
@@ -313,6 +346,25 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
               <p className="mt-2 text-xs leading-5 text-muted-foreground">{text}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_320px]">
+          <div className="rounded-xl border bg-background/75 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">Setup progress</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Complete the basics before field teams begin collecting or approving data.</p>
+              </div>
+              <Badge tone={setupProgress >= 80 ? "success" : setupProgress >= 40 ? "warning" : "neutral"}>{setupProgress}% ready</Badge>
+            </div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${setupProgress}%` }} />
+            </div>
+          </div>
+          <div className="rounded-xl border bg-primary/5 p-4">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">Next best action</p>
+            <p className="mt-2 text-sm font-semibold">{nextBestAction}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">This keeps setup focused and prevents broad access before teams are structured.</p>
+          </div>
         </div>
       </div>
 
@@ -349,6 +401,25 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         </div>
       ) : null}
 
+      <div className="surface-premium rounded-2xl p-2">
+        <div className="grid gap-2 md:grid-cols-4">
+          {sections.map((section) => (
+            <button
+              className={`rounded-xl px-4 py-3 text-left transition ${
+                activeSection === section.id ? "bg-primary/10 text-primary shadow-line" : "hover:bg-muted/60"
+              }`}
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              type="button"
+            >
+              <span className="block text-sm font-semibold">{section.label}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{section.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeSection === "setup" ? (
       <div className="grid gap-4 xl:grid-cols-4">
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createDepartmentMutation.mutate(); }}>
           <div className="flex items-center gap-2">
@@ -413,7 +484,9 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           <Button className="mt-4 w-full" disabled={!firstUserId || createDelegationMutation.isPending} type="submit" variant="primary">Delegate approval</Button>
         </form>
       </div>
+      ) : null}
 
+      {activeSection === "access" ? (
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <section className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
@@ -486,7 +559,9 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </div>
         </aside>
       </div>
+      ) : null}
 
+      {activeSection === "directory" ? (
       <div className="grid gap-5 xl:grid-cols-2">
         <DataTable columns={departmentColumns} emptyLabel="No departments yet" rows={departmentsQuery.data ?? []} searchLabel="Search departments" title="Departments and business units" />
         <DataTable columns={teamColumns} emptyLabel="No teams yet" rows={teamsQuery.data ?? []} searchLabel="Search teams" title="Operational teams" />
@@ -495,13 +570,36 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         <DataTable columns={matrixColumns} emptyLabel="No approval matrices yet" rows={matricesQuery.data ?? []} searchLabel="Search matrices" title="Approval matrices" />
         <DataTable columns={accessRequestColumns} emptyLabel="No access requests yet" rows={accessRequestsQuery.data ?? []} searchLabel="Search requests" title="Access requests" />
       </div>
+      ) : null}
 
+      {activeSection === "security" ? (
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border bg-panel p-4"><p className="text-xs text-muted-foreground">Clearance levels</p><p className="mt-2 text-2xl font-semibold">{clearancesQuery.data?.length ?? 0}</p></div>
-        <div className="rounded-2xl border bg-panel p-4"><p className="text-xs text-muted-foreground">Operational zones</p><p className="mt-2 text-2xl font-semibold">{zonesQuery.data?.length ?? 0}</p></div>
-        <div className="rounded-2xl border bg-panel p-4"><p className="text-xs text-muted-foreground">Trusted devices</p><p className="mt-2 text-2xl font-semibold">{devicesQuery.data?.length ?? 0}</p></div>
-        <div className="rounded-2xl border bg-panel p-4"><p className="text-xs text-muted-foreground">Session logs</p><p className="mt-2 text-2xl font-semibold">{sessionsQuery.data?.length ?? 0}</p></div>
+        {[
+          ["Clearance levels", clearancesQuery.data?.length ?? 0, "Who can access sensitive datasets"],
+          ["Operational zones", zonesQuery.data?.length ?? 0, "Geographic areas used for scoped access"],
+          ["Trusted devices", devicesQuery.data?.length ?? 0, "Registered mobile and desktop devices"],
+          ["Session logs", sessionsQuery.data?.length ?? 0, "Recent access and risk history"]
+        ].map(([label, value, text]) => (
+          <div className="rounded-2xl border bg-panel p-4" key={String(label)}>
+            <p className="text-xs text-muted-foreground">{String(label)}</p>
+            <p className="mt-2 text-2xl font-semibold">{String(value)}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{String(text)}</p>
+          </div>
+        ))}
+        <div className="rounded-2xl border bg-panel p-4 md:col-span-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Security baseline</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Create standard clearance, a district zone, and a trusted device record for field operations.</p>
+            </div>
+            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="primary" onClick={() => foundationMutation.mutate()}>
+              <ShieldCheck aria-hidden="true" />
+              Add standard safeguards
+            </Button>
+          </div>
+        </div>
       </div>
+      ) : null}
     </section>
   );
 }

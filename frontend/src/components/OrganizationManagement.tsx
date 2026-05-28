@@ -82,6 +82,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   });
 
   const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
+  const accessLoading = usersQuery.isLoading || rolesQuery.isLoading || catalogQuery.isLoading || unitsQuery.isLoading;
+  const accessError = usersQuery.isError || rolesQuery.isError || catalogQuery.isError || unitsQuery.isError;
 
   const organizationMutation = useMutation({
     mutationFn: () => {
@@ -309,18 +311,49 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
 
   return (
     <section aria-labelledby="organization-title" className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
+      <div className="surface-premium rounded-2xl p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Admin</p>
           <h1 id="organization-title" className="mt-2 text-2xl font-semibold tracking-tight">
             Team and access
           </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Invite people, choose their role, and control exactly which regions, projects, and workflows they can use.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Invite teammates, choose a practical role, narrow their scope, and route work to the right people without exposing another organization’s data.
           </p>
         </div>
-        <Badge tone="accent">{catalogRoles.length || roles.length} enterprise roles available</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="accent">{catalogRoles.length || roles.length} enterprise roles</Badge>
+            <Badge tone="neutral">{usersQuery.data?.length ?? 0} users</Badge>
+            <Badge tone="neutral">{unitsQuery.data?.length ?? 0} units</Badge>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {[
+            ["1", "Invite", "Create a login for the person."],
+            ["2", "Choose role", "Use the closest job function."],
+            ["3", "Limit scope", "Restrict by project, district, or own records."],
+            ["4", "Route work", "Send reviews or data to a role, team, or user."]
+          ].map(([step, title, text]) => (
+            <div className="rounded-xl border bg-background/75 p-3" key={step}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{step}</span>
+                <p className="text-sm font-medium">{title}</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{text}</p>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {accessLoading ? (
+        <div className="rounded-2xl border bg-panel p-4 text-sm text-muted-foreground">Loading users, roles, and access scopes...</div>
+      ) : null}
+      {accessError ? (
+        <div className="rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm" role="alert">
+          Team access data could not load. Check your connection and permissions, then refresh.
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <section className="surface-premium rounded-2xl p-4">
