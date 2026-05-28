@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   DndContext,
   KeyboardSensor,
@@ -59,11 +60,13 @@ import {
   publishForm,
   removeField,
   reorderFields,
+  toMobileSchema,
   updateField,
   type DynamicForm,
   type FieldType,
   type FormField
 } from "@/lib/forms";
+import { createForm, listForms, type DataFormRead } from "@/lib/api";
 import { formTemplateCategories, formTemplates, starterForms, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -173,6 +176,34 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
   };
 }
 
+type DynamicFormsProps = {
+  token: string | null;
+};
+
+function slugify(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || `form-${Date.now()}`
+  );
+}
+
+function persistedFormToLocal(form: DataFormRead): DynamicForm {
+  return {
+    id: form.id,
+    name: form.name,
+    status: form.status === "published" ? "published" : form.status === "archived" ? "archived" : "draft",
+    version: form.current_version,
+    activeVersion: form.status === "published" ? form.current_version : 0,
+    updatedAt: new Date().toISOString(),
+    sections: [{ id: `${form.id}-summary`, title: "Saved form", description: form.description ?? "Stored in the backend." }],
+    fields: []
+  };
+}
+
 function SortableField({
   field,
   index,
@@ -237,7 +268,7 @@ function SortableField({
   );
 }
 
-export function DynamicForms() {
+export function DynamicForms({ token }: DynamicFormsProps) {
   const [forms, setForms] = useState<DynamicForm[]>(starterForms);
   const [selectedFormId, setSelectedFormId] = useState(starterForms[0]?.id ?? "");
   const [selectedFieldId, setSelectedFieldId] = useState(starterForms[0]?.fields[0]?.id ?? "");
@@ -249,8 +280,33 @@ export function DynamicForms() {
   const pendingTemplateId = useWorkspaceStore((state) => state.pendingTemplateId);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const selectedForm = useMemo(() => forms.find((form) => form.id === selectedFormId) ?? forms[0], [forms, selectedFormId]);
+  const backendFormsQuery = useQuery({
+    queryKey: ["forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const persistedForms = useMemo(() => (backendFormsQuery.data ?? []).map(persistedFormToLocal), [backendFormsQuery.data]);
+  const allForms = useMemo(() => (persistedForms.length ? [...forms, ...persistedForms] : forms), [forms, persistedForms]);
+  const selectedForm = useMemo(() => allForms.find((form) => form.id === selectedFormId) ?? allForms[0], [allForms, selectedFormId]);
   const selectedField = selectedForm?.fields.find((field) => field.id === selectedFieldId) ?? selectedForm?.fields[0];
+  const publishMutation = useMutation({
+    mutationFn: (payload: { form: DynamicForm; publish: boolean }) =>
+      createForm(token ?? "", {
+        name: payload.form.name,
+        slug: `${slugify(payload.form.name)}-${Date.now().toString(36)}`,
+        description: payload.form.sections[0]?.description ?? null,
+        schema: toMobileSchema(payload.form) as Record<string, unknown>,
+        publish: payload.publish
+      }),
+    onSuccess: async (savedForm) => {
+      pushToast({
+        title: savedForm.status === "published" ? "Form published" : "Form saved",
+        description: `${savedForm.name} is stored in the backend as version ${savedForm.current_version}.`,
+        tone: "success"
+      });
+      await backendFormsQuery.refetch();
+    }
+  });
   const visibleTemplates = useMemo(() => {
     const needle = templateQuery.trim().toLowerCase();
     return formTemplates.filter((template) => {
@@ -271,6 +327,22 @@ export function DynamicForms() {
 
   function updateSelectedForm(nextForm: DynamicForm) {
     setForms((current) => current.map((form) => (form.id === nextForm.id ? nextForm : form)));
+  }
+
+  function saveSelectedForm(publish: boolean) {
+    if (!selectedForm) {
+      return;
+    }
+    if (token && token !== "preview-token") {
+      publishMutation.mutate({ form: selectedForm, publish });
+      return;
+    }
+    updateSelectedForm(publish ? publishForm(selectedForm) : createDraftVersion(selectedForm));
+    pushToast({
+      title: publish ? "Preview form published" : "Preview draft saved",
+      description: `${selectedForm.name} was updated in preview mode.`,
+      tone: "success"
+    });
   }
 
   function applyTemplate(template: FormTemplateCard) {
@@ -487,7 +559,7 @@ export function DynamicForms() {
               <h2 className="text-sm font-semibold">Forms</h2>
             </div>
             <div className="space-y-2">
-              {forms.map((form) => (
+              {allForms.map((form) => (
                 <button
                   key={form.id}
                   className={cn(
@@ -505,7 +577,7 @@ export function DynamicForms() {
                     <Badge tone={form.status === "published" ? "success" : "neutral"}>Version {form.version}</Badge>
                   </span>
                   <span className="mt-2 block text-xs text-muted-foreground">
-                    {form.fields.length} questions · {form.status}
+                    {form.fields.length ? `${form.fields.length} questions` : "Saved backend form"} · {form.status}
                   </span>
                 </button>
               ))}
@@ -563,9 +635,9 @@ export function DynamicForms() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => {
-                      updateSelectedForm(createDraftVersion(selectedForm));
-                      pushToast({ title: "Draft ready to edit", description: `${selectedForm.name} can now be updated`, tone: "success" });
+                      saveSelectedForm(false);
                     }}
+                    disabled={publishMutation.isPending}
                   >
                     <GitBranch aria-hidden="true" />
                     Edit draft
@@ -576,9 +648,9 @@ export function DynamicForms() {
                   </Button>
                   <Button
                     onClick={() => {
-                      updateSelectedForm(publishForm(selectedForm));
-                      pushToast({ title: "Form published", description: `${selectedForm.name} version ${selectedForm.version} is live`, tone: "success" });
+                      saveSelectedForm(true);
                     }}
+                    disabled={publishMutation.isPending}
                     variant="primary"
                   >
                     <UploadCloud aria-hidden="true" />

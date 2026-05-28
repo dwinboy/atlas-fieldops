@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   BadgeCheck,
   Clock3,
@@ -18,6 +19,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { duplicateFormTemplate, listFormTemplates } from "@/lib/api";
 import { formTemplateCategories, formTemplates, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -173,13 +175,34 @@ function PreviewPanel({ template }: { template: FormTemplateCard }) {
   );
 }
 
-export function FormTemplateLibrary() {
+export function FormTemplateLibrary({ token }: { token: string | null }) {
   const [activeCategory, setActiveCategory] = useState("Recommended");
   const [query, setQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const backendTemplatesQuery = useQuery({
+    queryKey: ["form-templates", token],
+    queryFn: () => listFormTemplates(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const duplicateMutation = useMutation({
+    mutationFn: (template: FormTemplateCard) =>
+      duplicateFormTemplate(token ?? "", template.id, {
+        name: template.name,
+        slug: `${template.id}-${Date.now().toString(36)}`,
+        publish: false
+      }),
+    onSuccess: (form) => {
+      pushToast({
+        title: "Template copied",
+        description: `${form.name} is now a backend draft form.`,
+        tone: "success"
+      });
+      setActiveView("forms");
+    }
+  });
 
   const visibleTemplates = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -198,6 +221,10 @@ export function FormTemplateLibrary() {
     formTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0] ?? formTemplates[0];
 
   function handleUseTemplate(template: FormTemplateCard) {
+    if (token && token !== "preview-token") {
+      duplicateMutation.mutate(template);
+      return;
+    }
     setPendingTemplateId(template.id);
     pushToast({
       title: "Template copied",
@@ -224,7 +251,7 @@ export function FormTemplateLibrary() {
             <Wand2 aria-hidden="true" />
             AI suggestions
           </Button>
-          <Button onClick={() => selectedTemplate && handleUseTemplate(selectedTemplate)} type="button" variant="primary">
+          <Button disabled={duplicateMutation.isPending} onClick={() => selectedTemplate && handleUseTemplate(selectedTemplate)} type="button" variant="primary">
             <Copy aria-hidden="true" />
             Use selected
           </Button>
@@ -232,6 +259,11 @@ export function FormTemplateLibrary() {
       </div>
 
       <div className="rounded-lg border bg-panel p-3 shadow-line">
+        {backendTemplatesQuery.data?.length ? (
+          <p className="mb-3 rounded-md border bg-success/10 px-3 py-2 text-xs text-muted-foreground">
+            Live backend template catalog connected: {backendTemplatesQuery.data.length} templates available for duplication.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative max-w-2xl flex-1">
             <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />

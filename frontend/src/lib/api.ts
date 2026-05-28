@@ -262,6 +262,24 @@ export type ExportJobRead = {
   scheduled: boolean;
 };
 
+export type DataFormCreate = {
+  name: string;
+  slug: string;
+  description?: string | null;
+  schema: Record<string, unknown>;
+  publish?: boolean;
+};
+
+export type DataFormRead = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: string;
+  current_version: number;
+  is_active: boolean;
+};
+
 export type TemplateFieldSummary = {
   field_count: number;
   repeat_group_count: number;
@@ -456,6 +474,14 @@ export async function createExportJob(token: string, payload: ExportJobCreate): 
   return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listForms(token: string): Promise<DataFormRead[]> {
+  return request<DataFormRead[]>("/forms", { token });
+}
+
+export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
+  return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
+}
+
 export async function listFormTemplates(
   token: string,
   params: { category?: string; search?: string; organization_type?: string } = {}
@@ -486,6 +512,7 @@ export const api = {
   createOrganization,
   createExportJob,
   duplicateFormTemplate,
+  createForm,
   createImportJob,
   createUser,
   getCurrentPrincipal,
@@ -496,6 +523,7 @@ export const api = {
   getOperationsSummary,
   listBeneficiaries,
   listFieldOfficers,
+  listForms,
   listFormTemplates,
   listImportJobs,
   listImportRows,
