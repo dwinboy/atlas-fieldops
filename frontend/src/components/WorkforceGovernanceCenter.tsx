@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, GitPullRequestArrow, KeyRound, Network, ShieldCheck, Smartphone, UsersRound } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, GitPullRequestArrow, KeyRound, Network, Send, ShieldCheck, Smartphone, UserCheck, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -58,6 +58,15 @@ function inSevenDays(): string {
   return date.toISOString();
 }
 
+function formatLabel(value: string | null | undefined): string {
+  return value?.replaceAll("_", " ").replaceAll(".", " ") || "Not set";
+}
+
+function safeCode(value: string, fallback: string): string {
+  const code = slugify(value);
+  return code === "new-item" ? fallback : code;
+}
+
 export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterProps) {
   const [departmentName, setDepartmentName] = useState("Monitoring and Evaluation");
   const [teamName, setTeamName] = useState("District M&E Team");
@@ -88,9 +97,31 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const firstDepartmentId = departmentsQuery.data?.[0]?.id ?? null;
   const firstTeamId = teamsQuery.data?.[0]?.id ?? null;
   const firstUserId = usersQuery.data?.[0]?.id ?? "";
+  const activeUserId = selectedUserId || firstUserId;
+  const activeDelegateUserId = delegateUserId || firstUserId;
+  const queriesLoading = [
+    summaryQuery,
+    departmentsQuery,
+    teamsQuery,
+    usersQuery,
+    profilesQuery,
+    delegationsQuery,
+    matricesQuery,
+    accessRequestsQuery
+  ].some((query) => query.isLoading);
+  const queriesError = [
+    summaryQuery,
+    departmentsQuery,
+    teamsQuery,
+    usersQuery,
+    profilesQuery,
+    delegationsQuery,
+    matricesQuery,
+    accessRequestsQuery
+  ].some((query) => query.isError);
 
   const createDepartmentMutation = useMutation({
-    mutationFn: () => createDepartment(token ?? "", { name: departmentName, code: slugify(departmentName), department_type: "department" }),
+    mutationFn: () => createDepartment(token ?? "", { name: departmentName, code: safeCode(departmentName, "department"), department_type: "department" }),
     onSuccess: async () => {
       pushToast({ title: "Department created", description: "The organization hierarchy now has a governed business unit.", tone: "success" });
       await Promise.all([departmentsQuery.refetch(), summaryQuery.refetch()]);
@@ -98,7 +129,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   });
 
   const createTeamMutation = useMutation({
-    mutationFn: () => createTeam(token ?? "", { name: teamName, code: slugify(teamName), department_id: firstDepartmentId, region: teamRegion }),
+    mutationFn: () => createTeam(token ?? "", { name: teamName, code: safeCode(teamName, "team"), department_id: firstDepartmentId, region: teamRegion }),
     onSuccess: async () => {
       pushToast({ title: "Team created", description: "The team can now be used for assignments, routes, and approval visibility.", tone: "success" });
       await Promise.all([teamsQuery.refetch(), summaryQuery.refetch()]);
@@ -108,9 +139,9 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const createProfileMutation = useMutation({
     mutationFn: () =>
       createWorkforceProfile(token ?? "", {
-        user_id: selectedUserId || firstUserId,
+        user_id: activeUserId,
         job_title: jobTitle,
-        employee_code: `EMP-${(selectedUserId || firstUserId).slice(0, 6)}`,
+        employee_code: `EMP-${activeUserId.slice(0, 6)}`,
         department_id: firstDepartmentId,
         team_id: firstTeamId,
         clearance_level: "standard"
@@ -124,7 +155,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const createDelegationMutation = useMutation({
     mutationFn: () =>
       createDelegation(token ?? "", {
-        delegate_user_id: delegateUserId || firstUserId,
+        delegate_user_id: activeDelegateUserId,
         permission: "submissions.approve",
         scope_type: "district",
         geography_id: teamRegion,
@@ -201,7 +232,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   const departmentColumns: TableColumn<DepartmentRead>[] = [
     { key: "name", header: "Department", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.code}</p></div> },
-    { key: "type", header: "Type", value: (row) => row.department_type, render: (row) => row.department_type },
+    { key: "type", header: "Type", value: (row) => row.department_type, render: (row) => formatLabel(row.department_type) },
     { key: "manager", header: "Manager", value: (row) => row.manager_user_id ?? "", render: (row) => row.manager_user_id ? userNameById.get(row.manager_user_id)?.full_name ?? row.manager_user_id.slice(0, 8) : "Unassigned" }
   ];
 
@@ -219,18 +250,18 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   const delegationColumns: TableColumn<DelegationRead>[] = [
     { key: "delegate", header: "Delegate", value: (row) => row.delegate_user_id, render: (row) => userNameById.get(row.delegate_user_id)?.full_name ?? row.delegate_user_id.slice(0, 8) },
-    { key: "permission", header: "Permission", value: (row) => row.permission, render: (row) => row.permission },
+    { key: "permission", header: "Permission", value: (row) => row.permission, render: (row) => formatLabel(row.permission) },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "active" ? "success" : "neutral"}>{row.status}</Badge> }
   ];
 
   const matrixColumns: TableColumn<ApprovalMatrixRead>[] = [
     { key: "matrix", header: "Matrix", value: (row) => row.matrix_code, render: (row) => <div><p className="font-medium">{row.matrix_code}</p><p className="text-xs text-muted-foreground">{row.workflow_type}</p></div> },
-    { key: "role", header: "Required role", value: (row) => row.required_role, render: (row) => row.required_role.replaceAll("_", " ") },
+    { key: "role", header: "Required role", value: (row) => row.required_role, render: (row) => formatLabel(row.required_role) },
     { key: "sla", header: "SLA", value: (row) => String(row.sla_hours), render: (row) => `${row.sla_hours} hours` }
   ];
 
   const accessRequestColumns: TableColumn<AccessRequestRead>[] = [
-    { key: "permission", header: "Request", value: (row) => row.requested_permission, render: (row) => <div><p className="font-medium">{row.requested_permission}</p><p className="text-xs text-muted-foreground">{row.reason || "No reason provided"}</p></div> },
+    { key: "permission", header: "Request", value: (row) => row.requested_permission, render: (row) => <div><p className="font-medium">{formatLabel(row.requested_permission)}</p><p className="text-xs text-muted-foreground">{row.reason || "No reason provided"}</p></div> },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "pending" ? "warning" : row.status === "approved" ? "success" : "neutral"}>{row.status}</Badge> },
     { key: "actions", header: "Actions", value: (row) => row.id, render: (row) => row.status === "pending" ? <div className="flex gap-2"><Button size="sm" type="button" variant="secondary" onClick={() => reviewRequestMutation.mutate({ id: row.id, decision: "approved" })}>Approve</Button><Button size="sm" type="button" variant="ghost" onClick={() => reviewRequestMutation.mutate({ id: row.id, decision: "rejected" })}>Reject</Button></div> : "Reviewed" }
   ];
@@ -246,16 +277,53 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   return (
     <section aria-labelledby="workforce-title" className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div className="surface-premium overflow-hidden rounded-2xl p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Organizational governance</p>
-          <h1 id="workforce-title" className="mt-2 text-2xl font-semibold tracking-tight">Workforce command center</h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Manage departments, teams, temporary access, approval matrices, device trust, and role simulation in one tenant-scoped control room.
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Organizational governance</p>
+            <h1 id="workforce-title" className="mt-2 text-2xl font-semibold tracking-tight">Workforce command center</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Set up teams, assign people, review access requests, and test exactly what each user can see before they start working.
           </p>
         </div>
-        <Badge tone={summary?.attention_items.length ? "warning" : "success"}>{summary?.governance_score ?? 0}% governed</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={summary?.attention_items.length ? "warning" : "success"}>{summary?.governance_score ?? 0}% governed</Badge>
+            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>
+              <ShieldCheck aria-hidden="true" />
+              Add safeguards
+            </Button>
+            <Button disabled={createMatrixMutation.isPending} type="button" variant="primary" onClick={() => createMatrixMutation.mutate()}>
+              <ClipboardCheck aria-hidden="true" />
+              Add approval rule
+            </Button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {[
+            ["1", "Create departments", "Mirror your real organization structure."],
+            ["2", "Create teams", "Group staff by region, project, or function."],
+            ["3", "Assign profiles", "Connect each user to a manager, team, and clearance."],
+            ["4", "Test access", "Verify access before work or exports begin."]
+          ].map(([step, title, text]) => (
+            <div className="rounded-xl border bg-background/70 p-3" key={step}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{step}</span>
+                <p className="text-sm font-medium">{title}</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{text}</p>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {queriesLoading ? (
+        <div className="rounded-2xl border bg-panel p-4 text-sm text-muted-foreground">Loading workforce governance records...</div>
+      ) : null}
+      {queriesError ? (
+        <div className="rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm" role="alert">
+          Some workforce governance data could not load. Check your connection and permissions, then refresh.
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-5">
         {summaryCards.map(({ label, value, icon: Icon }) => (
@@ -283,31 +351,65 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
       <div className="grid gap-4 xl:grid-cols-4">
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createDepartmentMutation.mutate(); }}>
-          <h2 className="text-sm font-semibold">Department</h2>
-          <Input className="mt-3" value={departmentName} onChange={(event) => setDepartmentName(event.target.value)} />
-          <Button className="mt-4 w-full" disabled={createDepartmentMutation.isPending} type="submit" variant="primary">Create department</Button>
+          <div className="flex items-center gap-2">
+            <Network aria-hidden="true" size={17} />
+            <h2 className="text-sm font-semibold">Add a department</h2>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Use departments for M&E, programs, finance, compliance, and operations.</p>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">
+            Department name
+            <Input className="mt-1" value={departmentName} onChange={(event) => setDepartmentName(event.target.value)} />
+          </label>
+          <Button className="mt-4 w-full" disabled={!departmentName.trim() || createDepartmentMutation.isPending} type="submit" variant="primary">Create department</Button>
         </form>
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createTeamMutation.mutate(); }}>
-          <h2 className="text-sm font-semibold">Team</h2>
-          <Input className="mt-3" value={teamName} onChange={(event) => setTeamName(event.target.value)} />
-          <Input className="mt-2" value={teamRegion} onChange={(event) => setTeamRegion(event.target.value)} />
-          <Button className="mt-4 w-full" disabled={createTeamMutation.isPending} type="submit" variant="primary">Create team</Button>
+          <div className="flex items-center gap-2">
+            <UsersRound aria-hidden="true" size={17} />
+            <h2 className="text-sm font-semibold">Create a team</h2>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Teams route field work, review queues, and alerts to the right people.</p>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">
+            Team name
+            <Input className="mt-1" value={teamName} onChange={(event) => setTeamName(event.target.value)} />
+          </label>
+          <label className="mt-2 block text-xs font-medium text-muted-foreground">
+            Region or district code
+            <Input className="mt-1" value={teamRegion} onChange={(event) => setTeamRegion(event.target.value)} />
+          </label>
+          <Button className="mt-4 w-full" disabled={!teamName.trim() || createTeamMutation.isPending} type="submit" variant="primary">Create team</Button>
         </form>
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createProfileMutation.mutate(); }}>
-          <h2 className="text-sm font-semibold">Workforce profile</h2>
-          <Select className="mt-3" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+          <div className="flex items-center gap-2">
+            <UserCheck aria-hidden="true" size={17} />
+            <h2 className="text-sm font-semibold">Assign a person</h2>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Link an existing user to a job title, team, and clearance level.</p>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">
+            User
+            <Select className="mt-1" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
             <option value="">Choose user</option>
             {(usersQuery.data ?? []).map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
-          </Select>
-          <Input className="mt-2" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} />
-          <Button className="mt-4 w-full" disabled={!firstUserId || createProfileMutation.isPending} type="submit" variant="primary">Link profile</Button>
+            </Select>
+          </label>
+          <label className="mt-2 block text-xs font-medium text-muted-foreground">
+            Job title
+            <Input className="mt-1" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} />
+          </label>
+          <Button className="mt-4 w-full" disabled={!firstUserId || !firstDepartmentId || !firstTeamId || createProfileMutation.isPending} type="submit" variant="primary">Assign profile</Button>
         </form>
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createDelegationMutation.mutate(); }}>
-          <h2 className="text-sm font-semibold">Delegation</h2>
-          <Select className="mt-3" value={delegateUserId} onChange={(event) => setDelegateUserId(event.target.value)}>
+          <div className="flex items-center gap-2">
+            <KeyRound aria-hidden="true" size={17} />
+            <h2 className="text-sm font-semibold">Delegate approval</h2>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Temporarily allow someone to approve submissions for this district.</p>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">
+            Delegate to
+            <Select className="mt-1" value={delegateUserId} onChange={(event) => setDelegateUserId(event.target.value)}>
             <option value="">Choose delegate</option>
             {(usersQuery.data ?? []).map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
-          </Select>
+            </Select>
+          </label>
           <Button className="mt-4 w-full" disabled={!firstUserId || createDelegationMutation.isPending} type="submit" variant="primary">Delegate approval</Button>
         </form>
       </div>
@@ -316,8 +418,11 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         <section className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
             <GitPullRequestArrow aria-hidden="true" size={18} />
-            <h2 className="text-sm font-semibold">Policy-based access simulation</h2>
+            <h2 className="text-sm font-semibold">Check what a user can access</h2>
           </div>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Test a real permission before assigning work. This helps managers confirm whether a user can approve, export, or view data in a specific area.
+          </p>
           <form className="mt-4 grid gap-4 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); simulateMutation.mutate(); }}>
             <label className="block text-sm font-medium">
               User
@@ -329,33 +434,54 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
             <label className="block text-sm font-medium">
               Permission
               <Input className="mt-2" value={simulatePermissionName} onChange={(event) => setSimulatePermissionName(event.target.value)} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">Example: submissions.approve or data.export</span>
             </label>
             <label className="block text-sm font-medium">
               Geography
               <Input className="mt-2" value={simulateGeography} onChange={(event) => setSimulateGeography(event.target.value)} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">Use the district or region code assigned to the user.</span>
             </label>
             <Button className="self-end" disabled={!firstUserId || simulateMutation.isPending} type="submit" variant="primary">Test access</Button>
           </form>
           {simulation ? (
             <div className="mt-4 rounded-xl border bg-background/80 p-4">
-              <Badge tone={simulation.allowed ? "success" : "warning"}>{simulation.decision}</Badge>
-              <p className="mt-3 text-sm font-medium">Roles: {simulation.matched_roles.join(", ") || "none"}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={simulation.allowed ? "success" : "warning"}>{simulation.allowed ? "Allowed" : "Denied"}</Badge>
+                <span className="text-sm text-muted-foreground">Matched scope: {formatLabel(simulation.matched_scope)}</span>
+              </div>
+              <p className="mt-3 text-sm font-medium">Roles: {simulation.matched_roles.map(formatLabel).join(", ") || "none"}</p>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
-                {simulation.reasons.map((reason) => <p className="rounded-lg bg-muted/45 p-3 text-sm" key={reason}>{reason}</p>)}
+                {simulation.reasons.map((reason) => (
+                  <p className="flex gap-2 rounded-lg bg-muted/45 p-3 text-sm" key={reason}>
+                    <CheckCircle2 aria-hidden="true" className={simulation.allowed ? "text-success" : "text-warning"} size={15} />
+                    <span>{reason}</span>
+                  </p>
+                ))}
               </div>
             </div>
           ) : null}
         </section>
 
         <aside className="surface-premium rounded-2xl p-4">
-          <h2 className="text-sm font-semibold">Quick governance actions</h2>
+          <h2 className="text-sm font-semibold">Common manager actions</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Use these when you need a fast setup baseline or a controlled access request.</p>
           <div className="mt-4 space-y-3">
-            <Button className="w-full justify-start" disabled={createMatrixMutation.isPending} type="button" variant="secondary" onClick={() => createMatrixMutation.mutate()}>Create approval matrix</Button>
-            <Button className="w-full justify-start" disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>Add clearance, zone, and device</Button>
+            <Button className="w-full justify-start" disabled={createMatrixMutation.isPending} type="button" variant="secondary" onClick={() => createMatrixMutation.mutate()}>
+              <ClipboardCheck aria-hidden="true" />
+              Create high-risk approval rule
+            </Button>
+            <Button className="w-full justify-start" disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>
+              <ShieldCheck aria-hidden="true" />
+              Add standard safeguards
+            </Button>
             <div className="rounded-xl border bg-background/80 p-3">
               <p className="text-sm font-medium">Request access</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Create a reviewable request instead of granting broad permissions informally.</p>
               <Input className="mt-2" value={requestPermission} onChange={(event) => setRequestPermission(event.target.value)} />
-              <Button className="mt-3 w-full" disabled={createAccessRequestMutation.isPending} type="button" variant="primary" onClick={() => createAccessRequestMutation.mutate()}>Submit request</Button>
+              <Button className="mt-3 w-full" disabled={createAccessRequestMutation.isPending} type="button" variant="primary" onClick={() => createAccessRequestMutation.mutate()}>
+                <Send aria-hidden="true" />
+                Submit request
+              </Button>
             </div>
           </div>
         </aside>
