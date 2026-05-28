@@ -8,7 +8,8 @@ from app.api.v1.dependencies import get_current_principal, require_permission, r
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.identity import OrganizationCreate, OrganizationRead
+from app.repositories.identity import OrganizationRepository
+from app.schemas.identity import OrganizationContextRead, OrganizationCreate, OrganizationRead
 from app.services.identity import IdentityConflictError, OrganizationService
 
 router = APIRouter()
@@ -37,11 +38,21 @@ async def create_organization(
         raise
 
 
-@router.get("/me", response_model=dict[str, UUID | list[str]], summary="Current tenant context")
+@router.get("/me", response_model=OrganizationContextRead, summary="Current tenant context")
 async def organization_context(
     principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
-) -> dict[str, UUID | list[str]]:
-    return {"organization_id": UUID(principal.organization_id), "roles": principal.roles}
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrganizationContextRead:
+    organization = await OrganizationRepository(session).get(UUID(principal.organization_id))
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    return OrganizationContextRead(
+        organization_id=organization.id,
+        name=organization.name,
+        slug=organization.slug,
+        roles=principal.roles,
+        logo_url=None,
+    )
 
 
 @router.get(

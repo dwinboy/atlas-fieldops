@@ -23,6 +23,14 @@ class OrganizationRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OrganizationContextRead(BaseModel):
+    organization_id: UUID
+    name: str
+    slug: str
+    roles: list[str]
+    logo_url: str | None = None
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12)

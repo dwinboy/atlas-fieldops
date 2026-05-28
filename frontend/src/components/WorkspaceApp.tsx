@@ -27,7 +27,7 @@ import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
-import { getCurrentPrincipal } from "@/lib/api";
+import { getCurrentPrincipal, getOrganizationContext } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -53,6 +53,12 @@ export function WorkspaceApp() {
     enabled: Boolean(token)
   });
 
+  const organizationQuery = useQuery({
+    queryKey: ["organization-context", token],
+    queryFn: () => getOrganizationContext(token ?? ""),
+    enabled: Boolean(token)
+  });
+
   if (!token) {
     return (
       <>
@@ -67,9 +73,11 @@ export function WorkspaceApp() {
     );
   }
 
-  const organizationLabel = principalQuery.data?.organization_id
-    ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
-    : "Organization workspace";
+  const organizationLabel =
+    organizationQuery.data?.name ??
+    (principalQuery.data?.organization_id
+      ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
+      : "Organization workspace");
 
   const content = {
     dashboard: <Dashboard token={token} />,
@@ -98,6 +106,8 @@ export function WorkspaceApp() {
         setToken(null);
       }}
       organizationLabel={organizationLabel}
+      organizationLogoUrl={organizationQuery.data?.logo_url}
+      organizationSlug={organizationQuery.data?.slug}
       principal={principalQuery.data}
     >
       <CommandPalette />

@@ -40,6 +40,14 @@ export type OrganizationRead = {
   temporary_password?: string | null;
 };
 
+export type OrganizationContext = {
+  organization_id: string;
+  name: string;
+  slug: string;
+  roles: string[];
+  logo_url?: string | null;
+};
+
 export type UserCreate = {
   email: string;
   password: string;
@@ -460,6 +468,10 @@ export async function getCurrentPrincipal(token: string): Promise<CurrentPrincip
   return request<CurrentPrincipal>("/auth/me", { token });
 }
 
+export async function getOrganizationContext(token: string): Promise<OrganizationContext> {
+  return request<OrganizationContext>("/organizations/me", { token });
+}
+
 export async function createOrganization(token: string, payload: OrganizationCreate): Promise<OrganizationRead> {
   return request<OrganizationRead>("/organizations", { method: "POST", token, bodyJson: payload });
 }
@@ -639,6 +651,7 @@ export const api = {
   getCurrentPrincipal,
   getHealth,
   getFormTemplate,
+  getOrganizationContext,
   getOperationalEcosystem,
   inviteFieldOfficer,
   getOperationsSummary,

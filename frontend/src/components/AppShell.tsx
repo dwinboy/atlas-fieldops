@@ -38,6 +38,8 @@ type AppShellProps = {
   children: ReactNode;
   onSignOut: () => void;
   organizationLabel: string;
+  organizationLogoUrl?: string | null;
+  organizationSlug?: string;
   principal?: CurrentPrincipal | null;
 };
 
@@ -90,7 +92,34 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 
 const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
 
-export function AppShell({ children, onSignOut, organizationLabel, principal }: AppShellProps) {
+function organizationInitials(name: string): string {
+  const words = name
+    .replace(/[^a-zA-Z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length) return "OF";
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join("");
+}
+
+function OrganizationMark({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  if (logoUrl) {
+    return (
+      <div
+        aria-label={`${name} logo`}
+        className="h-10 w-10 shrink-0 rounded-xl border bg-background bg-cover bg-center shadow-sm"
+        role="img"
+        style={{ backgroundImage: `url("${logoUrl}")` }}
+      />
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-sm font-semibold text-primary shadow-sm">
+      {organizationInitials(name)}
+    </div>
+  );
+}
+
+export function AppShell({ children, onSignOut, organizationLabel, organizationLogoUrl, organizationSlug, principal }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -157,12 +186,10 @@ export function AppShell({ children, onSignOut, organizationLabel, principal }: 
     >
       <aside className="relative sticky top-0 hidden h-screen overflow-hidden border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:block">
         <div className={cn("mb-5 flex items-center gap-3 px-1", collapsedSidebar && "justify-center")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary shadow-sm">
-            <ShieldCheck aria-hidden="true" size={20} />
-          </div>
+          <OrganizationMark logoUrl={organizationLogoUrl} name={organizationLabel} />
           <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
-            <p className="text-sm font-semibold">Atlas FieldOps</p>
-            <p className="truncate text-xs text-muted-foreground">{organizationLabel}</p>
+            <p className="truncate text-sm font-semibold">{organizationLabel}</p>
+            <p className="truncate text-xs text-muted-foreground">{organizationSlug ?? "Atlas FieldOps"}</p>
           </div>
         </div>
         <button
@@ -218,11 +245,17 @@ export function AppShell({ children, onSignOut, organizationLabel, principal }: 
             >
               <Menu aria-hidden="true" />
             </Button>
-          <div>
-            <p className="text-sm font-semibold tracking-normal">Field data workspace</p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="lg:hidden">
+              <OrganizationMark logoUrl={organizationLogoUrl} name={organizationLabel} />
+            </div>
+            <div className="min-w-0">
+            <p className="truncate text-sm font-semibold tracking-normal">{organizationLabel}</p>
             <p className="hidden text-xs text-muted-foreground sm:block">
-                {organizationLabel} · {principal?.scope_type ? `${principal.scope_type.replace("_", " ")} scoped access` : "Forms, teams, reviews, and reports"}
+                {organizationSlug ? `${organizationSlug} · ` : ""}
+                {principal?.scope_type ? `${principal.scope_type.replace("_", " ")} scoped access` : "Forms, teams, reviews, and reports"}
             </p>
+            </div>
           </div>
           </div>
           <div className="flex items-center gap-2">

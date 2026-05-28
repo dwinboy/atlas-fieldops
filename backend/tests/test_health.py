@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.schemas.identity import OrganizationContextRead
 
 
 def test_health() -> None:
@@ -35,3 +36,16 @@ def test_frontend_origin_can_preflight_api_requests() -> None:
     )
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3001"
+
+
+def test_organization_context_schema_exposes_display_identity() -> None:
+    payload = OrganizationContextRead(
+        organization_id="00000000-0000-0000-0000-000000000001",
+        name="Atlas Demo",
+        slug="atlas-demo",
+        roles=["owner"],
+    )
+
+    assert payload.name == "Atlas Demo"
+    assert payload.slug == "atlas-demo"
+    assert payload.logo_url is None
