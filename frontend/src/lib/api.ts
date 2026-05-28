@@ -17,6 +17,10 @@ export type CurrentPrincipal = {
   user_id: string;
   organization_id: string;
   roles: string[];
+  permissions?: string[];
+  scope_type?: string;
+  menu_views?: string[];
+  workflow_actions?: string[];
 };
 
 export type OrganizationCreate = {
@@ -36,6 +40,9 @@ export type UserCreate = {
   password: string;
   full_name: string;
   role_name: string;
+  scope_type?: string | null;
+  geography_ids?: string[];
+  project_ids?: string[];
 };
 
 export type UserRead = {
@@ -49,7 +56,36 @@ export type RoleRead = {
   id: string;
   organization_id: string;
   name: string;
+  label?: string;
+  description?: string;
+  scope_type?: string;
+  is_system?: boolean;
   permissions: string[];
+};
+
+export type AccessCatalog = {
+  roles: {
+    name: string;
+    label: string;
+    description: string;
+    scope_type: string;
+    permissions: string[];
+    workflow_actions: string[];
+    menu_views: string[];
+  }[];
+  permissions: { key: string; label: string; group: string }[];
+  scope_types: string[];
+  workflow_actions: string[];
+};
+
+export type OrganizationUnitRead = {
+  id: string;
+  organization_id: string;
+  parent_unit_id: string | null;
+  name: string;
+  code: string;
+  unit_type: string;
+  region: string | null;
 };
 
 export type FieldOfficerInvite = {
@@ -310,6 +346,14 @@ export async function createUser(token: string, payload: UserCreate): Promise<Us
 
 export async function listRoles(token: string): Promise<RoleRead[]> {
   return request<RoleRead[]>("/roles", { token });
+}
+
+export async function getAccessCatalog(token: string): Promise<AccessCatalog> {
+  return request<AccessCatalog>("/roles/catalog", { token });
+}
+
+export async function listOrganizationUnits(token: string): Promise<OrganizationUnitRead[]> {
+  return request<OrganizationUnitRead[]>("/roles/organization-units", { token });
 }
 
 export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {

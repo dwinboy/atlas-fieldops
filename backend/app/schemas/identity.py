@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -21,7 +22,10 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12)
     full_name: str = Field(min_length=2, max_length=200)
-    role_name: str = Field(default="collector", min_length=2, max_length=100)
+    role_name: str = Field(default="field_officer", min_length=2, max_length=100)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] | None = None
+    geography_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list)
 
 
 class UserRead(BaseModel):
@@ -42,5 +46,43 @@ class RoleRead(BaseModel):
     id: UUID
     organization_id: UUID
     name: str
+    label: str = ""
+    description: str = ""
+    scope_type: str = "organization"
+    is_system: bool = False
     permissions: list[str]
 
+
+class PermissionCatalogItem(BaseModel):
+    key: str
+    label: str
+    group: str
+
+
+class RoleCatalogItem(BaseModel):
+    name: str
+    label: str
+    description: str
+    scope_type: str
+    permissions: list[str]
+    workflow_actions: list[str]
+    menu_views: list[str]
+
+
+class AccessCatalogRead(BaseModel):
+    roles: list[RoleCatalogItem]
+    permissions: list[PermissionCatalogItem]
+    scope_types: list[str]
+    workflow_actions: list[str]
+
+
+class OrganizationUnitRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    parent_unit_id: UUID | None
+    name: str
+    code: str
+    unit_type: str
+    region: str | None
+
+    model_config = {"from_attributes": True}

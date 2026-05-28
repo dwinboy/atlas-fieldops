@@ -16,4 +16,7 @@ class CurrentPrincipal(BaseModel):
     user_id: str
     organization_id: str
     roles: list[str]
-
+    permissions: list[str] = []
+    scope_type: str = "own"
+    menu_views: list[str] = []
+    workflow_actions: list[str] = []

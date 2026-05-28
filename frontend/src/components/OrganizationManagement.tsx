@@ -1,14 +1,24 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, Plus, UserPlus } from "lucide-react";
+import { Building2, KeyRound, Plus, ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { createOrganization, createUser, listRoles, listUsers, type RoleRead, type UserRead } from "@/lib/api";
+import {
+  createOrganization,
+  createUser,
+  getAccessCatalog,
+  listOrganizationUnits,
+  listRoles,
+  listUsers,
+  type AccessCatalog,
+  type RoleRead,
+  type UserRead
+} from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type OrganizationManagementProps = {
@@ -20,7 +30,8 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [roleName, setRoleName] = useState("collector");
+  const [roleName, setRoleName] = useState("field_officer");
+  const [scopeType, setScopeType] = useState("district");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const usersQuery = useQuery({
@@ -32,6 +43,18 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const rolesQuery = useQuery({
     queryKey: ["roles", token],
     queryFn: () => listRoles(token ?? ""),
+    enabled: Boolean(token)
+  });
+
+  const catalogQuery = useQuery({
+    queryKey: ["access-catalog", token],
+    queryFn: () => getAccessCatalog(token ?? ""),
+    enabled: Boolean(token)
+  });
+
+  const unitsQuery = useQuery({
+    queryKey: ["organization-units", token],
+    queryFn: () => listOrganizationUnits(token ?? ""),
     enabled: Boolean(token)
   });
 
@@ -50,7 +73,8 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         email,
         full_name: fullName,
         password: "ChangeMe12345!",
-        role_name: roleName
+        role_name: roleName,
+        scope_type: scopeType
       }),
     onSuccess: async () => {
       setEmail("");
@@ -68,6 +92,9 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
       name,
       permissions: []
     }));
+  const catalog: AccessCatalog | undefined = catalogQuery.data;
+  const catalogRoles = catalog?.roles ?? [];
+  const selectedRole = catalogRoles.find((role) => role.name === roleName) ?? catalogRoles[0];
 
   const userColumns: TableColumn<UserRead>[] = [
     {
@@ -102,7 +129,44 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
             Create organizations, invite teammates, and choose what each person can access.
           </p>
         </div>
-        <Badge tone="accent">{roles.length} roles available</Badge>
+        <Badge tone="accent">{catalogRoles.length || roles.length} enterprise roles available</Badge>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <section className="surface-premium rounded-2xl p-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck aria-hidden="true" size={18} />
+            <h2 className="text-sm font-semibold">Enterprise access model</h2>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {[
+              ["Roles", `${catalogRoles.length || roles.length}`, "Default and custom role profiles"],
+              ["Permissions", `${catalog?.permissions.length ?? 0}`, "Granular dot-style capabilities"],
+              ["Scopes", `${catalog?.scope_types.length ?? 0}`, "Country, region, district, project, own"],
+              ["Units", `${unitsQuery.data?.length ?? 0}`, "Organization hierarchy nodes"]
+            ].map(([label, value, text]) => (
+              <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-2 text-2xl font-semibold">{value}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+        <aside className="surface-premium rounded-2xl p-4">
+          <div className="flex items-center gap-2">
+            <KeyRound aria-hidden="true" size={18} />
+            <h2 className="text-sm font-semibold">Selected role policy</h2>
+          </div>
+          <p className="mt-3 text-sm font-medium">{selectedRole?.label ?? roleName}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedRole?.description ?? "Choose a role to preview its permissions and scope."}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Badge tone="accent">{selectedRole?.scope_type ?? scopeType} scope</Badge>
+            {(selectedRole?.workflow_actions ?? []).slice(0, 3).map((action) => (
+              <Badge key={action} tone="neutral">{action.replaceAll("_", " ")}</Badge>
+            ))}
+          </div>
+        </aside>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -192,9 +256,23 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
                 value={roleName}
                 onChange={(event) => setRoleName(event.target.value)}
               >
-                {roles.map((role) => (
-                  <option key={role.id} value={role.name}>
-                    {role.name}
+                {(catalogRoles.length ? catalogRoles : roles).map((role) => (
+                  <option key={"id" in role ? role.id : role.name} value={role.name}>
+                    {"label" in role && role.label ? role.label : role.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="block text-sm font-medium sm:col-span-2">
+              Access scope
+              <Select
+                className="mt-2"
+                value={scopeType}
+                onChange={(event) => setScopeType(event.target.value)}
+              >
+                {(catalog?.scope_types ?? ["organization", "country", "region", "district", "project", "own"]).map((scope) => (
+                  <option key={scope} value={scope}>
+                    {scope.replaceAll("_", " ")}
                   </option>
                 ))}
               </Select>
@@ -213,6 +291,20 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
       </div>
 
       <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={usersQuery.data ?? []} searchLabel="Search users" title="Users" />
+
+      <section className="surface-premium rounded-2xl p-4">
+        <h2 className="text-sm font-semibold">Custom role builder foundation</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Organizations can combine permissions, scope type, workflow approvals, project access, and geography assignments without hardcoded menu logic.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {(selectedRole?.permissions ?? roles[0]?.permissions ?? []).slice(0, 12).map((permission) => (
+            <div className="rounded-xl border bg-background/80 px-3 py-2 text-sm" key={permission}>
+              {permission}
+            </div>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

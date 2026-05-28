@@ -8,7 +8,8 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
-from app.api.v1.dependencies import get_current_principal, require_role
+from app.api.v1.dependencies import get_current_principal, require_permission, require_role
+from app.core.permissions import AccessScope, Permission, ScopeType, has_permission, is_scope_authorized
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
@@ -71,11 +72,12 @@ async def test_current_principal_extracts_token_claims(monkeypatch: pytest.Monke
 
     principal = await get_current_principal(credentials)
 
-    assert principal == CurrentPrincipal(
-        user_id="user-1",
-        organization_id="org-1",
-        roles=["admin", "reviewer"],
-    )
+    assert principal.user_id == "user-1"
+    assert principal.organization_id == "org-1"
+    assert principal.roles == ["admin", "reviewer"]
+    assert "users.view" in principal.permissions
+    assert "dashboard" in principal.menu_views
+    assert principal.scope_type == "country"
 
 
 async def test_current_principal_rejects_invalid_token() -> None:
@@ -104,6 +106,34 @@ async def test_require_role_rejects_principal_without_required_role() -> None:
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Insufficient role"
+
+
+async def test_require_permission_accepts_alias_and_canonical_roles() -> None:
+    principal = CurrentPrincipal(user_id="user-1", organization_id="org-1", roles=["regional_manager"])
+
+    authorized = await require_permission(Permission.SUBMISSION_APPROVE)(principal)
+
+    assert authorized == principal
+    assert has_permission(["organization_admin"], "forms.publish")
+
+
+async def test_require_permission_rejects_missing_permission() -> None:
+    principal = CurrentPrincipal(user_id="user-1", organization_id="org-1", roles=["donor_viewer"])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_permission(Permission.USER_MANAGE)(principal)
+
+    assert exc_info.value.status_code == 403
+
+
+def test_scope_authorization_limits_project_and_geography() -> None:
+    regional_scope = AccessScope(scope_type=ScopeType.REGION, geography_ids=frozenset({"northwest"}))
+    project_scope = AccessScope(scope_type=ScopeType.PROJECT, project_ids=frozenset({"project-1"}))
+
+    assert is_scope_authorized(scope=regional_scope, target_geography_id="northwest")
+    assert not is_scope_authorized(scope=regional_scope, target_geography_id="littoral")
+    assert is_scope_authorized(scope=project_scope, target_project_id="project-1")
+    assert not is_scope_authorized(scope=project_scope, target_project_id="project-2")
 
 
 class FakeUserRepository:

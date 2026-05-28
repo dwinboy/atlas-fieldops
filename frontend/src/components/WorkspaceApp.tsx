@@ -95,6 +95,7 @@ export function WorkspaceApp() {
         setToken(null);
       }}
       organizationLabel={organizationLabel}
+      principal={principalQuery.data}
     >
       <CommandPalette />
       <NotificationCenter />

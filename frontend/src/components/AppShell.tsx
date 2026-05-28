@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
+import type { CurrentPrincipal } from "@/lib/api";
 
 export type { WorkspaceView } from "@/stores/workspace";
 
@@ -37,6 +38,7 @@ type AppShellProps = {
   children: ReactNode;
   onSignOut: () => void;
   organizationLabel: string;
+  principal?: CurrentPrincipal | null;
 };
 
 const navItems = [
@@ -59,7 +61,7 @@ const navItems = [
   { id: "connectivity", label: "Connectivity", hint: "Offline & alerts", icon: Wifi }
 ] satisfies { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard }[];
 
-export function AppShell({ children, onSignOut, organizationLabel }: AppShellProps) {
+export function AppShell({ children, onSignOut, organizationLabel, principal }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -69,9 +71,12 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
   const theme = useWorkspaceStore((state) => state.theme);
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme);
 
+  const allowedViews = principal?.menu_views?.length ? new Set(principal.menu_views) : null;
+  const visibleNavItems = allowedViews ? navItems.filter((item) => allowedViews.has(item.id)) : navItems;
+
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">
-      {navItems.map((item) => {
+      {visibleNavItems.map((item) => {
         const Icon = item.icon;
         const active = activeView === item.id;
         return (
@@ -173,17 +178,17 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
             >
               <Menu aria-hidden="true" />
             </Button>
-            <div>
-              <p className="text-sm font-semibold tracking-normal">Field data workspace</p>
-              <p className="hidden text-xs text-muted-foreground sm:block">
-                {organizationLabel} · Forms, teams, reviews, and reports
-              </p>
-            </div>
+          <div>
+            <p className="text-sm font-semibold tracking-normal">Field data workspace</p>
+            <p className="hidden text-xs text-muted-foreground sm:block">
+                {organizationLabel} · {principal?.scope_type ? `${principal.scope_type.replace("_", " ")} scoped access` : "Forms, teams, reviews, and reports"}
+            </p>
+          </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge tone="success" className="hidden gap-1.5 sm:inline-flex">
               <RadioTower aria-hidden="true" size={13} />
-              Online
+              {principal?.roles?.[0]?.replaceAll("_", " ") ?? "Online"}
             </Badge>
             <Button aria-label="Open command palette" size="icon" variant="ghost" onClick={() => setCommandOpen(true)}>
               <Command aria-hidden="true" />
