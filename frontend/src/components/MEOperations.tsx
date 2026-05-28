@@ -23,7 +23,7 @@ import {
   UsersRound
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -766,7 +766,10 @@ export function ConnectivityCenter() {
 export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenterProps) {
   const [datasetType, setDatasetType] = useState("beneficiaries");
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
+  const [lastUploadName, setLastUploadName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const canUpload = Boolean(token && token !== "preview-token");
 
   const importJobsQuery = useQuery({
     queryKey: ["import-jobs", token],
@@ -783,6 +786,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadImportFile(token ?? "", datasetType, file),
     onSuccess: async (response) => {
+      setLastUploadName(response.job.source_name);
       setSelectedImportId(response.job.id);
       pushToast({
         title: "File uploaded",
@@ -791,6 +795,13 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       });
       await importJobsQuery.refetch();
       await importRowsQuery.refetch();
+    },
+    onError: () => {
+      pushToast({
+        title: "Upload failed",
+        description: "Use CSV, XLSX, JSON, or GeoJSON and make sure you are signed in with data import access.",
+        tone: "danger"
+      });
     }
   });
 
@@ -816,6 +827,12 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
     return keys.slice(0, 8);
   }, [importRowsQuery.data]);
   const serverImportRows = importRowsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!selectedImportId && importJobsQuery.data?.length) {
+      setSelectedImportId(importJobsQuery.data[0].id);
+    }
+  }, [importJobsQuery.data, selectedImportId]);
 
   const importColumnsDef: TableColumn<ImportJob>[] = [
     {
@@ -912,21 +929,32 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
         title="Import, clean, edit, and export"
         description="Bring in spreadsheets, map files, historical exports, and operational datasets with safe validation, mapping, bulk edits, and rollback."
         action={
-          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90">
-            <UploadCloud aria-hidden="true" size={16} />
-            Upload file
+          <div className="flex flex-col items-start gap-2 md:items-end">
+            <Button
+              disabled={!canUpload || uploadMutation.isPending}
+              onClick={() => fileInputRef.current?.click()}
+              type="button"
+              variant="primary"
+            >
+              <UploadCloud aria-hidden="true" size={16} />
+              {uploadMutation.isPending ? "Uploading" : "Upload file"}
+            </Button>
             <input
+              ref={fileInputRef}
               className="sr-only"
               type="file"
               accept=".csv,.xlsx,.json,.geojson"
-              disabled={!token || token === "preview-token" || uploadMutation.isPending}
+              disabled={!canUpload || uploadMutation.isPending}
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 if (file) uploadMutation.mutate(file);
                 event.currentTarget.value = "";
               }}
             />
-          </label>
+            <p className="text-xs text-muted-foreground">
+              {canUpload ? lastUploadName ? `Last uploaded: ${lastUploadName}` : "CSV, XLSX, JSON, or GeoJSON" : "Sign in to upload files"}
+            </p>
+          </div>
         }
       />
 
@@ -962,6 +990,11 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               Upload CSV, XLSX, JSON, or GeoJSON files. Parsed rows appear in the editable grid below.
             </p>
+            {!canUpload ? (
+              <p className="mt-3 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-xs text-warning">
+                Uploads are disabled in preview mode. Sign in with an account that has data import access.
+              </p>
+            ) : null}
             {uploadMutation.isError ? (
               <p className="mt-3 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
                 Upload failed. Check the file type and column headers.
