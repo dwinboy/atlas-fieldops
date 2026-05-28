@@ -110,7 +110,7 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
         collapsedSidebar ? "lg:grid-cols-[76px_1fr]" : "lg:grid-cols-[264px_1fr]"
       )}
     >
-      <aside className="hidden border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:block">
+      <aside className="relative sticky top-0 hidden h-screen overflow-hidden border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:block">
         <div className={cn("mb-5 flex items-center gap-3 px-1", collapsedSidebar && "justify-center")}>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary shadow-sm">
             <ShieldCheck aria-hidden="true" size={20} />
@@ -142,7 +142,9 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
           <p className="mt-2 text-sm font-semibold">128.4k submissions saved</p>
           <p className="mt-1 text-xs text-muted-foreground">812 waiting to sync · 37 need retry</p>
         </div>
-        {navigation}
+        <div className="max-h-[calc(100vh-220px)] overflow-y-auto pb-16 pr-1 product-scrollbar">
+          {navigation}
+        </div>
         <div className="absolute bottom-3 left-3 right-3 space-y-2">
           <button
             className={cn(

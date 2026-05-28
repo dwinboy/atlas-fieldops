@@ -253,10 +253,14 @@ export const formTemplateCategories = [
   "Agriculture",
   "Health",
   "Education",
+  "NGO Operations",
   "Humanitarian & NGO",
   "Monitoring & Evaluation",
   "Government & Community",
-  "Business & Operations"
+  "Business & Operations",
+  "Surveys",
+  "Registration Workflows",
+  "Case Management"
 ];
 
 export const formTemplates: FormTemplateCard[] = [
@@ -408,13 +412,56 @@ export const formTemplates: FormTemplateCard[] = [
   {
     id: "field-activity-report",
     name: "Field Activity Report",
-    category: "Business & Operations",
+    category: "NGO Operations",
     description: "Report daily field work, blockers, location, proof, and supervisor follow-up.",
     fields: 10,
     minutes: 9,
     popularity: 80,
     recommendedFor: ["Field teams", "Operations"],
     tags: ["activity", "field team", "report"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 0
+  },
+  {
+    id: "household-baseline-survey",
+    name: "Household Baseline Survey",
+    category: "Surveys",
+    description: "Capture household profile, baseline indicator values, GPS, and consent before program start.",
+    fields: 19,
+    minutes: 28,
+    popularity: 87,
+    recommendedFor: ["M&E teams", "NGOs"],
+    tags: ["survey", "baseline", "household"],
+    hasGps: true,
+    hasMedia: false,
+    repeatGroups: 1
+  },
+  {
+    id: "beneficiary-intake-registration",
+    name: "Beneficiary Intake Registration",
+    category: "Registration Workflows",
+    description: "Register people, households, consent, program eligibility, identity notes, and enrollment status.",
+    fields: 16,
+    minutes: 20,
+    popularity: 90,
+    recommendedFor: ["NGOs", "Government"],
+    tags: ["registration", "beneficiary", "intake"],
+    hasGps: true,
+    hasMedia: true,
+    repeatGroups: 1,
+    featured: true
+  },
+  {
+    id: "case-follow-up-form",
+    name: "Case Follow-up Form",
+    category: "Case Management",
+    description: "Track complaints, referrals, intervention updates, evidence, escalation risk, and next actions.",
+    fields: 12,
+    minutes: 14,
+    popularity: 83,
+    recommendedFor: ["Case teams", "Supervisors"],
+    tags: ["case", "follow-up", "referral"],
     hasGps: true,
     hasMedia: true,
     repeatGroups: 0

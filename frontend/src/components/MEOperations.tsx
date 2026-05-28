@@ -46,6 +46,7 @@ import {
   operationalFlow,
   programs
 } from "@/lib/mockData";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type Beneficiary = (typeof beneficiaries)[number];
 type Program = (typeof programs)[number];
@@ -105,6 +106,29 @@ function ConnectedPanel({
   );
 }
 
+function ActionButton({
+  children,
+  description,
+  title,
+  variant = "primary"
+}: {
+  children: ReactNode;
+  description: string;
+  title: string;
+  variant?: "primary" | "secondary" | "ghost";
+}) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  return (
+    <Button
+      onClick={() => pushToast({ title, description, tone: "success" })}
+      type="button"
+      variant={variant}
+    >
+      {children}
+    </Button>
+  );
+}
+
 export function EnterpriseOperationsCenter() {
   return (
     <section aria-labelledby="enterprise-ops-title" className="space-y-5">
@@ -112,7 +136,7 @@ export function EnterpriseOperationsCenter() {
         eyebrow="Enterprise operations"
         title="Governance, resources, budgets, and work in one place"
         description="Connect regional structures, approval chains, assets, documents, budgets, tasks, and interventions to the same operational workflow graph."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> Create connected record</Button>}
+        action={<ActionButton title="Connected record ready" description="A governed operational record workflow has been opened."><Plus aria-hidden="true" /> Create connected record</ActionButton>}
       />
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -203,7 +227,7 @@ export function OperationalEcosystem() {
         eyebrow="Operational ecosystem"
         title="One connected field operations system"
         description="See how programs, people, forms, submissions, approvals, analytics, and follow-ups work together as one operational chain."
-        action={<Button variant="primary"><RefreshCw aria-hidden="true" /> Recalculate live context</Button>}
+        action={<ActionButton title="Live context recalculated" description="Programs, submissions, indicators, approvals, and reports are synced."><RefreshCw aria-hidden="true" /> Recalculate live context</ActionButton>}
       />
 
       <div className="rounded-lg border bg-panel p-4 shadow-line">
@@ -334,7 +358,7 @@ export function BeneficiaryRegistry() {
         eyebrow="Beneficiaries"
         title="Beneficiary registry"
         description="Search households, farmers, cooperatives, schools, clinics, and groups with simple quality signals and visit history."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> Register beneficiary</Button>}
+        action={<ActionButton title="Beneficiary workflow opened" description="Registration, duplicate checks, GPS, and consent steps are ready."><Plus aria-hidden="true" /> Register beneficiary</ActionButton>}
       />
       <div className="grid gap-3 md:grid-cols-4">
         {[
@@ -387,7 +411,7 @@ export function ProgramManagement() {
         eyebrow="Programs"
         title="Programs and projects"
         description="Plan interventions, monitor milestones, and keep donor-funded work easy to understand across regions."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> New program</Button>}
+        action={<ActionButton title="Program workflow opened" description="Project setup, geography, indicators, officers, and reporting are ready."><Plus aria-hidden="true" /> New program</ActionButton>}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
         <DataTable columns={columns} emptyLabel="No programs yet" rows={programs} searchLabel="Search programs, donors, or regions" title="Active programs" />
@@ -427,7 +451,7 @@ export function IndicatorTracking() {
         eyebrow="Indicators"
         title="Indicator tracking"
         description="Track baselines, targets, progress, and donor reporting metrics without burying teams in spreadsheets."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> Add indicator</Button>}
+        action={<ActionButton title="Indicator workflow opened" description="Baseline, target, formula, and reporting fields are ready."><Plus aria-hidden="true" /> Add indicator</ActionButton>}
       />
       <DataTable columns={columns} emptyLabel="No indicators yet" rows={indicators} searchLabel="Search indicators" title="KPI registry" />
     </section>
@@ -460,7 +484,7 @@ export function CaseManagement() {
         eyebrow="Cases"
         title="Case management"
         description="Manage complaints, referrals, corrections, and follow-ups with clear ownership and simple next actions."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> Open case</Button>}
+        action={<ActionButton title="Case workflow opened" description="Referral, complaint, escalation, and follow-up fields are ready."><Plus aria-hidden="true" /> Open case</ActionButton>}
       />
       <DataTable columns={columns} emptyLabel="No cases yet" rows={cases} searchLabel="Search cases" title="Open follow-ups" />
     </section>
@@ -474,7 +498,7 @@ export function GeospatialIntelligence() {
         eyebrow="Map"
         title="Geospatial coverage"
         description="See where field work is happening, where coverage is weak, and which areas need supervisor attention."
-        action={<Button><Download aria-hidden="true" /> Export GeoJSON</Button>}
+        action={<ActionButton title="GeoJSON export prepared" description="Coverage layers are ready for GIS export." variant="secondary"><Download aria-hidden="true" /> Export GeoJSON</ActionButton>}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <section className="min-h-[420px] rounded-lg border bg-panel p-4">
@@ -530,7 +554,7 @@ export function ReportingCenter() {
         eyebrow="Reports"
         title="Donor reporting"
         description="Prepare indicator reports, narrative summaries, logframes, and map exports for donors and program teams."
-        action={<Button variant="primary"><Plus aria-hidden="true" /> New report</Button>}
+        action={<ActionButton title="Report builder opened" description="Donor report sections and live operational data are ready."><Plus aria-hidden="true" /> New report</ActionButton>}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <DataTable columns={columns} emptyLabel="No reports yet" rows={donorReports} searchLabel="Search reports" title="Reporting center" />
@@ -557,7 +581,7 @@ export function ConnectivityCenter() {
         eyebrow="Connectivity"
         title="Offline and communication center"
         description="Keep field teams confident when networks are weak with clear sync, retry, SMS, and WhatsApp readiness."
-        action={<Button variant="primary"><RefreshCw aria-hidden="true" /> Retry failed uploads</Button>}
+        action={<ActionButton title="Retry queue started" description="Failed uploads, media, and sync batches have been queued for retry."><RefreshCw aria-hidden="true" /> Retry failed uploads</ActionButton>}
       />
       <div className="grid gap-3 md:grid-cols-4">
         {[
@@ -636,7 +660,7 @@ export function DataInteroperabilityCenter() {
         eyebrow="Data"
         title="Import, clean, edit, and export"
         description="Bring in spreadsheets, map files, historical exports, and operational datasets with safe validation, mapping, bulk edits, and rollback."
-        action={<Button variant="primary"><UploadCloud aria-hidden="true" /> Upload data</Button>}
+        action={<ActionButton title="Upload workflow opened" description="CSV, Excel, JSON, GeoJSON, and historical migration validation are ready."><UploadCloud aria-hidden="true" /> Upload data</ActionButton>}
       />
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -656,7 +680,7 @@ export function DataInteroperabilityCenter() {
         ))}
       </div>
 
-      <section className="grid gap-5 xl:grid-cols-[360px_1fr]">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <section className="rounded-lg border bg-panel p-4">
             <h2 className="text-sm font-semibold">Safe import steps</h2>
@@ -685,7 +709,7 @@ export function DataInteroperabilityCenter() {
           </section>
         </aside>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
 
           <section className="rounded-lg border bg-panel p-4">
@@ -711,8 +735,8 @@ export function DataInteroperabilityCenter() {
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <section className="rounded-lg border bg-panel p-4">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 rounded-lg border bg-panel p-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Validation issues</h2>
@@ -750,7 +774,7 @@ export function DataInteroperabilityCenter() {
 
       <DataTable columns={editableColumns} emptyLabel="No rows ready for editing" rows={editableRows} searchLabel="Search editable rows" title="Spreadsheet editing preview" />
 
-      <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={exportJobs} searchLabel="Search exports" title="Exports and scheduled files" />
         <aside className="rounded-lg border bg-panel p-4">
           <h2 className="text-sm font-semibold">Export formats</h2>

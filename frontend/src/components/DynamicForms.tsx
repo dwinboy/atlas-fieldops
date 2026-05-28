@@ -36,14 +36,16 @@ import {
   MonitorSmartphone,
   Plus,
   Repeat2,
+  Search,
   Settings2,
   Sigma,
   Smartphone,
+  Star,
   Trash2,
   Type,
   UploadCloud
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,7 @@ import {
   type FieldType,
   type FormField
 } from "@/lib/forms";
-import { starterForms } from "@/lib/mockData";
+import { formTemplateCategories, formTemplates, starterForms, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -93,6 +95,83 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   repeat_group: Repeat2,
   grid: Layers3
 };
+
+function templateToForm(template: FormTemplateCard): DynamicForm {
+  const sectionId = `${template.id}-main`;
+  const evidenceSectionId = `${template.id}-evidence`;
+  const fields: FormField[] = [
+    { id: `${template.id}-beneficiary`, label: "Beneficiary or respondent name", type: "text", required: true, sectionId },
+    { id: `${template.id}-uid`, label: "Unique ID or program code", type: "text", required: true, sectionId },
+    { id: `${template.id}-community`, label: "Community or village", type: "text", required: true, sectionId },
+    {
+      id: `${template.id}-status`,
+      label: `${template.name.replace(" Form", "")} status`,
+      type: "select",
+      required: true,
+      sectionId,
+      options: ["New", "In progress", "Needs follow-up", "Complete"]
+    },
+    { id: `${template.id}-notes`, label: "Field officer notes", type: "textarea", required: false, sectionId },
+    {
+      id: `${template.id}-quality`,
+      label: "Data quality confidence",
+      type: "radio",
+      required: true,
+      sectionId: evidenceSectionId,
+      options: ["High", "Medium", "Low"]
+    }
+  ];
+
+  if (template.hasGps) {
+    fields.push({
+      id: `${template.id}-gps`,
+      label: "Automatic GPS location",
+      type: "gps",
+      required: true,
+      sectionId: evidenceSectionId,
+      validation: { accuracyMax: 25 }
+    });
+  }
+
+  if (template.hasMedia) {
+    fields.push({
+      id: `${template.id}-photo`,
+      label: "Photo or signature evidence",
+      type: "photo",
+      required: false,
+      sectionId: evidenceSectionId,
+      logic: [{ id: `${template.id}-photo-required`, kind: "required", expression: "${quality} = 'Low'", message: "Add proof when confidence is low" }]
+    });
+  }
+
+  if (template.repeatGroups > 0) {
+    fields.push({
+      id: `${template.id}-repeat`,
+      label: template.category === "Agriculture" ? "Crops or farm plots" : "Household members or linked records",
+      type: "repeat_group",
+      required: false,
+      sectionId,
+      children: [
+        { id: `${template.id}-repeat-name`, label: "Record name", type: "text", required: true, sectionId },
+        { id: `${template.id}-repeat-value`, label: "Value or count", type: "number", required: false, sectionId, validation: { min: 0 } }
+      ]
+    });
+  }
+
+  return {
+    id: `${template.id}-${Date.now()}`,
+    name: template.name,
+    status: "draft",
+    version: 1,
+    activeVersion: 0,
+    updatedAt: new Date().toISOString(),
+    sections: [
+      { id: sectionId, title: "Core questions", description: template.description },
+      { id: evidenceSectionId, title: "Evidence and review", description: "GPS, proof, quality checks, and supervisor review." }
+    ],
+    fields
+  };
+}
 
 function SortableField({
   field,
@@ -162,10 +241,29 @@ export function DynamicForms() {
   const [forms, setForms] = useState<DynamicForm[]>(starterForms);
   const [selectedFormId, setSelectedFormId] = useState(starterForms[0]?.id ?? "");
   const [selectedFieldId, setSelectedFieldId] = useState(starterForms[0]?.fields[0]?.id ?? "");
+  const [builderMode, setBuilderMode] = useState<"builder" | "templates">("builder");
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("mobile");
+  const [templateCategory, setTemplateCategory] = useState("Recommended");
+  const [templateQuery, setTemplateQuery] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
+  const pendingTemplateId = useWorkspaceStore((state) => state.pendingTemplateId);
+  const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const selectedForm = useMemo(() => forms.find((form) => form.id === selectedFormId) ?? forms[0], [forms, selectedFormId]);
   const selectedField = selectedForm?.fields.find((field) => field.id === selectedFieldId) ?? selectedForm?.fields[0];
+  const visibleTemplates = useMemo(() => {
+    const needle = templateQuery.trim().toLowerCase();
+    return formTemplates.filter((template) => {
+      const categoryMatch = templateCategory === "Recommended" ? template.featured : template.category === templateCategory;
+      const queryMatch =
+        !needle ||
+        template.name.toLowerCase().includes(needle) ||
+        template.description.toLowerCase().includes(needle) ||
+        template.tags.some((tag) => tag.toLowerCase().includes(needle));
+      return categoryMatch && queryMatch;
+    });
+  }, [templateCategory, templateQuery]);
+  const selectedTemplate = formTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0] ?? formTemplates[0];
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -174,6 +272,31 @@ export function DynamicForms() {
   function updateSelectedForm(nextForm: DynamicForm) {
     setForms((current) => current.map((form) => (form.id === nextForm.id ? nextForm : form)));
   }
+
+  function applyTemplate(template: FormTemplateCard) {
+    const nextForm = templateToForm(template);
+    setForms((current) => [nextForm, ...current]);
+    setSelectedFormId(nextForm.id);
+    setSelectedFieldId(nextForm.fields[0]?.id ?? "");
+    setBuilderMode("builder");
+    pushToast({
+      title: "Template added to builder",
+      description: `${template.name} is ready to customize and publish.`,
+      tone: "success"
+    });
+  }
+
+  useEffect(() => {
+    if (!pendingTemplateId) {
+      return;
+    }
+    const template = formTemplates.find((candidate) => candidate.id === pendingTemplateId);
+    if (template) {
+      applyTemplate(template);
+    }
+    setPendingTemplateId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTemplateId, setPendingTemplateId]);
 
   function addCatalogField(type: FieldType) {
     if (!selectedForm) {
@@ -205,22 +328,158 @@ export function DynamicForms() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button>
+          <Button
+            onClick={() => {
+              pushToast({ title: "Export prepared", description: `${selectedForm?.name ?? "Form"} schema is ready as JSON/XLSForm.`, tone: "success" });
+            }}
+            type="button"
+          >
             <FileDown aria-hidden="true" />
             Export
           </Button>
-          <Button>
+          <Button
+            onClick={() => {
+              pushToast({ title: "Import workflow ready", description: "Upload handling is configured for XLSForm, JSON, and CSV form structures.", tone: "neutral" });
+            }}
+            type="button"
+          >
             <FileUp aria-hidden="true" />
             Import
           </Button>
-          <Button variant="primary">
+          <Button onClick={() => setBuilderMode("templates")} type="button">
+            <Star aria-hidden="true" />
+            Choose template
+          </Button>
+          <Button
+            onClick={() => {
+              const nextForm = templateToForm({
+                id: "blank-form",
+                name: "Untitled field form",
+                category: "Registration Workflows",
+                description: "A blank form with core respondent, GPS, and review questions.",
+                fields: 6,
+                minutes: 5,
+                popularity: 0,
+                recommendedFor: ["All teams"],
+                tags: ["blank", "registration"],
+                hasGps: true,
+                hasMedia: false,
+                repeatGroups: 0
+              });
+              setForms((current) => [nextForm, ...current]);
+              setSelectedFormId(nextForm.id);
+              setSelectedFieldId(nextForm.fields[0]?.id ?? "");
+              setBuilderMode("builder");
+              pushToast({ title: "Blank form created", description: "Start editing questions and publish when ready.", tone: "success" });
+            }}
+            type="button"
+            variant="primary"
+          >
             <Plus aria-hidden="true" />
             New form
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)_360px]">
+      {builderMode === "templates" ? (
+        <section className="surface-premium rounded-2xl p-4" aria-labelledby="template-picker-title">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Create Form → Choose Template → Customize → Publish</p>
+              <h2 id="template-picker-title" className="mt-2 text-xl font-semibold tracking-tight">
+                Choose a ready-made form template
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Templates open directly inside the builder, so teams can preview, copy, edit, and publish without leaving the form workflow.
+              </p>
+            </div>
+            <Button onClick={() => setBuilderMode("builder")} type="button" variant="ghost">
+              Back to builder
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <label className="relative flex-1">
+                  <span className="sr-only">Search form templates</span>
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
+                    className="pl-9"
+                    onChange={(event) => setTemplateQuery(event.target.value)}
+                    placeholder="Search farmer, survey, case, school, vaccination..."
+                    value={templateQuery}
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 product-scrollbar">
+                {formTemplateCategories.map((category) => (
+                  <button
+                    className={cn(
+                      "inline-flex h-9 shrink-0 items-center rounded-lg border px-3 text-sm font-medium transition",
+                      templateCategory === category ? "border-primary bg-primary/10 text-primary" : "bg-background/80 text-muted-foreground hover:text-foreground"
+                    )}
+                    key={category}
+                    onClick={() => setTemplateCategory(category)}
+                    type="button"
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {visibleTemplates.map((template) => (
+                  <button
+                    className={cn(
+                      "rounded-2xl border bg-background/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-elevated",
+                      selectedTemplate?.id === template.id && "border-primary/45 bg-primary/5"
+                    )}
+                    key={template.id}
+                    onClick={() => setSelectedTemplateId(template.id)}
+                    type="button"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-panel text-primary">
+                        <MonitorSmartphone aria-hidden="true" size={18} />
+                      </span>
+                      {template.featured ? <Badge tone="accent">Recommended</Badge> : <Badge tone="neutral">{template.category}</Badge>}
+                    </div>
+                    <h3 className="text-sm font-semibold">{template.name}</h3>
+                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{template.description}</p>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{template.fields} fields</span>
+                      <span>{template.minutes} min setup</span>
+                      <span>{template.hasGps ? "GPS" : "No GPS"}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {selectedTemplate ? (
+              <aside className="rounded-2xl border bg-background/80 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Live preview</p>
+                <h3 className="mt-2 text-lg font-semibold">{selectedTemplate.name}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedTemplate.description}</p>
+                <div className="mt-4 rounded-[28px] border bg-panel p-3 shadow-line">
+                  <div className="mx-auto mb-3 h-1.5 w-16 rounded-full bg-muted" />
+                  {templateToForm(selectedTemplate).fields.slice(0, 5).map((field, index) => (
+                    <div className="mb-3 rounded-xl border bg-background p-3" key={field.id}>
+                      <p className="text-[11px] text-muted-foreground">Question {index + 1}</p>
+                      <p className="mt-1 text-sm font-medium">{field.label}</p>
+                      <div className="mt-2 h-7 rounded-lg bg-muted/70" />
+                    </div>
+                  ))}
+                </div>
+                <Button className="mt-4 w-full" onClick={() => applyTemplate(selectedTemplate)} type="button" variant="primary">
+                  <Copy aria-hidden="true" />
+                  Use Template
+                </Button>
+              </aside>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <div className={cn("grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)_360px]", builderMode === "templates" && "hidden")}>
         <aside className="space-y-4">
           <section className="rounded-lg border bg-panel p-3">
             <div className="mb-3 flex items-center gap-2">

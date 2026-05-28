@@ -178,6 +178,7 @@ export function FormTemplateLibrary() {
   const [query, setQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const visibleTemplates = useMemo(() => {
@@ -197,6 +198,7 @@ export function FormTemplateLibrary() {
     formTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0] ?? formTemplates[0];
 
   function handleUseTemplate(template: FormTemplateCard) {
+    setPendingTemplateId(template.id);
     pushToast({
       title: "Template copied",
       description: `${template.name} is ready for quick edits in the form builder.`,
