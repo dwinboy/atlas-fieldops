@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "rm -rf .next && next dev",
+    "dev:app": "rm -rf .next && next dev -H 127.0.0.1 -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

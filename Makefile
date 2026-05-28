@@ -1,7 +1,7 @@
 COMPOSE ?= docker compose
 PYTHON ?= python3
 
-.PHONY: bootstrap seed-admin dev test lint format docker-build docker-config docker-logs docker-ps docker-up docker-down docker-clean backend frontend mobile
+.PHONY: bootstrap seed-admin dev test lint format docker-build docker-config docker-logs docker-ps docker-up docker-down docker-clean backend frontend frontend-app mobile
 
 bootstrap:
 	$(PYTHON) -m venv backend/.venv
@@ -42,6 +42,9 @@ backend:
 
 frontend:
 	cd frontend && npm run dev
+
+frontend-app:
+	cd frontend && npm run dev:app
 
 mobile:
 	cd mobile && npm run start

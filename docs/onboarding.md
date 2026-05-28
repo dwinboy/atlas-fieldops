@@ -37,7 +37,9 @@ Grafana provisions the Prometheus datasource and a Phase 1 overview dashboard au
 ## Development Commands
 
 - `make backend`: run FastAPI locally.
-- `make frontend`: run Next.js locally.
+- `make frontend`: run Next.js locally on the default Next.js port.
+- `make frontend-app`: run the local app at <http://127.0.0.1:3001/app> after clearing stale
+  Next.js build artifacts. Use this when testing the app outside Docker Compose.
 - `make mobile`: run Expo locally.
 - `make test`: run available tests.
 - `make lint`: run lint and type checks.
@@ -48,3 +50,7 @@ Grafana provisions the Prometheus datasource and a Phase 1 overview dashboard au
 - `make docker-logs`: follow recent compose logs.
 - `make docker-down`: stop the stack.
 - `make docker-clean`: stop the stack and remove local compose volumes.
+
+If the app HTML appears but buttons do not respond, stop the local frontend server and restart it
+with `make frontend-app`. That clears stale `frontend/.next` assets so the browser can load the
+current JavaScript bundle.

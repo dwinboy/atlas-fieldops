@@ -27,6 +27,17 @@ Prometheus: http://localhost:9090
 
 Grafana: http://localhost:3001
 
+For local frontend-only development, run:
+
+```bash
+make frontend-app
+```
+
+Then open http://127.0.0.1:3001/app. This command clears stale Next.js build artifacts before
+starting, which prevents the app from loading HTML without working JavaScript after a production
+build. If you are running the full Docker Compose stack, use http://localhost:3000 for the app
+because http://localhost:3001 is reserved for Grafana.
+
 ## First Implementation Slice
 
 - Tenant and user data model.
