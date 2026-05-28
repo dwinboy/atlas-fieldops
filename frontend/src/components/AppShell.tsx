@@ -187,40 +187,42 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
         collapsedSidebar ? "lg:grid-cols-[76px_1fr]" : "lg:grid-cols-[264px_1fr]"
       )}
     >
-      <aside className="relative sticky top-0 hidden h-screen overflow-hidden border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:block">
-        <div className={cn("mb-5 flex items-center gap-3 px-1", collapsedSidebar && "justify-center")}>
-          <OrganizationMark logoUrl={organizationLogoUrl} name={organizationLabel} />
-          <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
-            <p className="truncate text-sm font-semibold">{organizationLabel}</p>
-            <p className="truncate text-xs text-muted-foreground">{organizationSlug ?? "Atlas FieldOps"}</p>
+      <aside className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col">
+        <div className="shrink-0">
+          <div className={cn("mb-5 flex items-center gap-3 px-1", collapsedSidebar && "justify-center")}>
+            <OrganizationMark logoUrl={organizationLogoUrl} name={organizationLabel} />
+            <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
+              <p className="truncate text-sm font-semibold">{organizationLabel}</p>
+              <p className="truncate text-xs text-muted-foreground">{organizationSlug ?? "Atlas FieldOps"}</p>
+            </div>
+          </div>
+          <button
+            className={cn(
+              "mb-4 flex h-10 w-full items-center gap-2 rounded-xl border bg-background/80 px-2.5 text-left text-xs text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
+              collapsedSidebar && "justify-center px-0"
+            )}
+            onClick={() => setCommandOpen(true)}
+            type="button"
+          >
+            <Command aria-hidden="true" size={15} />
+            <span className={cn("min-w-0 flex-1 truncate", collapsedSidebar && "sr-only")}>Search</span>
+            <kbd className={cn("rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]", collapsedSidebar && "sr-only")}>
+              ⌘K
+            </kbd>
+          </button>
+          <div className={cn("mb-4 rounded-xl border bg-background/80 p-3 shadow-sm", collapsedSidebar && "hidden")}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Today</span>
+              <StatusDot tone="online" />
+            </div>
+            <p className="mt-2 text-sm font-semibold">128.4k submissions saved</p>
+            <p className="mt-1 text-xs text-muted-foreground">812 waiting to sync · 37 need retry</p>
           </div>
         </div>
-        <button
-          className={cn(
-            "mb-4 flex h-10 w-full items-center gap-2 rounded-xl border bg-background/80 px-2.5 text-left text-xs text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
-            collapsedSidebar && "justify-center px-0"
-          )}
-          onClick={() => setCommandOpen(true)}
-          type="button"
-        >
-          <Command aria-hidden="true" size={15} />
-          <span className={cn("min-w-0 flex-1 truncate", collapsedSidebar && "sr-only")}>Search</span>
-          <kbd className={cn("rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]", collapsedSidebar && "sr-only")}>
-            ⌘K
-          </kbd>
-        </button>
-        <div className={cn("mb-4 rounded-xl border bg-background/80 p-3 shadow-sm", collapsedSidebar && "hidden")}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Today</span>
-            <StatusDot tone="online" />
-          </div>
-          <p className="mt-2 text-sm font-semibold">128.4k submissions saved</p>
-          <p className="mt-1 text-xs text-muted-foreground">812 waiting to sync · 37 need retry</p>
-        </div>
-        <div className="max-h-[calc(100vh-220px)] overflow-y-auto pb-16 pr-1 product-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1 product-scrollbar">
           {navigation}
         </div>
-        <div className="absolute bottom-3 left-3 right-3 space-y-2">
+        <div className="mt-3 shrink-0 border-t pt-3">
           <button
             className={cn(
               "flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",

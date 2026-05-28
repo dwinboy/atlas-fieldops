@@ -109,7 +109,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         description: `Login slug: ${organization.slug}${organization.owner_email ? ` · owner: ${organization.owner_email}` : ""}`,
         tone: "success"
       });
-    }
+    },
+    onError: () => pushToast({ title: "Organization was not created", description: "Only super admins can create organizations, and slugs must be unique.", tone: "danger" })
   });
 
   const userMutation = useMutation({
@@ -131,7 +132,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         tone: "success"
       });
       await usersQuery.refetch();
-    }
+    },
+    onError: () => pushToast({ title: "User was not invited", description: "Check the email, role, and scope. You can only create roles allowed for your account.", tone: "danger" })
   });
 
   const userUpdateMutation = useMutation({
@@ -146,7 +148,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     onSuccess: async (user) => {
       pushToast({ title: "Access updated", description: `${user.full_name}'s role and scope were updated`, tone: "success" });
       await usersQuery.refetch();
-    }
+    },
+    onError: () => pushToast({ title: "Access was not updated", description: "The selected role may not allow that scope, or you may not manage that role.", tone: "danger" })
   });
 
   const statusMutation = useMutation({
@@ -159,7 +162,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         tone: user.is_active ? "success" : "warning"
       });
       await usersQuery.refetch();
-    }
+    },
+    onError: () => pushToast({ title: "Status was not changed", description: "Try again or check whether your role can manage users.", tone: "danger" })
   });
 
   const resetMutation = useMutation({
@@ -170,7 +174,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         description: `Temporary password: ${reset.temporary_password}`,
         tone: "warning"
       });
-    }
+    },
+    onError: () => pushToast({ title: "Password reset failed", description: "Check whether you can manage this user.", tone: "danger" })
   });
 
   const routeMutation = useMutation({
@@ -190,7 +195,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         description: `${route.title} was sent to the selected ${routeTargetType}.`,
         tone: "success"
       });
-    }
+    },
+    onError: () => pushToast({ title: "Data was not routed", description: "Choose a valid role, team, or user before sending.", tone: "danger" })
   });
 
   const roles: RoleRead[] =

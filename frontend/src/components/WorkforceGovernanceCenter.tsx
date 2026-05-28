@@ -128,7 +128,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Department created", description: "The organization hierarchy now has a governed business unit.", tone: "success" });
       await Promise.all([departmentsQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Department was not created", description: "Check that the name is unique and that you have hierarchy permission.", tone: "danger" })
   });
 
   const createTeamMutation = useMutation({
@@ -136,7 +137,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Team created", description: "The team can now be used for assignments, routes, and approval visibility.", tone: "success" });
       await Promise.all([teamsQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Team was not created", description: "Create a department first and check that the team name is unique.", tone: "danger" })
   });
 
   const createProfileMutation = useMutation({
@@ -152,7 +154,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Workforce profile linked", description: "The user now has a managed workforce profile and reporting context.", tone: "success" });
       await Promise.all([profilesQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Profile was not assigned", description: "Choose a user after creating at least one department and one team.", tone: "danger" })
   });
 
   const createDelegationMutation = useMutation({
@@ -169,7 +172,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Delegation created", description: "Temporary approval access has an expiry date and audit trail.", tone: "success" });
       await Promise.all([delegationsQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Delegation was not created", description: "Choose a delegate and make sure you can manage roles.", tone: "danger" })
   });
 
   const createMatrixMutation = useMutation({
@@ -187,7 +191,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Approval matrix created", description: "High-risk submissions now have a defined review and escalation path.", tone: "success" });
       await Promise.all([matricesQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Approval rule was not created", description: "Check workflow permissions and try again.", tone: "danger" })
   });
 
   const createAccessRequestMutation = useMutation({
@@ -195,7 +200,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Access request submitted", description: "Managers can approve or reject it from this center.", tone: "success" });
       await Promise.all([accessRequestsQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Access request was not sent", description: "Check the permission text and your connection.", tone: "danger" })
   });
 
   const reviewRequestMutation = useMutation({
@@ -203,7 +209,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async (request) => {
       pushToast({ title: "Access request reviewed", description: `Request ${request.status}.`, tone: request.status === "approved" ? "success" : "warning" });
       await Promise.all([accessRequestsQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Request review failed", description: "The request may already be reviewed or your permissions changed.", tone: "danger" })
   });
 
   const foundationMutation = useMutation({
@@ -216,7 +223,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: async () => {
       pushToast({ title: "Governance foundation added", description: "Clearance, zone, and device records are now active.", tone: "success" });
       await Promise.all([clearancesQuery.refetch(), zonesQuery.refetch(), devicesQuery.refetch(), summaryQuery.refetch()]);
-    }
+    },
+    onError: () => pushToast({ title: "Safeguards were not added", description: "Some foundation records may already exist. Check Security for current records.", tone: "danger" })
   });
 
   const simulateMutation = useMutation({
@@ -224,7 +232,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     onSuccess: (result) => {
       setSimulation(result);
       pushToast({ title: result.allowed ? "Access allowed" : "Access denied", description: result.reasons[0], tone: result.allowed ? "success" : "warning" });
-    }
+    },
+    onError: () => pushToast({ title: "Access test failed", description: "Choose a user and enter a valid permission such as submissions.approve.", tone: "danger" })
   });
 
   const userNameById = useMemo(() => {
