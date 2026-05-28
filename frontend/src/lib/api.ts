@@ -146,6 +146,97 @@ export type DataRouteRead = {
   created_at: string;
 };
 
+export type GovernanceSummary = {
+  policies: number;
+  validation_rules: number;
+  retention_policies: number;
+  open_quality_signals: number;
+  audit_events: number;
+  lineage_events: number;
+  export_events: number;
+  consent_records: number;
+  compliance_score: number;
+  attention_items: string[];
+};
+
+export type GovernancePolicyRead = {
+  id: string;
+  name: string;
+  policy_type: string;
+  lifecycle_state: string;
+  version: number;
+  enforcement_level: string;
+  rules_json: Record<string, unknown>;
+  approved_at: string | null;
+  created_at: string;
+};
+
+export type RetentionPolicyRead = {
+  id: string;
+  record_type: string;
+  retention_years: number;
+  archive_after_days: number;
+  legal_hold: boolean;
+  purge_allowed: boolean;
+  anonymize_on_export: boolean;
+  created_at: string;
+};
+
+export type ValidationRuleRead = {
+  id: string;
+  rule_code: string;
+  name: string;
+  target_entity: string;
+  severity: string;
+  expression: string;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type DataVersionRead = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  version_number: number;
+  change_type: string;
+  field_changes_json: Record<string, unknown>;
+  rollback_available: boolean;
+  created_at: string;
+};
+
+export type LineageEventRead = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  target_type: string;
+  target_id: string;
+  transformation: string;
+  lineage_json: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ExportLogRead = {
+  id: string;
+  dataset_type: string;
+  export_format: string;
+  status: string;
+  anonymized: boolean;
+  record_count: number;
+  risk_score: number;
+  created_at: string;
+};
+
+export type MasterDataEntryRead = {
+  id: string;
+  category: string;
+  code: string;
+  label: string;
+  status: string;
+  version: number;
+  created_at: string;
+};
+
 export type FieldOfficerInvite = {
   email: string;
   full_name: string;
@@ -533,6 +624,79 @@ export async function routeData(token: string, payload: DataRouteCreate): Promis
   return request<DataRouteRead>("/operations/data-routes", { method: "POST", token, bodyJson: payload });
 }
 
+export async function getGovernanceSummary(token: string): Promise<GovernanceSummary> {
+  return request<GovernanceSummary>("/governance/summary", { token });
+}
+
+export async function listGovernancePolicies(token: string): Promise<GovernancePolicyRead[]> {
+  return request<GovernancePolicyRead[]>("/governance/policies", { token });
+}
+
+export async function createGovernancePolicy(token: string, payload: {
+  name: string;
+  policy_type: string;
+  lifecycle_state?: string;
+  enforcement_level?: string;
+  rules_json?: Record<string, unknown>;
+}): Promise<GovernancePolicyRead> {
+  return request<GovernancePolicyRead>("/governance/policies", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listRetentionPolicies(token: string): Promise<RetentionPolicyRead[]> {
+  return request<RetentionPolicyRead[]>("/governance/retention-policies", { token });
+}
+
+export async function createRetentionPolicy(token: string, payload: {
+  record_type: string;
+  retention_years: number;
+  archive_after_days: number;
+  legal_hold?: boolean;
+  purge_allowed?: boolean;
+  anonymize_on_export?: boolean;
+}): Promise<RetentionPolicyRead> {
+  return request<RetentionPolicyRead>("/governance/retention-policies", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listValidationRules(token: string): Promise<ValidationRuleRead[]> {
+  return request<ValidationRuleRead[]>("/governance/validation-rules", { token });
+}
+
+export async function createValidationRule(token: string, payload: {
+  rule_code: string;
+  name: string;
+  target_entity: string;
+  severity?: string;
+  expression?: string;
+}): Promise<ValidationRuleRead> {
+  return request<ValidationRuleRead>("/governance/validation-rules", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listDataVersions(token: string): Promise<DataVersionRead[]> {
+  return request<DataVersionRead[]>("/governance/data-versions", { token });
+}
+
+export async function listLineageEvents(token: string): Promise<LineageEventRead[]> {
+  return request<LineageEventRead[]>("/governance/lineage", { token });
+}
+
+export async function listExportLogs(token: string): Promise<ExportLogRead[]> {
+  return request<ExportLogRead[]>("/governance/export-logs", { token });
+}
+
+export async function governExport(token: string, payload: {
+  dataset_type: string;
+  export_format: string;
+  anonymized?: boolean;
+  record_count?: number;
+  filters_json?: Record<string, unknown>;
+}): Promise<ExportLogRead> {
+  return request<ExportLogRead>("/governance/export-logs", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listMasterDataEntries(token: string): Promise<MasterDataEntryRead[]> {
+  return request<MasterDataEntryRead[]>("/governance/master-data", { token });
+}
+
 export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {
   return request<FieldOfficerRead[]>("/field-officers", { token });
 }
@@ -675,27 +839,39 @@ export const api = {
   createExportJob,
   duplicateFormTemplate,
   createForm,
+  createGovernancePolicy,
   createImportJob,
   createUser,
+  createRetentionPolicy,
+  createValidationRule,
   getCurrentPrincipal,
   getHealth,
   getFormTemplate,
+  getGovernanceSummary,
   getOrganizationContext,
   getOperationalEcosystem,
+  governExport,
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,
   listCases,
+  listDataVersions,
+  listExportLogs,
   listFieldOfficers,
   listForms,
   listFormTemplates,
+  listGovernancePolicies,
   listIndicators,
   listImportJobs,
   listImportRows,
+  listLineageEvents,
+  listMasterDataEntries,
   listPrograms,
   listReports,
+  listRetentionPolicies,
   listRoles,
   listSubmissions,
+  listValidationRules,
   listUsers,
   login,
   previewImport,

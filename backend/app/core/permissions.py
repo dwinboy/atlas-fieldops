@@ -158,6 +158,7 @@ OPERATIONS_MENU = frozenset(
         "dashboard",
         "ecosystem",
         "enterprise",
+        "governance",
         "data",
         "programs",
         "beneficiaries",

@@ -11,6 +11,17 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import settings
 from app.models.audit import AuditLog
 from app.models.base import Base
+from app.models.governance import (
+    ConsentRecord,
+    DataAccessLog,
+    DataVersion,
+    ExportLog,
+    GovernancePolicy,
+    LineageEvent,
+    MasterDataEntry,
+    RetentionPolicy,
+    ValidationRule,
+)
 from app.models.identity import Membership, Organization, Role, User
 
 config = context.config
@@ -19,7 +30,22 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Keep these imports referenced so Base.metadata is fully populated for autogenerate.
-_TENANT_AWARE_MODELS = (AuditLog, Membership, Organization, Role, User)
+_TENANT_AWARE_MODELS = (
+    AuditLog,
+    ConsentRecord,
+    DataAccessLog,
+    DataVersion,
+    ExportLog,
+    GovernancePolicy,
+    LineageEvent,
+    MasterDataEntry,
+    Membership,
+    Organization,
+    RetentionPolicy,
+    Role,
+    User,
+    ValidationRule,
+)
 
 target_metadata: MetaData = Base.metadata
 

@@ -11,6 +11,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { DynamicForms } from "@/components/DynamicForms";
 import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
 import { FormTemplateLibrary } from "@/components/FormTemplateLibrary";
+import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import {
   BeneficiaryRegistry,
   CaseManagement,
@@ -83,6 +84,7 @@ export function WorkspaceApp() {
     dashboard: <Dashboard token={token} />,
     ecosystem: <OperationalEcosystem />,
     enterprise: <EnterpriseOperationsCenter />,
+    governance: <GovernanceCommandCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
     programs: <ProgramManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,

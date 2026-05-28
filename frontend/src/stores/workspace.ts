@@ -7,6 +7,7 @@ export type WorkspaceView =
   | "dashboard"
   | "ecosystem"
   | "enterprise"
+  | "governance"
   | "data"
   | "programs"
   | "beneficiaries"

@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Command,
   Database,
+  Fingerprint,
   Files,
   GitPullRequestArrow,
   LayoutDashboard,
@@ -78,7 +79,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { id: "ecosystem", label: "Ecosystem", hint: "Connected work", icon: Boxes },
       { id: "enterprise", label: "Operations", hint: "Assets & budgets", icon: Building2 },
       { id: "cases", label: "Cases", hint: "Follow-ups", icon: GitPullRequestArrow },
-      { id: "data", label: "Data tools", hint: "Import & edit", icon: Database }
+      { id: "data", label: "Data tools", hint: "Import & edit", icon: Database },
+      { id: "governance", label: "Governance", hint: "Audit & quality", icon: Fingerprint }
     ]
   },
   {
