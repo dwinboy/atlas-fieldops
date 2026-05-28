@@ -33,12 +33,35 @@ class UserRead(BaseModel):
     email: EmailStr
     full_name: str
     is_active: bool
+    role_name: str | None = None
+    scope_type: str | None = None
+    geography_id: str | None = None
+    project_id: str | None = None
+    organization_unit_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
 
+class UserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=200)
+    role_name: str | None = Field(default=None, min_length=2, max_length=100)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] | None = None
+    geography_id: str | None = Field(default=None, max_length=120)
+    project_id: str | None = Field(default=None, max_length=36)
+    organization_unit_id: UUID | None = None
+    is_active: bool | None = None
+
+
+class PasswordResetRead(BaseModel):
+    user_id: UUID
+    temporary_password: str
+
+
 class RoleCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
+    label: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=500)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] = "organization"
     permissions: list[str] = Field(default_factory=list)
 
 

@@ -9,7 +9,7 @@ from app.core.security import hash_password
 from app.models.identity import User
 from app.repositories.audit import AuditRepository
 from app.repositories.identity import IdentityRepository, OrganizationRepository, OrganizationUnitRepository, RoleRepository
-from app.schemas.identity import OrganizationCreate, UserCreate
+from app.schemas.identity import PasswordResetRead, OrganizationCreate, UserCreate, UserRead, UserUpdate
 
 
 class IdentityConflictError(Exception):
@@ -95,7 +95,7 @@ class UserManagementService:
         organization_id: UUID,
         actor_user_id: UUID,
         payload: UserCreate,
-    ) -> object:
+    ) -> UserRead:
         role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
         if role is None:
             raise IdentityNotFoundError("Role not found")
@@ -127,7 +127,91 @@ class UserManagementService:
             settings.kafka_auth_events_topic,
             {"type": "user.created", "organization_id": str(organization_id), "user_id": str(user.id)},
         )
-        return user
+        account = await self.identity.get_user_account(organization_id=organization_id, user_id=user.id)
+        if account is None:
+            raise IdentityNotFoundError("User not found")
+        return self.to_user_read(*account)
 
-    async def list_users(self, organization_id: UUID) -> list[User]:
-        return await self.identity.list_users(organization_id)
+    @staticmethod
+    def to_user_read(user: User, _membership: object, role: object, grant: object | None) -> UserRead:
+        return UserRead(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            is_active=user.is_active,
+            role_name=getattr(role, "name", None),
+            scope_type=getattr(grant, "scope_type", None) if grant is not None else None,
+            geography_id=getattr(grant, "geography_id", None) if grant is not None else None,
+            project_id=getattr(grant, "project_id", None) if grant is not None else None,
+            organization_unit_id=getattr(grant, "organization_unit_id", None) if grant is not None else None,
+        )
+
+    async def list_users(self, organization_id: UUID) -> list[UserRead]:
+        return [self.to_user_read(*account) for account in await self.identity.list_user_accounts(organization_id)]
+
+    async def update_user(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        user_id: UUID,
+        payload: UserUpdate,
+    ) -> UserRead:
+        role_id: UUID | None = None
+        if payload.role_name is not None:
+            role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
+            if role is None:
+                raise IdentityNotFoundError("Role not found")
+            role_id = role.id
+        scope_type = ScopeType(payload.scope_type) if payload.scope_type is not None else None
+        account = await self.identity.update_user_account(
+            organization_id=organization_id,
+            user_id=user_id,
+            role_id=role_id,
+            full_name=payload.full_name,
+            is_active=payload.is_active,
+            scope_type=scope_type,
+            geography_id=payload.geography_id,
+            project_id=payload.project_id,
+            organization_unit_id=payload.organization_unit_id,
+        )
+        if account is None:
+            raise IdentityNotFoundError("User not found")
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="user.updated",
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata=payload.model_dump(exclude_none=True, mode="json"),
+        )
+        await event_publisher.publish(
+            settings.kafka_auth_events_topic,
+            {"type": "user.updated", "organization_id": str(organization_id), "user_id": str(user_id)},
+        )
+        return self.to_user_read(*account)
+
+    async def reset_password(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        user_id: UUID,
+    ) -> PasswordResetRead:
+        temporary_password = "ChangeMe12345!"
+        user = await self.identity.reset_password(
+            organization_id=organization_id,
+            user_id=user_id,
+            password_hash=hash_password(temporary_password),
+        )
+        if user is None:
+            raise IdentityNotFoundError("User not found")
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="user.password_reset",
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata={"temporary": True},
+        )
+        return PasswordResetRead(user_id=user_id, temporary_password=temporary_password)

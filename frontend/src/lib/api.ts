@@ -50,6 +50,26 @@ export type UserRead = {
   email: string;
   full_name: string;
   is_active: boolean;
+  role_name?: string | null;
+  scope_type?: string | null;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+};
+
+export type UserUpdate = {
+  full_name?: string;
+  role_name?: string;
+  scope_type?: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  is_active?: boolean;
+};
+
+export type PasswordResetRead = {
+  user_id: string;
+  temporary_password: string;
 };
 
 export type RoleRead = {
@@ -438,6 +458,14 @@ export async function createUser(token: string, payload: UserCreate): Promise<Us
   return request<UserRead>("/users", { method: "POST", token, bodyJson: payload });
 }
 
+export async function updateUser(token: string, userId: string, payload: UserUpdate): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function resetUserPassword(token: string, userId: string): Promise<PasswordResetRead> {
+  return request<PasswordResetRead>(`/users/${userId}/reset-password`, { method: "POST", token });
+}
+
 export async function listRoles(token: string): Promise<RoleRead[]> {
   return request<RoleRead[]>("/roles", { token });
 }
@@ -611,6 +639,8 @@ export const api = {
   login,
   previewImport,
   reviewSubmission,
+  resetUserPassword,
   updateImportRow,
+  updateUser,
   uploadImportFile
 };

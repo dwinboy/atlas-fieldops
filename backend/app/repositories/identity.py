@@ -126,18 +126,122 @@ class IdentityRepository:
         await self.session.flush()
         return grant
 
-    async def list_users(self, organization_id: UUID) -> list[User]:
+    async def get_user_account(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+    ) -> tuple[User, Membership, Role, UserAccessGrant | None] | None:
         result = await self.session.execute(
-            select(User)
+            select(User, Membership, Role)
             .join(Membership, Membership.user_id == User.id)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                User.id == user_id,
+                Membership.organization_id == organization_id,
+                Membership.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        user, membership, role = row
+        grant_result = await self.session.execute(
+            select(UserAccessGrant)
+            .where(
+                UserAccessGrant.organization_id == organization_id,
+                UserAccessGrant.user_id == user_id,
+                UserAccessGrant.deleted_at.is_(None),
+            )
+            .order_by(UserAccessGrant.updated_at.desc())
+            .limit(1)
+        )
+        return user, membership, role, grant_result.scalar_one_or_none()
+
+    async def list_user_accounts(self, organization_id: UUID) -> list[tuple[User, Membership, Role, UserAccessGrant | None]]:
+        result = await self.session.execute(
+            select(User, Membership, Role)
+            .join(Membership, Membership.user_id == User.id)
+            .join(Role, Role.id == Membership.role_id)
             .where(
                 Membership.organization_id == organization_id,
                 Membership.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
                 User.deleted_at.is_(None),
             )
             .order_by(User.email)
         )
-        return list(result.scalars())
+        accounts: list[tuple[User, Membership, Role, UserAccessGrant | None]] = []
+        for user, membership, role in result.all():
+            grant_result = await self.session.execute(
+                select(UserAccessGrant)
+                .where(
+                    UserAccessGrant.organization_id == organization_id,
+                    UserAccessGrant.user_id == user.id,
+                    UserAccessGrant.deleted_at.is_(None),
+                )
+                .order_by(UserAccessGrant.updated_at.desc())
+                .limit(1)
+            )
+            accounts.append((user, membership, role, grant_result.scalar_one_or_none()))
+        return accounts
+
+    async def list_users(self, organization_id: UUID) -> list[User]:
+        return [user for user, _, _, _ in await self.list_user_accounts(organization_id)]
+
+    async def update_user_account(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        role_id: UUID | None = None,
+        full_name: str | None = None,
+        is_active: bool | None = None,
+        scope_type: ScopeType | None = None,
+        geography_id: str | None = None,
+        project_id: str | None = None,
+        organization_unit_id: UUID | None = None,
+    ) -> tuple[User, Membership, Role, UserAccessGrant | None] | None:
+        account = await self.get_user_account(organization_id=organization_id, user_id=user_id)
+        if account is None:
+            return None
+        user, membership, role, grant = account
+        if full_name is not None:
+            user.full_name = full_name
+        if is_active is not None:
+            user.is_active = is_active
+            membership.is_active = is_active
+        if role_id is not None:
+            membership.role_id = role_id
+            role_result = await self.session.execute(select(Role).where(Role.id == role_id))
+            next_role = role_result.scalar_one()
+            role = next_role
+        if scope_type is not None:
+            if grant is None:
+                grant = UserAccessGrant(
+                    organization_id=organization_id,
+                    user_id=user_id,
+                    scope_type=scope_type.value,
+                )
+                self.session.add(grant)
+            else:
+                grant.scope_type = scope_type.value
+            grant.geography_id = geography_id
+            grant.project_id = project_id
+            grant.organization_unit_id = organization_unit_id
+        await self.session.flush()
+        return user, membership, role, grant
+
+    async def reset_password(self, *, organization_id: UUID, user_id: UUID, password_hash: str) -> User | None:
+        account = await self.get_user_account(organization_id=organization_id, user_id=user_id)
+        if account is None:
+            return None
+        user = account[0]
+        user.password_hash = password_hash
+        await self.session.flush()
+        return user
 
 
 class OrganizationUnitRepository:

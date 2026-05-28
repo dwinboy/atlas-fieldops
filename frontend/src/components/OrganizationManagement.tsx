@@ -15,6 +15,8 @@ import {
   listOrganizationUnits,
   listRoles,
   listUsers,
+  resetUserPassword,
+  updateUser,
   type AccessCatalog,
   type RoleRead,
   type UserRead
@@ -32,6 +34,12 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const [fullName, setFullName] = useState("");
   const [roleName, setRoleName] = useState("field_officer");
   const [scopeType, setScopeType] = useState("district");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [editRoleName, setEditRoleName] = useState("me_manager");
+  const [editScopeType, setEditScopeType] = useState("project");
+  const [editGeographyId, setEditGeographyId] = useState("");
+  const [editProjectId, setEditProjectId] = useState("");
+  const [editUnitId, setEditUnitId] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const usersQuery = useQuery({
@@ -84,6 +92,45 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     }
   });
 
+  const userUpdateMutation = useMutation({
+    mutationFn: () =>
+      updateUser(token ?? "", selectedUserId, {
+        role_name: editRoleName,
+        scope_type: editScopeType,
+        geography_id: editGeographyId || null,
+        project_id: editProjectId || null,
+        organization_unit_id: editUnitId || null
+      }),
+    onSuccess: async (user) => {
+      pushToast({ title: "Access updated", description: `${user.full_name}'s role and scope were updated`, tone: "success" });
+      await usersQuery.refetch();
+    }
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (payload: { userId: string; active: boolean; name: string }) =>
+      updateUser(token ?? "", payload.userId, { is_active: payload.active }),
+    onSuccess: async (user) => {
+      pushToast({
+        title: user.is_active ? "User activated" : "User deactivated",
+        description: `${user.full_name}'s account status was updated`,
+        tone: user.is_active ? "success" : "warning"
+      });
+      await usersQuery.refetch();
+    }
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (user: UserRead) => resetUserPassword(token ?? "", user.id),
+    onSuccess: (reset) => {
+      pushToast({
+        title: "Password reset",
+        description: `Temporary password: ${reset.temporary_password}`,
+        tone: "warning"
+      });
+    }
+  });
+
   const roles: RoleRead[] =
     rolesQuery.data ??
     ["owner", "admin", "manager", "collector"].map((name) => ({
@@ -95,6 +142,18 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const catalog: AccessCatalog | undefined = catalogQuery.data;
   const catalogRoles = catalog?.roles ?? [];
   const selectedRole = catalogRoles.find((role) => role.name === roleName) ?? catalogRoles[0];
+  const selectedEditRole = catalogRoles.find((role) => role.name === editRoleName) ?? catalogRoles[0];
+  const scopeOptions = catalog?.scope_types ?? ["organization", "country", "region", "district", "project", "own"];
+  const selectableRoles = catalogRoles.length ? catalogRoles : roles;
+
+  function selectUser(user: UserRead): void {
+    setSelectedUserId(user.id);
+    setEditRoleName(user.role_name ?? "field_officer");
+    setEditScopeType(user.scope_type ?? "project");
+    setEditGeographyId(user.geography_id ?? "");
+    setEditProjectId(user.project_id ?? "");
+    setEditUnitId(user.organization_unit_id ?? "");
+  }
 
   const userColumns: TableColumn<UserRead>[] = [
     {
@@ -110,10 +169,50 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     },
     { key: "email", header: "Email", value: (user) => user.email, render: (user) => user.email },
     {
+      key: "role",
+      header: "Role",
+      value: (user) => user.role_name ?? "",
+      render: (user) => <Badge tone="accent">{(user.role_name ?? "unassigned").replaceAll("_", " ")}</Badge>
+    },
+    {
+      key: "scope",
+      header: "Scope",
+      value: (user) => user.scope_type ?? "",
+      render: (user) => (
+        <div>
+          <p className="text-sm">{(user.scope_type ?? "not scoped").replaceAll("_", " ")}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{user.geography_id || user.project_id || user.organization_unit_id || "all allowed data"}</p>
+        </div>
+      )
+    },
+    {
       key: "status",
       header: "Status",
       value: (user) => (user.is_active ? "active" : "inactive"),
       render: (user) => <Badge tone={user.is_active ? "success" : "neutral"}>{user.is_active ? "Active" : "Inactive"}</Badge>
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      value: (user) => user.id,
+      render: (user) => (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" type="button" variant="secondary" onClick={() => selectUser(user)}>
+            Edit access
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="ghost"
+            onClick={() => statusMutation.mutate({ userId: user.id, active: !user.is_active, name: user.full_name })}
+          >
+            {user.is_active ? "Deactivate" : "Activate"}
+          </Button>
+          <Button size="sm" type="button" variant="ghost" onClick={() => resetMutation.mutate(user)}>
+            Reset password
+          </Button>
+        </div>
+      )
     }
   ];
 
@@ -261,7 +360,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
                 value={roleName}
                 onChange={(event) => setRoleName(event.target.value)}
               >
-                {(catalogRoles.length ? catalogRoles : roles).map((role) => (
+                {selectableRoles.map((role) => (
                   <option key={"id" in role ? role.id : role.name} value={role.name}>
                     {"label" in role && role.label ? role.label : role.name}
                   </option>
@@ -278,7 +377,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
                 value={scopeType}
                 onChange={(event) => setScopeType(event.target.value)}
               >
-                {(catalog?.scope_types ?? ["organization", "country", "region", "district", "project", "own"]).map((scope) => (
+                {scopeOptions.map((scope) => (
                   <option key={scope} value={scope}>
                     {scope.replaceAll("_", " ")}
                   </option>
@@ -302,6 +401,90 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
       </div>
 
       <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={usersQuery.data ?? []} searchLabel="Search users" title="Users" />
+
+      <section className="surface-premium rounded-2xl p-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck aria-hidden="true" size={18} />
+          <h2 className="text-sm font-semibold">Edit existing user access</h2>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Select a user, then change their role and operational scope. Use project, region, or district scopes for daily field operations.
+        </p>
+        <form
+          className="mt-4 grid gap-4 lg:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            userUpdateMutation.mutate();
+          }}
+        >
+          <label className="block text-sm font-medium">
+            User
+            <Select
+              className="mt-2"
+              value={selectedUserId}
+              onChange={(event) => {
+                const user = usersQuery.data?.find((item) => item.id === event.target.value);
+                if (user) selectUser(user);
+              }}
+              required
+            >
+              <option value="">Choose a user</option>
+              {(usersQuery.data ?? []).map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.full_name} - {user.email}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block text-sm font-medium">
+            Role
+            <Select className="mt-2" value={editRoleName} onChange={(event) => setEditRoleName(event.target.value)}>
+              {selectableRoles.map((role) => (
+                <option key={"id" in role ? role.id : role.name} value={role.name}>
+                  {"label" in role && role.label ? role.label : role.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block text-sm font-medium">
+            Scope
+            <Select className="mt-2" value={editScopeType} onChange={(event) => setEditScopeType(event.target.value)}>
+              {scopeOptions.map((scope) => (
+                <option key={scope} value={scope}>
+                  {scope.replaceAll("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block text-sm font-medium">
+            Geography code
+            <Input className="mt-2" placeholder="region-default or district-default" value={editGeographyId} onChange={(event) => setEditGeographyId(event.target.value)} />
+          </label>
+          <label className="block text-sm font-medium">
+            Project ID
+            <Input className="mt-2" placeholder="Optional project id" value={editProjectId} onChange={(event) => setEditProjectId(event.target.value)} />
+          </label>
+          <label className="block text-sm font-medium">
+            Organization unit
+            <Select className="mt-2" value={editUnitId} onChange={(event) => setEditUnitId(event.target.value)}>
+              <option value="">No unit selected</option>
+              {(unitsQuery.data ?? []).map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name} - {unit.unit_type}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <div className="rounded-xl border bg-background/80 p-3 text-xs leading-5 text-muted-foreground lg:col-span-2">
+            <span className="block font-medium text-foreground">{selectedEditRole?.label ?? editRoleName}</span>
+            {selectedEditRole?.description ?? "Choose a role to preview what this user can do."}
+          </div>
+          <Button className="self-end" disabled={!selectedUserId || userUpdateMutation.isPending} type="submit" variant="primary">
+            <ShieldCheck aria-hidden="true" />
+            Save access
+          </Button>
+        </form>
+      </section>
 
       <section className="surface-premium rounded-2xl p-4">
         <div className="flex items-center gap-2">
