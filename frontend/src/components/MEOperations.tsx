@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -22,11 +23,14 @@ import {
   UsersRound
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
+import { Input, Select } from "@/components/ui/input";
+import { listImportJobs, listImportRows, updateImportRow, uploadImportFile, type ImportJobRead, type ImportRowRead } from "@/lib/api";
 import {
   beneficiaries,
   beneficiaryProfileConnections,
@@ -56,6 +60,10 @@ type DonorReport = (typeof donorReports)[number];
 type ImportJob = (typeof importJobs)[number];
 type EditableRow = (typeof editableRows)[number];
 type ExportJob = (typeof exportJobs)[number];
+
+type DataInteroperabilityCenterProps = {
+  token: string | null;
+};
 
 function PageHeader({
   eyebrow,
@@ -617,7 +625,60 @@ export function ConnectivityCenter() {
   );
 }
 
-export function DataInteroperabilityCenter() {
+export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenterProps) {
+  const [datasetType, setDatasetType] = useState("beneficiaries");
+  const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+
+  const importJobsQuery = useQuery({
+    queryKey: ["import-jobs", token],
+    queryFn: () => listImportJobs(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+
+  const importRowsQuery = useQuery({
+    queryKey: ["import-rows", token, selectedImportId],
+    queryFn: () => listImportRows(token ?? "", selectedImportId ?? ""),
+    enabled: Boolean(token && token !== "preview-token" && selectedImportId)
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadImportFile(token ?? "", datasetType, file),
+    onSuccess: async (response) => {
+      setSelectedImportId(response.job.id);
+      pushToast({
+        title: "File uploaded",
+        description: `${response.job.source_name} is ready for review and editing`,
+        tone: response.job.error_rows ? "warning" : "success"
+      });
+      await importJobsQuery.refetch();
+      await importRowsQuery.refetch();
+    }
+  });
+
+  const rowMutation = useMutation({
+    mutationFn: (payload: { importJobId: string; row: ImportRowRead; column: string; value: string }) =>
+      updateImportRow(token ?? "", payload.importJobId, payload.row.id, {
+        changes: { [payload.column]: payload.value },
+        expected_version: payload.row.version
+      }),
+    onSuccess: async () => {
+      pushToast({ title: "Cell saved", description: "The imported row was versioned and queued for sync", tone: "success" });
+      await importRowsQuery.refetch();
+    }
+  });
+
+  const realImportColumns = useMemo(() => {
+    const keys: string[] = [];
+    for (const row of importRowsQuery.data ?? []) {
+      for (const key of Object.keys(row.edited_data)) {
+        if (!keys.includes(key)) keys.push(key);
+      }
+    }
+    return keys.slice(0, 8);
+  }, [importRowsQuery.data]);
+  const serverImportRows = importRowsQuery.data ?? [];
+
   const importColumnsDef: TableColumn<ImportJob>[] = [
     {
       key: "file",
@@ -639,12 +700,64 @@ export function DataInteroperabilityCenter() {
     },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "Ready to import" ? "success" : row.status === "Importing" ? "accent" : "warning"}>{row.status}</Badge> }
   ];
+  const serverImportColumnsDef: TableColumn<ImportJobRead>[] = [
+    {
+      key: "source",
+      header: "Upload",
+      value: (row) => `${row.source_name} ${row.dataset_type}`,
+      render: (row) => (
+        <button
+          className="text-left"
+          onClick={() => setSelectedImportId(row.id)}
+          type="button"
+        >
+          <span className="block font-medium">{row.source_name}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{row.dataset_type} · {row.total_rows.toLocaleString()} rows</span>
+        </button>
+      )
+    },
+    { key: "valid", header: "Valid rows", value: (row) => String(row.valid_rows), render: (row) => row.valid_rows.toLocaleString() },
+    {
+      key: "issues",
+      header: "Needs fixing",
+      value: (row) => String(row.error_rows + row.duplicate_rows),
+      render: (row) => <Badge tone={row.error_rows || row.duplicate_rows ? "warning" : "success"}>{(row.error_rows + row.duplicate_rows).toLocaleString()} rows</Badge>
+    },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "validated" ? "success" : "warning"}>{row.status.replaceAll("_", " ")}</Badge> }
+  ];
   const editableColumns: TableColumn<EditableRow>[] = [
     { key: "id", header: "ID", value: (row) => row.id, render: (row) => <span className="font-mono text-xs">{row.id}</span> },
     { key: "name", header: "Name", value: (row) => row.name, render: (row) => <input aria-label={`Name for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.name} /> },
     { key: "village", header: "Village", value: (row) => row.village, render: (row) => <input aria-label={`Village for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.village} /> },
     { key: "phone", header: "Phone", value: (row) => row.phone, render: (row) => <input aria-label={`Phone for ${row.id}`} className="w-full rounded border bg-background px-2 py-1" defaultValue={row.phone} /> },
     { key: "sync", header: "Save status", value: (row) => row.sync, render: (row) => <Badge tone={row.sync === "Synced" ? "success" : row.sync === "Waiting to sync" ? "warning" : "neutral"}>{row.sync}</Badge> }
+  ];
+  const realEditableColumns: TableColumn<ImportRowRead>[] = [
+    { key: "row", header: "Row", value: (row) => String(row.row_number), render: (row) => <span className="font-mono text-xs">{row.row_number}</span> },
+    ...realImportColumns.map((column): TableColumn<ImportRowRead> => ({
+      key: column,
+      header: column,
+      value: (row) => String(row.edited_data[column] ?? ""),
+      render: (row) => (
+        <input
+          aria-label={`${column} for row ${row.row_number}`}
+          className="min-w-32 w-full rounded border bg-background px-2 py-1 text-sm"
+          defaultValue={String(row.edited_data[column] ?? "")}
+          onBlur={(event) => {
+            const nextValue = event.currentTarget.value;
+            if (nextValue !== String(row.edited_data[column] ?? "") && selectedImportId) {
+              rowMutation.mutate({ importJobId: selectedImportId, row, column, value: nextValue });
+            }
+          }}
+        />
+      )
+    })),
+    {
+      key: "status",
+      header: "Status",
+      value: (row) => row.validation_status,
+      render: (row) => <Badge tone={row.validation_status === "valid" || row.validation_status === "edited" ? "success" : "warning"}>{row.validation_status.replaceAll("_", " ")}</Badge>
+    }
   ];
   const exportColumns: TableColumn<ExportJob>[] = [
     { key: "name", header: "Dataset", value: (row) => row.name, render: (row) => row.name },
@@ -660,7 +773,23 @@ export function DataInteroperabilityCenter() {
         eyebrow="Data"
         title="Import, clean, edit, and export"
         description="Bring in spreadsheets, map files, historical exports, and operational datasets with safe validation, mapping, bulk edits, and rollback."
-        action={<ActionButton title="Upload workflow opened" description="CSV, Excel, JSON, GeoJSON, and historical migration validation are ready."><UploadCloud aria-hidden="true" /> Upload data</ActionButton>}
+        action={
+          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90">
+            <UploadCloud aria-hidden="true" size={16} />
+            Upload file
+            <input
+              className="sr-only"
+              type="file"
+              accept=".csv,.xlsx,.json,.geojson"
+              disabled={!token || token === "preview-token" || uploadMutation.isPending}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) uploadMutation.mutate(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        }
       />
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -682,6 +811,25 @@ export function DataInteroperabilityCenter() {
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="space-y-4">
+          <section className="rounded-lg border bg-panel p-4">
+            <h2 className="text-sm font-semibold">Upload settings</h2>
+            <label className="mt-4 block text-sm font-medium">
+              Dataset
+              <Select className="mt-2" value={datasetType} onChange={(event) => setDatasetType(event.target.value)}>
+                {["beneficiaries", "submissions", "geospatial", "indicators", "programs", "cases", "field_officers", "historical_migration"].map((item) => (
+                  <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
+                ))}
+              </Select>
+            </label>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Upload CSV, XLSX, JSON, or GeoJSON files. Parsed rows appear in the editable grid below.
+            </p>
+            {uploadMutation.isError ? (
+              <p className="mt-3 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
+                Upload failed. Check the file type and column headers.
+              </p>
+            ) : null}
+          </section>
           <section className="rounded-lg border bg-panel p-4">
             <h2 className="text-sm font-semibold">Safe import steps</h2>
             <div className="mt-4 space-y-3">
@@ -710,7 +858,11 @@ export function DataInteroperabilityCenter() {
         </aside>
 
         <div className="min-w-0 space-y-5">
-          <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
+          {importJobsQuery.data?.length ? (
+            <DataTable columns={serverImportColumnsDef} emptyLabel="No import jobs yet" rows={importJobsQuery.data} searchLabel="Search imports" title="Import history" />
+          ) : (
+            <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
+          )}
 
           <section className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between gap-3">
@@ -772,7 +924,11 @@ export function DataInteroperabilityCenter() {
         </aside>
       </section>
 
-      <DataTable columns={editableColumns} emptyLabel="No rows ready for editing" rows={editableRows} searchLabel="Search editable rows" title="Spreadsheet editing preview" />
+      {serverImportRows.length ? (
+        <DataTable columns={realEditableColumns} emptyLabel="No rows ready for editing" rows={serverImportRows} searchLabel="Search editable rows" title="Editable imported rows" />
+      ) : (
+        <DataTable columns={editableColumns} emptyLabel="No rows ready for editing" rows={editableRows} searchLabel="Search editable rows" title="Spreadsheet editing preview" />
+      )}
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={exportJobs} searchLabel="Search exports" title="Exports and scheduled files" />

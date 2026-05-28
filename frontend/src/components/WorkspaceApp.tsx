@@ -72,7 +72,7 @@ export function WorkspaceApp() {
     dashboard: <Dashboard />,
     ecosystem: <OperationalEcosystem />,
     enterprise: <EnterpriseOperationsCenter />,
-    data: <DataInteroperabilityCenter />,
+    data: <DataInteroperabilityCenter token={token} />,
     programs: <ProgramManagement />,
     beneficiaries: <BeneficiaryRegistry />,
     indicators: <IndicatorTracking />,

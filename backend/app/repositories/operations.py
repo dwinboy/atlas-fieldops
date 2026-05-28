@@ -11,6 +11,7 @@ from app.models.operations import (
     CaseRecord,
     DataExportJob,
     DataImportJob,
+    DataImportRow,
     DataMappingTemplate,
     DataQualitySignal,
     DonorReport,
@@ -331,6 +332,82 @@ class OperationsRepository:
         self.session.add(job)
         await self.session.flush()
         return job
+
+    async def get_import_job(self, *, organization_id: UUID, import_job_id: UUID) -> DataImportJob | None:
+        result = await self.session.execute(
+            select(DataImportJob).where(
+                DataImportJob.organization_id == organization_id,
+                DataImportJob.id == import_job_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def create_import_rows(
+        self,
+        *,
+        organization_id: UUID,
+        import_job_id: UUID,
+        rows: list[dict[str, object]],
+        issue_counts_by_row: dict[int, int],
+    ) -> list[DataImportRow]:
+        records: list[DataImportRow] = []
+        for index, row in enumerate(rows, start=1):
+            issue_count = issue_counts_by_row.get(index, 0)
+            record = DataImportRow(
+                organization_id=organization_id,
+                import_job_id=import_job_id,
+                row_number=index,
+                row_data_json=row,
+                edited_data_json=row,
+                validation_status="needs_fixes" if issue_count else "valid",
+                issue_count=issue_count,
+                version=1,
+            )
+            self.session.add(record)
+            records.append(record)
+        await self.session.flush()
+        return records
+
+    async def list_import_rows(self, *, organization_id: UUID, import_job_id: UUID) -> list[DataImportRow]:
+        result = await self.session.execute(
+            select(DataImportRow)
+            .where(
+                DataImportRow.organization_id == organization_id,
+                DataImportRow.import_job_id == import_job_id,
+            )
+            .order_by(DataImportRow.row_number)
+            .limit(1000)
+        )
+        return list(result.scalars())
+
+    async def update_import_row(
+        self,
+        *,
+        organization_id: UUID,
+        import_job_id: UUID,
+        row_id: UUID,
+        changes: dict[str, object],
+        expected_version: int | None = None,
+    ) -> DataImportRow | None:
+        result = await self.session.execute(
+            select(DataImportRow).where(
+                DataImportRow.organization_id == organization_id,
+                DataImportRow.import_job_id == import_job_id,
+                DataImportRow.id == row_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        if expected_version is not None and row.version != expected_version:
+            row.validation_status = "conflict"
+            await self.session.flush()
+            return row
+        row.edited_data_json = {**row.edited_data_json, **changes}
+        row.version += 1
+        row.validation_status = "edited"
+        await self.session.flush()
+        return row
 
     async def list_import_jobs(self, organization_id: UUID) -> list[DataImportJob]:
         result = await self.session.execute(

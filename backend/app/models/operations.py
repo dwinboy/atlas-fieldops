@@ -318,6 +318,20 @@ class DataImportIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     suggested_fix: Mapped[str | None] = mapped_column(String(400), nullable=True)
 
 
+class DataImportRow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "data_import_rows"
+    __table_args__ = (UniqueConstraint("import_job_id", "row_number"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    import_job_id: Mapped[UUID] = mapped_column(ForeignKey("data_import_jobs.id"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_data_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    edited_data_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    validation_status: Mapped[str] = mapped_column(String(40), default="valid", index=True)
+    issue_count: Mapped[int] = mapped_column(Integer, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class DataMappingTemplate(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "data_mapping_templates"
     __table_args__ = (UniqueConstraint("organization_id", "name"),)

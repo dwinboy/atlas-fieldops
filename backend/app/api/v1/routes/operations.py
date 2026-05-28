@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -21,8 +21,11 @@ from app.schemas.operations import (
     ExportJobRead,
     ImportJobCreate,
     ImportJobRead,
+    ImportRowRead,
+    ImportRowUpdate,
     ImportPreviewRequest,
     ImportPreviewResponse,
+    ImportUploadResponse,
     IndicatorCreate,
     IndicatorRead,
     InterventionCreate,
@@ -266,6 +269,30 @@ async def preview_import(
     return await OperationsService(session).preview_import(payload)
 
 
+@router.post("/data/imports/upload", response_model=ImportUploadResponse, status_code=status.HTTP_201_CREATED, summary="Upload and parse an editable import file")
+async def upload_import_file(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    dataset_type: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+) -> ImportUploadResponse:
+    try:
+        content = await file.read()
+        return await OperationsService(session).upload_import_file(
+            organization_id=organization_uuid(principal),
+            user_id=user_uuid(principal),
+            dataset_type=dataset_type,
+            filename=file.filename or "upload.csv",
+            content=content,
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
 @router.get("/data/imports", response_model=list[ImportJobRead], summary="List import jobs")
 async def list_import_jobs(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
@@ -281,6 +308,35 @@ async def create_import_job(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ImportJobRead:
     return await OperationsService(session).create_import_job(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/data/imports/{import_job_id}/rows", response_model=list[ImportRowRead], summary="List editable rows from an import")
+async def list_import_rows(
+    import_job_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportRowRead]:
+    return await OperationsService(session).list_import_rows(organization_uuid(principal), import_job_id)
+
+
+@router.patch("/data/imports/{import_job_id}/rows/{row_id}", response_model=ImportRowRead, summary="Edit one imported row")
+async def update_import_row(
+    import_job_id: UUID,
+    row_id: UUID,
+    payload: ImportRowUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_BULK_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportRowRead:
+    try:
+        return await OperationsService(session).update_import_row(
+            organization_uuid(principal),
+            import_job_id,
+            row_id,
+            payload,
+        )
+    except KeyError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import row not found") from exc
 
 
 @router.post("/data/mapping-templates", status_code=status.HTTP_204_NO_CONTENT, summary="Save import mapping template")

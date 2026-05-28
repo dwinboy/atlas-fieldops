@@ -71,4 +71,5 @@ async def list_organization_units(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ORGANIZATION_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[OrganizationUnitRead]:
-    return await OrganizationUnitRepository(session).list_for_organization(UUID(principal.organization_id))
+    units = await OrganizationUnitRepository(session).list_for_organization(UUID(principal.organization_id))
+    return [OrganizationUnitRead.model_validate(unit) for unit in units]

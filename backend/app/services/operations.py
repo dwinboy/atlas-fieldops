@@ -30,6 +30,9 @@ from app.schemas.operations import (
     ExportJobRead,
     ImportJobCreate,
     ImportJobRead,
+    ImportRowRead,
+    ImportRowUpdate,
+    ImportUploadResponse,
     ImportPreviewRequest,
     ImportPreviewResponse,
     ImportValidationIssue,
@@ -61,6 +64,7 @@ from app.schemas.operations import (
     WorkflowDefinitionRead,
     ColumnMapping,
 )
+from app.services.file_imports import parse_uploaded_dataset
 
 
 def indicator_progress(indicator: MonitoringIndicator) -> float:
@@ -531,9 +535,117 @@ class OperationsService:
         await event_publisher.publish("data_import.created", {"organization_id": str(organization_id), "import_job_id": str(job.id)})
         return ImportJobRead.model_validate(job)
 
+    async def upload_import_file(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        *,
+        dataset_type: str,
+        filename: str,
+        content: bytes,
+    ) -> ImportUploadResponse:
+        source_format, columns, rows = parse_uploaded_dataset(filename, content)
+        mapping = infer_mapping(dataset_type, columns)
+        issues = validate_sample_rows(dataset_type, rows[:100], mapping)
+        issue_counts_by_row: dict[int, int] = {}
+        for issue in issues:
+            issue_counts_by_row[issue.row_number] = issue_counts_by_row.get(issue.row_number, 0) + 1
+        error_rows = len({issue.row_number for issue in issues if issue.severity == "error"})
+        duplicate_rows = len({issue.row_number for issue in issues if issue.issue_type == "duplicate_row"})
+        payload = ImportJobCreate(
+            dataset_type=dataset_type,
+            source_name=filename,
+            source_format=source_format,
+            total_rows=len(rows),
+            mapping=mapping,
+        )
+        job = await self.repository.create_import_job(
+            organization_id=organization_id,
+            created_by_user_id=user_id,
+            dataset_type=payload.dataset_type,
+            source_name=payload.source_name,
+            source_format=payload.source_format,
+            total_rows=payload.total_rows,
+            mapping_json={"columns": [item.model_dump() for item in mapping]},
+            summary_json={
+                "valid_rows": max(0, len(rows) - error_rows),
+                "error_rows": error_rows,
+                "duplicate_rows": duplicate_rows,
+                "partial_import_supported": True,
+            },
+        )
+        await self.repository.create_import_rows(
+            organization_id=organization_id,
+            import_job_id=job.id,
+            rows=rows,
+            issue_counts_by_row=issue_counts_by_row,
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data_import.uploaded",
+                source_module="data",
+                summary=f"{filename} uploaded with {len(rows)} editable rows.",
+                priority="high" if error_rows else "normal",
+                payload={"dataset_type": dataset_type, "format": source_format, "rows": len(rows)},
+            ),
+        )
+        await self.session.commit()
+        return ImportUploadResponse(
+            job=ImportJobRead.model_validate(job),
+            columns=columns,
+            preview_rows=rows[:20],
+            issues=issues,
+        )
+
     async def list_import_jobs(self, organization_id: UUID) -> list[ImportJobRead]:
         jobs = await self.repository.list_import_jobs(organization_id)
         return [ImportJobRead.model_validate(job) for job in jobs]
+
+    async def list_import_rows(self, organization_id: UUID, import_job_id: UUID) -> list[ImportRowRead]:
+        rows = await self.repository.list_import_rows(organization_id=organization_id, import_job_id=import_job_id)
+        return [
+            ImportRowRead(
+                id=row.id,
+                import_job_id=row.import_job_id,
+                row_number=row.row_number,
+                row_data=row.row_data_json,
+                edited_data=row.edited_data_json,
+                validation_status=row.validation_status,
+                issue_count=row.issue_count,
+                version=row.version,
+            )
+            for row in rows
+        ]
+
+    async def update_import_row(
+        self,
+        organization_id: UUID,
+        import_job_id: UUID,
+        row_id: UUID,
+        payload: ImportRowUpdate,
+    ) -> ImportRowRead:
+        row = await self.repository.update_import_row(
+            organization_id=organization_id,
+            import_job_id=import_job_id,
+            row_id=row_id,
+            changes=payload.changes,
+            expected_version=payload.expected_version,
+        )
+        if row is None:
+            raise KeyError("Import row not found")
+        await self.session.commit()
+        return ImportRowRead(
+            id=row.id,
+            import_job_id=row.import_job_id,
+            row_number=row.row_number,
+            row_data=row.row_data_json,
+            edited_data=row.edited_data_json,
+            validation_status=row.validation_status,
+            issue_count=row.issue_count,
+            version=row.version,
+        )
 
     async def create_mapping_template(self, organization_id: UUID, payload: MappingTemplateCreate) -> None:
         mapping_json: dict[str, object] = {"columns": [item.model_dump() for item in payload.mapping]}

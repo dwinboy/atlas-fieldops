@@ -416,6 +416,29 @@ class ImportJobRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ImportUploadResponse(BaseModel):
+    job: ImportJobRead
+    columns: list[str]
+    preview_rows: list[dict[str, object]]
+    issues: list["ImportValidationIssue"]
+
+
+class ImportRowRead(BaseModel):
+    id: UUID
+    import_job_id: UUID
+    row_number: int
+    row_data: dict[str, object]
+    edited_data: dict[str, object]
+    validation_status: str
+    issue_count: int
+    version: int
+
+
+class ImportRowUpdate(BaseModel):
+    changes: dict[str, object] = Field(min_length=1)
+    expected_version: int | None = Field(default=None, ge=1)
+
+
 class ImportValidationIssue(BaseModel):
     row_number: int
     field_name: str | None = None

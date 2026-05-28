@@ -228,6 +228,24 @@ export type ImportJobRead = {
   rollback_available: boolean;
 };
 
+export type ImportRowRead = {
+  id: string;
+  import_job_id: string;
+  row_number: number;
+  row_data: Record<string, unknown>;
+  edited_data: Record<string, unknown>;
+  validation_status: string;
+  issue_count: number;
+  version: number;
+};
+
+export type ImportUploadResponse = {
+  job: ImportJobRead;
+  columns: string[];
+  preview_rows: Record<string, unknown>[];
+  issues: ImportPreviewResponse["issues"];
+};
+
 export type ExportJobCreate = {
   dataset_type: string;
   export_format: string;
@@ -401,6 +419,39 @@ export async function createImportJob(token: string, payload: ImportJobCreate): 
   return request<ImportJobRead>("/operations/data/imports", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listImportJobs(token: string): Promise<ImportJobRead[]> {
+  return request<ImportJobRead[]>("/operations/data/imports", { token });
+}
+
+export async function uploadImportFile(token: string, datasetType: string, file: File): Promise<ImportUploadResponse> {
+  const body = new FormData();
+  body.set("dataset_type", datasetType);
+  body.set("file", file);
+  const response = await fetch(`${apiBaseUrl}/operations/data/imports/upload`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<ImportUploadResponse>;
+}
+
+export async function listImportRows(token: string, importJobId: string): Promise<ImportRowRead[]> {
+  return request<ImportRowRead[]>(`/operations/data/imports/${importJobId}/rows`, { token });
+}
+
+export async function updateImportRow(
+  token: string,
+  importJobId: string,
+  rowId: string,
+  payload: { changes: Record<string, unknown>; expected_version?: number }
+): Promise<ImportRowRead> {
+  return request<ImportRowRead>(`/operations/data/imports/${importJobId}/rows/${rowId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function createExportJob(token: string, payload: ExportJobCreate): Promise<ExportJobRead> {
   return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
 }
@@ -446,10 +497,14 @@ export const api = {
   listBeneficiaries,
   listFieldOfficers,
   listFormTemplates,
+  listImportJobs,
+  listImportRows,
   listRoles,
   listSubmissions,
   listUsers,
   login,
   previewImport,
-  reviewSubmission
+  reviewSubmission,
+  updateImportRow,
+  uploadImportFile
 };
