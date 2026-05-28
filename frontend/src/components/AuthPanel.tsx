@@ -16,9 +16,9 @@ type AuthPanelProps = {
 };
 
 export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
-  const [email, setEmail] = useState("admin@example.com");
+  const [email, setEmail] = useState("superadmin@example.com");
   const [password, setPassword] = useState("");
-  const [organizationSlug, setOrganizationSlug] = useState("acme");
+  const [organizationSlug, setOrganizationSlug] = useState("atlas-demo");
 
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
@@ -115,7 +115,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </Badge>
           </div>
           <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Use your organization account to continue.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Use your organization slug, work email, and password to continue.
+          </p>
 
           <label className="mt-6 block text-sm font-medium" htmlFor="organization">
             Organization
@@ -128,6 +130,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             autoComplete="organization"
             required
           />
+          <p className="mt-1.5 text-xs text-muted-foreground">Local seed workspace: atlas-demo</p>
 
           <label className="mt-4 block text-sm font-medium" htmlFor="email">
             Email
@@ -155,6 +158,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             minLength={12}
             required
           />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            After running make seed-admin, use ChangeMe12345! for local development.
+          </p>
 
           {mutation.isError ? (
             <p className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">

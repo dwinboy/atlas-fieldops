@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, KeyRound, Plus, ShieldCheck, UserPlus } from "lucide-react";
+import { Building2, CheckCircle2, KeyRound, LockKeyhole, Plus, ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -121,12 +121,12 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     <section aria-labelledby="organization-title" className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Organization</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Admin</p>
           <h1 id="organization-title" className="mt-2 text-2xl font-semibold tracking-tight">
-            Organization management
+            Team and access
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Create organizations, invite teammates, and choose what each person can access.
+            Invite people, choose their role, and control exactly which regions, projects, and workflows they can use.
           </p>
         </div>
         <Badge tone="accent">{catalogRoles.length || roles.length} enterprise roles available</Badge>
@@ -136,14 +136,14 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         <section className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
             <ShieldCheck aria-hidden="true" size={18} />
-            <h2 className="text-sm font-semibold">Enterprise access model</h2>
+            <h2 className="text-sm font-semibold">Access model</h2>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             {[
-              ["Roles", `${catalogRoles.length || roles.length}`, "Default and custom role profiles"],
-              ["Permissions", `${catalog?.permissions.length ?? 0}`, "Granular dot-style capabilities"],
+              ["Roles", `${catalogRoles.length || roles.length}`, "Job-based access profiles"],
+              ["Permissions", `${catalog?.permissions.length ?? 0}`, "Actions allowed in the system"],
               ["Scopes", `${catalog?.scope_types.length ?? 0}`, "Country, region, district, project, own"],
-              ["Units", `${unitsQuery.data?.length ?? 0}`, "Organization hierarchy nodes"]
+              ["Units", `${unitsQuery.data?.length ?? 0}`, "Countries, regions, districts, and teams"]
             ].map(([label, value, text]) => (
               <div className="rounded-xl border bg-background/80 p-3" key={label}>
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -156,10 +156,12 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         <aside className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
             <KeyRound aria-hidden="true" size={18} />
-            <h2 className="text-sm font-semibold">Selected role policy</h2>
+            <h2 className="text-sm font-semibold">What this person can do</h2>
           </div>
           <p className="mt-3 text-sm font-medium">{selectedRole?.label ?? roleName}</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedRole?.description ?? "Choose a role to preview its permissions and scope."}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {selectedRole?.description ?? "Choose a role to preview permissions, scope, and approval access before saving."}
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone="accent">{selectedRole?.scope_type ?? scopeType} scope</Badge>
             {(selectedRole?.workflow_actions ?? []).slice(0, 3).map((action) => (
@@ -227,7 +229,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
         >
           <div className="mb-4 flex items-center gap-2">
             <UserPlus aria-hidden="true" size={18} />
-            <h2 className="text-sm font-semibold">Invite user</h2>
+            <h2 className="text-sm font-semibold">Invite teammate</h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">
@@ -251,6 +253,9 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
             </label>
             <label className="block text-sm font-medium sm:col-span-2">
               Role
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Pick the closest job function. You can narrow access with the scope below.
+              </span>
               <Select
                 className="mt-2"
                 value={roleName}
@@ -265,6 +270,9 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
             </label>
             <label className="block text-sm font-medium sm:col-span-2">
               Access scope
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                This controls what data they see. District and project scopes are safest for field operations.
+              </span>
               <Select
                 className="mt-2"
                 value={scopeType}
@@ -287,20 +295,27 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
             <UserPlus aria-hidden="true" />
             Invite
           </Button>
+          <div className="mt-4 rounded-xl border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground">
+            Temporary local password: <span className="font-mono text-foreground">ChangeMe12345!</span>. Require users to reset it before production use.
+          </div>
         </form>
       </div>
 
       <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={usersQuery.data ?? []} searchLabel="Search users" title="Users" />
 
       <section className="surface-premium rounded-2xl p-4">
-        <h2 className="text-sm font-semibold">Custom role builder foundation</h2>
+        <div className="flex items-center gap-2">
+          <LockKeyhole aria-hidden="true" size={18} />
+          <h2 className="text-sm font-semibold">Permission preview</h2>
+        </div>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          Organizations can combine permissions, scope type, workflow approvals, project access, and geography assignments without hardcoded menu logic.
+          A plain preview of the selected role. These capabilities drive menus, buttons, API access, approval workflows, and audit visibility.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {(selectedRole?.permissions ?? roles[0]?.permissions ?? []).slice(0, 12).map((permission) => (
-            <div className="rounded-xl border bg-background/80 px-3 py-2 text-sm" key={permission}>
-              {permission}
+            <div className="flex items-center gap-2 rounded-xl border bg-background/80 px-3 py-2 text-sm" key={permission}>
+              <CheckCircle2 aria-hidden="true" className="text-success" size={15} />
+              <span>{permission.replaceAll(".", " ").replaceAll("_", " ")}</span>
             </div>
           ))}
         </div>

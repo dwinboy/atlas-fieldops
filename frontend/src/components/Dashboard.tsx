@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, Gauge } from "lucide-react";
+import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, FileText, Gauge, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -7,29 +7,62 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import { dashboardMetrics } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
+import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 
 export function Dashboard() {
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const quickActions: { label: string; hint: string; view: WorkspaceView; icon: typeof Plus }[] = [
+    { label: "Create form", hint: "Start from a template or blank form", view: "templates", icon: Plus },
+    { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", icon: ShieldCheck },
+    { label: "Invite officer", hint: "Add someone to the field team", view: "officers", icon: UserPlus },
+    { label: "Import data", hint: "Upload spreadsheets and fix issues", view: "data", icon: UploadCloud }
+  ];
+
   return (
     <section aria-labelledby="dashboard-title" className="space-y-6">
       <div className="surface-premium rounded-2xl p-5 md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Today</p>
-          <h1 id="dashboard-title" className="mt-2 text-3xl font-semibold tracking-tight">
-            Today’s field work
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            The clearest view of incoming submissions, pending reviews, field team activity, and sync issues.
-          </p>
-        </div>
-        <Button variant="primary">
-          Open report
-          <ArrowUpRight aria-hidden="true" />
-        </Button>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Today</p>
+            <h1 id="dashboard-title" className="mt-2 text-3xl font-semibold tracking-tight">
+              What needs attention now
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+              A simple daily view for pending reviews, offline sync, data quality, and field team activity.
+            </p>
+          </div>
+          <Button variant="primary" onClick={() => setActiveView("submissions")} type="button">
+            Review queue
+            <ArrowUpRight aria-hidden="true" />
+          </Button>
         </div>
       </div>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Quick actions">
+        {quickActions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <button
+              key={action.label}
+              className="group rounded-2xl border bg-panel p-4 text-left shadow-line transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 hover:shadow-elevated"
+              onClick={() => setActiveView(action.view)}
+              type="button"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+                  <Icon aria-hidden="true" size={17} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{action.label}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{action.hint}</span>
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {dashboardMetrics.map((metric, index) => {
@@ -116,9 +149,9 @@ export function Dashboard() {
           </div>
           <div className="divide-y">
             {([
-              ["Answers need a closer look", "1,216 submissions", "2h target", "warning" as const],
-              ["Possible duplicate records", "128 submissions", "45m target", "danger" as const],
-              ["Waiting for supervisor approval", "74 submissions", "4h target", "neutral" as const]
+              ["Answers need a closer look", "1,216 submissions", "Open review queue", "warning" as const],
+              ["Possible duplicate records", "128 submissions", "Check duplicates", "danger" as const],
+              ["Waiting for supervisor approval", "74 submissions", "Follow up today", "neutral" as const]
             ] as const).map(([item, count, sla, tone]) => (
               <div key={item} className="grid grid-cols-[1fr_auto] gap-4 py-3 text-sm">
                 <div>
@@ -153,6 +186,14 @@ export function Dashboard() {
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>
           </dl>
+          <div className="mt-4 rounded-xl border border-warning/25 bg-warning/10 p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <FileText aria-hidden="true" className="mt-0.5 text-warning" size={16} />
+              <p className="leading-6 text-muted-foreground">
+                Data is saved locally on devices first. Failed uploads stay in the retry queue until connectivity improves.
+              </p>
+            </div>
+          </div>
         </section>
       </div>
     </section>

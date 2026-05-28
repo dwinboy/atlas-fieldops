@@ -41,25 +41,54 @@ type AppShellProps = {
   principal?: CurrentPrincipal | null;
 };
 
-const navItems = [
-  { id: "dashboard", label: "Home", hint: "Today’s work", icon: LayoutDashboard },
-  { id: "ecosystem", label: "Ecosystem", hint: "Connected work", icon: Boxes },
-  { id: "enterprise", label: "Operations", hint: "Governance & assets", icon: Building2 },
-  { id: "data", label: "Data", hint: "Import & export", icon: Database },
-  { id: "programs", label: "Programs", hint: "Projects & donors", icon: Building2 },
-  { id: "beneficiaries", label: "Beneficiaries", hint: "People & households", icon: UsersRound },
-  { id: "indicators", label: "Indicators", hint: "Targets & results", icon: BarChart3 },
-  { id: "submissions", label: "Review", hint: "Approve data", icon: ShieldCheck },
-  { id: "templates", label: "Templates", hint: "Start faster", icon: Files },
-  { id: "forms", label: "Forms", hint: "Build surveys", icon: ClipboardList },
-  { id: "officers", label: "Field team", hint: "People & sync", icon: UsersRound },
-  { id: "cases", label: "Cases", hint: "Follow-ups", icon: GitPullRequestArrow },
-  { id: "map", label: "Map", hint: "Coverage", icon: Map },
-  { id: "organizations", label: "Organization", hint: "Team & roles", icon: Building2 },
-  { id: "analytics", label: "Reports", hint: "Donors & exports", icon: BarChart3 },
-  { id: "workflows", label: "Approvals", hint: "Rules", icon: GitPullRequestArrow },
-  { id: "connectivity", label: "Connectivity", hint: "Offline & alerts", icon: Wifi }
-] satisfies { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard }[];
+type NavItem = { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard };
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Daily work",
+    items: [
+      { id: "dashboard", label: "Today", hint: "What needs action", icon: LayoutDashboard },
+      { id: "submissions", label: "Review queue", hint: "Approve data", icon: ShieldCheck },
+      { id: "connectivity", label: "Sync health", hint: "Offline & retry", icon: Wifi }
+    ]
+  },
+  {
+    label: "Collect data",
+    items: [
+      { id: "templates", label: "Templates", hint: "Start faster", icon: Files },
+      { id: "forms", label: "Form builder", hint: "Surveys & logic", icon: ClipboardList },
+      { id: "beneficiaries", label: "Beneficiaries", hint: "People & households", icon: UsersRound },
+      { id: "officers", label: "Field teams", hint: "People & assignments", icon: UsersRound }
+    ]
+  },
+  {
+    label: "Plan & monitor",
+    items: [
+      { id: "programs", label: "Projects", hint: "Programs & donors", icon: Building2 },
+      { id: "indicators", label: "Indicators", hint: "Targets & results", icon: BarChart3 },
+      { id: "map", label: "Map", hint: "Coverage & GPS", icon: Map },
+      { id: "analytics", label: "Reports", hint: "Exports & donors", icon: BarChart3 }
+    ]
+  },
+  {
+    label: "Operate",
+    items: [
+      { id: "ecosystem", label: "Ecosystem", hint: "Connected work", icon: Boxes },
+      { id: "enterprise", label: "Operations", hint: "Assets & budgets", icon: Building2 },
+      { id: "cases", label: "Cases", hint: "Follow-ups", icon: GitPullRequestArrow },
+      { id: "data", label: "Data tools", hint: "Import & edit", icon: Database }
+    ]
+  },
+  {
+    label: "Admin",
+    items: [
+      { id: "organizations", label: "Team & access", hint: "Roles & regions", icon: Building2 },
+      { id: "workflows", label: "Approvals", hint: "Rules & escalation", icon: GitPullRequestArrow }
+    ]
+  }
+];
+
+const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
 
 export function AppShell({ children, onSignOut, organizationLabel, principal }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -76,33 +105,44 @@ export function AppShell({ children, onSignOut, organizationLabel, principal }: 
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">
-      {visibleNavItems.map((item) => {
-        const Icon = item.icon;
-        const active = activeView === item.id;
+      {navGroups.map((group) => {
+        const groupItems = visibleNavItems.filter((item) => group.items.some((groupItem) => groupItem.id === item.id));
+        if (!groupItems.length) return null;
         return (
-          <button
-            key={item.id}
-            className={cn(
-              "group flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
-              active
-                ? "bg-primary/10 text-primary shadow-line"
-                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-              collapsedSidebar && "justify-center px-0"
-            )}
-            onClick={() => {
-              setActiveView(item.id);
-              setMobileNavOpen(false);
-            }}
-            type="button"
-          >
-            <Icon aria-hidden="true" size={18} />
-            <span className={cn("min-w-0", collapsedSidebar && "sr-only")}>
-              <span className="block truncate">{item.label}</span>
-              <span className="block truncate text-[11px] font-normal text-muted-foreground group-hover:text-muted-foreground">
-                {item.hint}
-              </span>
-            </span>
-          </button>
+          <div className="space-y-1.5" key={group.label}>
+            <p className={cn("px-2.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground", collapsedSidebar && "sr-only")}>
+              {group.label}
+            </p>
+            {groupItems.map((item) => {
+              const Icon = item.icon;
+              const active = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  className={cn(
+                    "group flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
+                    active
+                      ? "bg-primary/10 text-primary shadow-line"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                    collapsedSidebar && "justify-center px-0"
+                  )}
+                  onClick={() => {
+                    setActiveView(item.id);
+                    setMobileNavOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Icon aria-hidden="true" size={18} />
+                  <span className={cn("min-w-0", collapsedSidebar && "sr-only")}>
+                    <span className="block truncate">{item.label}</span>
+                    <span className="block truncate text-[11px] font-normal text-muted-foreground group-hover:text-muted-foreground">
+                      {item.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         );
       })}
     </nav>
