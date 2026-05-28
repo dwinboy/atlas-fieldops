@@ -30,6 +30,9 @@ type OrganizationManagementProps = {
 export function OrganizationManagement({ token }: OrganizationManagementProps) {
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
+  const [ownerFullName, setOwnerFullName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("ChangeMe12345!");
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [roleName, setRoleName] = useState("field_officer");
@@ -67,11 +70,25 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
   });
 
   const organizationMutation = useMutation({
-    mutationFn: createOrganization,
-    onSuccess: () => {
+    mutationFn: () =>
+      createOrganization(token ?? "", {
+        name: organizationName,
+        slug: organizationSlug,
+        owner_email: ownerEmail,
+        owner_full_name: ownerFullName,
+        owner_password: ownerPassword
+      }),
+    onSuccess: (organization) => {
       setOrganizationName("");
       setOrganizationSlug("");
-      pushToast({ title: "Organization created", description: "Default roles were provisioned", tone: "success" });
+      setOwnerFullName("");
+      setOwnerEmail("");
+      setOwnerPassword("ChangeMe12345!");
+      pushToast({
+        title: "Organization created",
+        description: `Login slug: ${organization.slug}${organization.owner_email ? ` · owner: ${organization.owner_email}` : ""}`,
+        tone: "success"
+      });
     }
   });
 
@@ -275,7 +292,7 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
           className="rounded-lg border bg-panel p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            organizationMutation.mutate({ name: organizationName, slug: organizationSlug });
+            organizationMutation.mutate();
           }}
         >
           <div className="mb-4 flex items-center gap-2">
@@ -293,14 +310,53 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
               />
             </label>
             <label className="block text-sm font-medium">
-              Slug
+              Login slug
               <Input
                 className="mt-2"
                 value={organizationSlug}
                 onChange={(event) => setOrganizationSlug(event.target.value)}
                 pattern="[a-z0-9-]+"
+                placeholder="example-org"
                 required
               />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Users must enter this exact slug when signing in.
+              </span>
+            </label>
+            <label className="block text-sm font-medium">
+              Owner full name
+              <Input
+                className="mt-2"
+                value={ownerFullName}
+                onChange={(event) => setOwnerFullName(event.target.value)}
+                placeholder="Jane Program Admin"
+                required
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Owner email
+              <Input
+                className="mt-2"
+                type="email"
+                value={ownerEmail}
+                onChange={(event) => setOwnerEmail(event.target.value)}
+                placeholder="admin@example.org"
+                required
+              />
+            </label>
+            <label className="block text-sm font-medium sm:col-span-2">
+              Owner temporary password
+              <Input
+                className="mt-2"
+                type="text"
+                value={ownerPassword}
+                onChange={(event) => setOwnerPassword(event.target.value)}
+                minLength={12}
+                required
+              />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                The owner can log in immediately with the slug, email, and this temporary password.
+              </span>
             </label>
           </div>
           {organizationMutation.isError ? (

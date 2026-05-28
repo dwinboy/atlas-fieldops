@@ -24,6 +24,7 @@ class OrganizationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.organizations = OrganizationRepository(session)
+        self.identity = IdentityRepository(session)
         self.roles = RoleRepository(session)
         self.units = OrganizationUnitRepository(session)
         self.audit = AuditRepository(session)
@@ -33,8 +34,11 @@ class OrganizationService:
         if existing is not None:
             raise IdentityConflictError("Organization slug already exists")
         organization = await self.organizations.create(name=payload.name, slug=payload.slug)
+        owner_role = None
         for definition in ROLE_DEFINITIONS.values():
-            await self.roles.create_from_definition(organization_id=organization.id, definition=definition)
+            role = await self.roles.create_from_definition(organization_id=organization.id, definition=definition)
+            if definition.name == "owner":
+                owner_role = role
         country = await self.units.create(
             organization_id=organization.id,
             name="National office",
@@ -78,7 +82,42 @@ class OrganizationService:
             settings.kafka_auth_events_topic,
             {"type": "organization.created", "organization_id": str(organization.id), "slug": organization.slug},
         )
-        return organization
+        temporary_password: str | None = None
+        if payload.owner_email is not None:
+            if owner_role is None:
+                raise IdentityNotFoundError("Owner role not provisioned")
+            temporary_password = payload.owner_password or "ChangeMe12345!"
+            owner = await self.identity.create_user(
+                email=str(payload.owner_email),
+                password_hash=hash_password(temporary_password),
+                full_name=payload.owner_full_name or payload.owner_email.split("@")[0],
+            )
+            await self.identity.add_membership(organization_id=organization.id, user_id=owner.id, role_id=owner_role.id)
+            await self.identity.add_access_grant(
+                organization_id=organization.id,
+                user_id=owner.id,
+                scope_type=ScopeType.ORGANIZATION,
+            )
+            await self.audit.append(
+                organization_id=organization.id,
+                actor_user_id=owner.id,
+                action="organization.owner_created",
+                resource_type="user",
+                resource_id=str(owner.id),
+                metadata={"email": owner.email, "organization_slug": organization.slug},
+            )
+            await event_publisher.publish(
+                settings.kafka_auth_events_topic,
+                {"type": "organization.owner_created", "organization_id": str(organization.id), "user_id": str(owner.id)},
+            )
+        return {
+            "id": organization.id,
+            "name": organization.name,
+            "slug": organization.slug,
+            "is_active": organization.is_active,
+            "owner_email": str(payload.owner_email) if payload.owner_email is not None else None,
+            "temporary_password": temporary_password,
+        }
 
 
 class UserManagementService:

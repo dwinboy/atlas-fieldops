@@ -120,7 +120,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           </p>
 
           <label className="mt-6 block text-sm font-medium" htmlFor="organization">
-            Organization
+            Organization login slug
           </label>
           <Input
             id="organization"
@@ -130,7 +130,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             autoComplete="organization"
             required
           />
-          <p className="mt-1.5 text-xs text-muted-foreground">Local seed workspace: atlas-demo</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Enter the slug created for your organization, for example <span className="font-mono text-foreground">atlas-demo</span>.
+          </p>
 
           <label className="mt-4 block text-sm font-medium" htmlFor="email">
             Email
@@ -164,7 +166,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
           {mutation.isError ? (
             <p className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
-              Sign in failed. Check the organization, email, and password.
+              Sign in failed. Check the organization slug, email, password, and that the account is active in that organization.
             </p>
           ) : null}
 

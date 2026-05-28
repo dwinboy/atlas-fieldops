@@ -22,6 +22,7 @@ router = APIRouter()
 )
 async def create_organization(
     payload: OrganizationCreate,
+    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ORGANIZATION_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> object:
     try:

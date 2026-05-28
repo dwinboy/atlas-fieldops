@@ -26,6 +26,9 @@ export type CurrentPrincipal = {
 export type OrganizationCreate = {
   name: string;
   slug: string;
+  owner_email?: string;
+  owner_full_name?: string;
+  owner_password?: string;
 };
 
 export type OrganizationRead = {
@@ -33,6 +36,8 @@ export type OrganizationRead = {
   name: string;
   slug: string;
   is_active: boolean;
+  owner_email?: string | null;
+  temporary_password?: string | null;
 };
 
 export type UserCreate = {
@@ -455,8 +460,8 @@ export async function getCurrentPrincipal(token: string): Promise<CurrentPrincip
   return request<CurrentPrincipal>("/auth/me", { token });
 }
 
-export async function createOrganization(payload: OrganizationCreate): Promise<OrganizationRead> {
-  return request<OrganizationRead>("/organizations", { method: "POST", bodyJson: payload });
+export async function createOrganization(token: string, payload: OrganizationCreate): Promise<OrganizationRead> {
+  return request<OrganizationRead>("/organizations", { method: "POST", token, bodyJson: payload });
 }
 
 export async function listUsers(token: string): Promise<UserRead[]> {

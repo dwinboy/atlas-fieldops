@@ -7,6 +7,9 @@ from pydantic import BaseModel, EmailStr, Field
 class OrganizationCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     slug: str = Field(min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
+    owner_email: EmailStr | None = None
+    owner_full_name: str | None = Field(default=None, min_length=2, max_length=200)
+    owner_password: str | None = Field(default=None, min_length=12)
 
 
 class OrganizationRead(BaseModel):
@@ -14,6 +17,8 @@ class OrganizationRead(BaseModel):
     name: str
     slug: str
     is_active: bool
+    owner_email: EmailStr | None = None
+    temporary_password: str | None = None
 
     model_config = {"from_attributes": True}
 
