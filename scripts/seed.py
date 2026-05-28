@@ -8,16 +8,127 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from app.core.permissions import ScopeType
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
+from app.models.collection import Project
+from app.models.operations import Beneficiary, CaseRecord, DonorReport, MonitoringIndicator
 from app.repositories.identity import IdentityRepository, OrganizationRepository, RoleRepository
 from app.repositories.users import UserRepository
 from app.services.identity import OrganizationService
 from app.schemas.identity import OrganizationCreate
+from sqlalchemy import select
 
 
 DEFAULT_ORGANIZATION_NAME = "Atlas Demo Organization"
 DEFAULT_ORGANIZATION_SLUG = "atlas-demo"
 DEFAULT_SUPER_ADMIN_EMAIL = "superadmin@example.com"
 DEFAULT_SUPER_ADMIN_PASSWORD = "ChangeMe12345!"
+
+
+async def seed_operational_demo_data(session, organization_id) -> None:
+    existing_program = await session.scalar(
+        select(Project).where(Project.organization_id == organization_id, Project.slug == "smallholder-resilience")
+    )
+    if existing_program is None:
+        existing_program = Project(
+            organization_id=organization_id,
+            name="Smallholder Resilience Program",
+            slug="smallholder-resilience",
+            region="Northern Corridor",
+        )
+        session.add(existing_program)
+        await session.flush()
+
+    existing_beneficiary = await session.scalar(
+        select(Beneficiary).where(
+            Beneficiary.organization_id == organization_id,
+            Beneficiary.beneficiary_uid == "FARM-0001",
+        )
+    )
+    if existing_beneficiary is None:
+        session.add(
+            Beneficiary(
+                organization_id=organization_id,
+                project_id=existing_program.id,
+                beneficiary_uid="FARM-0001",
+                beneficiary_type="farmer",
+                display_name="Amina Okoro",
+                sex="female",
+                birth_year=1986,
+                phone_number="+2348010000001",
+                region="Northern Corridor",
+                district="Kano East",
+                community="Gidan Dala",
+                enrollment_status="active",
+                vulnerability_score=36,
+                duplicate_risk_score=4.2,
+                latitude=11.991,
+                longitude=8.531,
+                profile_json={"primary_crop": "maize", "household_size": 6},
+            )
+        )
+
+    existing_indicator = await session.scalar(
+        select(MonitoringIndicator).where(
+            MonitoringIndicator.organization_id == organization_id,
+            MonitoringIndicator.code == "AGR.YIELD.MAIZE",
+        )
+    )
+    if existing_indicator is None:
+        session.add(
+            MonitoringIndicator(
+                organization_id=organization_id,
+                project_id=existing_program.id,
+                code="AGR.YIELD.MAIZE",
+                name="Average maize yield improvement",
+                description="Tracks yield improvement among enrolled smallholder farmers.",
+                unit="percent",
+                reporting_frequency="quarterly",
+                baseline_value=0,
+                target_value=35,
+                current_value=18,
+                sdg_code="SDG2",
+                formula="approved_yield_followups / enrolled_farmers",
+            )
+        )
+
+    existing_case = await session.scalar(
+        select(CaseRecord).where(
+            CaseRecord.organization_id == organization_id,
+            CaseRecord.case_number == "CASE-0001",
+        )
+    )
+    if existing_case is None:
+        session.add(
+            CaseRecord(
+                organization_id=organization_id,
+                project_id=existing_program.id,
+                case_number="CASE-0001",
+                case_type="correction",
+                title="Verify missing GPS accuracy on farm visit",
+                priority="high",
+                status="open",
+                notes="Supervisor should confirm coordinates before report inclusion.",
+            )
+        )
+
+    existing_report = await session.scalar(
+        select(DonorReport).where(
+            DonorReport.organization_id == organization_id,
+            DonorReport.name == "Q2 Agriculture M&E Update",
+        )
+    )
+    if existing_report is None:
+        session.add(
+            DonorReport(
+                organization_id=organization_id,
+                project_id=existing_program.id,
+                name="Q2 Agriculture M&E Update",
+                donor="FAO",
+                report_type="indicator",
+                status="draft",
+                summary="Draft report connected to live beneficiaries, indicators, cases, and field activity.",
+                export_formats=["pdf", "xlsx"],
+            )
+        )
 
 
 async def seed_super_admin() -> None:
@@ -55,6 +166,7 @@ async def seed_super_admin() -> None:
                 scope_type=ScopeType.GLOBAL,
             )
 
+        await seed_operational_demo_data(session, organization.id)
         await session.commit()
 
     print("Seeded super admin:")

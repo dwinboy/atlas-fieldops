@@ -30,7 +30,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Input, Select } from "@/components/ui/input";
-import { listImportJobs, listImportRows, updateImportRow, uploadImportFile, type ImportJobRead, type ImportRowRead } from "@/lib/api";
+import {
+  listBeneficiaries,
+  listCases,
+  listImportJobs,
+  listImportRows,
+  listIndicators,
+  listPrograms,
+  listReports,
+  updateImportRow,
+  uploadImportFile,
+  type BeneficiaryRead,
+  type CaseRead,
+  type DonorReportRead,
+  type ImportJobRead,
+  type ImportRowRead,
+  type IndicatorRead,
+  type ProgramRead
+} from "@/lib/api";
 import {
   beneficiaries,
   beneficiaryProfileConnections,
@@ -62,6 +79,10 @@ type EditableRow = (typeof editableRows)[number];
 type ExportJob = (typeof exportJobs)[number];
 
 type DataInteroperabilityCenterProps = {
+  token: string | null;
+};
+
+type TokenAwareProps = {
   token: string | null;
 };
 
@@ -336,7 +357,33 @@ export function OperationalEcosystem() {
   );
 }
 
-export function BeneficiaryRegistry() {
+function mapBeneficiary(row: BeneficiaryRead): Beneficiary {
+  return {
+    id: row.id,
+    uid: row.beneficiary_uid,
+    name: row.display_name,
+    type: row.beneficiary_type,
+    program: row.project_id ? `Project ${row.project_id.slice(0, 8)}` : "Unassigned",
+    region: row.region ?? "Unassigned",
+    community: row.community ?? row.district ?? "Unassigned",
+    status: row.enrollment_status,
+    vulnerability: row.vulnerability_score,
+    duplicateRisk: Math.round(row.duplicate_risk_score),
+    lastVisit: row.last_visit_at ? new Date(row.last_visit_at).toLocaleDateString() : "No visit yet",
+    coordinates: row.latitude !== null && row.longitude !== null ? `${row.latitude}, ${row.longitude}` : "No GPS"
+  };
+}
+
+export function BeneficiaryRegistry({ token }: TokenAwareProps) {
+  const beneficiariesQuery = useQuery({
+    queryKey: ["beneficiaries", token],
+    queryFn: () => listBeneficiaries(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const beneficiaryRows = beneficiariesQuery.data?.map(mapBeneficiary) ?? beneficiaries;
+  const withGpsCount = beneficiariesQuery.data?.filter((row) => row.latitude !== null && row.longitude !== null).length ?? 0;
+  const withGpsPercent = beneficiariesQuery.data?.length ? Math.round((withGpsCount / beneficiariesQuery.data.length) * 100) : 92;
+
   const columns: TableColumn<Beneficiary>[] = [
     {
       key: "name",
@@ -370,10 +417,10 @@ export function BeneficiaryRegistry() {
       />
       <div className="grid gap-3 md:grid-cols-4">
         {[
-          ["Registered", "98,220", UsersRound],
-          ["Visited this month", "41,382", BadgeCheck],
-          ["Possible duplicates", "214", AlertTriangle],
-          ["With GPS", "92%", MapPin]
+          ["Registered", (beneficiariesQuery.data?.length ?? 98220).toLocaleString(), UsersRound],
+          ["Visited this month", (beneficiariesQuery.data?.filter((row) => row.last_visit_at).length ?? 41382).toLocaleString(), BadgeCheck],
+          ["Possible duplicates", (beneficiariesQuery.data?.filter((row) => row.duplicate_risk_score > 15).length ?? 214).toLocaleString(), AlertTriangle],
+          ["With GPS", `${withGpsPercent}%`, MapPin]
         ].map(([label, value, Icon]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">
@@ -384,12 +431,33 @@ export function BeneficiaryRegistry() {
           </article>
         ))}
       </div>
-      <DataTable columns={columns} emptyLabel="No beneficiaries yet" rows={beneficiaries} searchLabel="Search people, IDs, villages, or programs" title="Registry" />
+      <DataTable columns={columns} emptyLabel="No beneficiaries yet" rows={beneficiaryRows} searchLabel="Search people, IDs, villages, or programs" title={beneficiariesQuery.isFetching ? "Registry syncing" : "Registry"} />
     </section>
   );
 }
 
-export function ProgramManagement() {
+function mapProgram(row: ProgramRead): Program {
+  return {
+    id: row.id,
+    name: row.name,
+    donor: "Operational program",
+    region: row.region ?? "All regions",
+    budget: "Not set",
+    coverage: row.region ?? "Organization-wide",
+    beneficiaries: 0,
+    progress: row.is_active ? 42 : 0,
+    nextMilestone: "Connect forms, indicators, and field teams"
+  };
+}
+
+export function ProgramManagement({ token }: TokenAwareProps) {
+  const programsQuery = useQuery({
+    queryKey: ["programs", token],
+    queryFn: () => listPrograms(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const programRows = programsQuery.data?.map(mapProgram) ?? programs;
+
   const columns: TableColumn<Program>[] = [
     {
       key: "program",
@@ -422,11 +490,11 @@ export function ProgramManagement() {
         action={<ActionButton title="Program workflow opened" description="Project setup, geography, indicators, officers, and reporting are ready."><Plus aria-hidden="true" /> New program</ActionButton>}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
-        <DataTable columns={columns} emptyLabel="No programs yet" rows={programs} searchLabel="Search programs, donors, or regions" title="Active programs" />
+        <DataTable columns={columns} emptyLabel="No programs yet" rows={programRows} searchLabel="Search programs, donors, or regions" title={programsQuery.isFetching ? "Active programs syncing" : "Active programs"} />
         <aside className="rounded-lg border bg-panel p-4">
           <h2 className="text-sm font-semibold">Next milestones</h2>
           <div className="mt-4 space-y-3">
-            {programs.map((program) => (
+            {programRows.map((program) => (
               <div key={program.id} className="rounded-md border bg-background p-3">
                 <p className="text-sm font-medium">{program.nextMilestone}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{program.name}</p>
@@ -439,7 +507,26 @@ export function ProgramManagement() {
   );
 }
 
-export function IndicatorTracking() {
+function mapIndicator(row: IndicatorRead): Indicator {
+  return {
+    code: row.code,
+    name: row.name,
+    baseline: row.baseline_value,
+    current: row.current_value,
+    target: row.target_value,
+    unit: row.unit,
+    progress: row.progress_percent
+  };
+}
+
+export function IndicatorTracking({ token }: TokenAwareProps) {
+  const indicatorsQuery = useQuery({
+    queryKey: ["indicators", token],
+    queryFn: () => listIndicators(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const indicatorRows = indicatorsQuery.data?.map(mapIndicator) ?? indicators;
+
   const columns: TableColumn<Indicator>[] = [
     { key: "code", header: "Code", value: (row) => row.code, render: (row) => <span className="font-mono text-xs">{row.code}</span> },
     { key: "name", header: "Indicator", value: (row) => row.name, render: (row) => row.name },
@@ -461,12 +548,39 @@ export function IndicatorTracking() {
         description="Track baselines, targets, progress, and donor reporting metrics without burying teams in spreadsheets."
         action={<ActionButton title="Indicator workflow opened" description="Baseline, target, formula, and reporting fields are ready."><Plus aria-hidden="true" /> Add indicator</ActionButton>}
       />
-      <DataTable columns={columns} emptyLabel="No indicators yet" rows={indicators} searchLabel="Search indicators" title="KPI registry" />
+      <DataTable columns={columns} emptyLabel="No indicators yet" rows={indicatorRows} searchLabel="Search indicators" title={indicatorsQuery.isFetching ? "KPI registry syncing" : "KPI registry"} />
     </section>
   );
 }
 
-export function CaseManagement() {
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .split(" ")
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
+}
+
+function mapCase(row: CaseRead): CaseItem {
+  return {
+    id: row.case_number,
+    title: row.title,
+    type: titleCase(row.case_type),
+    beneficiary: row.beneficiary_id ? `Beneficiary ${row.beneficiary_id.slice(0, 8)}` : "Unlinked beneficiary",
+    priority: titleCase(row.priority),
+    status: titleCase(row.status),
+    due: row.due_at ? new Date(row.due_at).toLocaleDateString() : "No due date"
+  };
+}
+
+export function CaseManagement({ token }: TokenAwareProps) {
+  const casesQuery = useQuery({
+    queryKey: ["cases", token],
+    queryFn: () => listCases(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const caseRows = casesQuery.data?.map(mapCase) ?? cases;
+
   const columns: TableColumn<CaseItem>[] = [
     { key: "id", header: "Case", value: (row) => row.id, render: (row) => <span className="font-mono text-xs">{row.id}</span> },
     {
@@ -494,7 +608,7 @@ export function CaseManagement() {
         description="Manage complaints, referrals, corrections, and follow-ups with clear ownership and simple next actions."
         action={<ActionButton title="Case workflow opened" description="Referral, complaint, escalation, and follow-up fields are ready."><Plus aria-hidden="true" /> Open case</ActionButton>}
       />
-      <DataTable columns={columns} emptyLabel="No cases yet" rows={cases} searchLabel="Search cases" title="Open follow-ups" />
+      <DataTable columns={columns} emptyLabel="No cases yet" rows={caseRows} searchLabel="Search cases" title={casesQuery.isFetching ? "Open follow-ups syncing" : "Open follow-ups"} />
     </section>
   );
 }
@@ -548,7 +662,31 @@ export function GeospatialIntelligence() {
   );
 }
 
-export function ReportingCenter() {
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start && !end) return "Current period";
+  if (start && end) return `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}`;
+  return new Date(start ?? end ?? "").toLocaleDateString();
+}
+
+function mapReport(row: DonorReportRead): DonorReport {
+  return {
+    name: row.name,
+    donor: row.donor ?? "Internal",
+    type: titleCase(row.report_type),
+    period: formatDateRange(row.period_start, row.period_end),
+    status: titleCase(row.status),
+    formats: row.export_formats.join(", ").toUpperCase()
+  };
+}
+
+export function ReportingCenter({ token }: TokenAwareProps) {
+  const reportsQuery = useQuery({
+    queryKey: ["reports", token],
+    queryFn: () => listReports(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const reportRows = reportsQuery.data?.map(mapReport) ?? donorReports;
+
   const columns: TableColumn<DonorReport>[] = [
     { key: "name", header: "Report", value: (row) => `${row.name} ${row.donor}`, render: (row) => <div><p className="font-medium">{row.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{row.donor} · {row.period}</p></div> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -565,7 +703,7 @@ export function ReportingCenter() {
         action={<ActionButton title="Report builder opened" description="Donor report sections and live operational data are ready."><Plus aria-hidden="true" /> New report</ActionButton>}
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <DataTable columns={columns} emptyLabel="No reports yet" rows={donorReports} searchLabel="Search reports" title="Reporting center" />
+        <DataTable columns={columns} emptyLabel="No reports yet" rows={reportRows} searchLabel="Search reports" title={reportsQuery.isFetching ? "Reporting center syncing" : "Reporting center"} />
         <aside className="space-y-4">
           <section className="rounded-lg border bg-panel p-4">
             <h2 className="text-sm font-semibold">AI report assistant</h2>

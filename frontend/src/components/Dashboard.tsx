@@ -1,4 +1,5 @@
 import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, FileText, Gauge, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -6,13 +7,31 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import { dashboardMetrics } from "@/lib/mockData";
+import { getOperationsSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 
-export function Dashboard() {
+type DashboardProps = {
+  token: string | null;
+};
+
+export function Dashboard({ token }: DashboardProps) {
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const summaryQuery = useQuery({
+    queryKey: ["operations-summary", token],
+    queryFn: () => getOperationsSummary(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token")
+  });
+  const summaryMetrics = summaryQuery.data
+    ? [
+        { label: "Beneficiaries", value: summaryQuery.data.beneficiaries.toLocaleString(), delta: "live", tone: "good" as const },
+        { label: "Active programs", value: summaryQuery.data.active_programs.toLocaleString(), delta: "live", tone: "good" as const },
+        { label: "Indicators", value: summaryQuery.data.indicators.toLocaleString(), delta: "live", tone: "good" as const },
+        { label: "Open cases", value: summaryQuery.data.open_cases.toLocaleString(), delta: "needs review", tone: summaryQuery.data.open_cases ? "warn" as const : "good" as const }
+      ]
+    : dashboardMetrics;
   const quickActions: { label: string; hint: string; view: WorkspaceView; icon: typeof Plus }[] = [
     { label: "Create form", hint: "Start from a template or blank form", view: "templates", icon: Plus },
     { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", icon: ShieldCheck },
@@ -65,7 +84,7 @@ export function Dashboard() {
       </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {dashboardMetrics.map((metric, index) => {
+        {summaryMetrics.map((metric, index) => {
           const Icon = icons[index] ?? Activity;
           return (
             <article key={metric.label} className="surface-premium rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-elevated">

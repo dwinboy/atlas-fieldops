@@ -72,21 +72,21 @@ export function WorkspaceApp() {
     : "Organization workspace";
 
   const content = {
-    dashboard: <Dashboard />,
+    dashboard: <Dashboard token={token} />,
     ecosystem: <OperationalEcosystem />,
     enterprise: <EnterpriseOperationsCenter />,
     data: <DataInteroperabilityCenter token={token} />,
-    programs: <ProgramManagement />,
-    beneficiaries: <BeneficiaryRegistry />,
-    indicators: <IndicatorTracking />,
+    programs: <ProgramManagement token={token} />,
+    beneficiaries: <BeneficiaryRegistry token={token} />,
+    indicators: <IndicatorTracking token={token} />,
     organizations: <OrganizationManagement token={token} />,
     officers: <FieldOfficerOperations token={token} />,
     templates: <FormTemplateLibrary token={token} />,
     forms: <DynamicForms token={token} />,
     submissions: <SubmissionReview token={token} />,
-    cases: <CaseManagement />,
+    cases: <CaseManagement token={token} />,
     map: <GeospatialIntelligence />,
-    analytics: <ReportingCenter />,
+    analytics: <ReportingCenter token={token} />,
     workflows: <WorkflowManagement />,
     connectivity: <ConnectivityCenter />
   } satisfies Record<WorkspaceView, React.ReactNode>;

@@ -180,10 +180,15 @@ export type OperationalEcosystemRead = {
 
 export type BeneficiaryRead = {
   id: string;
+  project_id: string | null;
   beneficiary_uid: string;
   beneficiary_type: string;
   display_name: string;
+  sex: string | null;
+  birth_year: number | null;
+  phone_number: string | null;
   region: string | null;
+  district: string | null;
   community: string | null;
   enrollment_status: string;
   vulnerability_score: number;
@@ -191,6 +196,59 @@ export type BeneficiaryRead = {
   latitude: number | null;
   longitude: number | null;
   last_visit_at: string | null;
+};
+
+export type ProgramRead = {
+  id: string;
+  name: string;
+  slug: string;
+  region: string | null;
+  is_active: boolean;
+};
+
+export type IndicatorRead = {
+  id: string;
+  project_id: string | null;
+  code: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  reporting_frequency: string;
+  baseline_value: number;
+  target_value: number;
+  current_value: number;
+  sdg_code: string | null;
+  formula: string | null;
+  is_active: boolean;
+  progress_percent: number;
+};
+
+export type CaseRead = {
+  id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  case_number: string;
+  case_type: string;
+  title: string;
+  priority: string;
+  status: string;
+  assigned_to_user_id: string | null;
+  due_at: string | null;
+  closed_at: string | null;
+  notes: string | null;
+};
+
+export type DonorReportRead = {
+  id: string;
+  project_id: string | null;
+  name: string;
+  donor: string | null;
+  report_type: string;
+  period_start: string | null;
+  period_end: string | null;
+  status: string;
+  summary: string | null;
+  export_formats: string[];
 };
 
 export type ImportPreviewRequest = {
@@ -429,6 +487,22 @@ export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
 
+export async function listPrograms(token: string): Promise<ProgramRead[]> {
+  return request<ProgramRead[]>("/operations/programs", { token });
+}
+
+export async function listIndicators(token: string): Promise<IndicatorRead[]> {
+  return request<IndicatorRead[]>("/operations/indicators", { token });
+}
+
+export async function listCases(token: string): Promise<CaseRead[]> {
+  return request<CaseRead[]>("/operations/cases", { token });
+}
+
+export async function listReports(token: string): Promise<DonorReportRead[]> {
+  return request<DonorReportRead[]>("/operations/reports", { token });
+}
+
 export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
   return request<ImportPreviewResponse>("/operations/data/imports/preview", { method: "POST", token, bodyJson: payload });
 }
@@ -522,11 +596,15 @@ export const api = {
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,
+  listCases,
   listFieldOfficers,
   listForms,
   listFormTemplates,
+  listIndicators,
   listImportJobs,
   listImportRows,
+  listPrograms,
+  listReports,
   listRoles,
   listSubmissions,
   listUsers,
