@@ -324,6 +324,15 @@ export type ImportUploadResponse = {
   issues: ImportPreviewResponse["issues"];
 };
 
+export type ImportApplyResponse = {
+  job: ImportJobRead;
+  created_records: number;
+  updated_records: number;
+  skipped_rows: number;
+  dataset_type: string;
+  message: string;
+};
+
 export type ExportJobCreate = {
   dataset_type: string;
   export_format: string;
@@ -572,6 +581,10 @@ export async function updateImportRow(
   return request<ImportRowRead>(`/operations/data/imports/${importJobId}/rows/${rowId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export async function applyImportJob(token: string, importJobId: string): Promise<ImportApplyResponse> {
+  return request<ImportApplyResponse>(`/operations/data/imports/${importJobId}/apply`, { method: "POST", token });
+}
+
 export async function createExportJob(token: string, payload: ExportJobCreate): Promise<ExportJobRead> {
   return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
 }
@@ -611,6 +624,7 @@ export async function duplicateFormTemplate(
 }
 
 export const api = {
+  applyImportJob,
   createOrganization,
   createExportJob,
   duplicateFormTemplate,

@@ -28,6 +28,7 @@ from app.schemas.operations import (
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
+    ImportApplyResponse,
     ImportJobCreate,
     ImportJobRead,
     ImportRowRead,
@@ -184,6 +185,87 @@ def validate_sample_rows(dataset_type: str, rows: list[dict[str, object]], mappi
                 )
             )
     return issues
+
+
+def import_mapping_by_source(job_mapping: dict[str, object]) -> dict[str, str]:
+    raw_columns = job_mapping.get("columns", [])
+    if not isinstance(raw_columns, list):
+        return {}
+    mapping: dict[str, str] = {}
+    for item in raw_columns:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source_column")
+        target = item.get("target_field")
+        if isinstance(source, str) and isinstance(target, str):
+            mapping[source] = target
+    return mapping
+
+
+def mapped_row_values(row: dict[str, object], mapping: dict[str, str]) -> dict[str, object]:
+    return {mapping.get(source, source): value for source, value in row.items()}
+
+
+def optional_text(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value).strip()
+
+
+def optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(str(value))
+
+
+def optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(float(str(value)))
+
+
+def beneficiary_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    beneficiary_uid = optional_text(row.get("beneficiary_uid"))
+    display_name = optional_text(row.get("display_name"))
+    if beneficiary_uid is None or display_name is None:
+        return None
+    profile_json = {
+        "imported_fields": {
+            key: value
+            for key, value in row.items()
+            if key
+            not in {
+                "beneficiary_uid",
+                "display_name",
+                "beneficiary_type",
+                "project_id",
+                "sex",
+                "birth_year",
+                "phone_number",
+                "region",
+                "district",
+                "community",
+                "vulnerability_score",
+                "latitude",
+                "longitude",
+            }
+        }
+    }
+    return {
+        "beneficiary_uid": beneficiary_uid,
+        "display_name": display_name,
+        "beneficiary_type": optional_text(row.get("beneficiary_type")) or "household",
+        "sex": optional_text(row.get("sex")),
+        "birth_year": optional_int(row.get("birth_year")),
+        "phone_number": optional_text(row.get("phone_number")),
+        "region": optional_text(row.get("region")),
+        "district": optional_text(row.get("district")),
+        "community": optional_text(row.get("community")),
+        "vulnerability_score": optional_int(row.get("vulnerability_score")) or 0,
+        "latitude": optional_float(row.get("latitude")),
+        "longitude": optional_float(row.get("longitude")),
+        "profile_json": profile_json,
+    }
 
 
 class OperationsService:
@@ -645,6 +727,93 @@ class OperationsService:
             validation_status=row.validation_status,
             issue_count=row.issue_count,
             version=row.version,
+        )
+
+    async def apply_import_job(self, organization_id: UUID, user_id: UUID, import_job_id: UUID) -> ImportApplyResponse:
+        job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
+        if job is None:
+            raise KeyError("Import job not found")
+        if job.dataset_type != "beneficiaries":
+            raise ValueError("Only beneficiary imports can be applied to live records right now")
+
+        rows = await self.repository.list_import_rows(organization_id=organization_id, import_job_id=import_job_id)
+        mapping = import_mapping_by_source(job.mapping_json)
+        created_records = 0
+        updated_records = 0
+        skipped_rows = 0
+
+        for row in rows:
+            if row.validation_status in {"needs_fixes", "conflict"} or row.issue_count > 0:
+                skipped_rows += 1
+                continue
+            mapped = mapped_row_values(row.edited_data_json, mapping)
+            values = beneficiary_values_from_import_row(mapped)
+            if values is None:
+                skipped_rows += 1
+                continue
+
+            existing = await self.repository.get_beneficiary_by_uid(
+                organization_id=organization_id,
+                beneficiary_uid=cast(str, values["beneficiary_uid"]),
+            )
+            if existing is None:
+                beneficiary = await self.repository.create_beneficiary(organization_id=organization_id, values=values)
+                created_records += 1
+            else:
+                beneficiary = await self.repository.update_beneficiary(existing, values)
+                updated_records += 1
+
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                source_type="data_import",
+                source_id=str(job.id),
+                target_type="beneficiary",
+                target_id=str(beneficiary.id),
+                relationship_type="applied_to",
+                project_id=beneficiary.project_id,
+                metadata_json={"source_name": job.source_name, "row_number": row.row_number},
+            )
+
+        status = "applied" if created_records or updated_records else "needs_fixes"
+        job = await self.repository.update_import_job_summary(
+            job,
+            status=status,
+            summary_updates={
+                "created_records": created_records,
+                "updated_records": updated_records,
+                "skipped_rows": skipped_rows,
+                "applied_by_user_id": str(user_id),
+            },
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data_import.applied",
+                source_module="data",
+                summary=f"{job.source_name} applied to the beneficiary registry.",
+                priority="normal" if skipped_rows == 0 else "high",
+                payload={
+                    "dataset_type": job.dataset_type,
+                    "created_records": created_records,
+                    "updated_records": updated_records,
+                    "skipped_rows": skipped_rows,
+                },
+            ),
+        )
+        await self.session.commit()
+        await event_publisher.publish(
+            "data_import.applied",
+            {"organization_id": str(organization_id), "import_job_id": str(job.id), "dataset_type": job.dataset_type},
+        )
+        changed = created_records + updated_records
+        return ImportApplyResponse(
+            job=ImportJobRead.model_validate(job),
+            created_records=created_records,
+            updated_records=updated_records,
+            skipped_rows=skipped_rows,
+            dataset_type=job.dataset_type,
+            message=f"Applied {changed} beneficiary record{'s' if changed != 1 else ''}.",
         )
 
     async def create_mapping_template(self, organization_id: UUID, payload: MappingTemplateCreate) -> None:

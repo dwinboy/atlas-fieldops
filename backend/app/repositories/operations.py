@@ -58,6 +58,22 @@ class OperationsRepository:
         await self.session.flush()
         return beneficiary
 
+    async def get_beneficiary_by_uid(self, *, organization_id: UUID, beneficiary_uid: str) -> Beneficiary | None:
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.beneficiary_uid == beneficiary_uid,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_beneficiary(self, beneficiary: Beneficiary, values: dict[str, object]) -> Beneficiary:
+        for key, value in values.items():
+            setattr(beneficiary, key, value)
+        await self.session.flush()
+        return beneficiary
+
     async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
         result = await self.session.execute(
             select(Beneficiary)
@@ -408,6 +424,18 @@ class OperationsRepository:
         row.validation_status = "edited"
         await self.session.flush()
         return row
+
+    async def update_import_job_summary(
+        self,
+        job: DataImportJob,
+        *,
+        status: str,
+        summary_updates: dict[str, object],
+    ) -> DataImportJob:
+        job.status = status
+        job.summary_json = {**job.summary_json, **summary_updates}
+        await self.session.flush()
+        return job
 
     async def list_import_jobs(self, organization_id: UUID) -> list[DataImportJob]:
         result = await self.session.execute(

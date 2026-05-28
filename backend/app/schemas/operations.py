@@ -439,6 +439,15 @@ class ImportRowUpdate(BaseModel):
     expected_version: int | None = Field(default=None, ge=1)
 
 
+class ImportApplyResponse(BaseModel):
+    job: ImportJobRead
+    created_records: int
+    updated_records: int
+    skipped_rows: int
+    dataset_type: str
+    message: str
+
+
 class ImportValidationIssue(BaseModel):
     row_number: int
     field_name: str | None = None

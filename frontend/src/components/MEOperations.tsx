@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Input, Select } from "@/components/ui/input";
 import {
+  applyImportJob,
   listBeneficiaries,
   listCases,
   listImportJobs,
@@ -817,6 +818,26 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
     }
   });
 
+  const applyMutation = useMutation({
+    mutationFn: () => applyImportJob(token ?? "", selectedImportId ?? ""),
+    onSuccess: async (response) => {
+      pushToast({
+        title: "Import applied",
+        description: `${response.created_records} created, ${response.updated_records} updated, ${response.skipped_rows} skipped`,
+        tone: response.skipped_rows ? "warning" : "success"
+      });
+      await importJobsQuery.refetch();
+      await importRowsQuery.refetch();
+    },
+    onError: () => {
+      pushToast({
+        title: "Import not applied",
+        description: "Fix rows with errors or choose a supported dataset type before applying.",
+        tone: "danger"
+      });
+    }
+  });
+
   const realImportColumns = useMemo(() => {
     const keys: string[] = [];
     for (const row of importRowsQuery.data ?? []) {
@@ -827,6 +848,9 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
     return keys.slice(0, 8);
   }, [importRowsQuery.data]);
   const serverImportRows = importRowsQuery.data ?? [];
+  const selectedImportJob = importJobsQuery.data?.find((job) => job.id === selectedImportId);
+  const selectedImportIsApplied = selectedImportJob?.status === "applied";
+  const serverIssueRows = serverImportRows.filter((row) => row.issue_count > 0 || row.validation_status === "needs_fixes" || row.validation_status === "conflict");
 
   useEffect(() => {
     if (!selectedImportId && importJobsQuery.data?.length) {
@@ -1037,11 +1061,22 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
 
           <section className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Column mapping</h2>
-                <p className="mt-1 text-xs text-muted-foreground">The system suggests matches. Users can adjust and save the mapping for next time.</p>
+            <div>
+              <h2 className="text-sm font-semibold">Column mapping</h2>
+              <p className="mt-1 text-xs text-muted-foreground">The system suggests matches. Users can adjust and save the mapping for next time.</p>
+            </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary"><Save aria-hidden="true" /> Save mapping</Button>
+                <Button
+                  disabled={!selectedImportId || !canUpload || selectedImportIsApplied || applyMutation.isPending}
+                  onClick={() => applyMutation.mutate()}
+                  size="sm"
+                  variant="primary"
+                >
+                  <CheckCircle2 aria-hidden="true" />
+                  {applyMutation.isPending ? "Applying" : selectedImportIsApplied ? "Already applied" : "Apply to registry"}
+                </Button>
               </div>
-              <Button size="sm"><Save aria-hidden="true" /> Save mapping</Button>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-2">
               {importColumns.map((column) => (
@@ -1068,17 +1103,37 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             <Button size="sm" variant="secondary"><RefreshCw aria-hidden="true" /> Recheck</Button>
           </div>
           <div className="space-y-2">
-            {importValidationIssues.map((issue) => (
-              <div key={`${issue.row}-${issue.field}`} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[80px_120px_1fr_auto] md:items-center">
-                <span className="text-sm font-medium">Row {issue.row}</span>
-                <span className="text-sm text-muted-foreground">{issue.field}</span>
-                <span>
-                  <span className="block text-sm font-medium">{issue.issue}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{issue.fix}</span>
-                </span>
-                <Badge tone={issue.severity === "Error" ? "danger" : "warning"}>{issue.severity}</Badge>
-              </div>
-            ))}
+            {serverImportRows.length ? (
+              serverIssueRows.length ? (
+                serverIssueRows.map((row) => (
+                  <div key={row.id} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[80px_120px_1fr_auto] md:items-center">
+                    <span className="text-sm font-medium">Row {row.row_number}</span>
+                    <span className="text-sm text-muted-foreground">Imported data</span>
+                    <span>
+                      <span className="block text-sm font-medium">{row.validation_status.replaceAll("_", " ")}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">Edit this row before applying the import.</span>
+                    </span>
+                    <Badge tone={row.validation_status === "conflict" ? "danger" : "warning"}>{row.issue_count || 1} issue</Badge>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-md border border-success/25 bg-success/10 p-3 text-sm text-success">
+                  This import has no blocking validation issues and can be applied to the live registry.
+                </div>
+              )
+            ) : (
+              importValidationIssues.map((issue) => (
+                <div key={`${issue.row}-${issue.field}`} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[80px_120px_1fr_auto] md:items-center">
+                  <span className="text-sm font-medium">Row {issue.row}</span>
+                  <span className="text-sm text-muted-foreground">{issue.field}</span>
+                  <span>
+                    <span className="block text-sm font-medium">{issue.issue}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{issue.fix}</span>
+                  </span>
+                  <Badge tone={issue.severity === "Error" ? "danger" : "warning"}>{issue.severity}</Badge>
+                </div>
+              ))
+            )}
           </div>
         </section>
 

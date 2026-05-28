@@ -19,6 +19,7 @@ from app.schemas.operations import (
     DonorReportRead,
     ExportJobCreate,
     ExportJobRead,
+    ImportApplyResponse,
     ImportJobCreate,
     ImportJobRead,
     ImportRowRead,
@@ -337,6 +338,26 @@ async def update_import_row(
     except KeyError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import row not found") from exc
+
+
+@router.post("/data/imports/{import_job_id}/apply", response_model=ImportApplyResponse, summary="Apply a validated import to live operational records")
+async def apply_import_job(
+    import_job_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportApplyResponse:
+    try:
+        return await OperationsService(session).apply_import_job(
+            organization_uuid(principal),
+            user_uuid(principal),
+            import_job_id,
+        )
+    except KeyError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found") from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/data/mapping-templates", status_code=status.HTTP_204_NO_CONTENT, summary="Save import mapping template")
