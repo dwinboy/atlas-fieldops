@@ -16,6 +16,7 @@ import {
   CaseManagement,
   ConnectivityCenter,
   DataInteroperabilityCenter,
+  EnterpriseOperationsCenter,
   GeospatialIntelligence,
   IndicatorTracking,
   OperationalEcosystem,
@@ -70,6 +71,7 @@ export function WorkspaceApp() {
   const content = {
     dashboard: <Dashboard />,
     ecosystem: <OperationalEcosystem />,
+    enterprise: <EnterpriseOperationsCenter />,
     data: <DataInteroperabilityCenter />,
     programs: <ProgramManagement />,
     beneficiaries: <BeneficiaryRegistry />,

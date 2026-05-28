@@ -6,6 +6,7 @@ export type ThemeMode = "light" | "dark";
 export type WorkspaceView =
   | "dashboard"
   | "ecosystem"
+  | "enterprise"
   | "data"
   | "programs"
   | "beneficiaries"

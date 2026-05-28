@@ -25,13 +25,27 @@ from app.schemas.operations import (
     ImportPreviewResponse,
     IndicatorCreate,
     IndicatorRead,
+    InterventionCreate,
+    InterventionRead,
+    KnowledgeDocumentCreate,
+    KnowledgeDocumentRead,
     MappingTemplateCreate,
+    OperationalAssetCreate,
+    OperationalAssetRead,
     OperationalEcosystemRead,
     OperationalEventCreate,
     OperationalEventRead,
+    OperationalTaskCreate,
+    OperationalTaskRead,
+    OrganizationalUnitCreate,
+    OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
     ProgramRead,
+    ProjectBudgetLineCreate,
+    ProjectBudgetLineRead,
+    WorkflowDefinitionCreate,
+    WorkflowDefinitionRead,
 )
 from app.services.operations import OperationsService
 
@@ -79,6 +93,69 @@ async def record_operational_event(
     except Exception:
         await session.rollback()
         raise
+
+
+@router.post("/units", response_model=OrganizationalUnitRead, status_code=status.HTTP_201_CREATED, summary="Create organizational unit")
+async def create_unit(
+    payload: OrganizationalUnitCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ORGANIZATION_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrganizationalUnitRead:
+    return await OperationsService(session).create_unit(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/workflow-definitions", response_model=WorkflowDefinitionRead, status_code=status.HTTP_201_CREATED, summary="Configure approval workflow")
+async def create_workflow_definition(
+    payload: WorkflowDefinitionCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> WorkflowDefinitionRead:
+    return await OperationsService(session).create_workflow_definition(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/tasks", response_model=OperationalTaskRead, status_code=status.HTTP_201_CREATED, summary="Create operational task")
+async def create_task(
+    payload: OperationalTaskCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalTaskRead:
+    return await OperationsService(session).create_task(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/interventions", response_model=InterventionRead, status_code=status.HTTP_201_CREATED, summary="Plan intervention")
+async def create_intervention(
+    payload: InterventionCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InterventionRead:
+    return await OperationsService(session).create_intervention(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/assets", response_model=OperationalAssetRead, status_code=status.HTTP_201_CREATED, summary="Register operational asset")
+async def create_asset(
+    payload: OperationalAssetCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalAssetRead:
+    return await OperationsService(session).create_asset(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/budget-lines", response_model=ProjectBudgetLineRead, status_code=status.HTTP_201_CREATED, summary="Create project budget line")
+async def create_budget_line(
+    payload: ProjectBudgetLineCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectBudgetLineRead:
+    return await OperationsService(session).create_budget_line(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/documents", response_model=KnowledgeDocumentRead, status_code=status.HTTP_201_CREATED, summary="Attach knowledge document")
+async def create_document(
+    payload: KnowledgeDocumentCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> KnowledgeDocumentRead:
+    return await OperationsService(session).create_document(organization_uuid(principal), user_uuid(principal), payload)
 
 
 @router.get("/programs", response_model=list[ProgramRead], summary="List programs")

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Columns3,
   Download,
+  FileText,
   FileSpreadsheet,
   MapPin,
   MessageCircle,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   Save,
   Smartphone,
+  WalletCards,
   UploadCloud,
   UsersRound
 } from "lucide-react";
@@ -32,6 +34,7 @@ import {
   dataQualitySignals,
   donorReports,
   editableRows,
+  enterpriseOperations,
   exportJobs,
   importColumns,
   importJobs,
@@ -81,6 +84,115 @@ function ProgressBar({ value }: { value: number }) {
     <div className="h-2 overflow-hidden rounded-full bg-muted" aria-label={`${value}% progress`} role="img">
       <div className="h-full rounded-full bg-primary" style={{ width: `${value}%` }} />
     </div>
+  );
+}
+
+function ConnectedPanel({
+  title,
+  description,
+  children
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border bg-panel p-4 shadow-line">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+      <div className="mt-4 space-y-3">{children}</div>
+    </section>
+  );
+}
+
+export function EnterpriseOperationsCenter() {
+  return (
+    <section aria-labelledby="enterprise-ops-title" className="space-y-5">
+      <PageHeader
+        eyebrow="Enterprise operations"
+        title="Governance, resources, budgets, and work in one place"
+        description="Connect regional structures, approval chains, assets, documents, budgets, tasks, and interventions to the same operational workflow graph."
+        action={<Button variant="primary"><Plus aria-hidden="true" /> Create connected record</Button>}
+      />
+
+      <div className="grid gap-4 md:grid-cols-4">
+        {[
+          ["Regional units", "3", Boxes],
+          ["Live workflows", "3", CheckCircle2],
+          ["Tracked resources", "258", Smartphone],
+          ["Budget utilization", "64%", WalletCards]
+        ].map(([label, value, Icon]) => (
+          <article className="rounded-lg border bg-panel p-4 shadow-line" key={label as string}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">{label as string}</p>
+              <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
+            </div>
+            <p className="mt-3 text-2xl font-semibold tracking-tight">{value as string}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <ConnectedPanel title="Organizational hierarchy" description="Regional data isolation, accountability, and approval routing all begin here.">
+          {enterpriseOperations.units.map((unit) => (
+            <div className="rounded-md border bg-background p-3" key={unit.name}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">{unit.name}</p>
+                <Badge tone="success">{unit.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{unit.type} · {unit.region} · {unit.owner}</p>
+            </div>
+          ))}
+        </ConnectedPanel>
+
+        <ConnectedPanel title="Approval workflows" description="Workflow definitions drive queues, SLA tracking, corrections, and escalations.">
+          {enterpriseOperations.workflows.map((workflow) => (
+            <div className="rounded-md border bg-background p-3" key={workflow.name}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">{workflow.name}</p>
+                <Badge tone="accent">{workflow.sla}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{workflow.steps} · {workflow.status}</p>
+            </div>
+          ))}
+        </ConnectedPanel>
+
+        <ConnectedPanel title="Resources and assets" description="Devices, vehicles, and supplies are assigned to projects, field teams, and regions.">
+          {enterpriseOperations.resources.map((resource) => (
+            <div className="rounded-md border bg-background p-3" key={resource.name}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">{resource.name}</p>
+                <Badge tone="neutral">{resource.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{resource.type} · {resource.assigned}</p>
+            </div>
+          ))}
+        </ConnectedPanel>
+
+        <ConnectedPanel title="Budgets and documents" description="Operational spending and knowledge artifacts stay linked to projects, interventions, evidence, and reports.">
+          {enterpriseOperations.finance.map((line) => (
+            <div className="rounded-md border bg-background p-3" key={line.category}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">{line.category}</p>
+                <Badge tone="accent">{line.utilization}% used</Badge>
+              </div>
+              <ProgressBar value={line.utilization} />
+              <p className="mt-2 text-xs text-muted-foreground">{line.spent} spent of {line.allocated}</p>
+            </div>
+          ))}
+          {enterpriseOperations.documents.map((document) => (
+            <div className="flex items-center gap-3 rounded-md border bg-background p-3" key={document.title}>
+              <FileText aria-hidden="true" className="text-muted-foreground" size={17} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{document.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{document.type} · {document.link}</p>
+              </div>
+              <Badge tone="success">{document.status}</Badge>
+            </div>
+          ))}
+        </ConnectedPanel>
+      </div>
+    </section>
   );
 }
 

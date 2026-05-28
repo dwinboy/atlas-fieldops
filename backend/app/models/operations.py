@@ -101,6 +101,104 @@ class DataQualitySignal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     evidence_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class OrganizationalUnit(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "organizational_units"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    parent_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    unit_type: Mapped[str] = mapped_column(String(80), index=True)
+    region: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
+    manager_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class WorkflowDefinition(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "workflow_definitions"
+    __table_args__ = (UniqueConstraint("organization_id", "name", "version"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    workflow_type: Mapped[str] = mapped_column(String(80), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    steps_json: Mapped[list[dict[str, Any]]] = mapped_column(JsonType, default=list)
+    sla_hours: Mapped[int] = mapped_column(Integer, default=72)
+
+
+class OperationalTask(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "operational_tasks"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    assigned_to_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", index=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    context_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class InterventionRecord(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "intervention_records"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    task_id: Mapped[UUID | None] = mapped_column(ForeignKey("operational_tasks.id"), index=True, nullable=True)
+    intervention_type: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="planned", index=True)
+    planned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    value_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class OperationalAsset(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "operational_assets"
+    __table_args__ = (UniqueConstraint("organization_id", "asset_code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    assigned_to_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    asset_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(80), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="available", index=True)
+    region: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class ProjectBudgetLine(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "project_budget_lines"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    category: Mapped[str] = mapped_column(String(120), index=True)
+    allocated_amount: Mapped[float] = mapped_column(Float, default=0)
+    spent_amount: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(12), default="USD")
+    reporting_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class KnowledgeDocument(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "knowledge_documents"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(80), index=True)
+    storage_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
 class OperationalEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "operational_events"
 

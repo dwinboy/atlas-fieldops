@@ -487,3 +487,31 @@ export const beneficiaryProfileConnections = [
   { label: "Map history", value: "7 visits", note: "GPS trail and farm boundary evidence" },
   { label: "Reports", value: "3 outputs", note: "FAO Q2, supervisor summary, donor export" }
 ];
+
+export const enterpriseOperations = {
+  units: [
+    { name: "National office", type: "Governance", region: "Cameroon", owner: "Country director", status: "Active" },
+    { name: "Northwest regional team", type: "Regional office", region: "Northwest", owner: "Regional coordinator", status: "Active" },
+    { name: "Bamenda district field team", type: "District team", region: "Bamenda II", owner: "District supervisor", status: "Active" }
+  ],
+  workflows: [
+    { name: "Submission approval chain", steps: "Supervisor -> Regional -> National", sla: "72h", status: "Live" },
+    { name: "Duplicate beneficiary review", steps: "Data quality -> Registry manager", sla: "48h", status: "Live" },
+    { name: "Correction cycle", steps: "Supervisor -> Field officer -> Re-review", sla: "24h", status: "Live" }
+  ],
+  resources: [
+    { name: "Android tablet fleet", type: "Device", assigned: "Field officers", status: "184 active" },
+    { name: "Motorbike support pool", type: "Vehicle", assigned: "District teams", status: "37 assigned" },
+    { name: "Input voucher inventory", type: "Supply", assigned: "Agriculture project", status: "72% distributed" }
+  ],
+  finance: [
+    { category: "Field logistics", allocated: "$420k", spent: "$288k", utilization: 69 },
+    { category: "Beneficiary inputs", allocated: "$760k", spent: "$501k", utilization: 66 },
+    { category: "Training and supervision", allocated: "$180k", spent: "$92k", utilization: 51 }
+  ],
+  documents: [
+    { title: "Enumerator SOP", type: "Training guide", link: "Field team onboarding", status: "Current" },
+    { title: "FAO grant agreement", type: "Contract", link: "Climate-smart agriculture", status: "Approved" },
+    { title: "Beneficiary consent template", type: "Compliance", link: "All registration forms", status: "Required" }
+  ]
+};

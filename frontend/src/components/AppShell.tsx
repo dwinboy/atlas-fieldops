@@ -42,6 +42,7 @@ type AppShellProps = {
 const navItems = [
   { id: "dashboard", label: "Home", hint: "Today’s work", icon: LayoutDashboard },
   { id: "ecosystem", label: "Ecosystem", hint: "Connected work", icon: Boxes },
+  { id: "enterprise", label: "Operations", hint: "Governance & assets", icon: Building2 },
   { id: "data", label: "Data", hint: "Import & export", icon: Database },
   { id: "programs", label: "Programs", hint: "Projects & donors", icon: Building2 },
   { id: "beneficiaries", label: "Beneficiaries", hint: "People & households", icon: UsersRound },

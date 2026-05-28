@@ -14,10 +14,17 @@ from app.models.operations import (
     DataMappingTemplate,
     DataQualitySignal,
     DonorReport,
+    InterventionRecord,
+    KnowledgeDocument,
     MonitoringIndicator,
+    OperationalAsset,
     OperationalEvent,
     OperationalLink,
+    OperationalTask,
+    OrganizationalUnit,
+    ProjectBudgetLine,
     WorkflowQueueItem,
+    WorkflowDefinition,
 )
 
 
@@ -101,6 +108,33 @@ class OperationsRepository:
             .order_by(DonorReport.updated_at.desc())
         )
         return list(result.scalars())
+
+    async def create_enterprise_record(
+        self,
+        model: type[
+            OrganizationalUnit
+            | WorkflowDefinition
+            | OperationalTask
+            | InterventionRecord
+            | OperationalAsset
+            | ProjectBudgetLine
+            | KnowledgeDocument
+        ],
+        *,
+        organization_id: UUID,
+        values: dict[str, object],
+    ) -> OrganizationalUnit | WorkflowDefinition | OperationalTask | InterventionRecord | OperationalAsset | ProjectBudgetLine | KnowledgeDocument:
+        record = model(organization_id=organization_id, **values)
+        self.session.add(record)
+        await self.session.flush()
+        return record
+
+    async def count_enterprise(self, model: type[OrganizationalUnit | OperationalTask | InterventionRecord | OperationalAsset | ProjectBudgetLine | KnowledgeDocument | WorkflowDefinition], organization_id: UUID) -> int:
+        query = select(func.count()).select_from(model).where(model.organization_id == organization_id)
+        if hasattr(model, "deleted_at"):
+            query = query.where(model.deleted_at.is_(None))
+        result = await self.session.execute(query)
+        return int(result.scalar_one())
 
     async def count(self, model: type[Project | Beneficiary | MonitoringIndicator | CaseRecord | DataQualitySignal], organization_id: UUID) -> int:
         query = select(func.count()).select_from(model).where(model.organization_id == organization_id)

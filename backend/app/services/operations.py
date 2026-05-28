@@ -1,10 +1,24 @@
 from uuid import UUID
+from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
 from app.models.collection import Project
-from app.models.operations import Beneficiary, CaseRecord, DataQualitySignal, DonorReport, MonitoringIndicator
+from app.models.operations import (
+    Beneficiary,
+    CaseRecord,
+    DataQualitySignal,
+    DonorReport,
+    InterventionRecord,
+    KnowledgeDocument,
+    MonitoringIndicator,
+    OperationalAsset,
+    OperationalTask,
+    OrganizationalUnit,
+    ProjectBudgetLine,
+    WorkflowDefinition,
+)
 from app.repositories.operations import OperationsRepository
 from app.schemas.operations import (
     BeneficiaryCreate,
@@ -21,6 +35,10 @@ from app.schemas.operations import (
     ImportValidationIssue,
     IndicatorCreate,
     IndicatorRead,
+    InterventionCreate,
+    InterventionRead,
+    KnowledgeDocumentCreate,
+    KnowledgeDocumentRead,
     MappingTemplateCreate,
     EcosystemEdge,
     EcosystemNode,
@@ -28,9 +46,19 @@ from app.schemas.operations import (
     OperationalEffect,
     OperationalEventCreate,
     OperationalEventRead,
+    OperationalAssetCreate,
+    OperationalAssetRead,
+    OperationalTaskCreate,
+    OperationalTaskRead,
+    OrganizationalUnitCreate,
+    OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
+    ProjectBudgetLineCreate,
+    ProjectBudgetLineRead,
     WorkflowQueueItemRead,
+    WorkflowDefinitionCreate,
+    WorkflowDefinitionRead,
     ColumnMapping,
 )
 
@@ -296,6 +324,151 @@ class OperationsService:
     async def list_reports(self, organization_id: UUID) -> list[DonorReport]:
         return await self.repository.list_reports(organization_id)
 
+    async def create_unit(self, organization_id: UUID, user_id: UUID, payload: OrganizationalUnitCreate) -> OrganizationalUnitRead:
+        unit = await self.repository.create_enterprise_record(OrganizationalUnit, organization_id=organization_id, values=payload.model_dump())
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="org_unit.created",
+                source_module="organization",
+                summary=f"{payload.name} was added to the governance hierarchy.",
+                payload={"unit_type": payload.unit_type, "region": payload.region or "global"},
+            ),
+        )
+        await self.session.commit()
+        return OrganizationalUnitRead.model_validate(unit)
+
+    async def create_workflow_definition(self, organization_id: UUID, user_id: UUID, payload: WorkflowDefinitionCreate) -> WorkflowDefinitionRead:
+        workflow = await self.repository.create_enterprise_record(WorkflowDefinition, organization_id=organization_id, values=payload.model_dump())
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="workflow.configured",
+                source_module="workflows",
+                project_id=payload.project_id,
+                summary=f"{payload.name} approval workflow is active with SLA tracking.",
+                payload={"workflow_type": payload.workflow_type, "sla_hours": payload.sla_hours},
+            ),
+        )
+        await self.session.commit()
+        return WorkflowDefinitionRead.model_validate(workflow)
+
+    async def create_task(self, organization_id: UUID, user_id: UUID, payload: OperationalTaskCreate) -> OperationalTaskRead:
+        task = await self.repository.create_enterprise_record(OperationalTask, organization_id=organization_id, values=payload.model_dump())
+        if payload.project_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=payload.project_id,
+                source_type="project",
+                source_id=str(payload.project_id),
+                target_type="task",
+                target_id=str(task.id),
+                relationship_type="assigns_work",
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="task.assigned",
+                source_module="tasks",
+                project_id=payload.project_id,
+                beneficiary_id=payload.beneficiary_id,
+                summary=f"Task assigned: {payload.title}",
+                priority=payload.priority,
+                payload={"task_type": payload.task_type},
+            ),
+        )
+        await self.session.commit()
+        return OperationalTaskRead.model_validate(task)
+
+    async def create_intervention(self, organization_id: UUID, user_id: UUID, payload: InterventionCreate) -> InterventionRead:
+        intervention = await self.repository.create_enterprise_record(InterventionRecord, organization_id=organization_id, values=payload.model_dump())
+        if payload.beneficiary_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=payload.project_id,
+                source_type="beneficiary",
+                source_id=str(payload.beneficiary_id),
+                target_type="intervention",
+                target_id=str(intervention.id),
+                relationship_type="receives_intervention",
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="intervention.planned",
+                source_module="interventions",
+                project_id=payload.project_id,
+                beneficiary_id=payload.beneficiary_id,
+                summary=f"{payload.intervention_type} intervention is planned and linked to reporting.",
+                payload={"value_amount": payload.value_amount or 0},
+            ),
+        )
+        await self.session.commit()
+        return InterventionRead.model_validate(intervention)
+
+    async def create_asset(self, organization_id: UUID, user_id: UUID, payload: OperationalAssetCreate) -> OperationalAssetRead:
+        asset = await self.repository.create_enterprise_record(OperationalAsset, organization_id=organization_id, values=payload.model_dump())
+        if payload.project_id:
+            await self.repository.upsert_operational_link(
+                organization_id=organization_id,
+                project_id=payload.project_id,
+                source_type="project",
+                source_id=str(payload.project_id),
+                target_type="asset",
+                target_id=str(asset.id),
+                relationship_type="uses_asset",
+            )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="asset.registered",
+                source_module="assets",
+                project_id=payload.project_id,
+                summary=f"Asset {payload.asset_code} is available for field operations.",
+                payload={"asset_type": payload.asset_type, "region": payload.region or "unassigned"},
+            ),
+        )
+        await self.session.commit()
+        return OperationalAssetRead.model_validate(asset)
+
+    async def create_budget_line(self, organization_id: UUID, user_id: UUID, payload: ProjectBudgetLineCreate) -> ProjectBudgetLineRead:
+        budget = cast(ProjectBudgetLine, await self.repository.create_enterprise_record(ProjectBudgetLine, organization_id=organization_id, values=payload.model_dump()))
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="budget.allocated",
+                source_module="finance",
+                project_id=payload.project_id,
+                summary=f"{payload.category} budget line is connected to interventions and donor reporting.",
+                payload={"allocated_amount": payload.allocated_amount, "currency": payload.currency},
+            ),
+        )
+        await self.session.commit()
+        return self.to_budget_read(budget)
+
+    async def create_document(self, organization_id: UUID, user_id: UUID, payload: KnowledgeDocumentCreate) -> KnowledgeDocumentRead:
+        document = await self.repository.create_enterprise_record(KnowledgeDocument, organization_id=organization_id, values=payload.model_dump())
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="document.attached",
+                source_module="documents",
+                project_id=payload.project_id,
+                beneficiary_id=payload.beneficiary_id,
+                summary=f"Document attached: {payload.title}",
+                payload={"document_type": payload.document_type},
+            ),
+        )
+        await self.session.commit()
+        return KnowledgeDocumentRead.model_validate(document)
+
     async def summary(self, organization_id: UUID) -> OperationsSummary:
         beneficiaries = await self.repository.count(Beneficiary, organization_id)
         active_programs = await self.repository.count(Project, organization_id)
@@ -484,34 +657,51 @@ class OperationsService:
         officers = await self.repository.count_field_officers(organization_id)
         cases = await self.repository.count_open_cases(organization_id)
         quality_flags = await self.repository.count(DataQualitySignal, organization_id)
+        tasks = await self.repository.count_enterprise(OperationalTask, organization_id)
+        interventions = await self.repository.count_enterprise(InterventionRecord, organization_id)
+        assets = await self.repository.count_enterprise(OperationalAsset, organization_id)
+        documents = await self.repository.count_enterprise(KnowledgeDocument, organization_id)
+        workflows = await self.repository.count_enterprise(WorkflowDefinition, organization_id)
+        units = await self.repository.count_enterprise(OrganizationalUnit, organization_id)
         recent_events = [OperationalEventRead.model_validate(event) for event in await self.repository.list_recent_events(organization_id)]
         workflow_queue = [WorkflowQueueItemRead.model_validate(item) for item in await self.repository.list_workflow_queue(organization_id)]
         nodes = [
             EcosystemNode(id="organization", label="Organization", node_type="tenant", status="active", count=1),
+            EcosystemNode(id="units", label="Departments & Regions", node_type="governance", status="active", count=units),
             EcosystemNode(id="projects", label="Programs & Projects", node_type="program", status="active", count=projects),
             EcosystemNode(id="indicators", label="Indicators & Targets", node_type="indicator", status="active", count=indicators),
+            EcosystemNode(id="workflows", label="Approval Workflows", node_type="workflow", status="active", count=workflows),
             EcosystemNode(id="field-team", label="Field Officers", node_type="team", status="active", count=officers),
             EcosystemNode(id="beneficiaries", label="Beneficiaries", node_type="beneficiary", status="active", count=beneficiaries),
             EcosystemNode(id="forms", label="Forms & Surveys", node_type="form", status="active", count=forms),
             EcosystemNode(id="submissions", label="Field Submissions", node_type="submission", status="active", count=submissions),
+            EcosystemNode(id="tasks", label="Tasks & Interventions", node_type="task", status="attention" if tasks else "healthy", count=tasks + interventions),
+            EcosystemNode(id="assets", label="Assets & Documents", node_type="resource", status="active", count=assets + documents),
             EcosystemNode(id="quality", label="Validation & Approval", node_type="workflow", status="attention" if quality_flags else "healthy", count=quality_flags),
             EcosystemNode(id="reports", label="Analytics & Reporting", node_type="report", status="active", count=indicators + submissions),
             EcosystemNode(id="follow-ups", label="Interventions & Follow-ups", node_type="case", status="attention" if cases else "healthy", count=cases),
         ]
         edges = [
             EcosystemEdge(source="organization", target="projects", label="funds and governs"),
+            EcosystemEdge(source="organization", target="units", label="delegates accountability"),
+            EcosystemEdge(source="units", target="projects", label="owns regional delivery"),
             EcosystemEdge(source="projects", target="indicators", label="sets targets"),
+            EcosystemEdge(source="projects", target="workflows", label="configures approvals"),
             EcosystemEdge(source="projects", target="field-team", label="assigns teams"),
             EcosystemEdge(source="projects", target="beneficiaries", label="enrolls people"),
+            EcosystemEdge(source="projects", target="assets", label="allocates resources"),
             EcosystemEdge(source="beneficiaries", target="forms", label="drives data needs"),
             EcosystemEdge(source="forms", target="submissions", label="captures transactions"),
             EcosystemEdge(source="submissions", target="quality", label="triggers validation"),
+            EcosystemEdge(source="quality", target="tasks", label="opens corrective work"),
+            EcosystemEdge(source="tasks", target="follow-ups", label="delivers interventions"),
             EcosystemEdge(source="quality", target="reports", label="approves trusted data"),
             EcosystemEdge(source="reports", target="follow-ups", label="guides action"),
         ]
         attention_items = [
             "Quality flags feed supervisor review queues automatically." if quality_flags else "No open quality flags are blocking approvals.",
             "Open cases remain linked to beneficiary and project context." if cases else "No open follow-up cases are waiting.",
+            "Tasks and interventions are connected to beneficiaries, officers, and projects." if tasks or interventions else "No operational tasks are currently open.",
             "Recent events are available for dashboards and reporting." if recent_events else "No operational events recorded yet.",
         ]
         return OperationalEcosystemRead(nodes=nodes, edges=edges, recent_events=recent_events, workflow_queue=workflow_queue, attention_items=attention_items)
@@ -527,6 +717,34 @@ class OperationsService:
             "beneficiary.enrolled": [
                 OperationalEffect(module="geospatial", action="update_layer", detail="Add beneficiary point to coverage maps."),
                 OperationalEffect(module="field_operations", action="sync_profile", detail="Prepare beneficiary profile for offline mobile sync."),
+            ],
+            "org_unit.created": [
+                OperationalEffect(module="governance", action="refresh_hierarchy", detail="Update regional accountability and reporting filters."),
+                OperationalEffect(module="rbac", action="scope_access", detail="Prepare regional data isolation and approval routing."),
+            ],
+            "workflow.configured": [
+                OperationalEffect(module="approvals", action="apply_workflow", detail="Use configured approval steps for new review items."),
+                OperationalEffect(module="sla", action="start_tracking", detail="Enable escalation timing for this workflow."),
+            ],
+            "task.assigned": [
+                OperationalEffect(module="notifications", action="notify_assignee", detail="Notify the responsible officer or supervisor."),
+                OperationalEffect(module="field_operations", action="sync_task", detail="Queue the task for offline mobile availability."),
+            ],
+            "intervention.planned": [
+                OperationalEffect(module="beneficiaries", action="append_history", detail="Add intervention to the beneficiary longitudinal profile."),
+                OperationalEffect(module="finance", action="reserve_budget", detail="Connect intervention cost to project budget utilization."),
+            ],
+            "asset.registered": [
+                OperationalEffect(module="field_operations", action="update_resources", detail="Make asset availability visible to project teams."),
+                OperationalEffect(module="compliance", action="track_custody", detail="Start asset custody and audit history."),
+            ],
+            "budget.allocated": [
+                OperationalEffect(module="finance", action="refresh_utilization", detail="Update budget utilization and donor reporting."),
+                OperationalEffect(module="interventions", action="check_funding", detail="Expose budget availability to intervention planning."),
+            ],
+            "document.attached": [
+                OperationalEffect(module="knowledge", action="index_document", detail="Attach document to project or beneficiary context."),
+                OperationalEffect(module="approvals", action="include_evidence", detail="Make supporting evidence visible in review workflows."),
             ],
             "case.opened": [
                 OperationalEffect(module="approvals", action="route_to_supervisor", detail="Add follow-up to the supervisor queue."),
@@ -550,6 +768,20 @@ class OperationsService:
             "data_import.created": "Resolve validation issues before applying imported records.",
             "bulk_edit.created": "Approve or reject the staged bulk changes.",
         }.get(event_type, "Review the operational context and choose the next step.")
+
+    @staticmethod
+    def to_budget_read(budget: ProjectBudgetLine) -> ProjectBudgetLineRead:
+        utilization = 0 if budget.allocated_amount <= 0 else round((budget.spent_amount / budget.allocated_amount) * 100, 1)
+        return ProjectBudgetLineRead(
+            id=budget.id,
+            project_id=budget.project_id,
+            category=budget.category,
+            allocated_amount=budget.allocated_amount,
+            spent_amount=budget.spent_amount,
+            currency=budget.currency,
+            reporting_code=budget.reporting_code,
+            utilization_percent=utilization,
+        )
 
     @staticmethod
     def to_indicator_read(indicator: MonitoringIndicator) -> IndicatorRead:

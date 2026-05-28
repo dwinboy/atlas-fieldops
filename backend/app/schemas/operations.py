@@ -167,6 +167,121 @@ class DonorReportRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OrganizationalUnitCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    code: str = Field(min_length=2, max_length=80)
+    unit_type: str = Field(min_length=2, max_length=80)
+    parent_unit_id: UUID | None = None
+    region: str | None = Field(default=None, max_length=160)
+    manager_user_id: UUID | None = None
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+
+class OrganizationalUnitRead(OrganizationalUnitCreate):
+    id: UUID
+
+    model_config = {"from_attributes": True}
+
+
+class WorkflowDefinitionCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=180)
+    workflow_type: str = Field(min_length=2, max_length=80)
+    project_id: UUID | None = None
+    steps_json: list[dict[str, object]] = Field(default_factory=list)
+    sla_hours: int = Field(default=72, ge=1)
+
+
+class WorkflowDefinitionRead(WorkflowDefinitionCreate):
+    id: UUID
+    version: int
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class OperationalTaskCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=240)
+    task_type: str = Field(min_length=2, max_length=80)
+    project_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    assigned_to_user_id: UUID | None = None
+    priority: str = Field(default="normal", pattern=r"^(low|normal|high|urgent)$")
+    due_at: datetime | None = None
+    context_json: dict[str, object] = Field(default_factory=dict)
+
+
+class OperationalTaskRead(OperationalTaskCreate):
+    id: UUID
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+class InterventionCreate(BaseModel):
+    project_id: UUID
+    intervention_type: str = Field(min_length=2, max_length=100)
+    beneficiary_id: UUID | None = None
+    task_id: UUID | None = None
+    planned_at: datetime | None = None
+    value_amount: float | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class InterventionRead(InterventionCreate):
+    id: UUID
+    status: str
+    completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class OperationalAssetCreate(BaseModel):
+    asset_code: str = Field(min_length=2, max_length=100)
+    asset_type: str = Field(min_length=2, max_length=80)
+    name: str = Field(min_length=2, max_length=200)
+    project_id: UUID | None = None
+    assigned_to_user_id: UUID | None = None
+    region: str | None = Field(default=None, max_length=160)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+
+class OperationalAssetRead(OperationalAssetCreate):
+    id: UUID
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectBudgetLineCreate(BaseModel):
+    project_id: UUID
+    category: str = Field(min_length=2, max_length=120)
+    allocated_amount: float = Field(default=0, ge=0)
+    spent_amount: float = Field(default=0, ge=0)
+    currency: str = Field(default="USD", max_length=12)
+    reporting_code: str | None = Field(default=None, max_length=80)
+
+
+class ProjectBudgetLineRead(ProjectBudgetLineCreate):
+    id: UUID
+    utilization_percent: float
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=240)
+    document_type: str = Field(min_length=2, max_length=80)
+    storage_url: str = Field(min_length=2, max_length=500)
+    project_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+
+class KnowledgeDocumentRead(KnowledgeDocumentCreate):
+    id: UUID
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
 class OperationsSummary(BaseModel):
     beneficiaries: int
     active_programs: int

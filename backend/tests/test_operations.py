@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
 from app.schemas.operations import BeneficiaryCreate, CaseCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
-from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate
+from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
 from app.services.operations import OperationsService, indicator_progress, infer_mapping, validate_sample_rows
 
 
@@ -119,6 +119,39 @@ def test_operational_events_fan_out_to_connected_systems() -> None:
 
     assert {effect.module for effect in effects} >= {"dashboards", "analytics", "reporting", "geospatial", "field_operations"}
     assert OperationsService.next_action_for_event("data_import.created").startswith("Resolve validation")
+
+
+def test_enterprise_operations_events_are_connected() -> None:
+    event_types = {
+        "org_unit.created": {"governance", "rbac"},
+        "workflow.configured": {"approvals", "sla"},
+        "task.assigned": {"notifications", "field_operations"},
+        "intervention.planned": {"beneficiaries", "finance"},
+        "asset.registered": {"field_operations", "compliance"},
+        "budget.allocated": {"finance", "interventions"},
+        "document.attached": {"knowledge", "approvals"},
+    }
+
+    for event_type, modules in event_types.items():
+        effects = OperationsService.effects_for_event(
+            OperationalEventCreate(event_type=event_type, source_module="test", summary="Connected operation")
+        )
+        assert modules.issubset({effect.module for effect in effects})
+
+
+def test_budget_read_calculates_utilization() -> None:
+    read = ProjectBudgetLineRead(
+        id=uuid4(),
+        project_id=uuid4(),
+        category="Field logistics",
+        allocated_amount=1000,
+        spent_amount=250,
+        currency="USD",
+        reporting_code="LOG",
+        utilization_percent=25,
+    )
+
+    assert read.utilization_percent == 25
 
 
 def test_ecosystem_graph_describes_the_operational_chain() -> None:
