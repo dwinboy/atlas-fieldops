@@ -14,6 +14,7 @@ const commands: { label: string; hint: string; view: WorkspaceView; group: strin
   { label: "Open ecosystem", hint: "See how projects, people, forms, reviews, and reports connect", view: "ecosystem", group: "Daily work", icon: Boxes },
   { label: "Open enterprise operations", hint: "Manage governance, workflows, assets, budgets, and documents", view: "enterprise", group: "Daily work", icon: Building2 },
   { label: "Open governance", hint: "Audit, retention, validation, lineage, consent, and export controls", view: "governance", group: "Daily work", icon: Fingerprint },
+  { label: "Open workforce governance", hint: "Departments, teams, delegations, access requests, and role simulation", view: "workforce", group: "Admin", icon: UsersRound },
   { label: "Manage data", hint: "Import, map, clean, edit, export, and sync datasets", view: "data", group: "Data", icon: Database },
   { label: "Open programs", hint: "Projects, donors, milestones, and coverage", view: "programs", group: "M&E", icon: Building2 },
   { label: "Find beneficiaries", hint: "Households, farmers, groups, and visit history", view: "beneficiaries", group: "M&E", icon: UsersRound },

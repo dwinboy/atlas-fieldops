@@ -115,6 +115,172 @@ class OrganizationalUnit(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, B
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class Department(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "departments"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    parent_department_id: Mapped[UUID | None] = mapped_column(ForeignKey("departments.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    department_type: Mapped[str] = mapped_column(String(80), default="department", index=True)
+    manager_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class OperationalTeam(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "operational_teams"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    department_id: Mapped[UUID | None] = mapped_column(ForeignKey("departments.id"), index=True, nullable=True)
+    organization_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), index=True, nullable=True)
+    manager_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    team_type: Mapped[str] = mapped_column(String(80), default="field_team", index=True)
+    region: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class WorkforceProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "workforce_profiles"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    employee_code: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
+    job_title: Mapped[str] = mapped_column(String(160), default="Team member")
+    department_id: Mapped[UUID | None] = mapped_column(ForeignKey("departments.id"), index=True, nullable=True)
+    team_id: Mapped[UUID | None] = mapped_column(ForeignKey("operational_teams.id"), index=True, nullable=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    lifecycle_status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    clearance_level: Mapped[str] = mapped_column(String(80), default="standard", index=True)
+    performance_score: Mapped[float] = mapped_column(Float, default=0)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class AccessDelegation(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "access_delegations"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    delegator_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    delegate_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    permission: Mapped[str] = mapped_column(String(120), index=True)
+    scope_type: Mapped[str] = mapped_column(String(40), default="organization", index=True)
+    geography_id: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ApprovalMatrix(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "approval_matrices"
+    __table_args__ = (UniqueConstraint("organization_id", "matrix_code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    matrix_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    workflow_type: Mapped[str] = mapped_column(String(80), index=True)
+    threshold_type: Mapped[str] = mapped_column(String(80), default="risk", index=True)
+    threshold_value: Mapped[float] = mapped_column(Float, default=0)
+    required_role: Mapped[str] = mapped_column(String(100), nullable=False)
+    approval_stage: Mapped[str] = mapped_column(String(100), default="review", index=True)
+    escalation_role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sla_hours: Mapped[int] = mapped_column(Integer, default=72)
+    conditions_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PolicyRule(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "policy_rules"
+    __table_args__ = (UniqueConstraint("organization_id", "rule_code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    rule_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    policy_type: Mapped[str] = mapped_column(String(80), index=True)
+    effect: Mapped[str] = mapped_column(String(40), default="allow", index=True)
+    expression: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class AccessRequest(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "access_requests"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    requester_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    requested_permission: Mapped[str] = mapped_column(String(120), index=True)
+    requested_scope_type: Mapped[str] = mapped_column(String(40), default="project", index=True)
+    geography_id: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ClearanceLevel(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "clearance_levels"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    allowed_data_classes: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    requires_mfa: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OperationalZone(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "operational_zones"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    zone_type: Mapped[str] = mapped_column(String(80), default="district", index=True)
+    parent_zone_id: Mapped[UUID | None] = mapped_column(ForeignKey("operational_zones.id"), index=True, nullable=True)
+    geography_id: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    boundary_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SessionLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "session_logs"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    device_id: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    location_hint: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    risk_score: Mapped[float] = mapped_column(Float, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DeviceRegistry(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "device_registry"
+    __table_args__ = (UniqueConstraint("organization_id", "device_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    device_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    device_type: Mapped[str] = mapped_column(String(80), default="mobile", index=True)
+    label: Mapped[str] = mapped_column(String(180), default="")
+    status: Mapped[str] = mapped_column(String(40), default="trusted", index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
 class WorkflowDefinition(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "workflow_definitions"
     __table_args__ = (UniqueConstraint("organization_id", "name", "version"),)

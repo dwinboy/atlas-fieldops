@@ -28,6 +28,7 @@ import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
+import { WorkforceGovernanceCenter } from "@/components/WorkforceGovernanceCenter";
 import { getCurrentPrincipal, getOrganizationContext } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -85,6 +86,7 @@ export function WorkspaceApp() {
     ecosystem: <OperationalEcosystem />,
     enterprise: <EnterpriseOperationsCenter />,
     governance: <GovernanceCommandCenter token={token} />,
+    workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
     programs: <ProgramManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,

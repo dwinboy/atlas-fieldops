@@ -18,11 +18,14 @@ from app.core.permissions import (
     is_assignable_role,
     is_scope_allowed_for_role,
     is_scope_authorized,
+    menu_views_for_roles,
 )
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
+from app.schemas.organization_governance import AccessSimulationRequest
 from app.services.auth import AuthService, AuthenticationError
+from app.services.organization_governance import OrganizationGovernanceService
 
 
 def test_password_hash_round_trip() -> None:
@@ -143,6 +146,12 @@ def test_platform_only_roles_are_hidden_from_tenant_administrators() -> None:
     assert not is_assignable_role("regional_manager", ["me_manager"])
 
 
+def test_organization_owner_can_manage_hierarchy_and_open_workforce_center() -> None:
+    assert has_permission(["owner"], Permission.ORGANIZATION_HIERARCHY_MANAGE)
+    assert has_permission(["organization_owner"], Permission.ORGANIZATION_HIERARCHY_MANAGE)
+    assert "workforce" in menu_views_for_roles(["owner"])
+
+
 def test_role_scope_assignment_cannot_exceed_role_level() -> None:
     assert is_scope_allowed_for_role("me_manager", ScopeType.PROJECT)
     assert is_scope_allowed_for_role("me_manager", ScopeType.OWN)
@@ -177,6 +186,44 @@ def test_scope_authorization_limits_project_and_geography() -> None:
     assert not is_scope_authorized(scope=regional_scope, target_geography_id="littoral")
     assert is_scope_authorized(scope=project_scope, target_project_id="project-1")
     assert not is_scope_authorized(scope=project_scope, target_project_id="project-2")
+
+
+class FakeOrganizationGovernanceRepository:
+    async def get_user_access_context(self, organization_id: object, user_id: object) -> tuple[list[str], object]:
+        grant = SimpleNamespace(
+            scope_type="district",
+            geography_id="district-default",
+            project_id=None,
+            organization_unit_id=None,
+        )
+        return ["district_supervisor"], grant
+
+
+async def test_organization_governance_simulates_permission_and_scope() -> None:
+    service = object.__new__(OrganizationGovernanceService)
+    service.repository = cast(Any, FakeOrganizationGovernanceRepository())
+
+    allowed = await service.simulate_access(
+        uuid4(),
+        AccessSimulationRequest(
+            user_id=uuid4(),
+            permission="submissions.approve",
+            geography_id="district-default",
+        ),
+    )
+    denied = await service.simulate_access(
+        uuid4(),
+        AccessSimulationRequest(
+            user_id=uuid4(),
+            permission="data.export",
+            geography_id="other-district",
+        ),
+    )
+
+    assert allowed.allowed
+    assert allowed.decision == "allow"
+    assert denied.decision == "deny"
+    assert "does not cover" in denied.reasons[-1]
 
 
 class FakeUserRepository:

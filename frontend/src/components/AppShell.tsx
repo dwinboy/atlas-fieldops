@@ -80,6 +80,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { id: "enterprise", label: "Operations", hint: "Assets & budgets", icon: Building2 },
       { id: "cases", label: "Cases", hint: "Follow-ups", icon: GitPullRequestArrow },
       { id: "data", label: "Data tools", hint: "Import & edit", icon: Database },
+      { id: "workforce", label: "Workforce", hint: "Teams & access", icon: UsersRound },
       { id: "governance", label: "Governance", hint: "Audit & quality", icon: Fingerprint }
     ]
   },

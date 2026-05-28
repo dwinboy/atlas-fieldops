@@ -237,6 +237,150 @@ export type MasterDataEntryRead = {
   created_at: string;
 };
 
+export type OrganizationGovernanceSummary = {
+  departments: number;
+  teams: number;
+  workforce_profiles: number;
+  active_delegations: number;
+  pending_access_requests: number;
+  approval_matrices: number;
+  clearance_levels: number;
+  devices: number;
+  active_sessions: number;
+  high_risk_sessions: number;
+  governance_score: number;
+  attention_items: string[];
+};
+
+export type DepartmentRead = {
+  id: string;
+  name: string;
+  code: string;
+  department_type: string;
+  parent_department_id: string | null;
+  manager_user_id: string | null;
+  created_at: string;
+};
+
+export type TeamRead = {
+  id: string;
+  name: string;
+  code: string;
+  team_type: string;
+  department_id: string | null;
+  organization_unit_id: string | null;
+  manager_user_id: string | null;
+  region: string | null;
+  project_id: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type WorkforceProfileRead = {
+  id: string;
+  user_id: string;
+  employee_code: string | null;
+  job_title: string;
+  department_id: string | null;
+  team_id: string | null;
+  supervisor_user_id: string | null;
+  lifecycle_status: string;
+  clearance_level: string;
+  performance_score: number;
+  created_at: string;
+};
+
+export type DelegationRead = {
+  id: string;
+  delegator_user_id: string;
+  delegate_user_id: string;
+  permission: string;
+  scope_type: string;
+  geography_id: string | null;
+  project_id: string | null;
+  starts_at: string;
+  expires_at: string;
+  status: string;
+  reason: string | null;
+};
+
+export type ApprovalMatrixRead = {
+  id: string;
+  matrix_code: string;
+  workflow_type: string;
+  threshold_type: string;
+  threshold_value: number;
+  required_role: string;
+  approval_stage: string;
+  escalation_role: string | null;
+  sla_hours: number;
+  is_active: boolean;
+};
+
+export type AccessRequestRead = {
+  id: string;
+  requester_user_id: string;
+  requested_permission: string;
+  requested_scope_type: string;
+  geography_id: string | null;
+  project_id: string | null;
+  reason: string;
+  status: string;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+};
+
+export type ClearanceLevelRead = {
+  id: string;
+  code: string;
+  label: string;
+  rank: number;
+  allowed_data_classes: string[];
+  requires_mfa: boolean;
+};
+
+export type OperationalZoneRead = {
+  id: string;
+  code: string;
+  name: string;
+  zone_type: string;
+  parent_zone_id: string | null;
+  geography_id: string | null;
+  is_active: boolean;
+};
+
+export type DeviceRead = {
+  id: string;
+  user_id: string | null;
+  device_id: string;
+  device_type: string;
+  label: string;
+  status: string;
+  last_seen_at: string | null;
+};
+
+export type SessionLogRead = {
+  id: string;
+  user_id: string;
+  device_id: string | null;
+  ip_address: string | null;
+  location_hint: string | null;
+  risk_score: number;
+  status: string;
+  created_at: string;
+  ended_at: string | null;
+};
+
+export type AccessSimulationRead = {
+  allowed: boolean;
+  decision: string;
+  matched_roles: string[];
+  matched_scope: string | null;
+  reasons: string[];
+};
+
 export type FieldOfficerInvite = {
   email: string;
   full_name: string;
@@ -697,6 +841,174 @@ export async function listMasterDataEntries(token: string): Promise<MasterDataEn
   return request<MasterDataEntryRead[]>("/governance/master-data", { token });
 }
 
+export async function getOrganizationGovernanceSummary(token: string): Promise<OrganizationGovernanceSummary> {
+  return request<OrganizationGovernanceSummary>("/organization-governance/summary", { token });
+}
+
+export async function listDepartments(token: string): Promise<DepartmentRead[]> {
+  return request<DepartmentRead[]>("/organization-governance/departments", { token });
+}
+
+export async function createDepartment(token: string, payload: {
+  name: string;
+  code: string;
+  department_type?: string;
+  manager_user_id?: string | null;
+}): Promise<DepartmentRead> {
+  return request<DepartmentRead>("/organization-governance/departments", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listTeams(token: string): Promise<TeamRead[]> {
+  return request<TeamRead[]>("/organization-governance/teams", { token });
+}
+
+export async function createTeam(token: string, payload: {
+  name: string;
+  code: string;
+  team_type?: string;
+  department_id?: string | null;
+  organization_unit_id?: string | null;
+  manager_user_id?: string | null;
+  region?: string | null;
+  project_id?: string | null;
+}): Promise<TeamRead> {
+  return request<TeamRead>("/organization-governance/teams", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listWorkforceProfiles(token: string): Promise<WorkforceProfileRead[]> {
+  return request<WorkforceProfileRead[]>("/organization-governance/workforce-profiles", { token });
+}
+
+export async function createWorkforceProfile(token: string, payload: {
+  user_id: string;
+  employee_code?: string | null;
+  job_title?: string;
+  department_id?: string | null;
+  team_id?: string | null;
+  supervisor_user_id?: string | null;
+  lifecycle_status?: string;
+  clearance_level?: string;
+}): Promise<WorkforceProfileRead> {
+  return request<WorkforceProfileRead>("/organization-governance/workforce-profiles", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listDelegations(token: string): Promise<DelegationRead[]> {
+  return request<DelegationRead[]>("/organization-governance/delegations", { token });
+}
+
+export async function createDelegation(token: string, payload: {
+  delegate_user_id: string;
+  permission: string;
+  scope_type?: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  starts_at: string;
+  expires_at: string;
+  reason?: string | null;
+}): Promise<DelegationRead> {
+  return request<DelegationRead>("/organization-governance/delegations", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listApprovalMatrices(token: string): Promise<ApprovalMatrixRead[]> {
+  return request<ApprovalMatrixRead[]>("/organization-governance/approval-matrices", { token });
+}
+
+export async function createApprovalMatrix(token: string, payload: {
+  matrix_code: string;
+  workflow_type?: string;
+  threshold_type?: string;
+  threshold_value?: number;
+  required_role: string;
+  approval_stage?: string;
+  escalation_role?: string | null;
+  sla_hours?: number;
+  conditions_json?: Record<string, unknown>;
+}): Promise<ApprovalMatrixRead> {
+  return request<ApprovalMatrixRead>("/organization-governance/approval-matrices", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listAccessRequests(token: string): Promise<AccessRequestRead[]> {
+  return request<AccessRequestRead[]>("/organization-governance/access-requests", { token });
+}
+
+export async function createAccessRequest(token: string, payload: {
+  requested_permission: string;
+  requested_scope_type?: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  reason?: string;
+  expires_at?: string | null;
+}): Promise<AccessRequestRead> {
+  return request<AccessRequestRead>("/organization-governance/access-requests", { method: "POST", token, bodyJson: payload });
+}
+
+export async function reviewAccessRequest(token: string, requestId: string, decision: "approved" | "rejected"): Promise<AccessRequestRead> {
+  return request<AccessRequestRead>(`/organization-governance/access-requests/${requestId}/review`, {
+    method: "POST",
+    token,
+    bodyJson: { decision }
+  });
+}
+
+export async function listClearanceLevels(token: string): Promise<ClearanceLevelRead[]> {
+  return request<ClearanceLevelRead[]>("/organization-governance/clearance-levels", { token });
+}
+
+export async function createClearanceLevel(token: string, payload: {
+  code: string;
+  label: string;
+  rank?: number;
+  allowed_data_classes?: string[];
+  requires_mfa?: boolean;
+}): Promise<ClearanceLevelRead> {
+  return request<ClearanceLevelRead>("/organization-governance/clearance-levels", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listOperationalZones(token: string): Promise<OperationalZoneRead[]> {
+  return request<OperationalZoneRead[]>("/organization-governance/zones", { token });
+}
+
+export async function createOperationalZone(token: string, payload: {
+  code: string;
+  name: string;
+  zone_type?: string;
+  parent_zone_id?: string | null;
+  geography_id?: string | null;
+  boundary_json?: Record<string, unknown>;
+}): Promise<OperationalZoneRead> {
+  return request<OperationalZoneRead>("/organization-governance/zones", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listDevices(token: string): Promise<DeviceRead[]> {
+  return request<DeviceRead[]>("/organization-governance/devices", { token });
+}
+
+export async function createDevice(token: string, payload: {
+  device_id: string;
+  user_id?: string | null;
+  device_type?: string;
+  label?: string;
+  status?: string;
+  metadata_json?: Record<string, unknown>;
+}): Promise<DeviceRead> {
+  return request<DeviceRead>("/organization-governance/devices", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listSessionLogs(token: string): Promise<SessionLogRead[]> {
+  return request<SessionLogRead[]>("/organization-governance/sessions", { token });
+}
+
+export async function simulateAccess(token: string, payload: {
+  user_id: string;
+  permission: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  workflow_stage?: string | null;
+}): Promise<AccessSimulationRead> {
+  return request<AccessSimulationRead>("/organization-governance/simulate-access", { method: "POST", token, bodyJson: payload });
+}
+
 export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {
   return request<FieldOfficerRead[]>("/field-officers", { token });
 }
@@ -835,19 +1147,29 @@ export async function duplicateFormTemplate(
 
 export const api = {
   applyImportJob,
+  createAccessRequest,
+  createApprovalMatrix,
+  createClearanceLevel,
+  createDelegation,
+  createDepartment,
+  createDevice,
   createOrganization,
   createExportJob,
+  createOperationalZone,
   duplicateFormTemplate,
   createForm,
   createGovernancePolicy,
   createImportJob,
   createUser,
+  createTeam,
+  createWorkforceProfile,
   createRetentionPolicy,
   createValidationRule,
   getCurrentPrincipal,
   getHealth,
   getFormTemplate,
   getGovernanceSummary,
+  getOrganizationGovernanceSummary,
   getOrganizationContext,
   getOperationalEcosystem,
   governExport,
@@ -855,6 +1177,12 @@ export const api = {
   getOperationsSummary,
   listBeneficiaries,
   listCases,
+  listAccessRequests,
+  listApprovalMatrices,
+  listClearanceLevels,
+  listDelegations,
+  listDepartments,
+  listDevices,
   listDataVersions,
   listExportLogs,
   listFieldOfficers,
@@ -866,18 +1194,24 @@ export const api = {
   listImportRows,
   listLineageEvents,
   listMasterDataEntries,
+  listOperationalZones,
   listPrograms,
   listReports,
   listRetentionPolicies,
   listRoles,
+  listSessionLogs,
   listSubmissions,
+  listTeams,
   listValidationRules,
   listUsers,
+  listWorkforceProfiles,
   login,
   previewImport,
   reviewSubmission,
   resetUserPassword,
   routeData,
+  reviewAccessRequest,
+  simulateAccess,
   updateImportRow,
   updateUser,
   uploadImportFile

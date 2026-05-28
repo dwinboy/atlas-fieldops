@@ -23,6 +23,19 @@ from app.models.governance import (
     ValidationRule,
 )
 from app.models.identity import Membership, Organization, Role, User
+from app.models.operations import (
+    AccessDelegation,
+    AccessRequest,
+    ApprovalMatrix,
+    ClearanceLevel,
+    Department,
+    DeviceRegistry,
+    OperationalTeam,
+    OperationalZone,
+    PolicyRule,
+    SessionLog,
+    WorkforceProfile,
+)
 
 config = context.config
 
@@ -32,19 +45,30 @@ if config.config_file_name is not None:
 # Keep these imports referenced so Base.metadata is fully populated for autogenerate.
 _TENANT_AWARE_MODELS = (
     AuditLog,
+    AccessDelegation,
+    AccessRequest,
+    ApprovalMatrix,
+    ClearanceLevel,
     ConsentRecord,
     DataAccessLog,
     DataVersion,
+    Department,
+    DeviceRegistry,
     ExportLog,
     GovernancePolicy,
     LineageEvent,
     MasterDataEntry,
     Membership,
+    OperationalTeam,
+    OperationalZone,
     Organization,
+    PolicyRule,
     RetentionPolicy,
     Role,
+    SessionLog,
     User,
     ValidationRule,
+    WorkforceProfile,
 )
 
 target_metadata: MetaData = Base.metadata
