@@ -18,6 +18,7 @@ import {
   resetUserPassword,
   updateUser,
   type AccessCatalog,
+  type CurrentPrincipal,
   type RoleRead,
   type UserRead
 } from "@/lib/api";
@@ -25,9 +26,10 @@ import { useWorkspaceStore } from "@/stores/workspace";
 
 type OrganizationManagementProps = {
   token: string | null;
+  principal?: CurrentPrincipal;
 };
 
-export function OrganizationManagement({ token }: OrganizationManagementProps) {
+export function OrganizationManagement({ token, principal }: OrganizationManagementProps) {
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
@@ -69,15 +71,21 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
     enabled: Boolean(token)
   });
 
+  const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
+
   const organizationMutation = useMutation({
-    mutationFn: () =>
-      createOrganization(token ?? "", {
+    mutationFn: () => {
+      if (!isSuperAdmin) {
+        throw new Error("Only platform super admins can create organizations.");
+      }
+      return createOrganization(token ?? "", {
         name: organizationName,
         slug: organizationSlug,
         owner_email: ownerEmail,
         owner_full_name: ownerFullName,
         owner_password: ownerPassword
-      }),
+      });
+    },
     onSuccess: (organization) => {
       setOrganizationName("");
       setOrganizationSlug("");
@@ -288,92 +296,105 @@ export function OrganizationManagement({ token }: OrganizationManagementProps) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <form
-          className="rounded-lg border bg-panel p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            organizationMutation.mutate();
-          }}
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <Building2 aria-hidden="true" size={18} />
-            <h2 className="text-sm font-semibold">Create organization</h2>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium">
-              Name
-              <Input
-                className="mt-2"
-                value={organizationName}
-                onChange={(event) => setOrganizationName(event.target.value)}
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium">
-              Login slug
-              <Input
-                className="mt-2"
-                value={organizationSlug}
-                onChange={(event) => setOrganizationSlug(event.target.value)}
-                pattern="[a-z0-9-]+"
-                placeholder="example-org"
-                required
-              />
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                Users must enter this exact slug when signing in.
-              </span>
-            </label>
-            <label className="block text-sm font-medium">
-              Owner full name
-              <Input
-                className="mt-2"
-                value={ownerFullName}
-                onChange={(event) => setOwnerFullName(event.target.value)}
-                placeholder="Jane Program Admin"
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium">
-              Owner email
-              <Input
-                className="mt-2"
-                type="email"
-                value={ownerEmail}
-                onChange={(event) => setOwnerEmail(event.target.value)}
-                placeholder="admin@example.org"
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium sm:col-span-2">
-              Owner temporary password
-              <Input
-                className="mt-2"
-                type="text"
-                value={ownerPassword}
-                onChange={(event) => setOwnerPassword(event.target.value)}
-                minLength={12}
-                required
-              />
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                The owner can log in immediately with the slug, email, and this temporary password.
-              </span>
-            </label>
-          </div>
-          {organizationMutation.isError ? (
-            <p className="mt-3 text-sm text-danger" role="alert">
-              Organization could not be created.
-            </p>
-          ) : null}
-          <Button
-            className="mt-5"
-            disabled={organizationMutation.isPending}
-            type="submit"
-            variant="primary"
+        {isSuperAdmin ? (
+          <form
+            className="rounded-lg border bg-panel p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              organizationMutation.mutate();
+            }}
           >
-            <Plus aria-hidden="true" />
-            Create
-          </Button>
-        </form>
+            <div className="mb-4 flex items-center gap-2">
+              <Building2 aria-hidden="true" size={18} />
+              <h2 className="text-sm font-semibold">Create organization</h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium">
+                Name
+                <Input
+                  className="mt-2"
+                  value={organizationName}
+                  onChange={(event) => setOrganizationName(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Login slug
+                <Input
+                  className="mt-2"
+                  value={organizationSlug}
+                  onChange={(event) => setOrganizationSlug(event.target.value)}
+                  pattern="[a-z0-9-]+"
+                  placeholder="example-org"
+                  required
+                />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Users must enter this exact slug when signing in.
+                </span>
+              </label>
+              <label className="block text-sm font-medium">
+                Owner full name
+                <Input
+                  className="mt-2"
+                  value={ownerFullName}
+                  onChange={(event) => setOwnerFullName(event.target.value)}
+                  placeholder="Jane Program Admin"
+                  required
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Owner email
+                <Input
+                  className="mt-2"
+                  type="email"
+                  value={ownerEmail}
+                  onChange={(event) => setOwnerEmail(event.target.value)}
+                  placeholder="admin@example.org"
+                  required
+                />
+              </label>
+              <label className="block text-sm font-medium sm:col-span-2">
+                Owner temporary password
+                <Input
+                  className="mt-2"
+                  type="text"
+                  value={ownerPassword}
+                  onChange={(event) => setOwnerPassword(event.target.value)}
+                  minLength={12}
+                  required
+                />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  The owner can log in immediately with the slug, email, and this temporary password.
+                </span>
+              </label>
+            </div>
+            {organizationMutation.isError ? (
+              <p className="mt-3 text-sm text-danger" role="alert">
+                Organization could not be created.
+              </p>
+            ) : null}
+            <Button
+              className="mt-5"
+              disabled={organizationMutation.isPending}
+              type="submit"
+              variant="primary"
+            >
+              <Plus aria-hidden="true" />
+              Create
+            </Button>
+          </form>
+        ) : (
+          <section className="rounded-lg border bg-panel p-4">
+            <div className="mb-4 flex items-center gap-2">
+              <Building2 aria-hidden="true" size={18} />
+              <h2 className="text-sm font-semibold">Organization workspace</h2>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Organization creation is reserved for platform super admins. Use this area to invite team members,
+              assign roles, set scopes, and manage access inside your organization.
+            </p>
+          </section>
+        )}
 
         <form
           className="rounded-lg border bg-panel p-4"

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.dependencies import get_current_principal, require_permission
+from app.api.v1.dependencies import get_current_principal, require_permission, require_role
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
@@ -22,7 +22,7 @@ router = APIRouter()
 )
 async def create_organization(
     payload: OrganizationCreate,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ORGANIZATION_MANAGE))],
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> object:
     try:

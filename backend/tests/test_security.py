@@ -108,6 +108,18 @@ async def test_require_role_rejects_principal_without_required_role() -> None:
     assert exc_info.value.detail == "Insufficient role"
 
 
+async def test_tenant_creation_requires_platform_super_admin_even_when_owner_has_manage_permission() -> None:
+    principal = CurrentPrincipal(user_id="owner-1", organization_id="org-1", roles=["owner"])
+
+    assert has_permission(principal.roles, Permission.ORGANIZATION_MANAGE)
+    assert has_permission(principal.roles, Permission.USER_CREATE)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_role("super_admin")(principal)
+
+    assert exc_info.value.status_code == 403
+
+
 async def test_require_permission_accepts_alias_and_canonical_roles() -> None:
     principal = CurrentPrincipal(user_id="user-1", organization_id="org-1", roles=["regional_manager"])
 
