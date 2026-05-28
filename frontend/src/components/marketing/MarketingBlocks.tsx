@@ -1,5 +1,4 @@
 import { ArrowRight, Check, MapPin, RadioTower, ShieldCheck, Smartphone } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -159,12 +158,62 @@ export function WorkflowShowcase() {
 }
 
 export function IndustryGrid() {
+  const visuals = [
+    {
+      label: "Farm mapping",
+      gradient: "linear-gradient(135deg, #dbece4 0%, #f8fbfa 46%, #c8e1d4 100%)",
+      metric: "42k farmers"
+    },
+    {
+      label: "Health outreach",
+      gradient: "linear-gradient(135deg, #dbeafe 0%, #f8fbfa 48%, #ccfbf1 100%)",
+      metric: "18 clinics"
+    },
+    {
+      label: "Aid distribution",
+      gradient: "linear-gradient(135deg, #fef3c7 0%, #f8fbfa 50%, #dbeafe 100%)",
+      metric: "9 review queues"
+    },
+    {
+      label: "Service monitoring",
+      gradient: "linear-gradient(135deg, #e5e7eb 0%, #f8fbfa 48%, #cbd5e1 100%)",
+      metric: "64 districts"
+    }
+  ];
+
   return (
     <div className="mx-auto mt-12 grid max-w-7xl gap-5 px-4 sm:px-6 md:grid-cols-2 lg:px-8">
-      {industries.map((industry) => (
+      {industries.map((industry, index) => (
         <article className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm" key={industry.title}>
-          <div className="relative h-56 w-full">
-            <Image alt={`${industry.title} field operations`} className="object-cover" fill sizes="(min-width: 768px) 50vw, 100vw" src={industry.image} />
+          <div
+            aria-label={`${industry.title} operational preview`}
+            className="relative h-56 w-full overflow-hidden"
+            role="img"
+            style={{ background: visuals[index]?.gradient }}
+          >
+            <div className="absolute inset-x-6 top-6 flex items-center justify-between rounded-xl border border-black/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">{visuals[index]?.label}</span>
+              <span className="rounded-full bg-[#0f766e]/10 px-3 py-1 text-xs font-semibold text-[#0f766e]">{visuals[index]?.metric}</span>
+            </div>
+            <div className="absolute bottom-6 left-6 right-6 grid grid-cols-[1fr_120px] gap-4">
+              <div className="rounded-xl border border-black/10 bg-white/82 p-4 shadow-sm backdrop-blur">
+                <div className="h-2 w-3/4 rounded-full bg-[#0f766e]" />
+                <div className="mt-3 h-2 w-1/2 rounded-full bg-[#0f766e]/30" />
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  <span className="h-12 rounded-lg bg-white shadow-line" />
+                  <span className="h-12 rounded-lg bg-white shadow-line" />
+                  <span className="h-12 rounded-lg bg-white shadow-line" />
+                </div>
+              </div>
+              <div className="relative rounded-xl border border-black/10 bg-white/72 shadow-sm backdrop-blur">
+                <span className="absolute left-7 top-8 flex h-7 w-7 items-center justify-center rounded-full bg-[#0f766e] text-white">
+                  <MapPin size={13} />
+                </span>
+                <span className="absolute bottom-8 right-7 flex h-7 w-7 items-center justify-center rounded-full bg-[#0f766e] text-white">
+                  <MapPin size={13} />
+                </span>
+              </div>
+            </div>
           </div>
           <div className="p-6">
             <h3 className="text-xl font-semibold">{industry.title}</h3>
