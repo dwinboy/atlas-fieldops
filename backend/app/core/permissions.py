@@ -382,6 +382,23 @@ for alias, canonical in ROLE_ALIASES.items():
     ROLE_PERMISSIONS[alias] = set(ROLE_DEFINITIONS[canonical].permissions)
 
 
+PLATFORM_ONLY_ROLES = frozenset({"super_admin"})
+
+
+def can_manage_platform_roles(roles: list[str]) -> bool:
+    return "super_admin" in {canonical_role(role) for role in roles}
+
+
+def is_assignable_role(role_name: str, actor_roles: list[str]) -> bool:
+    return can_manage_platform_roles(actor_roles) or canonical_role(role_name) not in PLATFORM_ONLY_ROLES
+
+
+def assignable_role_definitions(actor_roles: list[str]) -> dict[str, RoleDefinition]:
+    if can_manage_platform_roles(actor_roles):
+        return ROLE_DEFINITIONS
+    return {name: definition for name, definition in ROLE_DEFINITIONS.items() if name not in PLATFORM_ONLY_ROLES}
+
+
 def permissions_for_roles(roles: list[str]) -> set[Permission]:
     permissions: set[Permission] = set()
     for role in roles:

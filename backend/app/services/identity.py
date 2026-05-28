@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
-from app.core.permissions import ROLE_DEFINITIONS, ScopeType, default_scope_for_roles
+from app.core.permissions import ROLE_DEFINITIONS, ScopeType, default_scope_for_roles, is_assignable_role
 from app.core.security import hash_password
 from app.models.identity import User
 from app.repositories.audit import AuditRepository
@@ -17,6 +17,10 @@ class IdentityConflictError(Exception):
 
 
 class IdentityNotFoundError(Exception):
+    pass
+
+
+class IdentityPermissionError(Exception):
     pass
 
 
@@ -133,8 +137,11 @@ class UserManagementService:
         *,
         organization_id: UUID,
         actor_user_id: UUID,
+        actor_roles: list[str],
         payload: UserCreate,
     ) -> UserRead:
+        if not is_assignable_role(payload.role_name, actor_roles):
+            raise IdentityPermissionError("Role cannot be assigned by this user")
         role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
         if role is None:
             raise IdentityNotFoundError("Role not found")
@@ -193,11 +200,14 @@ class UserManagementService:
         *,
         organization_id: UUID,
         actor_user_id: UUID,
+        actor_roles: list[str],
         user_id: UUID,
         payload: UserUpdate,
     ) -> UserRead:
         role_id: UUID | None = None
         if payload.role_name is not None:
+            if not is_assignable_role(payload.role_name, actor_roles):
+                raise IdentityPermissionError("Role cannot be assigned by this user")
             role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
             if role is None:
                 raise IdentityNotFoundError("Role not found")

@@ -9,7 +9,15 @@ from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 
 from app.api.v1.dependencies import get_current_principal, require_permission, require_role
-from app.core.permissions import AccessScope, Permission, ScopeType, has_permission, is_scope_authorized
+from app.core.permissions import (
+    AccessScope,
+    Permission,
+    ScopeType,
+    assignable_role_definitions,
+    has_permission,
+    is_assignable_role,
+    is_scope_authorized,
+)
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
@@ -118,6 +126,17 @@ async def test_tenant_creation_requires_platform_super_admin_even_when_owner_has
         await require_role("super_admin")(principal)
 
     assert exc_info.value.status_code == 403
+
+
+def test_platform_only_roles_are_hidden_from_tenant_administrators() -> None:
+    tenant_roles = assignable_role_definitions(["owner"])
+    platform_roles = assignable_role_definitions(["super_admin"])
+
+    assert "super_admin" not in tenant_roles
+    assert "super_admin" in platform_roles
+    assert not is_assignable_role("super_admin", ["owner"])
+    assert is_assignable_role("super_admin", ["super_admin"])
+    assert is_assignable_role("me_manager", ["owner"])
 
 
 async def test_require_permission_accepts_alias_and_canonical_roles() -> None:

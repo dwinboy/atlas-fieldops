@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
-from app.core.permissions import Permission, ROLE_DEFINITIONS, ScopeType, WorkflowAction
+from app.core.permissions import Permission, ScopeType, WorkflowAction, assignable_role_definitions, is_assignable_role
 from app.repositories.identity import OrganizationUnitRepository, RoleRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.identity import AccessCatalogRead, OrganizationUnitRead, PermissionCatalogItem, RoleCatalogItem, RoleRead
@@ -32,6 +32,7 @@ async def list_roles(
             permissions=[permission for permission in role.permissions.split(",") if permission],
         )
         for role in roles
+        if is_assignable_role(role.name, principal.roles)
     ]
 
 
@@ -39,7 +40,7 @@ async def list_roles(
 async def get_access_catalog(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ROLE_READ))],
 ) -> AccessCatalogRead:
-    del principal
+    role_definitions = assignable_role_definitions(principal.roles)
     return AccessCatalogRead(
         roles=[
             RoleCatalogItem(
@@ -51,7 +52,7 @@ async def get_access_catalog(
                 workflow_actions=sorted(action.value for action in definition.workflow_actions),
                 menu_views=sorted(definition.menu_views),
             )
-            for definition in ROLE_DEFINITIONS.values()
+            for definition in role_definitions.values()
         ],
         permissions=[
             PermissionCatalogItem(
