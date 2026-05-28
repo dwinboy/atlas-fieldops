@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
-from app.core.permissions import ROLE_DEFINITIONS, ScopeType, default_scope_for_roles, is_assignable_role
+from app.core.permissions import ROLE_DEFINITIONS, ScopeType, default_scope_for_roles, is_assignable_role, is_scope_allowed_for_role
 from app.core.security import hash_password
 from app.models.identity import User
 from app.repositories.audit import AuditRepository
@@ -154,6 +154,8 @@ class UserManagementService:
         scope_type = default_scope_for_roles([role.name])
         if payload.scope_type is not None:
             scope_type = ScopeType(payload.scope_type)
+        if not is_scope_allowed_for_role(role.name, scope_type):
+            raise IdentityPermissionError("Scope is too broad for selected role")
         await self.identity.add_access_grant(
             organization_id=organization_id,
             user_id=user.id,
@@ -176,10 +178,23 @@ class UserManagementService:
         account = await self.identity.get_user_account(organization_id=organization_id, user_id=user.id)
         if account is None:
             raise IdentityNotFoundError("User not found")
-        return self.to_user_read(*account)
+        organization = await self.organizations.get(organization_id)
+        return self.to_user_read(
+            *account,
+            login_slug=organization.slug if organization is not None else None,
+            temporary_password=payload.password,
+        )
 
     @staticmethod
-    def to_user_read(user: User, _membership: object, role: object, grant: object | None) -> UserRead:
+    def to_user_read(
+        user: User,
+        _membership: object,
+        role: object,
+        grant: object | None,
+        *,
+        login_slug: str | None = None,
+        temporary_password: str | None = None,
+    ) -> UserRead:
         return UserRead(
             id=user.id,
             email=user.email,
@@ -190,6 +205,8 @@ class UserManagementService:
             geography_id=getattr(grant, "geography_id", None) if grant is not None else None,
             project_id=getattr(grant, "project_id", None) if grant is not None else None,
             organization_unit_id=getattr(grant, "organization_unit_id", None) if grant is not None else None,
+            login_slug=login_slug,
+            temporary_password=temporary_password,
         )
 
     async def list_users(self, organization_id: UUID) -> list[UserRead]:
@@ -204,7 +221,12 @@ class UserManagementService:
         user_id: UUID,
         payload: UserUpdate,
     ) -> UserRead:
+        current_account = await self.identity.get_user_account(organization_id=organization_id, user_id=user_id)
+        if current_account is None:
+            raise IdentityNotFoundError("User not found")
+        _current_user, _current_membership, current_role, _current_grant = current_account
         role_id: UUID | None = None
+        effective_role_name = getattr(current_role, "name")
         if payload.role_name is not None:
             if not is_assignable_role(payload.role_name, actor_roles):
                 raise IdentityPermissionError("Role cannot be assigned by this user")
@@ -212,7 +234,11 @@ class UserManagementService:
             if role is None:
                 raise IdentityNotFoundError("Role not found")
             role_id = role.id
+            effective_role_name = role.name
         scope_type = ScopeType(payload.scope_type) if payload.scope_type is not None else None
+        if scope_type is not None:
+            if not is_scope_allowed_for_role(effective_role_name, scope_type):
+                raise IdentityPermissionError("Scope is too broad for selected role")
         account = await self.identity.update_user_account(
             organization_id=organization_id,
             user_id=user_id,

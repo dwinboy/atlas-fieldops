@@ -68,6 +68,8 @@ export type UserRead = {
   geography_id?: string | null;
   project_id?: string | null;
   organization_unit_id?: string | null;
+  login_slug?: string | null;
+  temporary_password?: string | null;
 };
 
 export type UserUpdate = {
@@ -119,6 +121,29 @@ export type OrganizationUnitRead = {
   code: string;
   unit_type: string;
   region: string | null;
+};
+
+export type DataRouteCreate = {
+  title: string;
+  data_type?: string;
+  target_role_name?: string | null;
+  target_team_id?: string | null;
+  target_user_id?: string | null;
+  priority?: "low" | "normal" | "high" | "urgent";
+  instructions: string;
+};
+
+export type DataRouteRead = {
+  id: string;
+  title: string;
+  data_type: string;
+  target_role_name: string | null;
+  target_team_id: string | null;
+  target_user_id: string | null;
+  priority: string;
+  instructions: string;
+  status: string;
+  created_at: string;
 };
 
 export type FieldOfficerInvite = {
@@ -504,6 +529,10 @@ export async function listOrganizationUnits(token: string): Promise<Organization
   return request<OrganizationUnitRead[]>("/roles/organization-units", { token });
 }
 
+export async function routeData(token: string, payload: DataRouteCreate): Promise<DataRouteRead> {
+  return request<DataRouteRead>("/operations/data-routes", { method: "POST", token, bodyJson: payload });
+}
+
 export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {
   return request<FieldOfficerRead[]>("/field-officers", { token });
 }
@@ -672,6 +701,7 @@ export const api = {
   previewImport,
   reviewSubmission,
   resetUserPassword,
+  routeData,
   updateImportRow,
   updateUser,
   uploadImportFile

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Building2, CheckCircle2, KeyRound, LockKeyhole, Plus, ShieldCheck, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import {
   listRoles,
   listUsers,
   resetUserPassword,
+  routeData,
   updateUser,
   type AccessCatalog,
   type CurrentPrincipal,
@@ -45,6 +46,15 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const [editGeographyId, setEditGeographyId] = useState("");
   const [editProjectId, setEditProjectId] = useState("");
   const [editUnitId, setEditUnitId] = useState("");
+  const [lastInvite, setLastInvite] = useState<UserRead | null>(null);
+  const [routeTitle, setRouteTitle] = useState("Review newly submitted data");
+  const [routeDataType, setRouteDataType] = useState("submissions");
+  const [routeTargetType, setRouteTargetType] = useState<"role" | "team" | "user">("role");
+  const [routeRoleName, setRouteRoleName] = useState("me_manager");
+  const [routeTeamId, setRouteTeamId] = useState("");
+  const [routeUserId, setRouteUserId] = useState("");
+  const [routePriority, setRoutePriority] = useState<"low" | "normal" | "high" | "urgent">("normal");
+  const [routeInstructions, setRouteInstructions] = useState("Review, comment, and approve or request corrections.");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const usersQuery = useQuery({
@@ -109,10 +119,15 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         role_name: roleName,
         scope_type: scopeType
       }),
-    onSuccess: async () => {
+    onSuccess: async (user) => {
       setEmail("");
       setFullName("");
-      pushToast({ title: "User invited", description: `${fullName || email} was added to this organization`, tone: "success" });
+      setLastInvite(user);
+      pushToast({
+        title: "User invited",
+        description: `${user.full_name} can sign in with slug ${user.login_slug ?? "this organization"} and the temporary password shown on this page.`,
+        tone: "success"
+      });
       await usersQuery.refetch();
     }
   });
@@ -156,6 +171,26 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     }
   });
 
+  const routeMutation = useMutation({
+    mutationFn: () =>
+      routeData(token ?? "", {
+        title: routeTitle,
+        data_type: routeDataType,
+        target_role_name: routeTargetType === "role" ? routeRoleName : null,
+        target_team_id: routeTargetType === "team" && routeTeamId ? routeTeamId : null,
+        target_user_id: routeTargetType === "user" && routeUserId ? routeUserId : null,
+        priority: routePriority,
+        instructions: routeInstructions
+      }),
+    onSuccess: (route) => {
+      pushToast({
+        title: "Data routed",
+        description: `${route.title} was sent to the selected ${routeTargetType}.`,
+        tone: "success"
+      });
+    }
+  });
+
   const roles: RoleRead[] =
     rolesQuery.data ??
     ["owner", "admin", "manager", "collector"].map((name) => ({
@@ -170,6 +205,37 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const selectedEditRole = catalogRoles.find((role) => role.name === editRoleName) ?? catalogRoles[0];
   const scopeOptions = catalog?.scope_types ?? ["organization", "country", "region", "district", "project", "own"];
   const selectableRoles = catalogRoles.length ? catalogRoles : roles;
+  const scopeRank = ["global", "organization", "country", "region", "district", "field_team", "project", "own"];
+  const allowedScopesForRole = (roleScope?: string | null) => {
+    const minimumIndex = Math.max(0, scopeRank.indexOf(roleScope ?? "own"));
+    return scopeOptions.filter((scope) => scopeRank.indexOf(scope) >= minimumIndex);
+  };
+  const inviteScopeOptions = allowedScopesForRole(selectedRole?.scope_type);
+  const editScopeOptions = allowedScopesForRole(selectedEditRole?.scope_type);
+
+  useEffect(() => {
+    if (selectableRoles.length && !selectableRoles.some((role) => role.name === roleName)) {
+      setRoleName(selectableRoles[0]?.name ?? "field_officer");
+    }
+  }, [roleName, selectableRoles]);
+
+  useEffect(() => {
+    if (inviteScopeOptions.length && !inviteScopeOptions.includes(scopeType)) {
+      setScopeType(inviteScopeOptions[0] ?? "own");
+    }
+  }, [inviteScopeOptions, scopeType]);
+
+  useEffect(() => {
+    if (editScopeOptions.length && !editScopeOptions.includes(editScopeType)) {
+      setEditScopeType(editScopeOptions[0] ?? "own");
+    }
+  }, [editScopeOptions, editScopeType]);
+
+  useEffect(() => {
+    if (selectableRoles.length && !selectableRoles.some((role) => role.name === routeRoleName)) {
+      setRouteRoleName(selectableRoles[0]?.name ?? "field_officer");
+    }
+  }, [routeRoleName, selectableRoles]);
 
   function selectUser(user: UserRead): void {
     setSelectedUserId(user.id);
@@ -454,7 +520,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
                 value={scopeType}
                 onChange={(event) => setScopeType(event.target.value)}
               >
-                {scopeOptions.map((scope) => (
+                {inviteScopeOptions.map((scope) => (
                   <option key={scope} value={scope}>
                     {scope.replaceAll("_", " ")}
                   </option>
@@ -462,6 +528,16 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
               </Select>
             </label>
           </div>
+          {lastInvite ? (
+            <div className="mt-4 rounded-xl border border-success/30 bg-success/10 p-3 text-xs leading-5">
+              <p className="font-semibold text-foreground">Login details for {lastInvite.full_name}</p>
+              <p className="mt-1 text-muted-foreground">
+                Slug: <span className="font-mono text-foreground">{lastInvite.login_slug ?? "current organization"}</span> · Email:{" "}
+                <span className="font-mono text-foreground">{lastInvite.email}</span> · Temporary password:{" "}
+                <span className="font-mono text-foreground">{lastInvite.temporary_password ?? "ChangeMe12345!"}</span>
+              </p>
+            </div>
+          ) : null}
           <Button
             className="mt-5"
             disabled={!token || userMutation.isPending}
@@ -472,7 +548,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
             Invite
           </Button>
           <div className="mt-4 rounded-xl border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground">
-            Temporary local password: <span className="font-mono text-foreground">ChangeMe12345!</span>. Require users to reset it before production use.
+            Only roles you are allowed to delegate appear here. The selected role also limits the access scopes you can assign.
           </div>
         </form>
       </div>
@@ -526,7 +602,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           <label className="block text-sm font-medium">
             Scope
             <Select className="mt-2" value={editScopeType} onChange={(event) => setEditScopeType(event.target.value)}>
-              {scopeOptions.map((scope) => (
+              {editScopeOptions.map((scope) => (
                 <option key={scope} value={scope}>
                   {scope.replaceAll("_", " ")}
                 </option>
@@ -559,6 +635,94 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           <Button className="self-end" disabled={!selectedUserId || userUpdateMutation.isPending} type="submit" variant="primary">
             <ShieldCheck aria-hidden="true" />
             Save access
+          </Button>
+        </form>
+      </section>
+
+      <section className="surface-premium rounded-2xl p-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck aria-hidden="true" size={18} />
+          <h2 className="text-sm font-semibold">Send data or work to a role, team, or person</h2>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Route submissions, imports, cases, or reports to the right internal group. Routes stay inside this organization and create a workflow queue item.
+        </p>
+        <form
+          className="mt-4 grid gap-4 lg:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            routeMutation.mutate();
+          }}
+        >
+          <label className="block text-sm font-medium">
+            Route title
+            <Input className="mt-2" value={routeTitle} onChange={(event) => setRouteTitle(event.target.value)} required />
+          </label>
+          <label className="block text-sm font-medium">
+            Data type
+            <Select className="mt-2" value={routeDataType} onChange={(event) => setRouteDataType(event.target.value)}>
+              {["submissions", "beneficiaries", "imports", "cases", "reports", "indicators"].map((type) => (
+                <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="block text-sm font-medium">
+            Priority
+            <Select className="mt-2" value={routePriority} onChange={(event) => setRoutePriority(event.target.value as typeof routePriority)}>
+              {["low", "normal", "high", "urgent"].map((priority) => (
+                <option key={priority} value={priority}>{priority}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="block text-sm font-medium">
+            Send to
+            <Select className="mt-2" value={routeTargetType} onChange={(event) => setRouteTargetType(event.target.value as typeof routeTargetType)}>
+              <option value="role">Role</option>
+              <option value="team">Team or unit</option>
+              <option value="user">Specific user</option>
+            </Select>
+          </label>
+          {routeTargetType === "role" ? (
+            <label className="block text-sm font-medium">
+              Target role
+              <Select className="mt-2" value={routeRoleName} onChange={(event) => setRouteRoleName(event.target.value)}>
+                {selectableRoles.map((role) => (
+                  <option key={"id" in role ? role.id : role.name} value={role.name}>
+                    {"label" in role && role.label ? role.label : role.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {routeTargetType === "team" ? (
+            <label className="block text-sm font-medium">
+              Target team
+              <Select className="mt-2" value={routeTeamId} onChange={(event) => setRouteTeamId(event.target.value)} required>
+                <option value="">Choose a team</option>
+                {(unitsQuery.data ?? []).map((unit) => (
+                  <option key={unit.id} value={unit.id}>{unit.name} - {unit.unit_type}</option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {routeTargetType === "user" ? (
+            <label className="block text-sm font-medium">
+              Target user
+              <Select className="mt-2" value={routeUserId} onChange={(event) => setRouteUserId(event.target.value)} required>
+                <option value="">Choose a user</option>
+                {(usersQuery.data ?? []).map((user) => (
+                  <option key={user.id} value={user.id}>{user.full_name} - {user.role_name}</option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          <label className="block text-sm font-medium lg:col-span-2">
+            Instructions
+            <Input className="mt-2" value={routeInstructions} onChange={(event) => setRouteInstructions(event.target.value)} required />
+          </label>
+          <Button className="self-end" disabled={!token || routeMutation.isPending} type="submit" variant="primary">
+            <ShieldCheck aria-hidden="true" />
+            Send route
           </Button>
         </form>
       </section>

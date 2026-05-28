@@ -16,6 +16,7 @@ from app.core.permissions import (
     assignable_role_definitions,
     has_permission,
     is_assignable_role,
+    is_scope_allowed_for_role,
     is_scope_authorized,
 )
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
@@ -133,10 +134,21 @@ def test_platform_only_roles_are_hidden_from_tenant_administrators() -> None:
     platform_roles = assignable_role_definitions(["super_admin"])
 
     assert "super_admin" not in tenant_roles
+    assert "owner" not in tenant_roles
     assert "super_admin" in platform_roles
     assert not is_assignable_role("super_admin", ["owner"])
     assert is_assignable_role("super_admin", ["super_admin"])
     assert is_assignable_role("me_manager", ["owner"])
+    assert is_assignable_role("data_analyst", ["me_manager"])
+    assert not is_assignable_role("regional_manager", ["me_manager"])
+
+
+def test_role_scope_assignment_cannot_exceed_role_level() -> None:
+    assert is_scope_allowed_for_role("me_manager", ScopeType.PROJECT)
+    assert is_scope_allowed_for_role("me_manager", ScopeType.OWN)
+    assert not is_scope_allowed_for_role("me_manager", ScopeType.ORGANIZATION)
+    assert is_scope_allowed_for_role("national_admin", ScopeType.REGION)
+    assert not is_scope_allowed_for_role("field_officer", ScopeType.DISTRICT)
 
 
 async def test_require_permission_accepts_alias_and_canonical_roles() -> None:

@@ -20,11 +20,14 @@ from app.models.operations import (
     WorkflowDefinition,
 )
 from app.repositories.operations import OperationsRepository
+from app.repositories.identity import IdentityRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.operations import (
     BeneficiaryCreate,
     BulkEditRead,
     BulkEditRequest,
     CaseCreate,
+    DataRouteCreate,
+    DataRouteRead,
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
@@ -272,6 +275,9 @@ class OperationsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repository = OperationsRepository(session)
+        self.identity = IdentityRepository(session)
+        self.roles = RoleRepository(session)
+        self.units = OrganizationUnitRepository(session)
 
     async def create_program(self, organization_id: UUID, payload: ProgramCreate, actor_user_id: UUID | None = None) -> Project:
         program = await self.repository.create_program(
@@ -440,6 +446,55 @@ class OperationsService:
         )
         await self.session.commit()
         return WorkflowDefinitionRead.model_validate(workflow)
+
+    async def route_data(self, organization_id: UUID, user_id: UUID, payload: DataRouteCreate) -> DataRouteRead:
+        if payload.target_role_name is None and payload.target_team_id is None and payload.target_user_id is None:
+            raise ValueError("Choose a role, team, or user to receive this data route")
+        if payload.target_role_name is not None and await self.roles.get_by_name(organization_id=organization_id, name=payload.target_role_name) is None:
+            raise ValueError("Target role does not exist in this organization")
+        if payload.target_user_id is not None and await self.identity.get_user_account(organization_id=organization_id, user_id=payload.target_user_id) is None:
+            raise ValueError("Target user does not belong to this organization")
+        if payload.target_team_id is not None and not any(unit.id == payload.target_team_id for unit in await self.units.list_for_organization(organization_id)):
+            raise ValueError("Target team does not belong to this organization")
+
+        item = await self.repository.create_workflow_queue_item(
+            organization_id=organization_id,
+            queue_type="data_route",
+            trigger_event_type="data.route.created",
+            title=payload.title,
+            next_action=payload.instructions,
+            assigned_to_user_id=payload.target_user_id,
+            priority=payload.priority,
+            context_json={
+                "data_type": payload.data_type,
+                "target_role_name": payload.target_role_name,
+                "target_team_id": str(payload.target_team_id) if payload.target_team_id else None,
+                "created_by_user_id": str(user_id),
+            },
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data.route.created",
+                source_module="workflows",
+                summary=f"{payload.data_type.title()} data was routed for action.",
+                payload=item.context_json,
+            ),
+        )
+        await self.session.commit()
+        return DataRouteRead(
+            id=item.id,
+            title=item.title,
+            data_type=payload.data_type,
+            target_role_name=payload.target_role_name,
+            target_team_id=payload.target_team_id,
+            target_user_id=payload.target_user_id,
+            priority=item.priority,
+            instructions=item.next_action,
+            status=item.status,
+            created_at=item.created_at,
+        )
 
     async def create_task(self, organization_id: UUID, user_id: UUID, payload: OperationalTaskCreate) -> OperationalTaskRead:
         task = await self.repository.create_enterprise_record(OperationalTask, organization_id=organization_id, values=payload.model_dump())

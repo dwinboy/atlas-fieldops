@@ -221,6 +221,8 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         _p(
             Permission.ORGANIZATION_READ,
             Permission.USER_READ,
+            Permission.USER_CREATE,
+            Permission.ROLE_READ,
             Permission.OFFICER_READ,
             Permission.SUBMISSION_READ,
             Permission.SUBMISSION_REVIEW,
@@ -241,7 +243,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.WORKFLOW_APPROVE_REGIONAL,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_REGIONAL, WorkflowAction.REQUEST_CORRECTION, WorkflowAction.EXPORT),
-        OPERATIONS_MENU - {"organizations", "enterprise"},
+        OPERATIONS_MENU - {"enterprise"},
     ),
     "district_supervisor": RoleDefinition(
         "district_supervisor",
@@ -250,6 +252,9 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.DISTRICT,
         _p(
             Permission.ORGANIZATION_READ,
+            Permission.USER_READ,
+            Permission.USER_CREATE,
+            Permission.ROLE_READ,
             Permission.OFFICER_READ,
             Permission.SUBMISSION_READ,
             Permission.SUBMISSION_REVIEW,
@@ -267,7 +272,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.WORKFLOW_APPROVE_DISTRICT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_DISTRICT, WorkflowAction.REQUEST_CORRECTION),
-        frozenset({"dashboard", "programs", "beneficiaries", "submissions", "officers", "cases", "map", "analytics", "connectivity"}),
+        frozenset({"dashboard", "programs", "beneficiaries", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
     ),
     "field_officer": RoleDefinition(
         "field_officer",
@@ -301,9 +306,19 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         "M&E Manager",
         "Owns indicators, reports, quality monitoring, and evaluation workflows.",
         ScopeType.PROJECT,
-        READ_ONLY_PERMISSIONS | _p(Permission.INDICATOR_MANAGE, Permission.REPORT_GENERATE, Permission.REPORT_EXPORT, Permission.ANALYTICS_EXPORT, Permission.DATA_EXPORT),
+        READ_ONLY_PERMISSIONS
+        | _p(
+            Permission.USER_READ,
+            Permission.USER_CREATE,
+            Permission.ROLE_READ,
+            Permission.INDICATOR_MANAGE,
+            Permission.REPORT_GENERATE,
+            Permission.REPORT_EXPORT,
+            Permission.ANALYTICS_EXPORT,
+            Permission.DATA_EXPORT,
+        ),
         _w(WorkflowAction.REVIEW, WorkflowAction.EXPORT),
-        frozenset({"dashboard", "data", "programs", "beneficiaries", "indicators", "submissions", "map", "analytics", "connectivity"}),
+        frozenset({"dashboard", "data", "programs", "beneficiaries", "indicators", "submissions", "map", "analytics", "organizations", "connectivity"}),
     ),
     "project_manager": RoleDefinition(
         "project_manager",
@@ -313,6 +328,9 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         READ_ONLY_PERMISSIONS
         | _p(
             Permission.PROGRAM_MANAGE,
+            Permission.USER_READ,
+            Permission.USER_CREATE,
+            Permission.ROLE_READ,
             Permission.FORM_CREATE,
             Permission.FORM_EDIT,
             Permission.BENEFICIARY_CREATE,
@@ -322,7 +340,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.CASE_MANAGE,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION),
-        frozenset({"dashboard", "programs", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "connectivity"}),
+        frozenset({"dashboard", "programs", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
     ),
     "finance_officer": RoleDefinition(
         "finance_officer",
@@ -384,19 +402,62 @@ for alias, canonical in ROLE_ALIASES.items():
 
 PLATFORM_ONLY_ROLES = frozenset({"super_admin"})
 
+ROLE_CREATION_RULES: dict[str, frozenset[str]] = {
+    "super_admin": frozenset(ROLE_DEFINITIONS),
+    "owner": frozenset(ROLE_DEFINITIONS) - PLATFORM_ONLY_ROLES - frozenset({"owner", "organization_owner"}),
+    "organization_owner": frozenset(ROLE_DEFINITIONS) - PLATFORM_ONLY_ROLES - frozenset({"owner", "organization_owner"}),
+    "national_admin": frozenset(
+        {
+            "regional_manager",
+            "district_supervisor",
+            "field_officer",
+            "data_analyst",
+            "me_manager",
+            "project_manager",
+            "finance_officer",
+            "compliance_auditor",
+            "donor_viewer",
+        }
+    ),
+    "regional_manager": frozenset({"district_supervisor", "field_officer", "data_analyst", "project_manager"}),
+    "district_supervisor": frozenset({"field_officer"}),
+    "project_manager": frozenset({"district_supervisor", "field_officer", "data_analyst"}),
+    "me_manager": frozenset({"data_analyst", "donor_viewer"}),
+}
+
 
 def can_manage_platform_roles(roles: list[str]) -> bool:
     return "super_admin" in {canonical_role(role) for role in roles}
 
 
 def is_assignable_role(role_name: str, actor_roles: list[str]) -> bool:
-    return can_manage_platform_roles(actor_roles) or canonical_role(role_name) not in PLATFORM_ONLY_ROLES
+    target_role = canonical_role(role_name)
+    if can_manage_platform_roles(actor_roles):
+        return target_role in ROLE_DEFINITIONS
+    return any(target_role in ROLE_CREATION_RULES.get(canonical_role(role), frozenset()) for role in actor_roles)
 
 
 def assignable_role_definitions(actor_roles: list[str]) -> dict[str, RoleDefinition]:
-    if can_manage_platform_roles(actor_roles):
-        return ROLE_DEFINITIONS
-    return {name: definition for name, definition in ROLE_DEFINITIONS.items() if name not in PLATFORM_ONLY_ROLES}
+    return {name: definition for name, definition in ROLE_DEFINITIONS.items() if is_assignable_role(name, actor_roles)}
+
+
+SCOPE_ORDER = [
+    ScopeType.GLOBAL,
+    ScopeType.ORGANIZATION,
+    ScopeType.COUNTRY,
+    ScopeType.REGION,
+    ScopeType.DISTRICT,
+    ScopeType.FIELD_TEAM,
+    ScopeType.PROJECT,
+    ScopeType.OWN,
+]
+
+
+def is_scope_allowed_for_role(role_name: str, scope_type: ScopeType) -> bool:
+    definition = ROLE_DEFINITIONS.get(canonical_role(role_name))
+    if definition is None:
+        return False
+    return SCOPE_ORDER.index(scope_type) >= SCOPE_ORDER.index(definition.scope_type)
 
 
 def permissions_for_roles(roles: list[str]) -> set[Permission]:
@@ -425,16 +486,6 @@ def workflow_actions_for_roles(roles: list[str]) -> set[WorkflowAction]:
 
 
 def default_scope_for_roles(roles: list[str]) -> ScopeType:
-    ordered = [
-        ScopeType.GLOBAL,
-        ScopeType.ORGANIZATION,
-        ScopeType.COUNTRY,
-        ScopeType.REGION,
-        ScopeType.DISTRICT,
-        ScopeType.FIELD_TEAM,
-        ScopeType.PROJECT,
-        ScopeType.OWN,
-    ]
     scopes = [
         ROLE_DEFINITIONS[canonical_role(role)].scope_type
         for role in roles
@@ -442,7 +493,7 @@ def default_scope_for_roles(roles: list[str]) -> ScopeType:
     ]
     if not scopes:
         return ScopeType.OWN
-    return min(scopes, key=lambda scope: ordered.index(scope))
+    return min(scopes, key=lambda scope: SCOPE_ORDER.index(scope))
 
 
 def has_permission(roles: list[str], permission: Permission | str) -> bool:

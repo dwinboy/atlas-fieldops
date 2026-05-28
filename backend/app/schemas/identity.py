@@ -51,6 +51,8 @@ class UserRead(BaseModel):
     geography_id: str | None = None
     project_id: str | None = None
     organization_unit_id: UUID | None = None
+    login_slug: str | None = None
+    temporary_password: str | None = None
 
     model_config = {"from_attributes": True}
 

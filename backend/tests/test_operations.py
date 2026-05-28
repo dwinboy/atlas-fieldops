@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
-from app.schemas.operations import BeneficiaryCreate, CaseCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
+from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
 from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
 from app.services.operations import OperationsService, indicator_progress, infer_mapping, validate_sample_rows
 
@@ -75,6 +75,19 @@ def test_indicator_and_case_payloads_use_plain_english_fields() -> None:
 
     assert indicator.name == "Children vaccinated"
     assert case.status == "open"
+
+
+def test_data_route_requires_clear_internal_target() -> None:
+    route = DataRouteCreate(
+        title="Review imported beneficiary records",
+        data_type="beneficiaries",
+        target_role_name="me_manager",
+        priority="high",
+        instructions="Review duplicates and approve clean records.",
+    )
+
+    assert route.target_role_name == "me_manager"
+    assert route.instructions.startswith("Review")
 
 
 def test_import_mapping_and_validation_catch_operational_data_errors() -> None:

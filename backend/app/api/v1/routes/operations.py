@@ -15,6 +15,8 @@ from app.schemas.operations import (
     BulkEditRequest,
     CaseCreate,
     CaseRead,
+    DataRouteCreate,
+    DataRouteRead,
     DonorReportCreate,
     DonorReportRead,
     ExportJobCreate,
@@ -115,6 +117,18 @@ async def create_workflow_definition(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> WorkflowDefinitionRead:
     return await OperationsService(session).create_workflow_definition(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post("/data-routes", response_model=DataRouteRead, status_code=status.HTTP_201_CREATED, summary="Route data to a role, team, or user")
+async def route_data(
+    payload: DataRouteCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataRouteRead:
+    try:
+        return await OperationsService(session).route_data(organization_uuid(principal), user_uuid(principal), payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/tasks", response_model=OperationalTaskRead, status_code=status.HTTP_201_CREATED, summary="Create operational task")

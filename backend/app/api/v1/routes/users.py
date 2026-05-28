@@ -30,7 +30,7 @@ async def list_users(
 )
 async def create_user(
     payload: UserCreate,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_MANAGE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_CREATE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserRead:
     try:
@@ -47,7 +47,7 @@ async def create_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found") from exc
     except IdentityPermissionError as exc:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role cannot be assigned") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise
@@ -75,7 +75,7 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User or role not found") from exc
     except IdentityPermissionError as exc:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Role cannot be assigned") from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

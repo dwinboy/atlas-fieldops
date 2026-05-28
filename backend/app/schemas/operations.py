@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -353,6 +354,29 @@ class WorkflowQueueItemRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DataRouteCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=240)
+    data_type: str = Field(default="submission", min_length=2, max_length=80)
+    target_role_name: str | None = Field(default=None, min_length=2, max_length=100)
+    target_team_id: UUID | None = None
+    target_user_id: UUID | None = None
+    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    instructions: str = Field(min_length=2, max_length=240)
+
+
+class DataRouteRead(BaseModel):
+    id: UUID
+    title: str
+    data_type: str
+    target_role_name: str | None
+    target_team_id: UUID | None
+    target_user_id: UUID | None
+    priority: str
+    instructions: str
+    status: str
+    created_at: datetime
 
 
 class EcosystemNode(BaseModel):
