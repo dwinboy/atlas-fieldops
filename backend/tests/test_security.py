@@ -137,14 +137,14 @@ def test_scope_authorization_limits_project_and_geography() -> None:
 
 
 class FakeUserRepository:
-    def __init__(self, identity: tuple[object, object, object, object] | None) -> None:
+    def __init__(self, identity: tuple[object, object, object, object, list[object]] | None) -> None:
         self.identity = identity
 
     async def find_for_login(
         self,
         email: str,
         organization_slug: str,
-    ) -> tuple[object, object, object, object] | None:
+    ) -> tuple[object, object, object, object, list[object]] | None:
         return self.identity
 
 
@@ -155,12 +155,13 @@ def build_identity(
     organization_active: bool = True,
     membership_active: bool = True,
     role_name: str = "collector",
-) -> tuple[object, object, object, object]:
+    grants: list[object] | None = None,
+) -> tuple[object, object, object, object, list[object]]:
     user = SimpleNamespace(id=uuid4(), password_hash=password_hash, is_active=user_active)
     organization = SimpleNamespace(id=uuid4(), is_active=organization_active)
     membership = SimpleNamespace(is_active=membership_active)
     role = SimpleNamespace(name=role_name)
-    return user, organization, membership, role
+    return user, organization, membership, role, grants or []
 
 
 async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,8 +179,37 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     payload = decode_access_token(token_response.access_token)
     assert token_response.token_type == "bearer"
     assert payload["roles"] == ["admin"]
+    assert payload["scope_type"] == "country"
     assert payload["sub"]
     assert payload["organization_id"]
+
+
+async def test_auth_service_includes_persisted_access_grants(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "jwt_secret", "test-secret-with-enough-length")
+    password_hash = hash_password("correct horse battery staple")
+    grant = SimpleNamespace(
+        scope_type="region",
+        geography_id="northwest",
+        project_id="project-1",
+        organization_unit_id=uuid4(),
+    )
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(build_identity(password_hash=password_hash, role_name="regional_manager", grants=[grant])),
+    )
+
+    token_response = await service.login(
+        email="user@example.com",
+        password="correct horse battery staple",
+        organization_slug="acme",
+    )
+
+    payload = decode_access_token(token_response.access_token)
+    assert payload["scope_type"] == "region"
+    assert payload["geography_ids"] == ["northwest"]
+    assert payload["project_ids"] == ["project-1"]
+    assert payload["organization_unit_ids"] == [str(grant.organization_unit_id)]
 
 
 @pytest.mark.parametrize(
@@ -211,7 +241,7 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     ],
 )
 async def test_auth_service_rejects_invalid_or_inactive_accounts(
-    identity: tuple[object, object, object, object] | None,
+    identity: tuple[object, object, object, object, list[object]] | None,
     password: str,
 ) -> None:
     service = object.__new__(AuthService)

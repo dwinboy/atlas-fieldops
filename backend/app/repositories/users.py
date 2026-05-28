@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.identity import Membership, Organization, Role, User
+from app.models.identity import Membership, Organization, Role, User, UserAccessGrant
 
 
 class UserRepository:
@@ -12,7 +12,7 @@ class UserRepository:
         self,
         email: str,
         organization_slug: str,
-    ) -> tuple[User, Organization, Membership, Role] | None:
+    ) -> tuple[User, Organization, Membership, Role, list[UserAccessGrant]] | None:
         statement = (
             select(User, Organization, Membership, Role)
             .join(Membership, Membership.user_id == User.id)
@@ -25,4 +25,12 @@ class UserRepository:
         if row is None:
             return None
         user, organization, membership, role = row.tuple()
-        return user, organization, membership, role
+        grants_result = await self.session.execute(
+            select(UserAccessGrant).where(
+                UserAccessGrant.organization_id == organization.id,
+                UserAccessGrant.user_id == user.id,
+                UserAccessGrant.deleted_at.is_(None),
+            )
+        )
+        grants = list(grants_result.scalars())
+        return user, organization, membership, role, grants
