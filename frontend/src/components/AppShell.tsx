@@ -78,10 +78,10 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
           <button
             key={item.id}
             className={cn(
-              "group flex h-11 w-full items-center gap-3 rounded-md px-2.5 text-left text-sm font-medium transition-all duration-150 ease-product",
+              "group flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
               active
                 ? "bg-primary/10 text-primary shadow-line"
-                : "text-muted-foreground hover:bg-muted/65 hover:text-foreground",
+                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
               collapsedSidebar && "justify-center px-0"
             )}
             onClick={() => {
@@ -110,9 +110,9 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
         collapsedSidebar ? "lg:grid-cols-[76px_1fr]" : "lg:grid-cols-[264px_1fr]"
       )}
     >
-      <aside className="hidden border-r bg-panel/95 p-3 backdrop-blur lg:block">
+      <aside className="hidden border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:block">
         <div className={cn("mb-5 flex items-center gap-3 px-1", collapsedSidebar && "justify-center")}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary shadow-sm">
             <ShieldCheck aria-hidden="true" size={20} />
           </div>
           <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
@@ -122,7 +122,7 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
         </div>
         <button
           className={cn(
-            "mb-4 flex h-9 w-full items-center gap-2 rounded-md border bg-background px-2.5 text-left text-xs text-muted-foreground shadow-line transition hover:text-foreground",
+            "mb-4 flex h-10 w-full items-center gap-2 rounded-xl border bg-background/80 px-2.5 text-left text-xs text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
             collapsedSidebar && "justify-center px-0"
           )}
           onClick={() => setCommandOpen(true)}
@@ -134,7 +134,7 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
             ⌘K
           </kbd>
         </button>
-        <div className={cn("mb-4 rounded-lg border bg-background p-3", collapsedSidebar && "hidden")}>
+        <div className={cn("mb-4 rounded-xl border bg-background/80 p-3 shadow-sm", collapsedSidebar && "hidden")}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Today</span>
             <StatusDot tone="online" />
@@ -159,7 +159,7 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-panel/92 px-3 backdrop-blur lg:px-5">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-5">
           <div className="flex items-center gap-3">
             <Button
               aria-label="Toggle navigation"
@@ -198,7 +198,7 @@ export function AppShell({ children, onSignOut, organizationLabel }: AppShellPro
 
         {mobileNavOpen ? <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div> : null}
 
-        <main className="mx-auto w-full max-w-[1480px] px-3 py-5 sm:px-5 lg:px-7">{children}</main>
+        <main className="mx-auto w-full max-w-[1480px] px-3 py-6 sm:px-5 lg:px-7">{children}</main>
       </div>
     </div>
   );

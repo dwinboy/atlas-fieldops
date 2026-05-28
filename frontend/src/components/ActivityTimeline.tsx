@@ -35,7 +35,7 @@ const events = [
 
 export function ActivityTimeline() {
   return (
-    <section className="rounded-lg border bg-panel p-4" aria-labelledby="activity-title">
+    <section className="surface-premium rounded-2xl p-5" aria-labelledby="activity-title">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 id="activity-title" className="text-sm font-semibold">
@@ -49,8 +49,8 @@ export function ActivityTimeline() {
         {events.map((event) => {
           const Icon = event.icon;
           return (
-            <li key={event.title} className="grid grid-cols-[28px_1fr_auto] gap-3 rounded-md px-2 py-3 hover:bg-muted/40">
-              <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-md border bg-background">
+            <li key={event.title} className="grid grid-cols-[28px_1fr_auto] gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-muted/40">
+              <span className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg border bg-background/80 shadow-sm">
                 <Icon aria-hidden="true" size={14} />
               </span>
               <span>

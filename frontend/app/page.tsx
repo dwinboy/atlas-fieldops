@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { CTASection, FeatureGrid, HeroMockup, IndustryGrid, SectionIntro, TrustedBy, TrustBand, WorkflowShowcase } from "@/components/marketing/MarketingBlocks";
@@ -25,20 +26,27 @@ export default function HomePage() {
     <MarketingShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <main>
-        <section className="relative overflow-hidden px-4 pb-20 pt-20 sm:px-6 lg:px-8">
-          <div className="absolute inset-0 -z-10 bg-[url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1800&q=80')] bg-cover bg-center opacity-[0.16]" />
+        <section className="relative overflow-hidden px-4 pb-4 pt-8 sm:px-6 lg:px-8">
+          <Image
+            alt="African field operations team collecting data"
+            className="absolute inset-0 -z-10 object-cover opacity-[0.15]"
+            fill
+            priority
+            sizes="100vw"
+            src="/marketing/field-operations-hero.png"
+          />
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#f7faf8]/70 via-[#f7faf8]/94 to-[#f7faf8]" />
           <div className="mx-auto max-w-5xl text-center">
             <p className="inline-flex rounded-full border border-[#0f766e]/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">
               Offline-ready operational intelligence
             </p>
-            <h1 className="mt-6 text-5xl font-semibold tracking-tight text-[#10201c] md:text-7xl">
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#10201c] md:text-6xl md:leading-[0.98]">
               Field data, M&E, and operations in one connected platform.
             </h1>
-            <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-[#52615d]">
+            <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#52615d] md:text-lg md:leading-8">
               Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage beneficiaries, monitor indicators, approve submissions, map coverage, and report impact.
             </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/contact">
                 Request demo
               </Link>

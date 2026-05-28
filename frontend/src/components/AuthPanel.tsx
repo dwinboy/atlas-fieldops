@@ -33,6 +33,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   return (
     <section className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
       <div className="relative flex items-center overflow-hidden px-6 py-10">
+        <div className="soft-grid absolute inset-0 opacity-55" />
         <div className="absolute inset-x-8 top-8 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent lg:block" />
         <motion.div
           className="mx-auto grid w-full max-w-4xl gap-10 xl:grid-cols-[1fr_320px] xl:items-end"
@@ -65,7 +66,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </div>
           </div>
 
-          <div className="hidden rounded-lg border bg-panel p-4 shadow-line xl:block">
+          <div className="surface-premium hidden rounded-2xl p-5 xl:block">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Today’s status</p>
               <Badge tone="success" className="gap-1.5">
@@ -97,7 +98,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       </div>
 
       <form
-        className="flex items-center border-l bg-panel px-6 py-10 shadow-elevated"
+        className="flex items-center border-l bg-panel/95 px-6 py-10 shadow-elevated backdrop-blur"
         onSubmit={(event) => {
           event.preventDefault();
           mutation.mutate({ email, password, organization_slug: organizationSlug });
@@ -105,7 +106,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       >
         <div className="mx-auto w-full max-w-sm">
           <div className="mb-8 flex items-center justify-between">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border bg-primary/10 text-primary shadow-sm">
               <DatabaseZap aria-hidden="true" size={21} />
             </div>
             <Badge tone="success" className="gap-2">

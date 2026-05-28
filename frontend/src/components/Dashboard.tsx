@@ -12,11 +12,12 @@ const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 
 export function Dashboard() {
   return (
-    <section aria-labelledby="dashboard-title" className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <section aria-labelledby="dashboard-title" className="space-y-6">
+      <div className="surface-premium rounded-2xl p-5 md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Today</p>
-          <h1 id="dashboard-title" className="mt-2 text-2xl font-semibold tracking-tight">
+          <h1 id="dashboard-title" className="mt-2 text-3xl font-semibold tracking-tight">
             Today’s field work
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -27,13 +28,14 @@ export function Dashboard() {
           Open report
           <ArrowUpRight aria-hidden="true" />
         </Button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {dashboardMetrics.map((metric, index) => {
           const Icon = icons[index] ?? Activity;
           return (
-            <article key={metric.label} className="rounded-lg border bg-panel p-4 shadow-line transition-colors hover:bg-muted/20">
+            <article key={metric.label} className="surface-premium rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-elevated">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">{metric.label}</p>
                 <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
@@ -60,7 +62,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <section className="rounded-lg border bg-panel p-4" aria-labelledby="throughput-title">
+        <section className="surface-premium rounded-2xl p-5" aria-labelledby="throughput-title">
           <div className="flex items-center justify-between">
             <div>
               <h2 id="throughput-title" className="text-sm font-semibold">
@@ -77,7 +79,7 @@ export function Dashboard() {
             {[38, 45, 51, 58, 64, 72, 78, 82, 76, 88, 92, 96].map((height, index) => (
               <div key={index} className="flex h-full items-end">
                 <div
-                  className="w-full rounded-t-md bg-primary/85 transition-all hover:bg-primary"
+                  className="w-full rounded-t-lg bg-primary/85 transition-all hover:bg-primary"
                   style={{ height: `${height}%` }}
                   aria-label={`${height}% of today’s expected submissions`}
                   role="img"
@@ -102,7 +104,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-lg border bg-panel p-4" aria-labelledby="work-queue-title">
+        <section className="surface-premium rounded-2xl p-5" aria-labelledby="work-queue-title">
           <div className="mb-3 flex items-center justify-between">
             <h2 id="work-queue-title" className="text-sm font-semibold">
               Needs attention
@@ -129,7 +131,7 @@ export function Dashboard() {
           </div>
         </section>
 
-        <section className="rounded-lg border bg-panel p-4" aria-labelledby="sync-title">
+        <section className="surface-premium rounded-2xl p-5" aria-labelledby="sync-title">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 id="sync-title" className="text-sm font-semibold">
@@ -140,12 +142,12 @@ export function Dashboard() {
             <Gauge aria-hidden="true" className="text-muted-foreground" size={17} />
           </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-md border bg-background p-3">
+            <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Waiting to sync</dt>
               <dd className="mt-2 text-xl font-semibold">812</dd>
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
-            <div className="rounded-md border bg-background p-3">
+            <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Need retry</dt>
               <dd className="mt-2 text-xl font-semibold">37</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />

@@ -1,4 +1,5 @@
 import { ArrowRight, Check, MapPin, RadioTower, ShieldCheck, Smartphone } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -17,12 +18,13 @@ export function SectionIntro({ eyebrow, title, text }: { eyebrow: string; title:
 
 export function HeroMockup() {
   return (
-    <div className="relative mx-auto mt-12 max-w-6xl">
+    <div className="relative mx-auto mt-6 max-h-[200px] max-w-6xl overflow-hidden pb-3 md:max-h-[220px]">
       <div className="absolute -inset-4 rounded-[28px] bg-[#0f766e]/10 blur-2xl" />
-      <div className="relative overflow-hidden rounded-2xl border border-black/10 bg-[#10201c] shadow-2xl">
+      <div className="relative overflow-hidden rounded-[28px] border border-black/10 bg-[#10201c] shadow-2xl">
+        <div className="soft-grid absolute inset-0 opacity-25" />
         <div className="grid min-h-[470px] lg:grid-cols-[1fr_360px]">
           <div className="p-4 sm:p-6">
-            <div className="rounded-xl bg-[#f8fbfa] p-4 shadow-xl">
+            <div className="surface-premium rounded-2xl bg-[#f8fbfa] p-4 shadow-xl">
               <div className="flex items-center justify-between border-b pb-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">Operations center</p>
@@ -56,8 +58,8 @@ export function HeroMockup() {
                 </div>
                 <div className="rounded-lg border bg-white p-4">
                   <h4 className="text-sm font-semibold">Coverage map</h4>
-                  <div className="mt-4 grid h-56 place-items-center rounded-lg bg-[#e7f0ed]">
-                    <div className="relative h-44 w-44 rounded-full border border-[#0f766e]/20 bg-white/70">
+                  <div className="mt-4 grid h-56 place-items-center rounded-xl bg-[#e7f0ed]">
+                    <div className="relative h-44 w-44 rounded-full border border-[#0f766e]/20 bg-white/70 shadow-inner">
                       <span className="absolute left-10 top-8 flex h-8 w-8 items-center justify-center rounded-full bg-[#0f766e] text-white shadow-lg">
                         <MapPin size={15} />
                       </span>
@@ -77,9 +79,18 @@ export function HeroMockup() {
               </div>
             </div>
           </div>
-          <div className="bg-[url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80')] bg-cover bg-center p-6">
-            <div className="flex h-full flex-col justify-end">
-              <div className="rounded-xl border border-white/20 bg-white/88 p-4 backdrop-blur">
+          <div className="relative overflow-hidden p-6">
+            <Image
+              alt="Field officers collecting data with a tablet"
+              className="object-cover"
+              fill
+              priority
+              sizes="360px"
+              src="/marketing/field-operations-hero.png"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#10201c]/78 via-[#10201c]/18 to-transparent" />
+            <div className="relative flex h-full flex-col justify-end">
+              <div className="rounded-2xl border border-white/25 bg-white/88 p-4 shadow-2xl backdrop-blur">
                 <div className="flex items-center gap-3">
                   <Smartphone className="text-[#0f766e]" />
                   <div>
@@ -87,7 +98,7 @@ export function HeroMockup() {
                     <p className="text-xs text-[#52615d]">812 records waiting to sync safely.</p>
                   </div>
                 </div>
-                <div className="mt-4 h-2 rounded-full bg-[#d7e4df]">
+                <div className="animated-sync-bar mt-4 h-2 rounded-full bg-[#d7e4df]">
                   <div className="h-full w-[72%] rounded-full bg-[#0f766e]" />
                 </div>
               </div>

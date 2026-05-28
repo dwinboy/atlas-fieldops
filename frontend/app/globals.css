@@ -47,7 +47,8 @@
 
 body {
   background:
-    radial-gradient(circle at 20% 0%, rgba(15, 118, 110, 0.05), transparent 28rem),
+    radial-gradient(circle at 12% -10%, rgba(15, 118, 110, 0.08), transparent 30rem),
+    radial-gradient(circle at 90% 4%, rgba(59, 130, 246, 0.05), transparent 26rem),
     hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings:
@@ -56,6 +57,44 @@ body {
     "cv04" 1,
     "cv11" 1;
   letter-spacing: 0;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+.surface-premium {
+  border: 1px solid hsl(var(--border) / 0.82);
+  background:
+    linear-gradient(180deg, hsl(var(--panel) / 0.96), hsl(var(--panel) / 0.9)),
+    hsl(var(--panel));
+  box-shadow:
+    0 1px 0 hsl(var(--panel-foreground) / 0.03),
+    0 22px 60px -42px rgb(15 23 42 / 0.42);
+}
+
+.soft-grid {
+  background-image:
+    linear-gradient(hsl(var(--border) / 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.45) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+
+.animated-sync-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.animated-sync-bar::after {
+  animation: sync-sweep 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.48), transparent);
+  content: "";
+  inset: 0;
+  position: absolute;
+  transform: translateX(-100%);
 }
 
 :focus-visible {
@@ -96,5 +135,11 @@ input[type="radio"] {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes sync-sweep {
+  100% {
+    transform: translateX(100%);
   }
 }
