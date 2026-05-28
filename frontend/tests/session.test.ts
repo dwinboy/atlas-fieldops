@@ -29,4 +29,24 @@ describe("session token storage", () => {
     clearToken();
     expect(readToken()).toBeNull();
   });
+
+  it("keeps auth flows usable when browser storage is unavailable", () => {
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: () => {
+          throw new Error("storage unavailable");
+        },
+        setItem: () => {
+          throw new Error("storage unavailable");
+        },
+        removeItem: () => {
+          throw new Error("storage unavailable");
+        }
+      }
+    });
+
+    expect(readToken()).toBeNull();
+    expect(() => writeToken("token-1")).not.toThrow();
+    expect(() => clearToken()).not.toThrow();
+  });
 });

@@ -37,7 +37,10 @@ export function WorkspaceApp() {
   const theme = useWorkspaceStore((state) => state.theme);
 
   useEffect(() => {
-    setToken(readToken());
+    const storedToken = readToken();
+    if (storedToken) {
+      setToken(storedToken);
+    }
   }, []);
 
   useEffect(() => {
@@ -55,8 +58,8 @@ export function WorkspaceApp() {
       <>
         <AuthPanel
           onAuthenticated={(nextToken) => {
-            writeToken(nextToken);
             setToken(nextToken);
+            writeToken(nextToken);
           }}
         />
         <NotificationCenter />

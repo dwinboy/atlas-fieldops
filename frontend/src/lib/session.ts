@@ -6,14 +6,26 @@ export function readToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  return window.localStorage.getItem(tokenKey);
+  try {
+    return window.localStorage?.getItem(tokenKey) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function writeToken(token: string): void {
-  window.localStorage.setItem(tokenKey, token);
+  try {
+    window.localStorage?.setItem(tokenKey, token);
+  } catch {
+    // Some embedded or private browser contexts disable storage. Auth should
+    // still work for the active session even when persistence is unavailable.
+  }
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(tokenKey);
+  try {
+    window.localStorage?.removeItem(tokenKey);
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
 }
-
