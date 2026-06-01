@@ -129,6 +129,7 @@ async def run_async_migrations() -> None:
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
+        connect_args=settings.database_connect_args,
         poolclass=pool.NullPool,
     )
 

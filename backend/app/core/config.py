@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_user: str | None = None
     database_password: str | None = None
     database_password_is_url_encoded: bool = False
+    database_ssl: bool = False
     redis_url: str = "redis://localhost:6379/0"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_auth_events_topic: str = "identity.events.v1"
@@ -66,6 +67,12 @@ class Settings(BaseSettings):
                 f"postgresql+asyncpg://{user}:{password}@{host}:{self.database_port}/{name}"
             )
         return self
+
+    @property
+    def database_connect_args(self) -> dict[str, Any]:
+        if self.database_ssl:
+            return {"ssl": True}
+        return {}
 
     @field_validator("cors_origins", mode="before")
     @classmethod
