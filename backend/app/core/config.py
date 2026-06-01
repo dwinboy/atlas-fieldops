@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     def normalize_database_url(cls, value: Any) -> Any:
         if not isinstance(value, str):
             return value
+        value = value.strip().strip("\"'")
+        if value.startswith("DATABASE_URL="):
+            value = value.removeprefix("DATABASE_URL=").strip().strip("\"'")
         if value.startswith("postgres://"):
             value = value.replace("postgres://", "postgresql://", 1)
         if value.startswith("postgresql://"):
