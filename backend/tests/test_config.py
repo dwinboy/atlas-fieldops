@@ -40,6 +40,19 @@ def test_database_url_can_be_built_from_render_database_parts() -> None:
     assert settings.database_url == "postgresql+asyncpg://atlas_user:pa%3Ass%40word@dpg-example-a:5432/atlas"
 
 
+def test_database_url_can_be_built_from_url_encoded_password_part() -> None:
+    settings = Settings(
+        database_host="dpg-example-a",
+        database_name="atlas",
+        database_user="atlas_user",
+        database_password="pa%3Ass%40word",
+        database_password_is_url_encoded=True,
+        cors_origins=[],
+    )
+
+    assert settings.database_url == "postgresql+asyncpg://atlas_user:pa%3Ass%40word@dpg-example-a:5432/atlas"
+
+
 def test_cors_origins_accept_json_list_from_host_env() -> None:
     settings = Settings(
         database_url="sqlite+aiosqlite:///test.db",
