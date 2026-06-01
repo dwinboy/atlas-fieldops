@@ -16,8 +16,11 @@ class EventPublisher:
     async def start(self) -> None:
         if self._producer is not None:
             return
-        self._producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
+        if not settings.kafka_bootstrap_servers.strip():
+            logger.warning("event_publisher_disabled", reason="kafka_bootstrap_servers_not_configured")
+            return
         try:
+            self._producer = AIOKafkaProducer(bootstrap_servers=settings.kafka_bootstrap_servers)
             await self._producer.start()
         except Exception as exc:
             self._producer = None

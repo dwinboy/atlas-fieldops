@@ -39,7 +39,7 @@ If you later add a custom frontend domain, include both domains:
 CORS_ORIGINS=["https://your-vercel-project.vercel.app","https://your-domain.com"]
 ```
 
-Render's PostgreSQL URL can be pasted directly. The backend normalizes Render's `postgresql://` connection string to the async SQLAlchemy driver format at startup.
+Render's PostgreSQL URL can be pasted directly. The backend normalizes Render's `postgresql://` connection string to the async SQLAlchemy driver format at startup. Kafka can be left blank for the first deployment; the backend will disable event publishing and continue serving API traffic.
 
 ## After Deploy
 
