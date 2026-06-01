@@ -1,6 +1,9 @@
+import json
 from functools import lru_cache
+from typing import Any
 
 from pydantic import Field
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +28,29 @@ class Settings(BaseSettings):
         "http://localhost:3010",
         "http://127.0.0.1:3010",
     ]
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            value = value.replace("postgres://", "postgresql://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        if value.strip().startswith("["):
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return parsed
+            raise ValueError("CORS_ORIGINS must be a JSON list of origins")
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
 @lru_cache

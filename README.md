@@ -62,3 +62,7 @@ The web application is ready for Vercel deployment from the `frontend` directory
 The FastAPI backend should be deployed separately on infrastructure that supports PostgreSQL, Redis, and Kafka, then exposed to the frontend through `NEXT_PUBLIC_API_BASE_URL` and `INTERNAL_API_BASE_URL`.
 
 See [docs/vercel-deployment.md](docs/vercel-deployment.md) for the full checklist.
+
+Deploy the backend to Render with the settings in
+[docs/render-backend-deployment.md](docs/render-backend-deployment.md), then update the Vercel
+environment variables to point at the Render API URL.
