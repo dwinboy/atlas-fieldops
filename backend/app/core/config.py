@@ -1,9 +1,11 @@
 import json
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
+from urllib.parse import quote
 
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import NoDecode
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,6 +16,11 @@ class Settings(BaseSettings):
     app_name: str = "enterprise-data-platform"
     app_env: str = "local"
     database_url: str = "postgresql+asyncpg://app:app@localhost:5432/data_platform"
+    database_host: str | None = None
+    database_port: int = 5432
+    database_name: str | None = None
+    database_user: str | None = None
+    database_password: str | None = None
     redis_url: str = "redis://localhost:6379/0"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_auth_events_topic: str = "identity.events.v1"
@@ -43,6 +50,18 @@ class Settings(BaseSettings):
         if value.startswith("postgresql://"):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         return value
+
+    @model_validator(mode="after")
+    def build_database_url_from_parts(self) -> Self:
+        if self.database_host and self.database_name and self.database_user and self.database_password is not None:
+            user = quote(self.database_user, safe="")
+            password = quote(self.database_password, safe="")
+            host = self.database_host.strip()
+            name = quote(self.database_name, safe="")
+            self.database_url = (
+                f"postgresql+asyncpg://{user}:{password}@{host}:{self.database_port}/{name}"
+            )
+        return self
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -28,6 +28,18 @@ def test_database_url_accepts_accidental_env_assignment_value() -> None:
     assert settings.database_url == "postgresql+asyncpg://app:secret@example.render.com:5432/atlas"
 
 
+def test_database_url_can_be_built_from_render_database_parts() -> None:
+    settings = Settings(
+        database_host="dpg-example-a",
+        database_name="atlas",
+        database_user="atlas_user",
+        database_password="pa:ss@word",
+        cors_origins=[],
+    )
+
+    assert settings.database_url == "postgresql+asyncpg://atlas_user:pa%3Ass%40word@dpg-example-a:5432/atlas"
+
+
 def test_cors_origins_accept_json_list_from_host_env() -> None:
     settings = Settings(
         database_url="sqlite+aiosqlite:///test.db",
