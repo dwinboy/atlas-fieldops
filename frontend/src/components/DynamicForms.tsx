@@ -19,6 +19,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   Braces,
   Calendar,
   Camera,
@@ -57,16 +59,25 @@ import {
   createField,
   duplicateField,
   fieldCatalog,
+  getCollectionCompatibility,
   publishForm,
   removeField,
   reorderFields,
   toMobileSchema,
+  toXlsFormWorkbook,
   updateField,
   type DynamicForm,
   type FieldType,
   type FormField
 } from "@/lib/forms";
-import { createForm, listForms, type DataFormRead } from "@/lib/api";
+import {
+  createForm,
+  createPublicCollectionLink,
+  exportFormXlsForm,
+  getFormCollectionCompatibility,
+  listForms,
+  type DataFormRead
+} from "@/lib/api";
 import { formTemplateCategories, formTemplates, starterForms, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -192,6 +203,7 @@ function slugify(value: string): string {
 }
 
 function persistedFormToLocal(form: DataFormRead): DynamicForm {
+  const sectionId = `${form.id}-summary`;
   return {
     id: form.id,
     name: form.name,
@@ -199,8 +211,12 @@ function persistedFormToLocal(form: DataFormRead): DynamicForm {
     version: form.current_version,
     activeVersion: form.status === "published" ? form.current_version : 0,
     updatedAt: new Date().toISOString(),
-    sections: [{ id: `${form.id}-summary`, title: "Saved form", description: form.description ?? "Stored in the backend." }],
-    fields: []
+    sections: [{ id: sectionId, title: "Saved form", description: form.description ?? "Stored in the backend." }],
+    fields: [
+      { id: `${form.id}-respondent`, label: "Respondent name", type: "text", required: true, sectionId },
+      { id: `${form.id}-location`, label: "Collection GPS", type: "gps", required: true, sectionId, validation: { accuracyMax: 25 } },
+      { id: `${form.id}-notes`, label: "Field notes", type: "textarea", required: false, sectionId }
+    ]
   };
 }
 
@@ -209,15 +225,23 @@ function SortableField({
   index,
   selected,
   onDuplicate,
+  onMoveDown,
+  onMoveUp,
   onRemove,
-  onSelect
+  onSelect,
+  canMoveDown,
+  canMoveUp
 }: {
   field: FormField;
   index: number;
   selected: boolean;
   onDuplicate: () => void;
+  onMoveDown: () => void;
+  onMoveUp: () => void;
   onRemove: () => void;
   onSelect: () => void;
+  canMoveDown: boolean;
+  canMoveUp: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
   const FieldIcon = fieldTypeIcons[field.type];
@@ -232,31 +256,40 @@ function SortableField({
         isDragging && "relative z-10 shadow-elevated"
       )}
     >
-      <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onSelect} type="button">
-        <span
-          className="flex cursor-grab touch-none items-center text-muted-foreground"
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <button
+          className="flex h-9 w-8 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           {...attributes}
           {...listeners}
-          aria-label={`Drag ${field.label}`}
+          aria-label={`Drag ${field.label} to reorder`}
+          type="button"
         >
           <GripVertical aria-hidden="true" size={15} />
-        </span>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
-          <FieldIcon aria-hidden="true" size={16} />
-        </span>
-        <span className="min-w-0">
-          <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-            <span className="font-mono text-[11px] text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
-            {field.label}
-            {field.required ? <Badge tone="warning">required</Badge> : null}
-            {field.logic?.length ? <Badge tone="accent">logic</Badge> : null}
+        </button>
+        <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onSelect} type="button">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
+            <FieldIcon aria-hidden="true" size={16} />
           </span>
-          <span className="mt-1 block truncate text-xs text-muted-foreground">
-            {field.type.replace("_", " ")} · {field.hint ?? "No helper text"}
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+              <span className="font-mono text-[11px] text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
+              {field.label}
+              {field.required ? <Badge tone="warning">required</Badge> : null}
+              {field.logic?.length ? <Badge tone="accent">logic</Badge> : null}
+            </span>
+            <span className="mt-1 block truncate text-xs text-muted-foreground">
+              {field.type.replace("_", " ")} · {field.hint ?? "No helper text"}
+            </span>
           </span>
-        </span>
-      </button>
-      <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+        </button>
+      </div>
+      <div className="flex items-center gap-1 opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
+        <Button aria-label={`Move ${field.label} up`} disabled={!canMoveUp} onClick={onMoveUp} size="icon" type="button" variant="ghost">
+          <ArrowUp aria-hidden="true" />
+        </Button>
+        <Button aria-label={`Move ${field.label} down`} disabled={!canMoveDown} onClick={onMoveDown} size="icon" type="button" variant="ghost">
+          <ArrowDown aria-hidden="true" />
+        </Button>
         <Button aria-label={`Duplicate ${field.label}`} onClick={onDuplicate} size="icon" type="button" variant="ghost">
           <Copy aria-hidden="true" />
         </Button>
@@ -277,6 +310,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
   const [templateCategory, setTemplateCategory] = useState("Recommended");
   const [templateQuery, setTemplateQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
+  const [builderResult, setBuilderResult] = useState("");
   const pendingTemplateId = useWorkspaceStore((state) => state.pendingTemplateId);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -289,6 +323,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
   const allForms = useMemo(() => (persistedForms.length ? [...forms, ...persistedForms] : forms), [forms, persistedForms]);
   const selectedForm = useMemo(() => allForms.find((form) => form.id === selectedFormId) ?? allForms[0], [allForms, selectedFormId]);
   const selectedField = selectedForm?.fields.find((field) => field.id === selectedFieldId) ?? selectedForm?.fields[0];
+  const isPersistedSelectedForm = Boolean(selectedFormId && persistedForms.some((form) => form.id === selectedFormId));
   const publishMutation = useMutation({
     mutationFn: (payload: { form: DynamicForm; publish: boolean }) =>
       createForm(token ?? "", {
@@ -299,12 +334,44 @@ export function DynamicForms({ token }: DynamicFormsProps) {
         publish: payload.publish
       }),
     onSuccess: async (savedForm) => {
+      setBuilderResult(`${savedForm.name} is ${savedForm.status} as backend version ${savedForm.current_version}. Field teams can use the latest published version after sync.`);
       pushToast({
         title: savedForm.status === "published" ? "Form published" : "Form saved",
         description: `${savedForm.name} is stored in the backend as version ${savedForm.current_version}.`,
         tone: "success"
       });
       await backendFormsQuery.refetch();
+    }
+  });
+  const serverCompatibilityQuery = useQuery({
+    queryKey: ["form-compatibility", token, selectedFormId],
+    queryFn: () => getFormCollectionCompatibility(token ?? "", selectedFormId),
+    enabled: Boolean(token && token !== "preview-token" && isPersistedSelectedForm)
+  });
+  const xlsFormQuery = useQuery({
+    queryKey: ["form-xlsform", token, selectedFormId],
+    queryFn: () => exportFormXlsForm(token ?? "", selectedFormId),
+    enabled: false
+  });
+  const publicLinkMutation = useMutation({
+    mutationFn: () =>
+      createPublicCollectionLink(token ?? "", {
+        form_id: selectedFormId,
+        slug: `${slugify(selectedForm?.name ?? "form")}-${Date.now().toString(36)}`,
+        title: selectedForm?.name ?? "Public collection form",
+        description: "Controlled public collection link generated from the form builder.",
+        access_mode: "restricted",
+        require_authentication: false,
+        allow_offline_web: true,
+        permission_json: { submit: true, view: false, edit: false, export: false }
+      }),
+    onSuccess: (link) => {
+      setBuilderResult(`${link.title} has a controlled public collection link: ${link.public_url}. Share it only with the intended collection audience.`);
+      pushToast({ title: "Public link created", description: `${link.public_url} is ready for controlled collection`, tone: "success" });
+    },
+    onError: () => {
+      setBuilderResult("Public link was not created. Save this form to the backend first, then create a link from the saved form.");
+      pushToast({ title: "Public link not created", description: "Select a saved backend form and sign in with form management access.", tone: "danger" });
     }
   });
   const visibleTemplates = useMemo(() => {
@@ -321,12 +388,33 @@ export function DynamicForms({ token }: DynamicFormsProps) {
   }, [templateCategory, templateQuery]);
   const selectedTemplate = formTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0] ?? formTemplates[0];
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   function updateSelectedForm(nextForm: DynamicForm) {
-    setForms((current) => current.map((form) => (form.id === nextForm.id ? nextForm : form)));
+    setForms((current) => {
+      const exists = current.some((form) => form.id === nextForm.id);
+      return exists ? current.map((form) => (form.id === nextForm.id ? nextForm : form)) : [nextForm, ...current];
+    });
+  }
+
+  function moveField(fieldId: string, direction: -1 | 1) {
+    if (!selectedForm) {
+      return;
+    }
+    const currentIndex = selectedForm.fields.findIndex((field) => field.id === fieldId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedForm.fields.length) {
+      return;
+    }
+    const nextFields = [...selectedForm.fields];
+    const [field] = nextFields.splice(currentIndex, 1);
+    if (!field) {
+      return;
+    }
+    nextFields.splice(nextIndex, 0, field);
+    updateSelectedForm({ ...selectedForm, fields: nextFields, updatedAt: new Date().toISOString() });
   }
 
   function saveSelectedForm(publish: boolean) {
@@ -337,7 +425,13 @@ export function DynamicForms({ token }: DynamicFormsProps) {
       publishMutation.mutate({ form: selectedForm, publish });
       return;
     }
-    updateSelectedForm(publish ? publishForm(selectedForm) : createDraftVersion(selectedForm));
+    const nextForm = publish ? publishForm(selectedForm) : createDraftVersion(selectedForm);
+    updateSelectedForm(nextForm);
+    setBuilderResult(
+      publish
+        ? `${nextForm.name} is published in preview as version ${nextForm.activeVersion}. Review the phone preview before assigning it to field teams.`
+        : `${nextForm.name} was saved as a draft preview version ${nextForm.version}. Continue editing before publishing.`
+    );
     pushToast({
       title: publish ? "Preview form published" : "Preview draft saved",
       description: `${selectedForm.name} was updated in preview mode.`,
@@ -351,6 +445,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
     setSelectedFormId(nextForm.id);
     setSelectedFieldId(nextForm.fields[0]?.id ?? "");
     setBuilderMode("builder");
+    setBuilderResult(`${template.name} was added to the builder with ${nextForm.fields.length} starter questions. Customize labels, rules, and required fields before publishing.`);
     pushToast({
       title: "Template added to builder",
       description: `${template.name} is ready to customize and publish.`,
@@ -378,6 +473,17 @@ export function DynamicForms({ token }: DynamicFormsProps) {
     const field = createField(type, sectionId);
     updateSelectedForm(addField(selectedForm, field));
     setSelectedFieldId(field.id);
+    setBuilderResult(`${field.label} was added. Edit the label, required setting, and rules in the properties panel.`);
+  }
+
+  function archiveSelectedForm(): void {
+    if (!selectedForm) {
+      return;
+    }
+    const nextForm = { ...selectedForm, status: "archived" as const, updatedAt: new Date().toISOString() };
+    updateSelectedForm(nextForm);
+    setBuilderResult(`${nextForm.name} is archived in preview. It remains visible for reference but should not be assigned to new field work.`);
+    pushToast({ title: "Preview form archived", description: `${nextForm.name} was archived in the local preview workspace.`, tone: "warning" });
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -386,6 +492,20 @@ export function DynamicForms({ token }: DynamicFormsProps) {
     }
     updateSelectedForm(reorderFields(selectedForm, String(event.active.id), String(event.over.id)));
   }
+
+  const selectedFormWorkbook = selectedForm ? toXlsFormWorkbook(selectedForm) : null;
+  const selectedFormCompatibility = selectedForm ? getCollectionCompatibility(selectedForm) : null;
+  const activeCompatibility = serverCompatibilityQuery.data ?? (
+    selectedFormCompatibility
+      ? {
+          xlsform_ready: selectedFormCompatibility.xlsFormReady,
+          mobile_app_ready: selectedFormCompatibility.mobileAppReady,
+          web_form_ready: selectedFormCompatibility.webFormReady,
+          media_field_count: selectedFormCompatibility.mediaCount,
+          warnings: selectedFormCompatibility.warnings
+        }
+      : null
+  );
 
   return (
     <section aria-labelledby="forms-title" className="space-y-5">
@@ -402,7 +522,12 @@ export function DynamicForms({ token }: DynamicFormsProps) {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              pushToast({ title: "Export prepared", description: `${selectedForm?.name ?? "Form"} schema is ready as JSON/XLSForm.`, tone: "success" });
+              const surveyRows = selectedFormWorkbook?.survey.length ?? 0;
+              setBuilderResult(`${selectedForm?.name ?? "Form"} is ready to export with ${surveyRows} survey rows, ${selectedFormWorkbook?.choices.length ?? 0} choices, and XLSForm-compatible settings.`);
+              pushToast({ title: "Export prepared", description: `${selectedForm?.name ?? "Form"} is ready as JSON and XLSForm with ${surveyRows} survey rows.`, tone: "success" });
+              if (isPersistedSelectedForm && token && token !== "preview-token") {
+                void xlsFormQuery.refetch();
+              }
             }}
             type="button"
           >
@@ -411,7 +536,8 @@ export function DynamicForms({ token }: DynamicFormsProps) {
           </Button>
           <Button
             onClick={() => {
-              pushToast({ title: "Import workflow ready", description: "Upload handling is configured for XLSForm, JSON, and CSV form structures.", tone: "neutral" });
+              setBuilderResult("Import workflow is ready. Use Data tools to review XLSForm, JSON, CSV, and Kobo/ODK migration structures before applying imported data.");
+              pushToast({ title: "Import workflow ready", description: "XLSForm, JSON, CSV, and Kobo/ODK migration structures can be reviewed in Data tools.", tone: "neutral" });
             }}
             type="button"
           >
@@ -442,6 +568,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
               setSelectedFormId(nextForm.id);
               setSelectedFieldId(nextForm.fields[0]?.id ?? "");
               setBuilderMode("builder");
+              setBuilderResult(`${nextForm.name} was created with ${nextForm.fields.length} starter questions. Rename the form and adjust required fields before publishing.`);
               pushToast({ title: "Blank form created", description: "Start editing questions and publish when ready.", tone: "success" });
             }}
             type="button"
@@ -452,6 +579,18 @@ export function DynamicForms({ token }: DynamicFormsProps) {
           </Button>
         </div>
       </div>
+
+      {builderResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <Check aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Builder result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{builderResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {builderMode === "templates" ? (
         <section className="surface-premium rounded-2xl p-4" aria-labelledby="template-picker-title">
@@ -642,7 +781,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
                     <GitBranch aria-hidden="true" />
                     Edit draft
                   </Button>
-                  <Button>
+                  <Button onClick={archiveSelectedForm} type="button" variant="secondary">
                     <Archive aria-hidden="true" />
                     Archive
                   </Button>
@@ -659,6 +798,92 @@ export function DynamicForms({ token }: DynamicFormsProps) {
                 </div>
               </div>
             </section>
+
+            {selectedFormCompatibility && selectedFormWorkbook ? (
+              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Collection compatibility">
+                {[
+                  ["XLSForm", activeCompatibility?.xlsform_ready ? "Ready" : "Needs questions"],
+                  ["Mobile app", activeCompatibility?.mobile_app_ready ? "Offline-ready" : "Check fields"],
+                  ["Web form", activeCompatibility?.web_form_ready ? "Ready" : "Barcode excluded"],
+                  ["Media fields", String(activeCompatibility?.media_field_count ?? 0)]
+                ].map(([label, value]) => (
+                  <article className="rounded-lg border bg-panel p-4" key={label}>
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-lg font-semibold">{value}</p>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+
+            {selectedFormCompatibility && selectedFormWorkbook ? (
+              <section className="rounded-lg border bg-panel p-4">
+                <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                  <div>
+                    <h2 className="text-sm font-semibold">XLSForm readiness</h2>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Atlas can package this form into survey, choices, and settings sheets for Kobo/ODK-style migration review.
+                    </p>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {[
+                        ["Survey rows", xlsFormQuery.data?.survey.length ?? selectedFormWorkbook.survey.length],
+                        ["Choices", xlsFormQuery.data?.choices.length ?? selectedFormWorkbook.choices.length],
+                        ["Version", xlsFormQuery.data?.settings.version ?? selectedFormWorkbook.settings.version]
+                      ].map(([label, value]) => (
+                        <div className="rounded-md border bg-background p-3" key={label}>
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="mt-1 text-sm font-semibold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold">Collection channels</h2>
+                    <div className="mt-3 space-y-2">
+                      {[
+                        ["Mobile collection", "Offline capture with GPS, media, repeat groups, and retry sync."],
+                        ["Web forms", "Browser-based collection for desktop or shared devices."],
+                        ["Public link review", "Prepare controlled external access after sharing rules are configured."]
+                      ].map(([title, text]) => (
+                        <div className="rounded-md border bg-background p-3" key={title}>
+                          <p className="text-sm font-medium">{title}</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {(activeCompatibility?.warnings ?? []).length ? (
+                  <div className="mt-4 rounded-md border border-warning/25 bg-warning/10 p-3">
+                    <p className="text-sm font-semibold text-warning">Before sharing</p>
+                    <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+                      {(activeCompatibility?.warnings ?? []).map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    disabled={!isPersistedSelectedForm || !token || token === "preview-token" || xlsFormQuery.isFetching}
+                    onClick={() => xlsFormQuery.refetch()}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <FileDown aria-hidden="true" />
+                    {xlsFormQuery.isFetching ? "Checking export" : "Get backend XLSForm"}
+                  </Button>
+                  <Button
+                    disabled={!isPersistedSelectedForm || !token || token === "preview-token" || publicLinkMutation.isPending}
+                    onClick={() => publicLinkMutation.mutate()}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <FileUp aria-hidden="true" />
+                    {publicLinkMutation.isPending ? "Creating link" : "Create public link"}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
 
             <section className="overflow-hidden rounded-lg border bg-panel" aria-labelledby="canvas-title">
               <div className="flex items-center justify-between border-b px-4 py-3">
@@ -679,7 +904,11 @@ export function DynamicForms({ token }: DynamicFormsProps) {
                         field={field}
                         index={index}
                         selected={selectedField?.id === field.id}
+                        canMoveDown={index < selectedForm.fields.length - 1}
+                        canMoveUp={index > 0}
                         onDuplicate={() => updateSelectedForm(duplicateField(selectedForm, field.id))}
+                        onMoveDown={() => moveField(field.id, 1)}
+                        onMoveUp={() => moveField(field.id, -1)}
                         onRemove={() => updateSelectedForm(removeField(selectedForm, field.id))}
                         onSelect={() => setSelectedFieldId(field.id)}
                       />
@@ -744,7 +973,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
                 <h2 className="text-sm font-semibold">Properties</h2>
               </div>
               <label className="mt-4 block text-sm font-medium">
-                Label
+                Field label
                 <Input
                   className="mt-2"
                   value={selectedField.label}

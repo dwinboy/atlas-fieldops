@@ -123,6 +123,49 @@ class DataFormRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class XlsFormSurveyRow(BaseModel):
+    type: str
+    name: str
+    label: str
+    hint: str | None = None
+    required: str | None = None
+    constraint: str | None = None
+    relevant: str | None = None
+    calculation: str | None = None
+
+
+class XlsFormChoiceRow(BaseModel):
+    list_name: str
+    name: str
+    label: str
+
+
+class XlsFormSettings(BaseModel):
+    form_title: str
+    form_id: str
+    version: str
+    default_language: str = "en"
+
+
+class XlsFormWorkbook(BaseModel):
+    survey: list[XlsFormSurveyRow]
+    choices: list[XlsFormChoiceRow]
+    settings: XlsFormSettings
+
+
+class FormCollectionCompatibility(BaseModel):
+    form_id: UUID
+    version: int
+    offline_ready: bool
+    xlsform_ready: bool
+    web_form_ready: bool
+    mobile_app_ready: bool
+    has_gps: bool
+    has_repeat_groups: bool
+    media_field_count: int
+    warnings: list[str] = Field(default_factory=list)
+
+
 class TemplateFieldSummary(BaseModel):
     field_count: int
     repeat_group_count: int

@@ -52,6 +52,9 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [region, setRegion] = useState("");
+  const [previewRows, setPreviewRows] = useState<FieldOfficerRead[]>(previewOfficers);
+  const [inviteResult, setInviteResult] = useState("");
+  const [refreshResult, setRefreshResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const officersQuery = useQuery({
@@ -69,6 +72,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
         temporary_password: "ChangeMe12345!"
       }),
     onSuccess: async () => {
+      setInviteResult(`${fullName} was invited and can now be assigned forms, regions, and sync permissions.`);
       pushToast({ title: "Field officer invited", description: `${fullName} can sign in and sync assigned forms`, tone: "success" });
       setFullName("");
       setEmail("");
@@ -77,7 +81,8 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
     }
   });
 
-  const officers = officersQuery.data?.length ? officersQuery.data : previewOfficers;
+  const isPreview = token === "preview-token" || !officersQuery.data?.length;
+  const officers = officersQuery.data?.length ? officersQuery.data : previewRows;
   const activeCount = officers.filter((officer) => officer.is_active).length;
 
   const columns: TableColumn<FieldOfficerRead>[] = [
@@ -137,7 +142,15 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
             Invite officers, check who has synced recently, and see where field work is happening.
           </p>
         </div>
-        <Button variant="primary">
+        <Button
+          onClick={() => {
+            void officersQuery.refetch();
+            setRefreshResult(`${activeCount} active officer${activeCount === 1 ? "" : "s"} checked. Recent sync, device pairing, and GPS fields are visible in the roster.`);
+            pushToast({ title: "Field status refreshed", description: "Officer sync, device, and location details were checked.", tone: "success" });
+          }}
+          type="button"
+          variant="primary"
+        >
           <RotateCcw aria-hidden="true" />
           Refresh status
         </Button>
@@ -165,7 +178,24 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           className="rounded-lg border bg-panel p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (token === "preview-token") {
+            if (isPreview) {
+              const nextOfficer: FieldOfficerRead = {
+                id: `preview-officer-${Date.now()}`,
+                user_id: `preview-user-${Date.now()}`,
+                email,
+                full_name: fullName,
+                phone_number: null,
+                employee_code: `FO-${String(previewRows.length + 151).padStart(3, "0")}`,
+                home_region: region || "Unassigned",
+                last_sync_at: null,
+                last_seen_at: null,
+                last_latitude: null,
+                last_longitude: null,
+                device_id: null,
+                is_active: true
+              };
+              setPreviewRows((current) => [nextOfficer, ...current]);
+              setInviteResult(`${nextOfficer.full_name} was added to the preview roster with employee code ${nextOfficer.employee_code}.`);
               pushToast({ title: "Preview invite staged", description: `${fullName || email} would receive mobile access`, tone: "success" });
               setFullName("");
               setEmail("");
@@ -198,6 +228,18 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             Officers receive sign-in details and can keep collecting data when the internet is unreliable.
           </p>
+          {inviteResult ? (
+            <div className="mt-4 rounded-lg border border-success/30 bg-success/10 p-3" aria-live="polite">
+              <p className="text-sm font-semibold">Invite outcome</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{inviteResult}</p>
+            </div>
+          ) : null}
+          {refreshResult ? (
+            <div className="mt-4 rounded-lg border bg-background p-3" aria-live="polite">
+              <p className="text-sm font-semibold">Latest field status</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{refreshResult}</p>
+            </div>
+          ) : null}
         </form>
 
         <DataTable columns={columns} emptyLabel="No field officers yet" rows={officers} searchLabel="Search officers" title="Officer roster" />

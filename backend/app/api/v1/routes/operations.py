@@ -36,6 +36,8 @@ from app.schemas.operations import (
     KnowledgeDocumentCreate,
     KnowledgeDocumentRead,
     MappingTemplateCreate,
+    MediaEvidenceCreate,
+    MediaEvidenceRead,
     OperationalAssetCreate,
     OperationalAssetRead,
     OperationalEcosystemRead,
@@ -50,6 +52,8 @@ from app.schemas.operations import (
     ProgramRead,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
+    PublicCollectionLinkCreate,
+    PublicCollectionLinkRead,
     WorkflowDefinitionCreate,
     WorkflowDefinitionRead,
 )
@@ -398,6 +402,40 @@ async def create_export_job(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ExportJobRead:
     return await OperationsService(session).create_export_job(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/data/public-links", response_model=list[PublicCollectionLinkRead], summary="List public collection links")
+async def list_public_collection_links(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[PublicCollectionLinkRead]:
+    return await OperationsService(session).list_public_collection_links(organization_uuid(principal))
+
+
+@router.post("/data/public-links", response_model=PublicCollectionLinkRead, status_code=status.HTTP_201_CREATED, summary="Create public collection link")
+async def create_public_collection_link(
+    payload: PublicCollectionLinkCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PublicCollectionLinkRead:
+    return await OperationsService(session).create_public_collection_link(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/data/media-evidence", response_model=list[MediaEvidenceRead], summary="List media evidence")
+async def list_media_evidence(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[MediaEvidenceRead]:
+    return await OperationsService(session).list_media_evidence(organization_uuid(principal))
+
+
+@router.post("/data/media-evidence", response_model=MediaEvidenceRead, status_code=status.HTTP_201_CREATED, summary="Create media evidence record")
+async def create_media_evidence(
+    payload: MediaEvidenceCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MediaEvidenceRead:
+    return await OperationsService(session).create_media_evidence(organization_uuid(principal), user_uuid(principal), payload)
 
 
 @router.post("/data/bulk-edits", response_model=BulkEditRead, status_code=status.HTTP_201_CREATED, summary="Create bulk edit batch")

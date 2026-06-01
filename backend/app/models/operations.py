@@ -523,6 +523,47 @@ class DataExportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     scheduled: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class PublicCollectionLink(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "public_collection_links"
+    __table_args__ = (UniqueConstraint("organization_id", "slug"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    form_id: Mapped[UUID] = mapped_column(ForeignKey("data_forms.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    slug: Mapped[str] = mapped_column(String(160), nullable=False)
+    access_mode: Mapped[str] = mapped_column(String(40), default="public", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    require_authentication: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_offline_web: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    allowed_domains: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    permission_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    submission_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MediaEvidence(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "media_evidence"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    submission_id: Mapped[UUID | None] = mapped_column(ForeignKey("submissions.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    uploaded_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    media_type: Mapped[str] = mapped_column(String(40), index=True)
+    file_name: Mapped[str] = mapped_column(String(240), nullable=False)
+    storage_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    review_status: Mapped[str] = mapped_column(String(40), default="pending_review", index=True)
+    checksum: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
 class BulkEditBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "bulk_edit_batches"
 

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.schemas.collection import DataFormCreate, SubmissionCreate, SubmissionReviewAction
+from app.services.collection import form_schema_compatibility, form_schema_to_xlsform
 from app.services.form_engine import FormEngine
 
 
@@ -124,3 +125,42 @@ def test_form_engine_evaluates_xlsform_style_relevance_subset() -> None:
     assert engine.evaluate_relevance("${visit_type} = 'field_visit'", {"visit_type": "field_visit"})
     assert not engine.evaluate_relevance("${visit_type} = 'field_visit'", {"visit_type": "phone"})
     assert engine.evaluate_relevance("${consent} != 'no'", {"consent": "yes"})
+
+
+def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
+    form_id = uuid4()
+    schema = DataFormCreate.model_validate(
+        {
+            "name": "Farm monitoring",
+            "slug": "farm-monitoring",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "crop_status",
+                                "type": "select",
+                                "label": "Crop status",
+                                "required": True,
+                                "options": [{"label": "Healthy", "value": "healthy"}, {"label": "Needs support", "value": "needs_support"}],
+                            },
+                            {"id": "site", "type": "gps", "label": "Site", "required": True, "validation": {"accuracyMax": 20}},
+                            {"id": "proof", "type": "photo", "label": "Proof photo"},
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    workbook = form_schema_to_xlsform(form_id=form_id, form_name="Farm monitoring", version=1, schema=schema)
+    compatibility = form_schema_compatibility(form_id=form_id, version=1, schema=schema)
+
+    assert workbook.settings.form_title == "Farm monitoring"
+    assert "select_one crop_status" in {row.type for row in workbook.survey}
+    assert {choice.name for choice in workbook.choices} == {"healthy", "needs_support"}
+    assert compatibility.xlsform_ready is True
+    assert compatibility.has_gps is True
+    assert compatibility.media_field_count == 1

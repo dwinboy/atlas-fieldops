@@ -26,6 +26,7 @@ import {
 } from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
+import { ProductHelpCenter } from "@/components/ProductHelpCenter";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { WorkforceGovernanceCenter } from "@/components/WorkforceGovernanceCenter";
@@ -100,7 +101,8 @@ export function WorkspaceApp() {
     map: <GeospatialIntelligence />,
     analytics: <ReportingCenter token={token} />,
     workflows: <WorkflowManagement />,
-    connectivity: <ConnectivityCenter />
+    connectivity: <ConnectivityCenter />,
+    help: <ProductHelpCenter />
   } satisfies Record<WorkspaceView, React.ReactNode>;
 
   return (

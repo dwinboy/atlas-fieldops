@@ -622,12 +622,110 @@ export type ExportJobRead = {
   scheduled: boolean;
 };
 
+export type PublicCollectionLinkCreate = {
+  form_id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  access_mode?: "public" | "restricted" | "partner";
+  require_authentication?: boolean;
+  allow_offline_web?: boolean;
+  expires_at?: string | null;
+  allowed_domains?: string[];
+  permission_json?: Record<string, unknown>;
+};
+
+export type PublicCollectionLinkRead = {
+  id: string;
+  form_id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  access_mode: string;
+  status: string;
+  require_authentication: boolean;
+  allow_offline_web: boolean;
+  expires_at: string | null;
+  allowed_domains: string[];
+  permission_json: Record<string, unknown>;
+  submission_count: number;
+  public_url: string;
+};
+
+export type MediaEvidenceCreate = {
+  media_type: string;
+  file_name: string;
+  storage_url: string;
+  mime_type: string;
+  size_bytes?: number;
+  submission_id?: string | null;
+  beneficiary_id?: string | null;
+  form_id?: string | null;
+  checksum?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  captured_at?: string | null;
+  metadata_json?: Record<string, unknown>;
+};
+
+export type MediaEvidenceRead = {
+  id: string;
+  submission_id: string | null;
+  beneficiary_id: string | null;
+  form_id: string | null;
+  media_type: string;
+  file_name: string;
+  storage_url: string;
+  mime_type: string;
+  size_bytes: number;
+  review_status: string;
+  checksum: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  captured_at: string | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+};
+
 export type DataFormCreate = {
   name: string;
   slug: string;
   description?: string | null;
   schema: Record<string, unknown>;
   publish?: boolean;
+};
+
+export type XlsFormWorkbook = {
+  survey: {
+    type: string;
+    name: string;
+    label: string;
+    hint?: string | null;
+    required?: string | null;
+    constraint?: string | null;
+    relevant?: string | null;
+    calculation?: string | null;
+  }[];
+  choices: { list_name: string; name: string; label: string }[];
+  settings: {
+    form_title: string;
+    form_id: string;
+    version: string;
+    default_language: string;
+  };
+};
+
+export type FormCollectionCompatibility = {
+  form_id: string;
+  version: number;
+  offline_ready: boolean;
+  xlsform_ready: boolean;
+  web_form_ready: boolean;
+  mobile_app_ready: boolean;
+  has_gps: boolean;
+  has_repeat_groups: boolean;
+  media_field_count: number;
+  warnings: string[];
 };
 
 export type DataFormRead = {
@@ -1111,12 +1209,36 @@ export async function createExportJob(token: string, payload: ExportJobCreate): 
   return request<ExportJobRead>("/operations/data/exports", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listPublicCollectionLinks(token: string): Promise<PublicCollectionLinkRead[]> {
+  return request<PublicCollectionLinkRead[]>("/operations/data/public-links", { token });
+}
+
+export async function createPublicCollectionLink(token: string, payload: PublicCollectionLinkCreate): Promise<PublicCollectionLinkRead> {
+  return request<PublicCollectionLinkRead>("/operations/data/public-links", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listMediaEvidence(token: string): Promise<MediaEvidenceRead[]> {
+  return request<MediaEvidenceRead[]>("/operations/data/media-evidence", { token });
+}
+
+export async function createMediaEvidence(token: string, payload: MediaEvidenceCreate): Promise<MediaEvidenceRead> {
+  return request<MediaEvidenceRead>("/operations/data/media-evidence", { method: "POST", token, bodyJson: payload });
+}
+
 export async function listForms(token: string): Promise<DataFormRead[]> {
   return request<DataFormRead[]>("/forms", { token });
 }
 
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
+}
+
+export async function exportFormXlsForm(token: string, formId: string): Promise<XlsFormWorkbook> {
+  return request<XlsFormWorkbook>(`/forms/${formId}/xlsform`, { token });
+}
+
+export async function getFormCollectionCompatibility(token: string, formId: string): Promise<FormCollectionCompatibility> {
+  return request<FormCollectionCompatibility>(`/forms/${formId}/compatibility`, { token });
 }
 
 export async function listFormTemplates(
@@ -1155,8 +1277,11 @@ export const api = {
   createDevice,
   createOrganization,
   createExportJob,
+  createMediaEvidence,
+  createPublicCollectionLink,
   createOperationalZone,
   duplicateFormTemplate,
+  exportFormXlsForm,
   createForm,
   createGovernancePolicy,
   createImportJob,
@@ -1168,6 +1293,7 @@ export const api = {
   getCurrentPrincipal,
   getHealth,
   getFormTemplate,
+  getFormCollectionCompatibility,
   getGovernanceSummary,
   getOrganizationGovernanceSummary,
   getOrganizationContext,
@@ -1185,6 +1311,8 @@ export const api = {
   listDevices,
   listDataVersions,
   listExportLogs,
+  listMediaEvidence,
+  listPublicCollectionLinks,
   listFieldOfficers,
   listForms,
   listFormTemplates,

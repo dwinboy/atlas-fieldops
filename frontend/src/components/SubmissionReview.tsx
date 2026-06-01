@@ -85,6 +85,10 @@ function formatStatus(status: string) {
 
 export function SubmissionReview({ token }: SubmissionReviewProps) {
   const [selectedId, setSelectedId] = useState(previewSubmissions[0]?.id ?? "");
+  const [previewRows, setPreviewRows] = useState<SubmissionRead[]>(previewSubmissions);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewResult, setReviewResult] = useState("");
+  const [exportResult, setExportResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const submissionsQuery = useQuery({
@@ -93,7 +97,8 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
     enabled: Boolean(token && token !== "preview-token")
   });
 
-  const submissions = submissionsQuery.data?.length ? submissionsQuery.data : previewSubmissions;
+  const isPreview = token === "preview-token" || !submissionsQuery.data?.length;
+  const submissions = submissionsQuery.data?.length ? submissionsQuery.data : previewRows;
   const selected = useMemo(
     () => submissions.find((submission) => submission.id === selectedId) ?? submissions[0],
     [selectedId, submissions]
@@ -102,7 +107,8 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
   const reviewMutation = useMutation({
     mutationFn: (payload: { action: "approve" | "reject" | "request_correction" | "start_review"; comment: string }) =>
       reviewSubmission(token ?? "", selected?.id ?? "", payload),
-    onSuccess: async (_submission, variables) => {
+    onSuccess: async (submission, variables) => {
+      setReviewResult(`${submission.client_submission_id} is now ${formatStatus(submission.status)}. Reviewer note: ${variables.comment}`);
       pushToast({ title: `Submission ${variables.action.replace("_", " ")}`, description: selected?.client_submission_id, tone: "success" });
       await submissionsQuery.refetch();
     }
@@ -147,11 +153,33 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
   ];
 
   function runPreviewAction(action: "approve" | "reject" | "request_correction" | "start_review") {
-    if (token === "preview-token") {
+    const nextStatus = {
+      approve: "approved",
+      reject: "rejected",
+      request_correction: "correction_requested",
+      start_review: "under_review"
+    }[action];
+    const comment = reviewComment.trim() || `Reviewer selected ${action.replace("_", " ")}`;
+
+    if (isPreview) {
+      setPreviewRows((current) =>
+        current.map((submission) =>
+          submission.id === selected?.id
+            ? {
+                ...submission,
+                status: nextStatus,
+                server_sequence: submission.server_sequence + 1,
+                payload_json: { ...submission.payload_json, reviewer_note: comment }
+              }
+            : submission
+        )
+      );
+      setReviewResult(`${selected?.client_submission_id} is now ${formatStatus(nextStatus)}. Reviewer note: ${comment}`);
+      setReviewComment("");
       pushToast({ title: `Preview ${action.replace("_", " ")}`, description: selected?.client_submission_id, tone: "success" });
       return;
     }
-    reviewMutation.mutate({ action, comment: `Reviewer selected ${action}` });
+    reviewMutation.mutate({ action, comment });
   }
 
   return (
@@ -166,7 +194,15 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
             Check incoming field data, approve good submissions, and send clear correction requests back to the field.
           </p>
         </div>
-        <Button>
+        <Button
+          onClick={() => {
+            const approved = submissions.filter((submission) => submission.status === "approved").length;
+            const corrections = submissions.filter((submission) => submission.status === "correction_requested").length;
+            setExportResult(`${approved} approved submission${approved === 1 ? "" : "s"} and ${corrections} correction request${corrections === 1 ? "" : "s"} are ready for supervisor export.`);
+            pushToast({ title: "Reviewed export prepared", description: "Approved and corrected submissions are ready for export.", tone: "success" });
+          }}
+          type="button"
+        >
           <Download aria-hidden="true" />
           Export reviewed data
         </Button>
@@ -215,6 +251,15 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
                   </div>
                 ))}
               </div>
+              <label className="block text-sm font-medium">
+                Review comment
+                <textarea
+                  className="mt-2 min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/15"
+                  onChange={(event) => setReviewComment(event.target.value)}
+                  placeholder="Explain the approval, rejection, or correction request in clear field language."
+                  value={reviewComment}
+                />
+              </label>
               <div className="grid grid-cols-2 gap-2 pt-2">
                 {reviewActions.map(([action, label, Icon, variant]) => (
                   <Button
@@ -229,6 +274,18 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
                   </Button>
                 ))}
               </div>
+              {reviewResult ? (
+                <div className="rounded-lg border border-success/30 bg-success/10 p-3" aria-live="polite">
+                  <p className="text-sm font-semibold">Review outcome</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{reviewResult}</p>
+                </div>
+              ) : null}
+              {exportResult ? (
+                <div className="rounded-lg border bg-background p-3" aria-live="polite">
+                  <p className="text-sm font-semibold">Export package</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{exportResult}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </aside>

@@ -8,7 +8,9 @@ import {
   publishForm,
   removeField,
   reorderFields,
+  getCollectionCompatibility,
   toMobileSchema,
+  toXlsFormWorkbook,
   type DynamicForm
 } from "@/lib/forms";
 
@@ -100,6 +102,54 @@ describe("dynamic form helpers", () => {
     expect(schema.sections[0]?.fields[0]?.label).toBe("Farm GPS");
     expect(schema.sections[0]?.fields[0]?.type).toBe("gps");
     expect(schema.sections[0]?.fields[0]?.validation).toEqual({ accuracyMax: 20 });
+  });
+
+  it("exports an XLSForm workbook with survey, choices, and settings", () => {
+    const form = addField(baseForm, {
+      id: "crop-status",
+      label: "Crop status",
+      type: "select",
+      required: true,
+      sectionId: "main",
+      options: ["Healthy", "Needs support"]
+    });
+
+    const workbook = toXlsFormWorkbook(form);
+
+    expect(workbook.settings.form_title).toBe("Field audit");
+    expect(workbook.survey.map((row) => row.type)).toContain("select_one crop_status");
+    expect(workbook.survey.find((row) => row.name === "crop_status")?.required).toBe("yes");
+    expect(workbook.choices).toEqual([
+      { list_name: "crop_status", name: "healthy", label: "Healthy" },
+      { list_name: "crop_status", name: "needs_support", label: "Needs support" }
+    ]);
+  });
+
+  it("summarizes collection compatibility for web, mobile, media, and XLSForm readiness", () => {
+    const form = addField(
+      addField(baseForm, {
+        id: "site-gps",
+        label: "Site GPS",
+        type: "gps",
+        required: true,
+        sectionId: "main"
+      }),
+      {
+        id: "proof-photo",
+        label: "Proof photo",
+        type: "photo",
+        required: false,
+        sectionId: "main"
+      }
+    );
+
+    const compatibility = getCollectionCompatibility(form);
+
+    expect(compatibility.xlsFormReady).toBe(true);
+    expect(compatibility.webFormReady).toBe(true);
+    expect(compatibility.mobileAppReady).toBe(true);
+    expect(compatibility.hasGps).toBe(true);
+    expect(compatibility.mediaCount).toBe(1);
   });
 
   it("requires at least one field before publishing", () => {

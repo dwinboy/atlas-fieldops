@@ -1,10 +1,11 @@
+from datetime import date
 from uuid import uuid4
 
 from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
-from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate
+from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, DonorReportCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate, MediaEvidenceCreate, PublicCollectionLinkCreate
 from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
 from app.services.operations import OperationsService, indicator_progress, infer_mapping, validate_sample_rows
 
@@ -114,10 +115,85 @@ def test_import_and_export_payloads_enforce_supported_formats() -> None:
     )
     preview = ImportPreviewRequest(dataset_type="beneficiaries", columns=["Farmer Name"], sample_rows=[])
     export = ExportJobCreate(dataset_type="geospatial", export_format="geojson")
+    zip_export = ExportJobCreate(dataset_type="media", export_format="zip")
+    kml_export = ExportJobCreate(dataset_type="geospatial", export_format="kml")
 
     assert payload.source_format == "xlsx"
     assert preview.dataset_type == "beneficiaries"
     assert export.export_format == "geojson"
+    assert zip_export.export_format == "zip"
+    assert kml_export.export_format == "kml"
+
+
+def test_donor_report_payload_keeps_dates_for_database_insert() -> None:
+    payload = DonorReportCreate(
+        name="Q2 donor pack",
+        donor="FAO",
+        period_start=date(2026, 6, 1),
+        period_end=date(2026, 6, 7),
+        export_formats=["pdf", "xlsx"],
+    )
+
+    values = payload.model_dump()
+
+    assert values["period_start"] == date(2026, 6, 1)
+    assert values["period_end"] == date(2026, 6, 7)
+
+
+def test_public_collection_link_payload_describes_controlled_web_collection() -> None:
+    form_id = uuid4()
+    payload = PublicCollectionLinkCreate(
+        form_id=form_id,
+        slug="farmer-registration-public",
+        title="Farmer registration",
+        access_mode="partner",
+        require_authentication=True,
+        allowed_domains=["partner.example.org"],
+        permission_json={"submit": True, "view": False, "edit": False},
+    )
+
+    assert payload.form_id == form_id
+    assert payload.access_mode == "partner"
+    assert payload.permission_json["submit"] is True
+
+
+def test_media_evidence_payload_requires_supported_type_and_coordinate_pair() -> None:
+    evidence = MediaEvidenceCreate(
+        media_type="photo",
+        file_name="farm-proof.jpg",
+        storage_url="s3://atlas-media/farm-proof.jpg",
+        mime_type="image/jpeg",
+        size_bytes=2048,
+        latitude=5.4,
+        longitude=10.1,
+    )
+
+    assert evidence.media_type == "photo"
+
+    try:
+        MediaEvidenceCreate(
+            media_type="photo",
+            file_name="bad-location.jpg",
+            storage_url="s3://atlas-media/bad-location.jpg",
+            mime_type="image/jpeg",
+            latitude=5.4,
+        )
+    except ValidationError as exc:
+        assert "latitude and longitude" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("expected incomplete coordinate validation failure")
+
+    try:
+        MediaEvidenceCreate(
+            media_type="spreadsheet",
+            file_name="wrong.xlsx",
+            storage_url="s3://atlas-media/wrong.xlsx",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except ValidationError as exc:
+        assert "Unsupported media type" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("expected media type validation failure")
 
 
 def test_operational_events_fan_out_to_connected_systems() -> None:

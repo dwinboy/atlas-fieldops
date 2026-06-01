@@ -46,6 +46,8 @@ from app.schemas.operations import (
     InterventionRead,
     KnowledgeDocumentCreate,
     KnowledgeDocumentRead,
+    MediaEvidenceCreate,
+    MediaEvidenceRead,
     MappingTemplateCreate,
     EcosystemEdge,
     EcosystemNode,
@@ -63,6 +65,8 @@ from app.schemas.operations import (
     ProgramCreate,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
+    PublicCollectionLinkCreate,
+    PublicCollectionLinkRead,
     WorkflowQueueItemRead,
     WorkflowDefinitionCreate,
     WorkflowDefinitionRead,
@@ -408,7 +412,7 @@ class OperationsService:
         return await self.repository.list_cases(organization_id)
 
     async def create_report(self, organization_id: UUID, payload: DonorReportCreate) -> DonorReport:
-        report = await self.repository.create_report(organization_id=organization_id, values=payload.model_dump(mode="json"))
+        report = await self.repository.create_report(organization_id=organization_id, values=payload.model_dump())
         await self.session.commit()
         await event_publisher.publish("report.created", {"organization_id": str(organization_id), "report_id": str(report.id)})
         return report
@@ -909,6 +913,66 @@ class OperationsService:
         jobs = await self.repository.list_export_jobs(organization_id)
         return [ExportJobRead.model_validate(job) for job in jobs]
 
+    async def create_public_collection_link(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        payload: PublicCollectionLinkCreate,
+    ) -> PublicCollectionLinkRead:
+        link = await self.repository.create_public_collection_link(
+            organization_id=organization_id,
+            created_by_user_id=user_id,
+            values=payload.model_dump(),
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="public_collection_link.created",
+                source_module="forms",
+                summary=f"Public collection link {payload.slug} is ready for controlled web collection.",
+                payload={
+                    "form_id": str(payload.form_id),
+                    "access_mode": payload.access_mode,
+                    "require_authentication": payload.require_authentication,
+                    "allow_offline_web": payload.allow_offline_web,
+                },
+            ),
+        )
+        await self.session.commit()
+        await event_publisher.publish("public_collection_link.created", {"organization_id": str(organization_id), "link_id": str(link.id)})
+        return self.to_public_collection_link_read(link)
+
+    async def list_public_collection_links(self, organization_id: UUID) -> list[PublicCollectionLinkRead]:
+        links = await self.repository.list_public_collection_links(organization_id)
+        return [self.to_public_collection_link_read(link) for link in links]
+
+    async def create_media_evidence(self, organization_id: UUID, user_id: UUID, payload: MediaEvidenceCreate) -> MediaEvidenceRead:
+        evidence = await self.repository.create_media_evidence(
+            organization_id=organization_id,
+            uploaded_by_user_id=user_id,
+            values=payload.model_dump(),
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="media_evidence.created",
+                source_module="media",
+                submission_id=payload.submission_id,
+                beneficiary_id=payload.beneficiary_id,
+                summary=f"{payload.media_type.title()} evidence uploaded for review.",
+                payload={"file_name": payload.file_name, "size_bytes": payload.size_bytes, "mime_type": payload.mime_type},
+            ),
+        )
+        await self.session.commit()
+        await event_publisher.publish("media_evidence.created", {"organization_id": str(organization_id), "media_id": str(evidence.id)})
+        return MediaEvidenceRead.model_validate(evidence)
+
+    async def list_media_evidence(self, organization_id: UUID) -> list[MediaEvidenceRead]:
+        evidence = await self.repository.list_media_evidence(organization_id)
+        return [MediaEvidenceRead.model_validate(item) for item in evidence]
+
     async def create_bulk_edit_batch(self, organization_id: UUID, user_id: UUID, payload: BulkEditRequest) -> BulkEditRead:
         change_set: dict[str, object] = {
             "record_ids": payload.record_ids,
@@ -937,6 +1001,26 @@ class OperationsService:
         await self.session.commit()
         await event_publisher.publish("bulk_edit.created", {"organization_id": str(organization_id), "batch_id": str(batch.id)})
         return BulkEditRead.model_validate(batch)
+
+    @staticmethod
+    def to_public_collection_link_read(link: object) -> PublicCollectionLinkRead:
+        slug = str(getattr(link, "slug"))
+        return PublicCollectionLinkRead(
+            id=getattr(link, "id"),
+            form_id=getattr(link, "form_id"),
+            slug=slug,
+            title=str(getattr(link, "title")),
+            description=getattr(link, "description"),
+            access_mode=str(getattr(link, "access_mode")),
+            status=str(getattr(link, "status")),
+            require_authentication=bool(getattr(link, "require_authentication")),
+            allow_offline_web=bool(getattr(link, "allow_offline_web")),
+            expires_at=getattr(link, "expires_at"),
+            allowed_domains=list(getattr(link, "allowed_domains")),
+            permission_json=dict(getattr(link, "permission_json")),
+            submission_count=int(getattr(link, "submission_count")),
+            public_url=f"/collect/{slug}",
+        )
 
     async def record_operational_event(
         self,

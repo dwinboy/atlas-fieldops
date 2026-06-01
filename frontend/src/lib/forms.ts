@@ -67,6 +67,34 @@ export type DynamicForm = {
   updatedAt: string;
 };
 
+export type XlsFormSurveyRow = {
+  type: string;
+  name: string;
+  label: string;
+  hint?: string;
+  required?: "yes" | "no";
+  constraint?: string;
+  relevant?: string;
+  calculation?: string;
+};
+
+export type XlsFormChoiceRow = {
+  list_name: string;
+  name: string;
+  label: string;
+};
+
+export type XlsFormWorkbook = {
+  survey: XlsFormSurveyRow[];
+  choices: XlsFormChoiceRow[];
+  settings: {
+    form_title: string;
+    form_id: string;
+    version: string;
+    default_language: string;
+  };
+};
+
 export const fieldCatalog: {
   group: string;
   fields: { type: FieldType; label: string; description: string }[];
@@ -223,5 +251,149 @@ export function toMobileSchema(form: DynamicForm) {
           children: field.children ?? []
         }))
     }))
+  };
+}
+
+function slugifyName(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "field";
+}
+
+function toXlsType(field: FormField): string {
+  if (field.options?.length && ["select", "radio"].includes(field.type)) {
+    return `select_one ${slugifyName(field.id)}`;
+  }
+  if (field.options?.length && ["multiselect", "checkbox"].includes(field.type)) {
+    return `select_multiple ${slugifyName(field.id)}`;
+  }
+  const typeMap: Record<FieldType, string> = {
+    text: "text",
+    textarea: "text",
+    number: "integer",
+    decimal: "decimal",
+    currency: "decimal",
+    phone: "text",
+    email: "text",
+    password: "text",
+    select: "select_one",
+    multiselect: "select_multiple",
+    radio: "select_one",
+    checkbox: "select_multiple",
+    gps: "geopoint",
+    photo: "image",
+    signature: "image",
+    barcode: "barcode",
+    audio: "audio",
+    video: "video",
+    file: "file",
+    date: "date",
+    time: "time",
+    datetime: "dateTime",
+    calculated: "calculate",
+    repeat_group: "begin_repeat",
+    grid: "table-list"
+  };
+  return typeMap[field.type];
+}
+
+function toConstraint(field: FormField): string | undefined {
+  const rules = field.validation;
+  if (!rules) return undefined;
+  const constraints: string[] = [];
+  if (typeof rules.min === "number") constraints.push(`. >= ${rules.min}`);
+  if (typeof rules.max === "number") constraints.push(`. <= ${rules.max}`);
+  if (typeof rules.accuracyMax === "number" && field.type === "gps") constraints.push(`pulldata("@geopoint", ., "accuracy") <= ${rules.accuracyMax}`);
+  return constraints.length ? constraints.join(" and ") : undefined;
+}
+
+export function toXlsFormWorkbook(form: DynamicForm): XlsFormWorkbook {
+  const survey: XlsFormSurveyRow[] = [];
+  const choices: XlsFormChoiceRow[] = [];
+
+  for (const section of form.sections) {
+    survey.push({
+      type: "begin_group",
+      name: slugifyName(section.id),
+      label: section.title,
+      hint: section.description,
+      required: "no"
+    });
+
+    for (const field of form.fields.filter((candidate) => candidate.sectionId === section.id)) {
+      const name = slugifyName(field.id);
+      const calculation = field.logic?.find((rule) => rule.kind === "calculation")?.expression;
+      const relevant = field.logic?.find((rule) => rule.kind === "visibility")?.expression;
+
+      survey.push({
+        type: toXlsType(field),
+        name,
+        label: field.label,
+        hint: field.hint,
+        required: field.required ? "yes" : "no",
+        constraint: toConstraint(field),
+        relevant,
+        calculation
+      });
+
+      for (const option of field.options ?? []) {
+        choices.push({
+          list_name: name,
+          name: slugifyName(option),
+          label: option
+        });
+      }
+
+      if (field.type === "repeat_group") {
+        for (const child of field.children ?? []) {
+          survey.push({
+            type: toXlsType(child),
+            name: slugifyName(child.id),
+            label: child.label,
+            hint: child.hint,
+            required: child.required ? "yes" : "no",
+            constraint: toConstraint(child)
+          });
+        }
+        survey.push({ type: "end_repeat", name: `${name}_end`, label: `End ${field.label}` });
+      }
+    }
+
+    survey.push({ type: "end_group", name: `${slugifyName(section.id)}_end`, label: `End ${section.title}` });
+  }
+
+  return {
+    survey,
+    choices,
+    settings: {
+      form_title: form.name,
+      form_id: slugifyName(form.id),
+      version: String(form.version),
+      default_language: "en"
+    }
+  };
+}
+
+export function getCollectionCompatibility(form: DynamicForm) {
+  const fieldTypes = new Set(form.fields.map((field) => field.type));
+  const mediaFields = form.fields.filter((field) => ["photo", "signature", "audio", "video", "file"].includes(field.type));
+  const hasRepeatGroups = fieldTypes.has("repeat_group");
+  const hasGps = fieldTypes.has("gps");
+  return {
+    offlineReady: true,
+    xlsFormReady: form.fields.length > 0,
+    webFormReady: !fieldTypes.has("barcode"),
+    mobileAppReady: true,
+    hasGps,
+    hasRepeatGroups,
+    mediaCount: mediaFields.length,
+    warnings: [
+      ...(form.fields.length === 0 ? ["Add at least one question before sharing or publishing."] : []),
+      ...(mediaFields.length > 3 ? ["Large media-heavy forms need clear sync guidance for field officers."] : []),
+      ...(hasRepeatGroups ? ["Test repeat groups carefully before live mobile collection."] : [])
+    ]
   };
 }

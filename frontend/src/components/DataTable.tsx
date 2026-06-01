@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownUp, Columns3, Filter, Search } from "lucide-react";
+import { ArrowDownUp, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
@@ -29,19 +29,30 @@ export function DataTable<T>({
   title: string;
 }) {
   const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<string | null>(columns.find((column) => column.value)?.key ?? null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) {
       return rows;
     }
 
-    return rows.filter((row) =>
+    const matchingRows = rows.filter((row) =>
       columns.some((column) => {
         const value = column.value?.(row);
         return value?.toLowerCase().includes(normalizedQuery);
       })
     );
-  }, [columns, query, rows]);
+    const sortedColumn = columns.find((column) => column.key === sortKey && column.value);
+    if (!sortedColumn) {
+      return matchingRows;
+    }
+    return [...matchingRows].sort((left, right) => {
+      const leftValue = sortedColumn.value?.(left) ?? "";
+      const rightValue = sortedColumn.value?.(right) ?? "";
+      return sortDirection === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
+    });
+  }, [columns, query, rows, sortDirection, sortKey]);
 
   return (
     <section className="surface-premium overflow-hidden rounded-2xl" aria-labelledby={`${title}-title`}>
@@ -60,14 +71,12 @@ export function DataTable<T>({
             <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
             <Input className="pl-9" placeholder={searchLabel} value={query} onChange={(event) => setQuery(event.target.value)} />
           </label>
-          <Button size="sm" variant="secondary">
-            <Filter aria-hidden="true" />
-            Filter
-          </Button>
-          <Button aria-label="Choose visible columns" size="sm" variant="secondary">
-            <Columns3 aria-hidden="true" />
-            Columns
-          </Button>
+          {query ? (
+            <Button size="sm" variant="secondary" onClick={() => setQuery("")}>
+              <X aria-hidden="true" />
+              Clear
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -77,10 +86,25 @@ export function DataTable<T>({
             <tr>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-2.5 font-medium">
-                  <span className={column.align === "right" ? "flex justify-end gap-1.5" : "flex items-center gap-1.5"}>
-                    {column.header}
-                    {column.value ? <ArrowDownUp aria-hidden="true" size={12} /> : null}
-                  </span>
+                  {column.value ? (
+                    <button
+                      className={column.align === "right" ? "ml-auto flex justify-end gap-1.5" : "flex items-center gap-1.5"}
+                      onClick={() => {
+                        if (sortKey === column.key) {
+                          setSortDirection((value) => (value === "asc" ? "desc" : "asc"));
+                          return;
+                        }
+                        setSortKey(column.key);
+                        setSortDirection("asc");
+                      }}
+                      type="button"
+                    >
+                      {column.header}
+                      <ArrowDownUp aria-hidden="true" size={12} />
+                    </button>
+                  ) : (
+                    <span className={column.align === "right" ? "flex justify-end" : "flex items-center"}>{column.header}</span>
+                  )}
                 </th>
               ))}
             </tr>

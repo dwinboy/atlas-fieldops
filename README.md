@@ -1,6 +1,6 @@
-# Enterprise Data Collection Platform
+# Atlas FieldOps
 
-Production-grade, AI-assisted, offline-capable data collection platform.
+Production-grade, AI-assisted, offline-capable field operations platform for monitoring, evaluation, and frontline data collection.
 
 ## Architecture
 
@@ -49,3 +49,16 @@ because http://localhost:3001 is reserved for Grafana.
 - Offline mobile submission queue shell.
 
 See [docs/phase-1-status.md](docs/phase-1-status.md) for the current implementation and validation status.
+
+## Deployment
+
+The web application is ready for Vercel deployment from the `frontend` directory. Configure the Vercel project with:
+
+- Root Directory: `frontend`
+- Build Command: `npm run build`
+- Install Command: `npm ci`
+- Environment variables from `frontend/.env.production.example`
+
+The FastAPI backend should be deployed separately on infrastructure that supports PostgreSQL, Redis, and Kafka, then exposed to the frontend through `NEXT_PUBLIC_API_BASE_URL` and `INTERNAL_API_BASE_URL`.
+
+See [docs/vercel-deployment.md](docs/vercel-deployment.md) for the full checklist.

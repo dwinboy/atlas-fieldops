@@ -8,8 +8,8 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.collection import DataFormCreate, DataFormRead, FormTemplateDetail, FormTemplateRead, TemplateDuplicateRequest
-from app.services.collection import FormService
+from app.schemas.collection import DataFormCreate, DataFormRead, FormCollectionCompatibility, FormTemplateDetail, FormTemplateRead, TemplateDuplicateRequest, XlsFormWorkbook
+from app.services.collection import CollectionNotFoundError, FormService
 from app.services.template_library import TemplateLibraryService
 
 router = APIRouter()
@@ -101,3 +101,27 @@ async def create_form(
     except Exception:
         await session.rollback()
         raise
+
+
+@router.get("/{form_id}/xlsform", response_model=XlsFormWorkbook, summary="Export a form as an XLSForm workbook structure")
+async def export_form_xlsform(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> XlsFormWorkbook:
+    try:
+        return await FormService(session).export_xlsform(organization_id=UUID(principal.organization_id), form_id=form_id)
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found") from exc
+
+
+@router.get("/{form_id}/compatibility", response_model=FormCollectionCompatibility, summary="Check form collection compatibility")
+async def get_form_collection_compatibility(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FormCollectionCompatibility:
+    try:
+        return await FormService(session).collection_compatibility(organization_id=UUID(principal.organization_id), form_id=form_id)
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found") from exc

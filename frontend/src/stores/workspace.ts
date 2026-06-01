@@ -22,7 +22,8 @@ export type WorkspaceView =
   | "templates"
   | "analytics"
   | "workflows"
-  | "connectivity";
+  | "connectivity"
+  | "help";
 
 type Toast = {
   id: string;
@@ -35,11 +36,13 @@ type WorkspaceState = {
   activeView: WorkspaceView;
   commandOpen: boolean;
   collapsedSidebar: boolean;
+  lastActionResult: string;
   pendingTemplateId: string | null;
   theme: ThemeMode;
   toasts: Toast[];
   setActiveView: (view: WorkspaceView) => void;
   setCommandOpen: (open: boolean) => void;
+  setLastActionResult: (result: string) => void;
   setPendingTemplateId: (templateId: string | null) => void;
   toggleSidebar: () => void;
   toggleTheme: () => void;
@@ -51,11 +54,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeView: "dashboard",
   commandOpen: false,
   collapsedSidebar: false,
+  lastActionResult: "",
   pendingTemplateId: null,
   theme: "light",
   toasts: [],
   setActiveView: (activeView) => set({ activeView }),
   setCommandOpen: (commandOpen) => set({ commandOpen }),
+  setLastActionResult: (lastActionResult) => set({ lastActionResult }),
   setPendingTemplateId: (pendingTemplateId) => set({ pendingTemplateId }),
   toggleSidebar: () => set((state) => ({ collapsedSidebar: !state.collapsedSidebar })),
   toggleTheme: () => set((state) => ({ theme: state.theme === "light" ? "dark" : "light" })),

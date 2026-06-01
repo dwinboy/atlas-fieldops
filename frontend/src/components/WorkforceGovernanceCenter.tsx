@@ -35,8 +35,13 @@ import {
   type AccessRequestRead,
   type AccessSimulationRead,
   type ApprovalMatrixRead,
+  type ClearanceLevelRead,
   type DelegationRead,
   type DepartmentRead,
+  type DeviceRead,
+  type OperationalZoneRead,
+  type OrganizationGovernanceSummary,
+  type SessionLogRead,
   type TeamRead,
   type UserRead,
   type WorkforceProfileRead
@@ -49,6 +54,53 @@ type WorkforceGovernanceCenterProps = {
 };
 
 type WorkforceSection = "setup" | "access" | "directory" | "security";
+const previewNow = new Date().toISOString();
+
+const previewUsers: UserRead[] = [
+  { id: "preview-user-001", email: "amina.manager@example.org", full_name: "Amina Program Manager", is_active: true, role_name: "me_manager", scope_type: "project", project_id: "nutrition-project" },
+  { id: "preview-user-002", email: "joseph.field@example.org", full_name: "Joseph Field Officer", is_active: true, role_name: "field_officer", scope_type: "district", geography_id: "district-default" }
+];
+
+const previewDepartments: DepartmentRead[] = [
+  { id: "preview-dept-1", name: "Monitoring and Evaluation", code: "monitoring-and-evaluation", department_type: "department", parent_department_id: null, manager_user_id: "preview-user-001", created_at: previewNow }
+];
+
+const previewTeams: TeamRead[] = [
+  { id: "preview-team-1", name: "District M&E Team", code: "district-me-team", team_type: "field_team", department_id: "preview-dept-1", organization_unit_id: null, manager_user_id: "preview-user-001", region: "district-default", project_id: "nutrition-project", is_active: true, created_at: previewNow }
+];
+
+const previewProfiles: WorkforceProfileRead[] = [
+  { id: "preview-profile-1", user_id: "preview-user-001", employee_code: "EMP-AMINA", job_title: "M&E Manager", department_id: "preview-dept-1", team_id: "preview-team-1", supervisor_user_id: null, lifecycle_status: "active", clearance_level: "standard", performance_score: 92, created_at: previewNow },
+  { id: "preview-profile-2", user_id: "preview-user-002", employee_code: "EMP-JOSEPH", job_title: "Field Officer", department_id: "preview-dept-1", team_id: "preview-team-1", supervisor_user_id: "preview-user-001", lifecycle_status: "active", clearance_level: "field", performance_score: 86, created_at: previewNow }
+];
+
+const previewDelegations: DelegationRead[] = [
+  { id: "preview-delegation-1", delegator_user_id: "preview-user-001", delegate_user_id: "preview-user-002", permission: "submissions.approve", scope_type: "district", geography_id: "district-default", project_id: null, starts_at: previewNow, expires_at: inSevenDays(), status: "active", reason: "Temporary operational coverage" }
+];
+
+const previewMatrices: ApprovalMatrixRead[] = [
+  { id: "preview-matrix-1", matrix_code: "submission-risk-preview", workflow_type: "submission", threshold_type: "risk_score", threshold_value: 0.7, required_role: "district_supervisor", approval_stage: "district_review", escalation_role: "regional_manager", sla_hours: 48, is_active: true }
+];
+
+const previewAccessRequests: AccessRequestRead[] = [
+  { id: "preview-request-1", requester_user_id: "preview-user-002", requested_permission: "data.export", requested_scope_type: "project", geography_id: null, project_id: "nutrition-project", reason: "Need temporary access for operational review.", status: "pending", reviewed_by_user_id: null, reviewed_at: null, expires_at: null, created_at: previewNow }
+];
+
+const previewClearances: ClearanceLevelRead[] = [
+  { id: "preview-clearance-1", code: "standard", label: "Standard operational access", rank: 1, allowed_data_classes: ["operational", "beneficiary"], requires_mfa: false }
+];
+
+const previewZones: OperationalZoneRead[] = [
+  { id: "preview-zone-1", code: "district-default", name: "Default District Zone", zone_type: "district", parent_zone_id: null, geography_id: "district-default", is_active: true }
+];
+
+const previewDevices: DeviceRead[] = [
+  { id: "preview-device-1", user_id: "preview-user-002", device_id: "android-field-7781", device_type: "mobile", label: "Managed field device", status: "trusted", last_seen_at: previewNow }
+];
+
+const previewSessions: SessionLogRead[] = [
+  { id: "preview-session-1", user_id: "preview-user-001", device_id: "preview-device-1", ip_address: "10.0.0.24", location_hint: "District office", risk_score: 0.12, status: "active", created_at: previewNow, ended_at: null }
+];
 
 function slugify(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "new-item";
@@ -82,24 +134,62 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const [simulatePermissionName, setSimulatePermissionName] = useState("submissions.approve");
   const [simulateGeography, setSimulateGeography] = useState("district-default");
   const [simulation, setSimulation] = useState<AccessSimulationRead | null>(null);
+  const [localDepartments, setLocalDepartments] = useState<DepartmentRead[]>(previewDepartments);
+  const [localTeams, setLocalTeams] = useState<TeamRead[]>(previewTeams);
+  const [localProfiles, setLocalProfiles] = useState<WorkforceProfileRead[]>(previewProfiles);
+  const [localDelegations, setLocalDelegations] = useState<DelegationRead[]>(previewDelegations);
+  const [localMatrices, setLocalMatrices] = useState<ApprovalMatrixRead[]>(previewMatrices);
+  const [localAccessRequests, setLocalAccessRequests] = useState<AccessRequestRead[]>(previewAccessRequests);
+  const [localClearances, setLocalClearances] = useState<ClearanceLevelRead[]>(previewClearances);
+  const [localZones, setLocalZones] = useState<OperationalZoneRead[]>(previewZones);
+  const [localDevices, setLocalDevices] = useState<DeviceRead[]>(previewDevices);
+  const [workforceResult, setWorkforceResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const isPreview = token === "preview-token";
 
-  const summaryQuery = useQuery({ queryKey: ["org-governance-summary", token], queryFn: () => getOrganizationGovernanceSummary(token ?? ""), enabled: Boolean(token) });
-  const departmentsQuery = useQuery({ queryKey: ["departments", token], queryFn: () => listDepartments(token ?? ""), enabled: Boolean(token) });
-  const teamsQuery = useQuery({ queryKey: ["teams", token], queryFn: () => listTeams(token ?? ""), enabled: Boolean(token) });
-  const usersQuery = useQuery({ queryKey: ["users", token], queryFn: () => listUsers(token ?? ""), enabled: Boolean(token) });
-  const profilesQuery = useQuery({ queryKey: ["workforce-profiles", token], queryFn: () => listWorkforceProfiles(token ?? ""), enabled: Boolean(token) });
-  const delegationsQuery = useQuery({ queryKey: ["delegations", token], queryFn: () => listDelegations(token ?? ""), enabled: Boolean(token) });
-  const matricesQuery = useQuery({ queryKey: ["approval-matrices", token], queryFn: () => listApprovalMatrices(token ?? ""), enabled: Boolean(token) });
-  const accessRequestsQuery = useQuery({ queryKey: ["access-requests", token], queryFn: () => listAccessRequests(token ?? ""), enabled: Boolean(token) });
-  const clearancesQuery = useQuery({ queryKey: ["clearance-levels", token], queryFn: () => listClearanceLevels(token ?? ""), enabled: Boolean(token) });
-  const zonesQuery = useQuery({ queryKey: ["operational-zones", token], queryFn: () => listOperationalZones(token ?? ""), enabled: Boolean(token) });
-  const devicesQuery = useQuery({ queryKey: ["devices", token], queryFn: () => listDevices(token ?? ""), enabled: Boolean(token) });
-  const sessionsQuery = useQuery({ queryKey: ["sessions", token], queryFn: () => listSessionLogs(token ?? ""), enabled: Boolean(token) });
+  const summaryQuery = useQuery({ queryKey: ["org-governance-summary", token], queryFn: () => getOrganizationGovernanceSummary(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const departmentsQuery = useQuery({ queryKey: ["departments", token], queryFn: () => listDepartments(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const teamsQuery = useQuery({ queryKey: ["teams", token], queryFn: () => listTeams(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const usersQuery = useQuery({ queryKey: ["users", token], queryFn: () => listUsers(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const profilesQuery = useQuery({ queryKey: ["workforce-profiles", token], queryFn: () => listWorkforceProfiles(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const delegationsQuery = useQuery({ queryKey: ["delegations", token], queryFn: () => listDelegations(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const matricesQuery = useQuery({ queryKey: ["approval-matrices", token], queryFn: () => listApprovalMatrices(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const accessRequestsQuery = useQuery({ queryKey: ["access-requests", token], queryFn: () => listAccessRequests(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const clearancesQuery = useQuery({ queryKey: ["clearance-levels", token], queryFn: () => listClearanceLevels(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const zonesQuery = useQuery({ queryKey: ["operational-zones", token], queryFn: () => listOperationalZones(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const devicesQuery = useQuery({ queryKey: ["devices", token], queryFn: () => listDevices(token ?? ""), enabled: Boolean(token && !isPreview) });
+  const sessionsQuery = useQuery({ queryKey: ["sessions", token], queryFn: () => listSessionLogs(token ?? ""), enabled: Boolean(token && !isPreview) });
 
-  const firstDepartmentId = departmentsQuery.data?.[0]?.id ?? null;
-  const firstTeamId = teamsQuery.data?.[0]?.id ?? null;
-  const firstUserId = usersQuery.data?.[0]?.id ?? "";
+  const displayedUsers = useMemo(() => (isPreview ? previewUsers : usersQuery.data ?? []), [isPreview, usersQuery.data]);
+  const displayedDepartments = useMemo(() => (isPreview ? localDepartments : departmentsQuery.data ?? []), [departmentsQuery.data, isPreview, localDepartments]);
+  const displayedTeams = useMemo(() => (isPreview ? localTeams : teamsQuery.data ?? []), [isPreview, localTeams, teamsQuery.data]);
+  const displayedProfiles = useMemo(() => (isPreview ? localProfiles : profilesQuery.data ?? []), [isPreview, localProfiles, profilesQuery.data]);
+  const displayedDelegations = useMemo(() => (isPreview ? localDelegations : delegationsQuery.data ?? []), [delegationsQuery.data, isPreview, localDelegations]);
+  const displayedMatrices = useMemo(() => (isPreview ? localMatrices : matricesQuery.data ?? []), [isPreview, localMatrices, matricesQuery.data]);
+  const displayedAccessRequests = useMemo(() => (isPreview ? localAccessRequests : accessRequestsQuery.data ?? []), [accessRequestsQuery.data, isPreview, localAccessRequests]);
+  const displayedClearances = useMemo(() => (isPreview ? localClearances : clearancesQuery.data ?? []), [clearancesQuery.data, isPreview, localClearances]);
+  const displayedZones = useMemo(() => (isPreview ? localZones : zonesQuery.data ?? []), [isPreview, localZones, zonesQuery.data]);
+  const displayedDevices = useMemo(() => (isPreview ? localDevices : devicesQuery.data ?? []), [devicesQuery.data, isPreview, localDevices]);
+  const displayedSessions = useMemo(() => (isPreview ? previewSessions : sessionsQuery.data ?? []), [isPreview, sessionsQuery.data]);
+
+  const previewSummary: OrganizationGovernanceSummary = {
+    departments: displayedDepartments.length,
+    teams: displayedTeams.length,
+    workforce_profiles: displayedProfiles.length,
+    active_delegations: displayedDelegations.filter((delegation) => delegation.status === "active").length,
+    pending_access_requests: displayedAccessRequests.filter((request) => request.status === "pending").length,
+    approval_matrices: displayedMatrices.length,
+    clearance_levels: displayedClearances.length,
+    devices: displayedDevices.length,
+    active_sessions: displayedSessions.filter((session) => session.status === "active").length,
+    high_risk_sessions: displayedSessions.filter((session) => session.risk_score >= 0.7).length,
+    governance_score: 83,
+    attention_items: ["Review one pending access request", "Confirm device trust before large exports"]
+  };
+
+  const firstDepartmentId = displayedDepartments[0]?.id ?? null;
+  const firstTeamId = displayedTeams[0]?.id ?? null;
+  const firstUserId = displayedUsers[0]?.id ?? "";
   const activeUserId = selectedUserId || firstUserId;
   const activeDelegateUserId = delegateUserId || firstUserId;
   const queriesLoading = [
@@ -125,7 +215,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   const createDepartmentMutation = useMutation({
     mutationFn: () => createDepartment(token ?? "", { name: departmentName, code: safeCode(departmentName, "department"), department_type: "department" }),
-    onSuccess: async () => {
+    onSuccess: async (department) => {
+      setWorkforceResult(`${department.name} was created as a governed department. Teams, profiles, and approvals can now be organized under this unit.`);
       pushToast({ title: "Department created", description: "The organization hierarchy now has a governed business unit.", tone: "success" });
       await Promise.all([departmentsQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -134,7 +225,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   const createTeamMutation = useMutation({
     mutationFn: () => createTeam(token ?? "", { name: teamName, code: safeCode(teamName, "team"), department_id: firstDepartmentId, region: teamRegion }),
-    onSuccess: async () => {
+    onSuccess: async (team) => {
+      setWorkforceResult(`${team.name} was created for ${team.region ?? "unassigned region"}. Work, alerts, and approval visibility can now route to this team.`);
       pushToast({ title: "Team created", description: "The team can now be used for assignments, routes, and approval visibility.", tone: "success" });
       await Promise.all([teamsQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -151,7 +243,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         team_id: firstTeamId,
         clearance_level: "standard"
       }),
-    onSuccess: async () => {
+    onSuccess: async (profile) => {
+      setWorkforceResult(`${userNameById.get(profile.user_id)?.full_name ?? "Selected user"} now has a workforce profile as ${profile.job_title} with ${profile.clearance_level} clearance.`);
       pushToast({ title: "Workforce profile linked", description: "The user now has a managed workforce profile and reporting context.", tone: "success" });
       await Promise.all([profilesQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -169,7 +262,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         expires_at: inSevenDays(),
         reason: "Temporary operational coverage"
       }),
-    onSuccess: async () => {
+    onSuccess: async (delegation) => {
+      setWorkforceResult(`${userNameById.get(delegation.delegate_user_id)?.full_name ?? "Selected delegate"} can temporarily ${formatLabel(delegation.permission)} for ${formatLabel(delegation.scope_type)} until ${new Date(delegation.expires_at).toLocaleDateString()}.`);
       pushToast({ title: "Delegation created", description: "Temporary approval access has an expiry date and audit trail.", tone: "success" });
       await Promise.all([delegationsQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -188,7 +282,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         escalation_role: "regional_manager",
         sla_hours: 48
       }),
-    onSuccess: async () => {
+    onSuccess: async (matrix) => {
+      setWorkforceResult(`${matrix.matrix_code} now routes ${formatLabel(matrix.workflow_type)} items above ${matrix.threshold_value} to ${formatLabel(matrix.required_role)} within ${matrix.sla_hours} hours.`);
       pushToast({ title: "Approval matrix created", description: "High-risk submissions now have a defined review and escalation path.", tone: "success" });
       await Promise.all([matricesQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -197,7 +292,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
   const createAccessRequestMutation = useMutation({
     mutationFn: () => createAccessRequest(token ?? "", { requested_permission: requestPermission, requested_scope_type: "project", reason: "Need temporary access for operational review." }),
-    onSuccess: async () => {
+    onSuccess: async (request) => {
+      setWorkforceResult(`Access request for ${formatLabel(request.requested_permission)} is ${request.status}. Managers can approve or reject it from the Access requests table.`);
       pushToast({ title: "Access request submitted", description: "Managers can approve or reject it from this center.", tone: "success" });
       await Promise.all([accessRequestsQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -207,6 +303,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const reviewRequestMutation = useMutation({
     mutationFn: (payload: { id: string; decision: "approved" | "rejected" }) => reviewAccessRequest(token ?? "", payload.id, payload.decision),
     onSuccess: async (request) => {
+      setWorkforceResult(`Access request for ${formatLabel(request.requested_permission)} was ${request.status}. This decision is recorded with the request history.`);
       pushToast({ title: "Access request reviewed", description: `Request ${request.status}.`, tone: request.status === "approved" ? "success" : "warning" });
       await Promise.all([accessRequestsQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -220,7 +317,8 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
       const device = await createDevice(token ?? "", { device_id: `device-${Date.now()}`, user_id: firstUserId || null, device_type: "mobile", label: "Managed field device", status: "trusted" });
       return { clearance, zone, device };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ clearance, zone, device }) => {
+      setWorkforceResult(`Safeguards are active: ${clearance.label}, ${zone.name}, and ${device.label ?? device.device_id}. These records support scoped access and trusted device checks.`);
       pushToast({ title: "Governance foundation added", description: "Clearance, zone, and device records are now active.", tone: "success" });
       await Promise.all([clearancesQuery.refetch(), zonesQuery.refetch(), devicesQuery.refetch(), summaryQuery.refetch()]);
     },
@@ -231,16 +329,165 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
     mutationFn: () => simulateAccess(token ?? "", { user_id: simulateUserId || firstUserId, permission: simulatePermissionName, geography_id: simulateGeography || null }),
     onSuccess: (result) => {
       setSimulation(result);
+      setWorkforceResult(`${result.allowed ? "Access allowed" : "Access denied"} for ${formatLabel(simulatePermissionName)}. ${result.reasons[0]}`);
       pushToast({ title: result.allowed ? "Access allowed" : "Access denied", description: result.reasons[0], tone: result.allowed ? "success" : "warning" });
     },
     onError: () => pushToast({ title: "Access test failed", description: "Choose a user and enter a valid permission such as submissions.approve.", tone: "danger" })
   });
 
+  function createPreviewDepartment(): void {
+    const nextDepartment: DepartmentRead = {
+      id: `preview-dept-${Date.now()}`,
+      name: departmentName,
+      code: safeCode(departmentName, "department"),
+      department_type: "department",
+      parent_department_id: null,
+      manager_user_id: firstUserId || null,
+      created_at: new Date().toISOString()
+    };
+    setLocalDepartments((current) => [nextDepartment, ...current]);
+    setWorkforceResult(`${nextDepartment.name} was created as a preview department. Teams, profiles, and approvals can now be organized under this unit.`);
+    pushToast({ title: "Preview department created", description: "The organization hierarchy now has a local preview department.", tone: "success" });
+  }
+
+  function createPreviewTeam(): void {
+    const nextTeam: TeamRead = {
+      id: `preview-team-${Date.now()}`,
+      name: teamName,
+      code: safeCode(teamName, "team"),
+      team_type: "field_team",
+      department_id: firstDepartmentId,
+      organization_unit_id: null,
+      manager_user_id: firstUserId || null,
+      region: teamRegion,
+      project_id: null,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+    setLocalTeams((current) => [nextTeam, ...current]);
+    setWorkforceResult(`${nextTeam.name} was created for ${nextTeam.region ?? "unassigned region"}. Work, alerts, and approval visibility can now route to this team.`);
+    pushToast({ title: "Preview team created", description: "The team can now be used for assignments and approval visibility.", tone: "success" });
+  }
+
+  function createPreviewProfile(): void {
+    const targetUserId = activeUserId || firstUserId;
+    const nextProfile: WorkforceProfileRead = {
+      id: `preview-profile-${Date.now()}`,
+      user_id: targetUserId,
+      employee_code: `EMP-${targetUserId.slice(0, 6)}`,
+      job_title: jobTitle,
+      department_id: firstDepartmentId,
+      team_id: firstTeamId,
+      supervisor_user_id: null,
+      lifecycle_status: "active",
+      clearance_level: "standard",
+      performance_score: 88,
+      created_at: new Date().toISOString()
+    };
+    setLocalProfiles((current) => [nextProfile, ...current]);
+    setWorkforceResult(`${userNameById.get(nextProfile.user_id)?.full_name ?? "Selected user"} now has a workforce profile as ${nextProfile.job_title} with ${nextProfile.clearance_level} clearance.`);
+    pushToast({ title: "Preview profile linked", description: "The user now has a local workforce profile and reporting context.", tone: "success" });
+  }
+
+  function createPreviewDelegation(): void {
+    const nextDelegation: DelegationRead = {
+      id: `preview-delegation-${Date.now()}`,
+      delegator_user_id: firstUserId,
+      delegate_user_id: activeDelegateUserId,
+      permission: "submissions.approve",
+      scope_type: "district",
+      geography_id: teamRegion,
+      project_id: null,
+      starts_at: new Date().toISOString(),
+      expires_at: inSevenDays(),
+      status: "active",
+      reason: "Temporary operational coverage"
+    };
+    setLocalDelegations((current) => [nextDelegation, ...current]);
+    setWorkforceResult(`${userNameById.get(nextDelegation.delegate_user_id)?.full_name ?? "Selected delegate"} can temporarily ${formatLabel(nextDelegation.permission)} for ${formatLabel(nextDelegation.scope_type)} until ${new Date(nextDelegation.expires_at).toLocaleDateString()}.`);
+    pushToast({ title: "Preview delegation created", description: "Temporary approval access now has an expiry date and audit trail.", tone: "success" });
+  }
+
+  function createPreviewMatrix(): void {
+    const nextMatrix: ApprovalMatrixRead = {
+      id: `preview-matrix-${Date.now()}`,
+      matrix_code: `submission-risk-${Date.now()}`,
+      workflow_type: "submission",
+      threshold_type: "risk_score",
+      threshold_value: 0.7,
+      required_role: "district_supervisor",
+      approval_stage: "district_review",
+      escalation_role: "regional_manager",
+      sla_hours: 48,
+      is_active: true
+    };
+    setLocalMatrices((current) => [nextMatrix, ...current]);
+    setWorkforceResult(`${nextMatrix.matrix_code} now routes ${formatLabel(nextMatrix.workflow_type)} items above ${nextMatrix.threshold_value} to ${formatLabel(nextMatrix.required_role)} within ${nextMatrix.sla_hours} hours.`);
+    pushToast({ title: "Preview approval rule created", description: "High-risk submissions now have a local review and escalation path.", tone: "success" });
+  }
+
+  function createPreviewAccessRequest(): void {
+    const nextRequest: AccessRequestRead = {
+      id: `preview-request-${Date.now()}`,
+      requester_user_id: firstUserId,
+      requested_permission: requestPermission,
+      requested_scope_type: "project",
+      geography_id: null,
+      project_id: "nutrition-project",
+      reason: "Need temporary access for operational review.",
+      status: "pending",
+      reviewed_by_user_id: null,
+      reviewed_at: null,
+      expires_at: null,
+      created_at: new Date().toISOString()
+    };
+    setLocalAccessRequests((current) => [nextRequest, ...current]);
+    setWorkforceResult(`Access request for ${formatLabel(nextRequest.requested_permission)} is pending. Managers can approve or reject it from the Access requests table.`);
+    pushToast({ title: "Preview access request submitted", description: "Managers can approve or reject it from this center.", tone: "success" });
+  }
+
+  function reviewPreviewRequest(id: string, decision: "approved" | "rejected"): void {
+    const selectedRequest = localAccessRequests.find((request) => request.id === id);
+    setLocalAccessRequests((current) =>
+      current.map((request) =>
+        request.id === id
+          ? { ...request, status: decision, reviewed_by_user_id: firstUserId || null, reviewed_at: new Date().toISOString() }
+          : request
+      )
+    );
+    setWorkforceResult(`Access request for ${formatLabel(selectedRequest?.requested_permission)} was ${decision}. This decision is recorded in the preview request table.`);
+    pushToast({ title: "Preview request reviewed", description: `Request ${decision}.`, tone: decision === "approved" ? "success" : "warning" });
+  }
+
+  function createPreviewFoundation(): void {
+    setLocalClearances((current) => (current.length ? current : previewClearances));
+    setLocalZones((current) => (current.length ? current : previewZones));
+    setLocalDevices((current) => (current.length ? current : previewDevices));
+    setWorkforceResult("Standard safeguards are active: clearance levels, operational zones, and trusted device records are ready for field access checks.");
+    pushToast({ title: "Preview safeguards added", description: "Clearance, zone, and device records are active in preview.", tone: "success" });
+  }
+
+  function simulatePreviewAccess(): void {
+    const allowed = simulatePermissionName.includes("approve") || simulatePermissionName.includes("export");
+    const result: AccessSimulationRead = {
+      allowed,
+      decision: allowed ? "allowed_by_preview_role" : "not_matched",
+      matched_roles: allowed ? ["me_manager"] : [],
+      matched_scope: allowed ? simulateGeography || "district-default" : null,
+      reasons: allowed
+        ? [`Preview role allows ${formatLabel(simulatePermissionName)} in ${simulateGeography || "district-default"}.`]
+        : [`No preview role currently grants ${formatLabel(simulatePermissionName)}.`]
+    };
+    setSimulation(result);
+    setWorkforceResult(`${result.allowed ? "Access allowed" : "Access denied"} for ${formatLabel(simulatePermissionName)}. ${result.reasons[0]}`);
+    pushToast({ title: result.allowed ? "Preview access allowed" : "Preview access denied", description: result.reasons[0], tone: result.allowed ? "success" : "warning" });
+  }
+
   const userNameById = useMemo(() => {
     const map = new Map<string, UserRead>();
-    for (const user of usersQuery.data ?? []) map.set(user.id, user);
+    for (const user of displayedUsers) map.set(user.id, user);
     return map;
-  }, [usersQuery.data]);
+  }, [displayedUsers]);
 
   const departmentColumns: TableColumn<DepartmentRead>[] = [
     { key: "name", header: "Department", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.code}</p></div> },
@@ -275,10 +522,21 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
   const accessRequestColumns: TableColumn<AccessRequestRead>[] = [
     { key: "permission", header: "Request", value: (row) => row.requested_permission, render: (row) => <div><p className="font-medium">{formatLabel(row.requested_permission)}</p><p className="text-xs text-muted-foreground">{row.reason || "No reason provided"}</p></div> },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={row.status === "pending" ? "warning" : row.status === "approved" ? "success" : "neutral"}>{row.status}</Badge> },
-    { key: "actions", header: "Actions", value: (row) => row.id, render: (row) => row.status === "pending" ? <div className="flex gap-2"><Button size="sm" type="button" variant="secondary" onClick={() => reviewRequestMutation.mutate({ id: row.id, decision: "approved" })}>Approve</Button><Button size="sm" type="button" variant="ghost" onClick={() => reviewRequestMutation.mutate({ id: row.id, decision: "rejected" })}>Reject</Button></div> : "Reviewed" }
+    {
+      key: "actions",
+      header: "Actions",
+      value: (row) => row.id,
+      render: (row) =>
+        row.status === "pending" ? (
+          <div className="flex gap-2">
+            <Button size="sm" type="button" variant="secondary" onClick={() => (isPreview ? reviewPreviewRequest(row.id, "approved") : reviewRequestMutation.mutate({ id: row.id, decision: "approved" }))}>Approve</Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => (isPreview ? reviewPreviewRequest(row.id, "rejected") : reviewRequestMutation.mutate({ id: row.id, decision: "rejected" }))}>Reject</Button>
+          </div>
+        ) : "Reviewed"
+    }
   ];
 
-  const summary = summaryQuery.data;
+  const summary = summaryQuery.data ?? (isPreview ? previewSummary : undefined);
   const summaryCards: { label: string; value: number; icon: LucideIcon }[] = [
     { label: "Departments", value: summary?.departments ?? 0, icon: Network },
     { label: "Teams", value: summary?.teams ?? 0, icon: UsersRound },
@@ -330,11 +588,11 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={summary?.attention_items.length ? "warning" : "success"}>{summary?.governance_score ?? 0}% governed</Badge>
-            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>
+            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => (isPreview ? createPreviewFoundation() : foundationMutation.mutate())}>
               <ShieldCheck aria-hidden="true" />
               Add safeguards
             </Button>
-            <Button disabled={createMatrixMutation.isPending} type="button" variant="primary" onClick={() => createMatrixMutation.mutate()}>
+            <Button disabled={createMatrixMutation.isPending} type="button" variant="primary" onClick={() => (isPreview ? createPreviewMatrix() : createMatrixMutation.mutate())}>
               <ClipboardCheck aria-hidden="true" />
               Add approval rule
             </Button>
@@ -410,6 +668,18 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         </div>
       ) : null}
 
+      {workforceResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Workforce result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{workforceResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="surface-premium rounded-2xl p-2">
         <div className="grid gap-2 md:grid-cols-4">
           {sections.map((section) => (
@@ -430,7 +700,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
       {activeSection === "setup" ? (
       <div className="grid gap-4 xl:grid-cols-4">
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createDepartmentMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDepartment() : createDepartmentMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <Network aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Add a department</h2>
@@ -442,7 +712,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!departmentName.trim() || createDepartmentMutation.isPending} type="submit" variant="primary">Create department</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createTeamMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewTeam() : createTeamMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <UsersRound aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Create a team</h2>
@@ -458,7 +728,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!teamName.trim() || createTeamMutation.isPending} type="submit" variant="primary">Create team</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createProfileMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewProfile() : createProfileMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <UserCheck aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Assign a person</h2>
@@ -468,7 +738,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
             User
             <Select className="mt-1" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
             <option value="">Choose user</option>
-            {(usersQuery.data ?? []).map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
+            {displayedUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
             </Select>
           </label>
           <label className="mt-2 block text-xs font-medium text-muted-foreground">
@@ -477,7 +747,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           </label>
           <Button className="mt-4 w-full" disabled={!firstUserId || !firstDepartmentId || !firstTeamId || createProfileMutation.isPending} type="submit" variant="primary">Assign profile</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createDelegationMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewDelegation() : createDelegationMutation.mutate(); }}>
           <div className="flex items-center gap-2">
             <KeyRound aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Delegate approval</h2>
@@ -487,7 +757,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
             Delegate to
             <Select className="mt-1" value={delegateUserId} onChange={(event) => setDelegateUserId(event.target.value)}>
             <option value="">Choose delegate</option>
-            {(usersQuery.data ?? []).map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
+            {displayedUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
             </Select>
           </label>
           <Button className="mt-4 w-full" disabled={!firstUserId || createDelegationMutation.isPending} type="submit" variant="primary">Delegate approval</Button>
@@ -505,12 +775,12 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
             Test a real permission before assigning work. This helps managers confirm whether a user can approve, export, or view data in a specific area.
           </p>
-          <form className="mt-4 grid gap-4 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); simulateMutation.mutate(); }}>
+          <form className="mt-4 grid gap-4 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); isPreview ? simulatePreviewAccess() : simulateMutation.mutate(); }}>
             <label className="block text-sm font-medium">
               User
               <Select className="mt-2" value={simulateUserId} onChange={(event) => setSimulateUserId(event.target.value)}>
                 <option value="">Choose user</option>
-                {(usersQuery.data ?? []).map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
+                {displayedUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
               </Select>
             </label>
             <label className="block text-sm font-medium">
@@ -548,11 +818,11 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
           <h2 className="text-sm font-semibold">Common manager actions</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">Use these when you need a fast setup baseline or a controlled access request.</p>
           <div className="mt-4 space-y-3">
-            <Button className="w-full justify-start" disabled={createMatrixMutation.isPending} type="button" variant="secondary" onClick={() => createMatrixMutation.mutate()}>
+            <Button className="w-full justify-start" disabled={createMatrixMutation.isPending} type="button" variant="secondary" onClick={() => (isPreview ? createPreviewMatrix() : createMatrixMutation.mutate())}>
               <ClipboardCheck aria-hidden="true" />
               Create high-risk approval rule
             </Button>
-            <Button className="w-full justify-start" disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => foundationMutation.mutate()}>
+            <Button className="w-full justify-start" disabled={foundationMutation.isPending || !firstUserId} type="button" variant="secondary" onClick={() => (isPreview ? createPreviewFoundation() : foundationMutation.mutate())}>
               <ShieldCheck aria-hidden="true" />
               Add standard safeguards
             </Button>
@@ -560,7 +830,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
               <p className="text-sm font-medium">Request access</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">Create a reviewable request instead of granting broad permissions informally.</p>
               <Input className="mt-2" value={requestPermission} onChange={(event) => setRequestPermission(event.target.value)} />
-              <Button className="mt-3 w-full" disabled={createAccessRequestMutation.isPending} type="button" variant="primary" onClick={() => createAccessRequestMutation.mutate()}>
+              <Button className="mt-3 w-full" disabled={createAccessRequestMutation.isPending} type="button" variant="primary" onClick={() => (isPreview ? createPreviewAccessRequest() : createAccessRequestMutation.mutate())}>
                 <Send aria-hidden="true" />
                 Submit request
               </Button>
@@ -572,22 +842,22 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
 
       {activeSection === "directory" ? (
       <div className="grid gap-5 xl:grid-cols-2">
-        <DataTable columns={departmentColumns} emptyLabel="No departments yet" rows={departmentsQuery.data ?? []} searchLabel="Search departments" title="Departments and business units" />
-        <DataTable columns={teamColumns} emptyLabel="No teams yet" rows={teamsQuery.data ?? []} searchLabel="Search teams" title="Operational teams" />
-        <DataTable columns={profileColumns} emptyLabel="No workforce profiles yet" rows={profilesQuery.data ?? []} searchLabel="Search workforce" title="Workforce directory" />
-        <DataTable columns={delegationColumns} emptyLabel="No active delegations yet" rows={delegationsQuery.data ?? []} searchLabel="Search delegations" title="Temporary delegations" />
-        <DataTable columns={matrixColumns} emptyLabel="No approval matrices yet" rows={matricesQuery.data ?? []} searchLabel="Search matrices" title="Approval matrices" />
-        <DataTable columns={accessRequestColumns} emptyLabel="No access requests yet" rows={accessRequestsQuery.data ?? []} searchLabel="Search requests" title="Access requests" />
+        <DataTable columns={departmentColumns} emptyLabel="No departments yet" rows={displayedDepartments} searchLabel="Search departments" title="Departments and business units" />
+        <DataTable columns={teamColumns} emptyLabel="No teams yet" rows={displayedTeams} searchLabel="Search teams" title="Operational teams" />
+        <DataTable columns={profileColumns} emptyLabel="No workforce profiles yet" rows={displayedProfiles} searchLabel="Search workforce" title="Workforce directory" />
+        <DataTable columns={delegationColumns} emptyLabel="No active delegations yet" rows={displayedDelegations} searchLabel="Search delegations" title="Temporary delegations" />
+        <DataTable columns={matrixColumns} emptyLabel="No approval matrices yet" rows={displayedMatrices} searchLabel="Search matrices" title="Approval matrices" />
+        <DataTable columns={accessRequestColumns} emptyLabel="No access requests yet" rows={displayedAccessRequests} searchLabel="Search requests" title="Access requests" />
       </div>
       ) : null}
 
       {activeSection === "security" ? (
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          ["Clearance levels", clearancesQuery.data?.length ?? 0, "Who can access sensitive datasets"],
-          ["Operational zones", zonesQuery.data?.length ?? 0, "Geographic areas used for scoped access"],
-          ["Trusted devices", devicesQuery.data?.length ?? 0, "Registered mobile and desktop devices"],
-          ["Session logs", sessionsQuery.data?.length ?? 0, "Recent access and risk history"]
+          ["Clearance levels", displayedClearances.length, "Who can access sensitive datasets"],
+          ["Operational zones", displayedZones.length, "Geographic areas used for scoped access"],
+          ["Trusted devices", displayedDevices.length, "Registered mobile and desktop devices"],
+          ["Session logs", displayedSessions.length, "Recent access and risk history"]
         ].map(([label, value, text]) => (
           <div className="rounded-2xl border bg-panel p-4" key={String(label)}>
             <p className="text-xs text-muted-foreground">{String(label)}</p>
@@ -601,7 +871,7 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
               <h2 className="text-sm font-semibold">Security baseline</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Create standard clearance, a district zone, and a trusted device record for field operations.</p>
             </div>
-            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="primary" onClick={() => foundationMutation.mutate()}>
+            <Button disabled={foundationMutation.isPending || !firstUserId} type="button" variant="primary" onClick={() => (isPreview ? createPreviewFoundation() : foundationMutation.mutate())}>
               <ShieldCheck aria-hidden="true" />
               Add standard safeguards
             </Button>

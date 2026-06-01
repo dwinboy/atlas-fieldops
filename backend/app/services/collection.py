@@ -12,14 +12,20 @@ from app.repositories.collection import FieldOfficerRepository, FormRepository, 
 from app.repositories.identity import IdentityRepository, RoleRepository
 from app.schemas.collection import (
     DataFormCreate,
+    FormCollectionCompatibility,
     FieldOfficerInvite,
     FieldOfficerRead,
+    FormSchema,
     SubmissionRead,
     SubmissionCreate,
     SubmissionReviewAction,
     SyncBatchCreate,
     SyncBatchRead,
     TemplateDuplicateRequest,
+    XlsFormChoiceRow,
+    XlsFormSettings,
+    XlsFormSurveyRow,
+    XlsFormWorkbook,
 )
 from app.services.template_library import TemplateLibraryService
 
@@ -34,6 +40,130 @@ class CollectionConflictError(Exception):
 
 class InvalidWorkflowTransitionError(Exception):
     pass
+
+
+def xls_name(value: str) -> str:
+    normalized = "".join(character.lower() if character.isalnum() else "_" for character in value.strip())
+    normalized = "_".join(part for part in normalized.split("_") if part)
+    return normalized or "field"
+
+
+def xls_type(field_type: str, options: list[dict[str, object]], name: str) -> str:
+    if options and field_type in {"select", "radio"}:
+        return f"select_one {name}"
+    if options and field_type in {"multiselect", "checkbox"}:
+        return f"select_multiple {name}"
+    type_map = {
+        "text": "text",
+        "textarea": "text",
+        "number": "integer",
+        "decimal": "decimal",
+        "currency": "decimal",
+        "phone": "text",
+        "email": "text",
+        "password": "text",
+        "select": "select_one",
+        "multiselect": "select_multiple",
+        "radio": "select_one",
+        "checkbox": "select_multiple",
+        "gps": "geopoint",
+        "photo": "image",
+        "image": "image",
+        "signature": "image",
+        "barcode": "barcode",
+        "qr": "barcode",
+        "audio": "audio",
+        "video": "video",
+        "file": "file",
+        "date": "date",
+        "time": "time",
+        "datetime": "dateTime",
+        "calculated": "calculate",
+        "repeat_group": "begin_repeat",
+        "repeatable_group": "begin_repeat",
+        "grid": "table-list",
+    }
+    return type_map.get(field_type, "text")
+
+
+def xls_constraint(field_type: str, validation: dict[str, object]) -> str | None:
+    constraints: list[str] = []
+    minimum = validation.get("min")
+    maximum = validation.get("max")
+    accuracy = validation.get("accuracyMax")
+    if isinstance(minimum, int | float):
+        constraints.append(f". >= {minimum}")
+    if isinstance(maximum, int | float):
+        constraints.append(f". <= {maximum}")
+    if field_type == "gps" and isinstance(accuracy, int | float):
+        constraints.append(f'pulldata("@geopoint", ., "accuracy") <= {accuracy}')
+    return " and ".join(constraints) if constraints else None
+
+
+def form_schema_to_xlsform(*, form_id: UUID, form_name: str, version: int, schema: FormSchema) -> XlsFormWorkbook:
+    survey: list[XlsFormSurveyRow] = []
+    choices: list[XlsFormChoiceRow] = []
+    for section in schema.sections:
+        section_name = xls_name(section.id)
+        survey.append(
+            XlsFormSurveyRow(
+                type="begin_group",
+                name=section_name,
+                label=section.title,
+                hint=section.description,
+                required="no",
+            )
+        )
+        for field in section.fields:
+            field_name = xls_name(field.id)
+            survey.append(
+                XlsFormSurveyRow(
+                    type=xls_type(field.type, field.options, field_name),
+                    name=field_name,
+                    label=field.label,
+                    hint=field.hint,
+                    required="yes" if field.required else "no",
+                    constraint=xls_constraint(field.type, field.validation),
+                    calculation=field.calculation,
+                )
+            )
+            for option in field.options:
+                option_label = str(option.get("label") or option.get("name") or option.get("value") or "Option")
+                option_value = str(option.get("value") or option.get("name") or option_label)
+                choices.append(XlsFormChoiceRow(list_name=field_name, name=xls_name(option_value), label=option_label))
+            if field.type in {"repeat_group", "repeatable_group"}:
+                survey.append(XlsFormSurveyRow(type="end_repeat", name=f"{field_name}_end", label=f"End {field.label}"))
+        survey.append(XlsFormSurveyRow(type="end_group", name=f"{section_name}_end", label=f"End {section.title}"))
+    return XlsFormWorkbook(
+        survey=survey,
+        choices=choices,
+        settings=XlsFormSettings(form_title=form_name, form_id=xls_name(str(form_id)), version=str(version)),
+    )
+
+
+def form_schema_compatibility(*, form_id: UUID, version: int, schema: FormSchema) -> FormCollectionCompatibility:
+    fields = [field for section in schema.sections for field in section.fields]
+    field_types = {field.type for field in fields}
+    media_count = sum(1 for field in fields if field.type in {"photo", "image", "signature", "audio", "video", "file"})
+    warnings: list[str] = []
+    if not fields:
+        warnings.append("Add at least one question before publishing or sharing this form.")
+    if media_count > 3:
+        warnings.append("Media-heavy forms should include clear sync instructions for field officers.")
+    if "repeat_group" in field_types or "repeatable_group" in field_types:
+        warnings.append("Test repeat groups before deploying this form for offline collection.")
+    return FormCollectionCompatibility(
+        form_id=form_id,
+        version=version,
+        offline_ready=True,
+        xlsform_ready=bool(fields),
+        web_form_ready="barcode" not in field_types and "qr" not in field_types,
+        mobile_app_ready=True,
+        has_gps="gps" in field_types,
+        has_repeat_groups=bool({"repeat_group", "repeatable_group"} & field_types),
+        media_field_count=media_count,
+        warnings=warnings,
+    )
 
 
 class FieldOfficerService:
@@ -133,6 +263,22 @@ class FormService:
 
     async def list_forms(self, organization_id: UUID) -> list[object]:
         return list(await self.forms.list(organization_id))
+
+    async def export_xlsform(self, *, organization_id: UUID, form_id: UUID) -> XlsFormWorkbook:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
+        if form is None or version is None:
+            raise CollectionNotFoundError("Form not found")
+        schema = FormSchema.model_validate(version.schema_json)
+        return form_schema_to_xlsform(form_id=form.id, form_name=form.name, version=version.version, schema=schema)
+
+    async def collection_compatibility(self, *, organization_id: UUID, form_id: UUID) -> FormCollectionCompatibility:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
+        if form is None or version is None:
+            raise CollectionNotFoundError("Form not found")
+        schema = FormSchema.model_validate(version.schema_json)
+        return form_schema_compatibility(form_id=form.id, version=version.version, schema=schema)
 
     async def duplicate_template(
         self,

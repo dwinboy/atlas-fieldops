@@ -1,5 +1,6 @@
-import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, FileText, Gauge, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
+import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, FileText, Gauge, HelpCircle, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,10 @@ type DashboardProps = {
 };
 
 export function Dashboard({ token }: DashboardProps) {
+  const [dashboardResult, setDashboardResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const setLastActionResult = useWorkspaceStore((state) => state.setLastActionResult);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
@@ -32,12 +36,27 @@ export function Dashboard({ token }: DashboardProps) {
         { label: "Open cases", value: summaryQuery.data.open_cases.toLocaleString(), delta: "needs review", tone: summaryQuery.data.open_cases ? "warn" as const : "good" as const }
       ]
     : dashboardMetrics;
-  const quickActions: { label: string; hint: string; view: WorkspaceView; icon: typeof Plus }[] = [
-    { label: "Create form", hint: "Start from a template or blank form", view: "templates", icon: Plus },
-    { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", icon: ShieldCheck },
-    { label: "Invite officer", hint: "Add someone to the field team", view: "officers", icon: UserPlus },
-    { label: "Import data", hint: "Upload spreadsheets and fix issues", view: "data", icon: UploadCloud }
+  const quickActions: { label: string; hint: string; result: string; view: WorkspaceView; icon: typeof Plus }[] = [
+    { label: "Create form", hint: "Start from a template or blank form", result: "Opening templates. Pick a proven form, then customize labels, rules, and offline behavior before publishing.", view: "templates", icon: Plus },
+    { label: "Review submissions", hint: "Approve, reject, or request corrections", result: "Opening the review queue. Start with submissions under review, add a reviewer comment, then approve or request corrections.", view: "submissions", icon: ShieldCheck },
+    { label: "Invite officer", hint: "Add someone to the field team", result: "Opening field teams. Invite an officer, assign their region, and check sync/device status after they start collecting.", view: "officers", icon: UserPlus },
+    { label: "Import data", hint: "Upload spreadsheets and fix issues", result: "Opening data tools. Upload a file, save mappings, fix validation issues, and apply clean records to the registry.", view: "data", icon: UploadCloud },
+    { label: "Read help guide", hint: "Learn how to use the platform", result: "Opening the help guide. Use the beginner walkthroughs to understand forms, collection, review, data, reports, and admin workflows.", view: "help", icon: HelpCircle }
   ];
+
+  function openView(action: { label: string; result: string; view: WorkspaceView }): void {
+    setDashboardResult(action.result);
+    setLastActionResult(action.result);
+    pushToast({ title: action.label, description: action.result, tone: "success" });
+    setActiveView(action.view);
+  }
+
+  function handleAttention(item: string, view: WorkspaceView, result: string): void {
+    setDashboardResult(result);
+    setLastActionResult(result);
+    pushToast({ title: item, description: result, tone: "warning" });
+    setActiveView(view);
+  }
 
   return (
     <section aria-labelledby="dashboard-title" className="space-y-6">
@@ -52,21 +71,31 @@ export function Dashboard({ token }: DashboardProps) {
               A simple daily view for pending reviews, offline sync, data quality, and field team activity.
             </p>
           </div>
-          <Button variant="primary" onClick={() => setActiveView("submissions")} type="button">
+          <Button
+            variant="primary"
+            onClick={() =>
+              handleAttention(
+                "Review queue",
+                "submissions",
+                "Opening the review queue so you can approve clean records, request corrections, or reject poor submissions."
+              )
+            }
+            type="button"
+          >
             Review queue
             <ArrowUpRight aria-hidden="true" />
           </Button>
         </div>
       </div>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Quick actions">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Quick actions">
         {quickActions.map((action) => {
           const Icon = action.icon;
           return (
             <button
               key={action.label}
               className="group rounded-2xl border bg-panel p-4 text-left shadow-line transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5 hover:shadow-elevated"
-              onClick={() => setActiveView(action.view)}
+              onClick={() => openView(action)}
               type="button"
             >
               <div className="flex items-center gap-3">
@@ -82,6 +111,18 @@ export function Dashboard({ token }: DashboardProps) {
           );
         })}
       </section>
+
+      {dashboardResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Dashboard result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{dashboardResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {summaryMetrics.map((metric, index) => {
@@ -161,24 +202,40 @@ export function Dashboard({ token }: DashboardProps) {
             <h2 id="work-queue-title" className="text-sm font-semibold">
               Needs attention
             </h2>
-            <Button size="sm" variant="ghost">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                handleAttention(
+                  "Review",
+                  "submissions",
+                  "Opening submissions that need attention. Use reviewer notes so field teams understand every correction."
+                )
+              }
+              type="button"
+            >
               Review
               <ArrowUpRight aria-hidden="true" />
             </Button>
           </div>
           <div className="divide-y">
             {([
-              ["Answers need a closer look", "1,216 submissions", "Open review queue", "warning" as const],
-              ["Possible duplicate records", "128 submissions", "Check duplicates", "danger" as const],
-              ["Waiting for supervisor approval", "74 submissions", "Follow up today", "neutral" as const]
-            ] as const).map(([item, count, sla, tone]) => (
-              <div key={item} className="grid grid-cols-[1fr_auto] gap-4 py-3 text-sm">
+              ["Answers need a closer look", "1,216 submissions", "Open review queue", "warning" as const, "submissions" as WorkspaceView, "Opening submissions needing closer review. Check payload, GPS, evidence, and reviewer comments before approving."],
+              ["Possible duplicate records", "128 submissions", "Check duplicates", "danger" as const, "data" as WorkspaceView, "Opening data tools so duplicate records can be checked, mapped, and resolved before registry updates."],
+              ["Waiting for supervisor approval", "74 submissions", "Follow up today", "neutral" as const, "workflows" as WorkspaceView, "Opening approval rules so supervisor queues, escalation steps, and target review times can be checked."]
+            ] as const).map(([item, count, sla, tone, view, result]) => (
+              <button
+                key={item}
+                className="grid w-full grid-cols-[1fr_auto] gap-4 py-3 text-left text-sm transition hover:bg-muted/35"
+                onClick={() => handleAttention(item, view, result)}
+                type="button"
+              >
                 <div>
                   <p className="font-medium">{item}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{count}</p>
                 </div>
                 <Badge tone={tone}>{sla}</Badge>
-              </div>
+              </button>
             ))}
           </div>
         </section>

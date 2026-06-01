@@ -141,6 +141,22 @@ class FormRepository:
         )
         return list(result.scalars())
 
+    async def get(self, *, organization_id: UUID, form_id: UUID) -> DataForm | None:
+        result = await self.session.execute(
+            select(DataForm).where(
+                DataForm.organization_id == organization_id,
+                DataForm.id == form_id,
+                DataForm.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_current_version(self, *, organization_id: UUID, form_id: UUID) -> DataFormVersion | None:
+        form = await self.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            return None
+        return await self.get_version(organization_id=organization_id, form_id=form_id, version=form.current_version)
+
     async def get_version(self, *, organization_id: UUID, form_id: UUID, version: int) -> DataFormVersion | None:
         result = await self.session.execute(
             select(DataFormVersion).where(

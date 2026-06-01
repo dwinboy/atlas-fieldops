@@ -21,9 +21,12 @@ import {
   listMasterDataEntries,
   listRetentionPolicies,
   listValidationRules,
+  type DataVersionRead,
   type ExportLogRead,
+  type GovernanceSummary,
   type GovernancePolicyRead,
   type LineageEventRead,
+  type MasterDataEntryRead,
   type RetentionPolicyRead,
   type ValidationRuleRead
 } from "@/lib/api";
@@ -33,52 +36,127 @@ type GovernanceCommandCenterProps = {
   token: string | null;
 };
 
+const nowIso = new Date().toISOString();
+
+const previewSummary: GovernanceSummary = {
+  policies: 2,
+  validation_rules: 3,
+  retention_policies: 2,
+  open_quality_signals: 4,
+  audit_events: 1284,
+  lineage_events: 9,
+  export_events: 6,
+  consent_records: 842,
+  compliance_score: 87,
+  attention_items: ["Two exports need manager review", "One validation rule has draft changes", "Consent evidence is missing for 14 records"]
+};
+
+const previewPolicies: GovernancePolicyRead[] = [
+  {
+    id: "preview-policy-1",
+    name: "Official reporting governance",
+    policy_type: "reporting",
+    lifecycle_state: "approved",
+    version: 2,
+    enforcement_level: "blocking",
+    rules_json: { approved_data_only: true, requires_lineage: true },
+    approved_at: nowIso,
+    created_at: nowIso
+  },
+  {
+    id: "preview-policy-2",
+    name: "Beneficiary data protection",
+    policy_type: "privacy",
+    lifecycle_state: "approved",
+    version: 1,
+    enforcement_level: "warning",
+    rules_json: { anonymize_exports: true },
+    approved_at: nowIso,
+    created_at: nowIso
+  }
+];
+
+const previewRetentionPolicies: RetentionPolicyRead[] = [
+  { id: "preview-retention-1", record_type: "submissions", retention_years: 10, archive_after_days: 365, legal_hold: false, purge_allowed: false, anonymize_on_export: true, created_at: nowIso },
+  { id: "preview-retention-2", record_type: "media", retention_years: 7, archive_after_days: 180, legal_hold: false, purge_allowed: false, anonymize_on_export: true, created_at: nowIso }
+];
+
+const previewRules: ValidationRuleRead[] = [
+  { id: "preview-rule-1", rule_code: "gps-required", name: "Require GPS evidence for field submissions", target_entity: "submissions", severity: "high", expression: "latitude != null && longitude != null && accuracy <= 50", version: 1, is_active: true, created_at: nowIso },
+  { id: "preview-rule-2", rule_code: "consent-required", name: "Consent must be captured before approval", target_entity: "beneficiaries", severity: "critical", expression: "consent == true", version: 1, is_active: true, created_at: nowIso }
+];
+
+const previewExports: ExportLogRead[] = [
+  { id: "preview-export-1", dataset_type: "beneficiaries", export_format: "xlsx", status: "approved", anonymized: true, record_count: 1200, risk_score: 0.12, created_at: nowIso },
+  { id: "preview-export-2", dataset_type: "submissions", export_format: "csv", status: "review_required", anonymized: false, record_count: 4200, risk_score: 0.74, created_at: nowIso }
+];
+
+const previewLineage: LineageEventRead[] = [
+  { id: "preview-lineage-1", source_type: "submission", source_id: "sub-001", target_type: "report", target_id: "donor-q2", transformation: "approved aggregation", lineage_json: {}, created_at: nowIso },
+  { id: "preview-lineage-2", source_type: "import", source_id: "csv-228", target_type: "beneficiary", target_id: "ben-1182", transformation: "deduplicated merge", lineage_json: {}, created_at: nowIso }
+];
+
+const previewVersions: DataVersionRead[] = [
+  { id: "preview-version-1", entity_type: "beneficiary", entity_id: "ben-1182", version_number: 3, change_type: "update", field_changes_json: {}, rollback_available: true, created_at: nowIso }
+];
+
+const previewMasterData: MasterDataEntryRead[] = [
+  { id: "preview-master-1", category: "district", code: "district-default", label: "Default District", status: "active", version: 1, created_at: nowIso },
+  { id: "preview-master-2", category: "program", code: "nutrition-project", label: "Nutrition Project", status: "active", version: 1, created_at: nowIso }
+];
+
 export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps) {
   const [policyName, setPolicyName] = useState("Official reporting governance");
   const [retentionRecordType, setRetentionRecordType] = useState("submissions");
   const [validationRuleCode, setValidationRuleCode] = useState("gps-required");
   const [exportDataset, setExportDataset] = useState("beneficiaries");
+  const [localPolicies, setLocalPolicies] = useState(previewPolicies);
+  const [localRetention, setLocalRetention] = useState(previewRetentionPolicies);
+  const [localRules, setLocalRules] = useState(previewRules);
+  const [localExports, setLocalExports] = useState(previewExports);
+  const [governanceResult, setGovernanceResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const isPreview = token === "preview-token";
 
   const summaryQuery = useQuery({
     queryKey: ["governance-summary", token],
     queryFn: () => getGovernanceSummary(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const policiesQuery = useQuery({
     queryKey: ["governance-policies", token],
     queryFn: () => listGovernancePolicies(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const retentionQuery = useQuery({
     queryKey: ["retention-policies", token],
     queryFn: () => listRetentionPolicies(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const rulesQuery = useQuery({
     queryKey: ["validation-rules", token],
     queryFn: () => listValidationRules(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const lineageQuery = useQuery({
     queryKey: ["lineage-events", token],
     queryFn: () => listLineageEvents(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const exportsQuery = useQuery({
     queryKey: ["export-logs", token],
     queryFn: () => listExportLogs(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const versionsQuery = useQuery({
     queryKey: ["data-versions", token],
     queryFn: () => listDataVersions(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
   const masterDataQuery = useQuery({
     queryKey: ["master-data", token],
     queryFn: () => listMasterDataEntries(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
 
   const createPolicyMutation = useMutation({
@@ -90,7 +168,8 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         enforcement_level: "blocking",
         rules_json: { approved_data_only: true, requires_lineage: true }
       }),
-    onSuccess: async () => {
+    onSuccess: async (policy) => {
+      setGovernanceResult(`${policy.name} is active as a ${policy.enforcement_level} ${policy.policy_type} policy. Official reports now require approved, traceable data.`);
       pushToast({ title: "Governance policy created", description: "Official reporting now requires approved, traceable data.", tone: "success" });
       await Promise.all([policiesQuery.refetch(), summaryQuery.refetch()]);
     }
@@ -106,7 +185,8 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         purge_allowed: false,
         anonymize_on_export: true
       }),
-    onSuccess: async () => {
+    onSuccess: async (policy) => {
+      setGovernanceResult(`${policy.record_type} records now retain for ${policy.retention_years} years, archive after ${policy.archive_after_days} days, and ${policy.anonymize_on_export ? "must be anonymized on export" : "can export without anonymization"}.`);
       pushToast({ title: "Retention policy created", description: "Records now have archive, retention, and anonymization controls.", tone: "success" });
       await Promise.all([retentionQuery.refetch(), summaryQuery.refetch()]);
     }
@@ -121,7 +201,8 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         severity: "high",
         expression: "latitude != null && longitude != null && accuracy <= 50"
       }),
-    onSuccess: async () => {
+    onSuccess: async (rule) => {
+      setGovernanceResult(`${rule.name} is active for ${rule.target_entity}. Severity is ${rule.severity}, so reviewers can understand how strongly this rule should affect approvals.`);
       pushToast({ title: "Validation rule created", description: "New data quality rule is active for governed submissions.", tone: "success" });
       await Promise.all([rulesQuery.refetch(), summaryQuery.refetch()]);
     }
@@ -137,10 +218,77 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         filters_json: { approved_only: true }
       }),
     onSuccess: async (log) => {
+      setGovernanceResult(`${log.dataset_type} ${log.export_format.toUpperCase()} export is ${log.status} with risk score ${log.risk_score.toFixed(2)} and ${log.anonymized ? "anonymization enabled" : "raw data included"}.`);
       pushToast({ title: "Export governed", description: `Export status: ${log.status}. Risk score: ${log.risk_score}`, tone: log.status === "approved" ? "success" : "warning" });
       await Promise.all([exportsQuery.refetch(), summaryQuery.refetch()]);
     }
   });
+
+  function createPreviewPolicy(): void {
+    const nextPolicy: GovernancePolicyRead = {
+      id: `preview-policy-${Date.now()}`,
+      name: policyName,
+      policy_type: "reporting",
+      lifecycle_state: "approved",
+      version: 1,
+      enforcement_level: "blocking",
+      rules_json: { approved_data_only: true, requires_lineage: true },
+      approved_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
+    };
+    setLocalPolicies((current) => [nextPolicy, ...current]);
+    setGovernanceResult(`${nextPolicy.name} is active as a blocking reporting policy. Official reports now require approved, traceable data.`);
+    pushToast({ title: "Preview policy created", description: "Official reporting now requires approved, traceable data.", tone: "success" });
+  }
+
+  function createPreviewRetention(): void {
+    const nextPolicy: RetentionPolicyRead = {
+      id: `preview-retention-${Date.now()}`,
+      record_type: retentionRecordType,
+      retention_years: 10,
+      archive_after_days: 365,
+      legal_hold: false,
+      purge_allowed: false,
+      anonymize_on_export: true,
+      created_at: new Date().toISOString()
+    };
+    setLocalRetention((current) => [nextPolicy, ...current]);
+    setGovernanceResult(`${nextPolicy.record_type} records now retain for ${nextPolicy.retention_years} years, archive after ${nextPolicy.archive_after_days} days, and must be anonymized on export.`);
+    pushToast({ title: "Preview retention policy set", description: "Records now show archive, retention, and anonymization controls.", tone: "success" });
+  }
+
+  function createPreviewRule(): void {
+    const nextRule: ValidationRuleRead = {
+      id: `preview-rule-${Date.now()}`,
+      rule_code: validationRuleCode,
+      name: "Require GPS evidence for field submissions",
+      target_entity: "submissions",
+      severity: "high",
+      expression: "latitude != null && longitude != null && accuracy <= 50",
+      version: 1,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+    setLocalRules((current) => [nextRule, ...current]);
+    setGovernanceResult(`${nextRule.name} is active for ${nextRule.target_entity}. Severity is ${nextRule.severity}, so it should be reviewed before approval.`);
+    pushToast({ title: "Preview validation rule created", description: "New data quality rule is active in the preview workspace.", tone: "success" });
+  }
+
+  function governPreviewExport(): void {
+    const nextExport: ExportLogRead = {
+      id: `preview-export-${Date.now()}`,
+      dataset_type: exportDataset,
+      export_format: "xlsx",
+      status: "approved",
+      anonymized: true,
+      record_count: 1200,
+      risk_score: 0.18,
+      created_at: new Date().toISOString()
+    };
+    setLocalExports((current) => [nextExport, ...current]);
+    setGovernanceResult(`${nextExport.dataset_type} ${nextExport.export_format.toUpperCase()} export was approved with anonymization, ${nextExport.record_count.toLocaleString()} records, and risk score ${nextExport.risk_score.toFixed(2)}.`);
+    pushToast({ title: "Preview export governed", description: "The export was approved with anonymization and audit controls.", tone: "success" });
+  }
 
   const policyColumns: TableColumn<GovernancePolicyRead>[] = [
     { key: "name", header: "Policy", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.policy_type}</p></div> },
@@ -172,7 +320,14 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
     { key: "transformation", header: "Transformation", value: (row) => row.transformation, render: (row) => row.transformation }
   ];
 
-  const summary = summaryQuery.data;
+  const summary = summaryQuery.data ?? (isPreview ? previewSummary : undefined);
+  const displayedPolicies = isPreview ? localPolicies : policiesQuery.data ?? [];
+  const displayedRetention = isPreview ? localRetention : retentionQuery.data ?? [];
+  const displayedRules = isPreview ? localRules : rulesQuery.data ?? [];
+  const displayedExports = isPreview ? localExports : exportsQuery.data ?? [];
+  const displayedLineage = isPreview ? previewLineage : lineageQuery.data ?? [];
+  const displayedVersions = isPreview ? previewVersions : versionsQuery.data ?? [];
+  const displayedMasterData = isPreview ? previewMasterData : masterDataQuery.data ?? [];
   const cards = [
     ["Compliance score", `${summary?.compliance_score ?? 0}%`, ShieldCheck],
     ["Audit events", `${summary?.audit_events ?? 0}`, Fingerprint],
@@ -218,24 +373,24 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-4">
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createPolicyMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewPolicy() : createPolicyMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Policy</h2>
           <Input className="mt-3" value={policyName} onChange={(event) => setPolicyName(event.target.value)} />
           <Button className="mt-4 w-full" disabled={createPolicyMutation.isPending} type="submit" variant="primary"><FileCheck2 aria-hidden="true" /> Create policy</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createRetentionMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRetention() : createRetentionMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Retention</h2>
           <Select className="mt-3" value={retentionRecordType} onChange={(event) => setRetentionRecordType(event.target.value)}>
             {["submissions", "beneficiaries", "reports", "media", "audit_logs"].map((type) => <option key={type} value={type}>{type}</option>)}
           </Select>
           <Button className="mt-4 w-full" disabled={createRetentionMutation.isPending} type="submit" variant="primary">Set retention</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); createRuleMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRule() : createRuleMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Validation</h2>
           <Input className="mt-3" value={validationRuleCode} onChange={(event) => setValidationRuleCode(event.target.value)} />
           <Button className="mt-4 w-full" disabled={createRuleMutation.isPending} type="submit" variant="primary">Add rule</Button>
         </form>
-        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); governExportMutation.mutate(); }}>
+        <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? governPreviewExport() : governExportMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Export control</h2>
           <Select className="mt-3" value={exportDataset} onChange={(event) => setExportDataset(event.target.value)}>
             {["beneficiaries", "submissions", "indicators", "reports"].map((type) => <option key={type} value={type}>{type}</option>)}
@@ -244,21 +399,33 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         </form>
       </div>
 
+      {governanceResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Governance result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{governanceResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid gap-5 xl:grid-cols-2">
-        <DataTable columns={policyColumns} emptyLabel="No governance policies yet" rows={policiesQuery.data ?? []} searchLabel="Search policies" title="Governance policies" />
-        <DataTable columns={retentionColumns} emptyLabel="No retention policies yet" rows={retentionQuery.data ?? []} searchLabel="Search retention" title="Retention policies" />
-        <DataTable columns={ruleColumns} emptyLabel="No validation rules yet" rows={rulesQuery.data ?? []} searchLabel="Search rules" title="Validation rules" />
-        <DataTable columns={exportColumns} emptyLabel="No governed exports yet" rows={exportsQuery.data ?? []} searchLabel="Search exports" title="Export governance" />
-        <DataTable columns={lineageColumns} emptyLabel="No lineage events yet" rows={lineageQuery.data ?? []} searchLabel="Search lineage" title="Lineage tracking" />
+        <DataTable columns={policyColumns} emptyLabel="No governance policies yet" rows={displayedPolicies} searchLabel="Search policies" title="Governance policies" />
+        <DataTable columns={retentionColumns} emptyLabel="No retention policies yet" rows={displayedRetention} searchLabel="Search retention" title="Retention policies" />
+        <DataTable columns={ruleColumns} emptyLabel="No validation rules yet" rows={displayedRules} searchLabel="Search rules" title="Validation rules" />
+        <DataTable columns={exportColumns} emptyLabel="No governed exports yet" rows={displayedExports} searchLabel="Search exports" title="Export governance" />
+        <DataTable columns={lineageColumns} emptyLabel="No lineage events yet" rows={displayedLineage} searchLabel="Search lineage" title="Lineage tracking" />
         <div className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
             <CheckCircle2 aria-hidden="true" size={17} />
             <h2 className="text-sm font-semibold">Integrity coverage</h2>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border bg-background/70 p-3"><p className="text-xs text-muted-foreground">Data versions</p><p className="mt-2 text-xl font-semibold">{versionsQuery.data?.length ?? 0}</p></div>
+            <div className="rounded-xl border bg-background/70 p-3"><p className="text-xs text-muted-foreground">Data versions</p><p className="mt-2 text-xl font-semibold">{displayedVersions.length}</p></div>
             <div className="rounded-xl border bg-background/70 p-3"><p className="text-xs text-muted-foreground">Consent records</p><p className="mt-2 text-xl font-semibold">{summary?.consent_records ?? 0}</p></div>
-            <div className="rounded-xl border bg-background/70 p-3"><p className="text-xs text-muted-foreground">Master data</p><p className="mt-2 text-xl font-semibold">{masterDataQuery.data?.length ?? 0}</p></div>
+            <div className="rounded-xl border bg-background/70 p-3"><p className="text-xs text-muted-foreground">Master data</p><p className="mt-2 text-xl font-semibold">{displayedMasterData.length}</p></div>
           </div>
         </div>
       </div>

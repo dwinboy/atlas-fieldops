@@ -17,6 +17,7 @@ from app.models.operations import (
     DonorReport,
     InterventionRecord,
     KnowledgeDocument,
+    MediaEvidence,
     MonitoringIndicator,
     OperationalAsset,
     OperationalEvent,
@@ -24,6 +25,7 @@ from app.models.operations import (
     OperationalTask,
     OrganizationalUnit,
     ProjectBudgetLine,
+    PublicCollectionLink,
     WorkflowQueueItem,
     WorkflowDefinition,
 )
@@ -495,6 +497,56 @@ class OperationsRepository:
             .where(DataExportJob.organization_id == organization_id)
             .order_by(DataExportJob.created_at.desc())
             .limit(100)
+        )
+        return list(result.scalars())
+
+    async def create_public_collection_link(
+        self,
+        *,
+        organization_id: UUID,
+        created_by_user_id: UUID,
+        values: dict[str, object],
+    ) -> PublicCollectionLink:
+        link = PublicCollectionLink(
+            organization_id=organization_id,
+            created_by_user_id=created_by_user_id,
+            **values,
+        )
+        self.session.add(link)
+        await self.session.flush()
+        return link
+
+    async def list_public_collection_links(self, organization_id: UUID) -> list[PublicCollectionLink]:
+        result = await self.session.execute(
+            select(PublicCollectionLink)
+            .where(PublicCollectionLink.organization_id == organization_id, PublicCollectionLink.deleted_at.is_(None))
+            .order_by(PublicCollectionLink.created_at.desc())
+            .limit(100)
+        )
+        return list(result.scalars())
+
+    async def create_media_evidence(
+        self,
+        *,
+        organization_id: UUID,
+        uploaded_by_user_id: UUID,
+        values: dict[str, object],
+    ) -> MediaEvidence:
+        evidence = MediaEvidence(
+            organization_id=organization_id,
+            uploaded_by_user_id=uploaded_by_user_id,
+            **values,
+        )
+        self.session.add(evidence)
+        await self.session.flush()
+        return evidence
+
+    async def list_media_evidence(self, organization_id: UUID) -> list[MediaEvidence]:
+        result = await self.session.execute(
+            select(MediaEvidence)
+            .where(MediaEvidence.organization_id == organization_id, MediaEvidence.deleted_at.is_(None))
+            .order_by(MediaEvidence.created_at.desc())
+            .limit(250)
         )
         return list(result.scalars())
 

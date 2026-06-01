@@ -30,6 +30,80 @@ type OrganizationManagementProps = {
   principal?: CurrentPrincipal;
 };
 
+const previewUsers: UserRead[] = [
+  {
+    id: "preview-user-001",
+    email: "amina.manager@example.org",
+    full_name: "Amina Program Manager",
+    is_active: true,
+    role_name: "me_manager",
+    scope_type: "project",
+    project_id: "nutrition-project",
+    login_slug: "atlas-demo"
+  },
+  {
+    id: "preview-user-002",
+    email: "joseph.field@example.org",
+    full_name: "Joseph Field Officer",
+    is_active: true,
+    role_name: "field_officer",
+    scope_type: "district",
+    geography_id: "district-default",
+    login_slug: "atlas-demo"
+  },
+  {
+    id: "preview-user-003",
+    email: "grace.reviewer@example.org",
+    full_name: "Grace Data Reviewer",
+    is_active: false,
+    role_name: "data_reviewer",
+    scope_type: "region",
+    geography_id: "region-default",
+    login_slug: "atlas-demo"
+  }
+];
+
+const previewCatalog: AccessCatalog = {
+  roles: [
+    {
+      name: "me_manager",
+      label: "M&E Manager",
+      description: "Can manage forms, review submissions, approve data, and prepare reports for assigned projects.",
+      scope_type: "project",
+      permissions: ["forms.create", "submissions.approve", "reports.export", "indicators.manage"],
+      workflow_actions: ["approve_submission", "request_correction", "export_report"],
+      menu_views: ["dashboard", "forms", "submissions", "analytics", "indicators"]
+    },
+    {
+      name: "field_officer",
+      label: "Field Officer",
+      description: "Can collect assigned forms, save offline submissions, and sync field evidence.",
+      scope_type: "district",
+      permissions: ["forms.collect", "submissions.create", "media.upload"],
+      workflow_actions: ["collect_data", "sync_offline"],
+      menu_views: ["dashboard", "forms", "connectivity", "help"]
+    },
+    {
+      name: "data_reviewer",
+      label: "Data Reviewer",
+      description: "Can inspect imported data, resolve validation issues, and route corrections.",
+      scope_type: "region",
+      permissions: ["data.import", "data.clean", "submissions.review"],
+      workflow_actions: ["review_data", "route_correction"],
+      menu_views: ["dashboard", "data", "submissions", "governance"]
+    }
+  ],
+  permissions: [
+    { key: "forms.create", label: "Create forms", group: "Forms" },
+    { key: "forms.collect", label: "Collect forms", group: "Forms" },
+    { key: "submissions.approve", label: "Approve submissions", group: "Review" },
+    { key: "data.import", label: "Import data", group: "Data" },
+    { key: "reports.export", label: "Export reports", group: "Reports" }
+  ],
+  scope_types: ["organization", "country", "region", "district", "project", "own"],
+  workflow_actions: ["collect_data", "review_data", "approve_submission", "request_correction", "export_report"]
+};
+
 export function OrganizationManagement({ token, principal }: OrganizationManagementProps) {
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
@@ -55,30 +129,36 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const [routeUserId, setRouteUserId] = useState("");
   const [routePriority, setRoutePriority] = useState<"low" | "normal" | "high" | "urgent">("normal");
   const [routeInstructions, setRouteInstructions] = useState("Review, comment, and approve or request corrections.");
+  const [localUsers, setLocalUsers] = useState<UserRead[]>(previewUsers);
+  const [accessResult, setAccessResult] = useState("");
+  const [routeResult, setRouteResult] = useState("");
+  const [accountResult, setAccountResult] = useState("");
+  const [adminGuideResult, setAdminGuideResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const isPreview = token === "preview-token";
 
   const usersQuery = useQuery({
     queryKey: ["users", token],
     queryFn: () => listUsers(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
 
   const rolesQuery = useQuery({
     queryKey: ["roles", token],
     queryFn: () => listRoles(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
 
   const catalogQuery = useQuery({
     queryKey: ["access-catalog", token],
     queryFn: () => getAccessCatalog(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
 
   const unitsQuery = useQuery({
     queryKey: ["organization-units", token],
     queryFn: () => listOrganizationUnits(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreview)
   });
 
   const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
@@ -146,6 +226,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         organization_unit_id: editUnitId || null
       }),
     onSuccess: async (user) => {
+      setAccessResult(`${user.full_name} now has the ${(user.role_name ?? "selected").replaceAll("_", " ")} role with ${(user.scope_type ?? "organization").replaceAll("_", " ")} scope.`);
       pushToast({ title: "Access updated", description: `${user.full_name}'s role and scope were updated`, tone: "success" });
       await usersQuery.refetch();
     },
@@ -156,6 +237,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     mutationFn: (payload: { userId: string; active: boolean; name: string }) =>
       updateUser(token ?? "", payload.userId, { is_active: payload.active }),
     onSuccess: async (user) => {
+      setAccountResult(`${user.full_name} is now ${user.is_active ? "active" : "inactive"}. This status controls whether the person can sign in and sync data.`);
       pushToast({
         title: user.is_active ? "User activated" : "User deactivated",
         description: `${user.full_name}'s account status was updated`,
@@ -169,6 +251,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const resetMutation = useMutation({
     mutationFn: (user: UserRead) => resetUserPassword(token ?? "", user.id),
     onSuccess: (reset) => {
+      setAccountResult(`Temporary password generated: ${reset.temporary_password}. Share it securely and ask the user to change it after sign-in.`);
       pushToast({
         title: "Password reset",
         description: `Temporary password: ${reset.temporary_password}`,
@@ -190,6 +273,8 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         instructions: routeInstructions
       }),
     onSuccess: (route) => {
+      const target = routeTargetType === "role" ? routeRoleName : routeTargetType === "user" ? routeUserId : routeTeamId;
+      setRouteResult(`${route.title} was routed as ${route.priority} priority to ${routeTargetType}: ${target || "selected target"}. Instructions: ${routeInstructions}`);
       pushToast({
         title: "Data routed",
         description: `${route.title} was sent to the selected ${routeTargetType}.`,
@@ -199,6 +284,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     onError: () => pushToast({ title: "Data was not routed", description: "Choose a valid role, team, or user before sending.", tone: "danger" })
   });
 
+  const displayedUsers = isPreview ? localUsers : usersQuery.data ?? [];
   const roles: RoleRead[] =
     rolesQuery.data ??
     ["owner", "admin", "manager", "collector"].map((name) => ({
@@ -207,7 +293,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
       name,
       permissions: []
     }));
-  const catalog: AccessCatalog | undefined = catalogQuery.data;
+  const catalog: AccessCatalog | undefined = catalogQuery.data ?? (isPreview ? previewCatalog : undefined);
   const catalogRoles = catalog?.roles ?? [];
   const selectedRole = catalogRoles.find((role) => role.name === roleName) ?? catalogRoles[0];
   const selectedEditRole = catalogRoles.find((role) => role.name === editRoleName) ?? catalogRoles[0];
@@ -252,6 +338,70 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     setEditGeographyId(user.geography_id ?? "");
     setEditProjectId(user.project_id ?? "");
     setEditUnitId(user.organization_unit_id ?? "");
+    setAdminGuideResult(
+      `${user.full_name} currently has the ${(user.role_name ?? "unassigned").replaceAll("_", " ")} role with ${(user.scope_type ?? "not scoped").replaceAll("_", " ")} scope. Review their status, role, and scope before changing access.`
+    );
+  }
+
+  function invitePreviewUser(): void {
+    const nextUser: UserRead = {
+      id: `preview-user-${Date.now()}`,
+      email,
+      full_name: fullName,
+      is_active: true,
+      role_name: roleName,
+      scope_type: scopeType,
+      login_slug: "atlas-demo",
+      temporary_password: "ChangeMe12345!"
+    };
+    setLocalUsers((current) => [nextUser, ...current]);
+    setLastInvite(nextUser);
+    setEmail("");
+    setFullName("");
+    pushToast({ title: "Preview user invited", description: `${nextUser.full_name} was added to the local preview roster.`, tone: "success" });
+  }
+
+  function updatePreviewAccess(): void {
+    const selectedUser = localUsers.find((user) => user.id === selectedUserId);
+    setLocalUsers((current) =>
+      current.map((user) =>
+        user.id === selectedUserId
+          ? {
+              ...user,
+              role_name: editRoleName,
+              scope_type: editScopeType,
+              geography_id: editGeographyId || null,
+              project_id: editProjectId || null,
+              organization_unit_id: editUnitId || null
+            }
+          : user
+        )
+    );
+    setAccessResult(
+      `${selectedUser?.full_name ?? "Selected user"} now has the ${editRoleName.replaceAll("_", " ")} role with ${editScopeType.replaceAll("_", " ")} scope in preview.`
+    );
+    pushToast({ title: "Preview access updated", description: "Role and scope changed in the local preview roster.", tone: "success" });
+  }
+
+  function routePreviewData(): void {
+    const targetLabel =
+      routeTargetType === "role"
+        ? routeRoleName.replaceAll("_", " ")
+        : routeTargetType === "user"
+          ? displayedUsers.find((user) => user.id === routeUserId)?.full_name ?? "selected user"
+          : unitsQuery.data?.find((unit) => unit.id === routeTeamId)?.name ?? "selected team";
+    setRouteResult(`${routeTitle} was queued as ${routePriority} priority for ${targetLabel}. Instructions: ${routeInstructions}`);
+    pushToast({ title: "Preview route sent", description: `${routeTitle} was queued for the selected ${routeTargetType}.`, tone: "success" });
+  }
+
+  function describeAccessMetric(label: string, value: string, text: string): void {
+    setAdminGuideResult(`${label}: ${value}. ${text}. Use this access model to keep work visible only to the right people while still routing reviews, exports, and corrections efficiently.`);
+  }
+
+  function describePermission(permission: string): void {
+    setAdminGuideResult(
+      `${permission.replaceAll(".", " ").replaceAll("_", " ")} allows a specific system action. Only assign this through a role when the person needs it for their daily work, approval responsibility, or reporting duty.`
+    );
   }
 
   const userColumns: TableColumn<UserRead>[] = [
@@ -303,11 +453,35 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
             size="sm"
             type="button"
             variant="ghost"
-            onClick={() => statusMutation.mutate({ userId: user.id, active: !user.is_active, name: user.full_name })}
+            onClick={() => {
+              if (isPreview) {
+                setLocalUsers((current) => current.map((item) => (item.id === user.id ? { ...item, is_active: !item.is_active } : item)));
+                setAccountResult(`${user.full_name} was ${user.is_active ? "deactivated" : "activated"} in preview. Their roster status now reflects the change.`);
+                pushToast({
+                  title: user.is_active ? "Preview user deactivated" : "Preview user activated",
+                  description: `${user.full_name}'s status changed locally.`,
+                  tone: user.is_active ? "warning" : "success"
+                });
+                return;
+              }
+              statusMutation.mutate({ userId: user.id, active: !user.is_active, name: user.full_name });
+            }}
           >
             {user.is_active ? "Deactivate" : "Activate"}
           </Button>
-          <Button size="sm" type="button" variant="ghost" onClick={() => resetMutation.mutate(user)}>
+          <Button
+            size="sm"
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              if (isPreview) {
+                setAccountResult(`Temporary password generated for ${user.full_name}: ChangeMe12345!. Share it securely and ask the user to change it after sign-in.`);
+                pushToast({ title: "Preview password reset", description: "Temporary password: ChangeMe12345!", tone: "warning" });
+                return;
+              }
+              resetMutation.mutate(user);
+            }}
+          >
             Reset password
           </Button>
         </div>
@@ -330,7 +504,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="accent">{catalogRoles.length || roles.length} enterprise roles</Badge>
-            <Badge tone="neutral">{usersQuery.data?.length ?? 0} users</Badge>
+            <Badge tone="neutral">{displayedUsers.length} users</Badge>
             <Badge tone="neutral">{unitsQuery.data?.length ?? 0} units</Badge>
           </div>
         </div>
@@ -361,6 +535,18 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         </div>
       ) : null}
 
+      {adminGuideResult ? (
+        <section className="rounded-2xl border border-primary/25 bg-primary/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 text-primary" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Admin guidance</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{adminGuideResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <section className="surface-premium rounded-2xl p-4">
           <div className="flex items-center gap-2">
@@ -374,11 +560,16 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
               ["Scopes", `${catalog?.scope_types.length ?? 0}`, "Country, region, district, project, own"],
               ["Units", `${unitsQuery.data?.length ?? 0}`, "Countries, regions, districts, and teams"]
             ].map(([label, value, text]) => (
-              <div className="rounded-xl border bg-background/80 p-3" key={label}>
+              <button
+                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                key={label}
+                onClick={() => describeAccessMetric(label, value, text)}
+                type="button"
+              >
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-2 text-2xl font-semibold">{value}</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -394,7 +585,18 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone="accent">{selectedRole?.scope_type ?? scopeType} scope</Badge>
             {(selectedRole?.workflow_actions ?? []).slice(0, 3).map((action) => (
-              <Badge key={action} tone="neutral">{action.replaceAll("_", " ")}</Badge>
+              <button
+                key={action}
+                className="rounded-full"
+                onClick={() =>
+                  setAdminGuideResult(
+                    `${action.replaceAll("_", " ")} is a workflow action included with ${selectedRole?.label ?? roleName}. Confirm the user needs this action before inviting them.`
+                  )
+                }
+                type="button"
+              >
+                <Badge tone="neutral">{action.replaceAll("_", " ")}</Badge>
+              </button>
             ))}
           </div>
         </aside>
@@ -406,6 +608,14 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
             className="rounded-lg border bg-panel p-4"
             onSubmit={(event) => {
               event.preventDefault();
+              if (isPreview) {
+                pushToast({
+                  title: "Preview organization ready",
+                  description: "Organization creation is disabled in preview, but this setup flow is ready for platform admins.",
+                  tone: "neutral"
+                });
+                return;
+              }
               organizationMutation.mutate();
             }}
           >
@@ -505,6 +715,10 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           className="rounded-lg border bg-panel p-4"
           onSubmit={(event) => {
             event.preventDefault();
+            if (isPreview) {
+              invitePreviewUser();
+              return;
+            }
             userMutation.mutate();
           }}
         >
@@ -588,11 +802,34 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           </Button>
           <div className="mt-4 rounded-xl border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground">
             Only roles you are allowed to delegate appear here. The selected role also limits the access scopes you can assign.
+            <button
+              className="ml-1 font-medium text-primary hover:underline"
+              onClick={() =>
+                setAdminGuideResult(
+                  `${selectedRole?.label ?? roleName} is being invited with ${scopeType.replaceAll("_", " ")} scope. This means their menus, API access, approvals, and visible records will follow that role and scope combination.`
+                )
+              }
+              type="button"
+            >
+              Preview this access.
+            </button>
           </div>
         </form>
       </div>
 
-      <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={usersQuery.data ?? []} searchLabel="Search users" title="Users" />
+      <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={displayedUsers} searchLabel="Search users" title="Users" />
+
+      {accountResult ? (
+        <section className="rounded-2xl border bg-panel p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <KeyRound aria-hidden="true" className="mt-0.5 text-primary" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Account action result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{accountResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="surface-premium rounded-2xl p-4">
         <div className="flex items-center gap-2">
@@ -606,6 +843,10 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           className="mt-4 grid gap-4 lg:grid-cols-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (isPreview) {
+              updatePreviewAccess();
+              return;
+            }
             userUpdateMutation.mutate();
           }}
         >
@@ -615,13 +856,13 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
               className="mt-2"
               value={selectedUserId}
               onChange={(event) => {
-                const user = usersQuery.data?.find((item) => item.id === event.target.value);
+                const user = displayedUsers.find((item) => item.id === event.target.value);
                 if (user) selectUser(user);
               }}
               required
             >
               <option value="">Choose a user</option>
-              {(usersQuery.data ?? []).map((user) => (
+              {displayedUsers.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.full_name} - {user.email}
                 </option>
@@ -670,12 +911,29 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           <div className="rounded-xl border bg-background/80 p-3 text-xs leading-5 text-muted-foreground lg:col-span-2">
             <span className="block font-medium text-foreground">{selectedEditRole?.label ?? editRoleName}</span>
             {selectedEditRole?.description ?? "Choose a role to preview what this user can do."}
+            <button
+              className="mt-2 block font-medium text-primary hover:underline"
+              onClick={() =>
+                setAdminGuideResult(
+                  `${selectedEditRole?.label ?? editRoleName} with ${editScopeType.replaceAll("_", " ")} scope will control this user's menus, allowed actions, visible data, and approval responsibilities after saving.`
+                )
+              }
+              type="button"
+            >
+              Explain this access change
+            </button>
           </div>
           <Button className="self-end" disabled={!selectedUserId || userUpdateMutation.isPending} type="submit" variant="primary">
             <ShieldCheck aria-hidden="true" />
             Save access
           </Button>
         </form>
+        {accessResult ? (
+          <div className="mt-4 rounded-xl border border-success/30 bg-success/10 p-3" aria-live="polite">
+            <p className="text-sm font-semibold">Access change saved</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{accessResult}</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="surface-premium rounded-2xl p-4">
@@ -690,6 +948,10 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           className="mt-4 grid gap-4 lg:grid-cols-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (isPreview) {
+              routePreviewData();
+              return;
+            }
             routeMutation.mutate();
           }}
         >
@@ -749,7 +1011,7 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
               Target user
               <Select className="mt-2" value={routeUserId} onChange={(event) => setRouteUserId(event.target.value)} required>
                 <option value="">Choose a user</option>
-                {(usersQuery.data ?? []).map((user) => (
+                {displayedUsers.map((user) => (
                   <option key={user.id} value={user.id}>{user.full_name} - {user.role_name}</option>
                 ))}
               </Select>
@@ -763,7 +1025,28 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
             <ShieldCheck aria-hidden="true" />
             Send route
           </Button>
+          <div className="rounded-xl border bg-background/80 p-3 text-xs leading-5 text-muted-foreground lg:col-span-3">
+            <span className="font-medium text-foreground">Route preview: </span>
+            {routeTitle} will be sent as {routePriority} priority to a {routeTargetType}. Routes create a queue item and keep instructions visible for reviewers.
+            <button
+              className="ml-1 font-medium text-primary hover:underline"
+              onClick={() =>
+                setAdminGuideResult(
+                  `${routeTitle} will route ${routeDataType.replaceAll("_", " ")} to the selected ${routeTargetType} with ${routePriority} priority. Use clear instructions so the receiver knows whether to review, approve, correct, or export the data.`
+                )
+              }
+              type="button"
+            >
+              Explain route impact.
+            </button>
+          </div>
         </form>
+        {routeResult ? (
+          <div className="mt-4 rounded-xl border border-success/30 bg-success/10 p-3" aria-live="polite">
+            <p className="text-sm font-semibold">Route queued</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{routeResult}</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="surface-premium rounded-2xl p-4">
@@ -776,10 +1059,15 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {(selectedRole?.permissions ?? roles[0]?.permissions ?? []).slice(0, 12).map((permission) => (
-            <div className="flex items-center gap-2 rounded-xl border bg-background/80 px-3 py-2 text-sm" key={permission}>
+            <button
+              className="flex items-center gap-2 rounded-xl border bg-background/80 px-3 py-2 text-left text-sm transition hover:border-primary/30 hover:bg-primary/5"
+              key={permission}
+              onClick={() => describePermission(permission)}
+              type="button"
+            >
               <CheckCircle2 aria-hidden="true" className="text-success" size={15} />
               <span>{permission.replaceAll(".", " ").replaceAll("_", " ")}</span>
-            </div>
+            </button>
           ))}
         </div>
       </section>

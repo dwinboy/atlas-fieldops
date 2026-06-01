@@ -12,7 +12,8 @@ import {
   Search,
   Sparkles,
   Star,
-  Wand2
+  Wand2,
+  X
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -179,6 +180,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
   const [activeCategory, setActiveCategory] = useState("Recommended");
   const [query, setQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
+  const [templateResult, setTemplateResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -195,6 +197,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         publish: false
       }),
     onSuccess: (form) => {
+      setTemplateResult(`${form.name} was copied as a backend draft. It is ready for editing in the form builder before publication.`);
       pushToast({
         title: "Template copied",
         description: `${form.name} is now a backend draft form.`,
@@ -222,16 +225,38 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
 
   function handleUseTemplate(template: FormTemplateCard) {
     if (token && token !== "preview-token") {
+      setTemplateResult(`${template.name} is being copied to your backend draft forms. You will be taken to the form builder after it is ready.`);
       duplicateMutation.mutate(template);
       return;
     }
     setPendingTemplateId(template.id);
+    setTemplateResult(`${template.name} was copied into the form builder. Next: customize questions, preview mobile layout, then publish.`);
     pushToast({
       title: "Template copied",
       description: `${template.name} is ready for quick edits in the form builder.`,
       tone: "success"
     });
     setActiveView("forms");
+  }
+
+  function suggestTemplate() {
+    const recommended =
+      visibleTemplates.find((template) => template.featured && template.hasGps && template.hasMedia) ??
+      visibleTemplates.find((template) => template.featured) ??
+      visibleTemplates[0] ??
+      formTemplates[0];
+    if (!recommended) {
+      setTemplateResult("No template matched this search. Clear the search or select another category to broaden the suggestion.");
+      pushToast({ title: "No template found", description: "Try another search or category.", tone: "warning" });
+      return;
+    }
+    setSelectedTemplateId(recommended.id);
+    setTemplateResult(`${recommended.name} is selected as the best starting point because it supports offline field collection${recommended.hasGps ? ", GPS" : ""}${recommended.hasMedia ? ", and media evidence" : ""}.`);
+    pushToast({
+      title: "Suggested template selected",
+      description: `${recommended.name} is a strong starting point for offline field collection.`,
+      tone: "success"
+    });
   }
 
   return (
@@ -247,7 +272,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button">
+          <Button onClick={suggestTemplate} type="button">
             <Wand2 aria-hidden="true" />
             AI suggestions
           </Button>
@@ -268,11 +293,21 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
           <div className="relative max-w-2xl flex-1">
             <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
-              className="pl-9"
+              className="pl-9 pr-10"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search farmer registration, baseline survey, vaccination..."
               value={query}
             />
+            {query ? (
+              <button
+                aria-label="Clear template search"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setQuery("")}
+                type="button"
+              >
+                <X aria-hidden="true" size={14} />
+              </button>
+            ) : null}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Filter aria-hidden="true" size={15} />
@@ -297,18 +332,44 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         </div>
       </div>
 
+      {templateResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <Sparkles aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Template result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{templateResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {visibleTemplates.map((template) => (
-            <TemplateCard
-              active={selectedTemplate?.id === template.id}
-              key={template.id}
-              onSelect={() => setSelectedTemplateId(template.id)}
-              onUse={() => handleUseTemplate(template)}
-              template={template}
-            />
-          ))}
-        </div>
+        {visibleTemplates.length ? (
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            {visibleTemplates.map((template) => (
+              <TemplateCard
+                active={selectedTemplate?.id === template.id}
+                key={template.id}
+                onSelect={() => setSelectedTemplateId(template.id)}
+                onUse={() => handleUseTemplate(template)}
+                template={template}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-panel p-6 text-center shadow-line">
+            <Search aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
+            <h2 className="mt-3 text-base font-semibold">No templates match this search</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+              Clear the search or choose another category. Atlas templates are organized by field workflow, not only by sector name.
+            </p>
+            <Button className="mt-4" onClick={() => setQuery("")} type="button" variant="secondary">
+              <X aria-hidden="true" />
+              Clear search
+            </Button>
+          </div>
+        )}
         {selectedTemplate ? <PreviewPanel template={selectedTemplate} /> : null}
       </div>
 

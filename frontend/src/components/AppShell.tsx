@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   BarChart3,
   Boxes,
   Building2,
@@ -11,6 +12,7 @@ import {
   Fingerprint,
   Files,
   GitPullRequestArrow,
+  HelpCircle,
   LayoutDashboard,
   LogOut,
   Map,
@@ -45,6 +47,7 @@ type AppShellProps = {
 };
 
 type NavItem = { id: WorkspaceView; label: string; hint: string; icon: typeof LayoutDashboard };
+type ViewGuidance = { step: string; outcome: string; next?: WorkspaceView; nextLabel?: string };
 
 const navGroups: { label: string; items: NavItem[] }[] = [
   {
@@ -90,10 +93,139 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { id: "organizations", label: "Team & access", hint: "Roles & regions", icon: Building2 },
       { id: "workflows", label: "Approvals", hint: "Rules & escalation", icon: GitPullRequestArrow }
     ]
+  },
+  {
+    label: "Support",
+    items: [
+      { id: "help", label: "Help guide", hint: "How to use Atlas", icon: HelpCircle }
+    ]
   }
 ];
 
 const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
+
+const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
+  dashboard: {
+    step: "Start here",
+    outcome: "Use this daily summary to decide what needs review, sync attention, or team follow-up.",
+    next: "submissions",
+    nextLabel: "Review data"
+  },
+  ecosystem: {
+    step: "Understand the system",
+    outcome: "See how projects, forms, people, submissions, cases, and reports connect before changing workflows.",
+    next: "programs",
+    nextLabel: "Open projects"
+  },
+  enterprise: {
+    step: "Operate at scale",
+    outcome: "Coordinate assets, budgets, documents, and operational accountability across field programs.",
+    next: "governance",
+    nextLabel: "Check governance"
+  },
+  governance: {
+    step: "Protect data",
+    outcome: "Create rules for auditability, retention, validation, consent, exports, and lineage.",
+    next: "data",
+    nextLabel: "Review data tools"
+  },
+  workforce: {
+    step: "Control access",
+    outcome: "Manage teams, departments, delegations, approvals, and workforce access requests.",
+    next: "organizations",
+    nextLabel: "Manage users"
+  },
+  data: {
+    step: "Prepare datasets",
+    outcome: "Import, clean, map, edit, export, and share operational data with fewer manual spreadsheet steps.",
+    next: "forms",
+    nextLabel: "Build forms"
+  },
+  programs: {
+    step: "Plan delivery",
+    outcome: "Set up programs, donors, regions, milestones, and reporting structures for field execution.",
+    next: "indicators",
+    nextLabel: "Track indicators"
+  },
+  beneficiaries: {
+    step: "Manage records",
+    outcome: "Keep beneficiary, household, farmer, group, and visit records organized and traceable.",
+    next: "submissions",
+    nextLabel: "Review submissions"
+  },
+  indicators: {
+    step: "Measure results",
+    outcome: "Track baselines, targets, formulas, progress, and report-ready performance data.",
+    next: "analytics",
+    nextLabel: "Open reports"
+  },
+  cases: {
+    step: "Resolve follow-up",
+    outcome: "Manage complaints, referrals, corrections, incidents, and escalations through closure.",
+    next: "workflows",
+    nextLabel: "Review approvals"
+  },
+  map: {
+    step: "Verify coverage",
+    outcome: "Use GPS evidence and coverage layers to understand where field work is happening.",
+    next: "connectivity",
+    nextLabel: "Check sync health"
+  },
+  organizations: {
+    step: "Administer access",
+    outcome: "Manage users, roles, regions, organization profile, permissions, and assignment routes.",
+    next: "workforce",
+    nextLabel: "Open workforce"
+  },
+  officers: {
+    step: "Enable field teams",
+    outcome: "Invite officers, monitor devices, check sync health, and understand recent field activity.",
+    next: "forms",
+    nextLabel: "Assign forms"
+  },
+  forms: {
+    step: "Design collection",
+    outcome: "Create mobile-ready forms with clear labels, validation, media evidence, and offline behavior.",
+    next: "submissions",
+    nextLabel: "Review collected data"
+  },
+  submissions: {
+    step: "Validate evidence",
+    outcome: "Approve clean submissions, reject poor data, or request corrections with a clear audit trail.",
+    next: "analytics",
+    nextLabel: "Report results"
+  },
+  templates: {
+    step: "Start faster",
+    outcome: "Choose a professional template, customize questions, and publish a form for field teams.",
+    next: "forms",
+    nextLabel: "Customize form"
+  },
+  analytics: {
+    step: "Communicate results",
+    outcome: "Create report-ready views, exports, summaries, and donor-facing operational evidence.",
+    next: "help",
+    nextLabel: "Read guidance"
+  },
+  workflows: {
+    step: "Standardize approvals",
+    outcome: "Define correction paths, review rules, escalation steps, and operational accountability.",
+    next: "submissions",
+    nextLabel: "Open review queue"
+  },
+  connectivity: {
+    step: "Keep offline work safe",
+    outcome: "Monitor sync queues, retries, weak connections, and field-device upload status.",
+    next: "officers",
+    nextLabel: "Check officers"
+  },
+  help: {
+    step: "Learn the platform",
+    outcome: "Use beginner-friendly guidance to understand every major Atlas FieldOps workflow.",
+    next: "templates",
+    nextLabel: "Start with templates"
+  }
+};
 
 function organizationInitials(name: string): string {
   const words = name
@@ -129,11 +261,18 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
   const collapsedSidebar = useWorkspaceStore((state) => state.collapsedSidebar);
   const toggleSidebar = useWorkspaceStore((state) => state.toggleSidebar);
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen);
+  const lastActionResult = useWorkspaceStore((state) => state.lastActionResult);
   const theme = useWorkspaceStore((state) => state.theme);
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme);
 
   const allowedViews = principal?.menu_views?.length ? new Set(principal.menu_views) : null;
-  const visibleNavItems = allowedViews ? navItems.filter((item) => allowedViews.has(item.id)) : navItems;
+  const visibleNavItems = allowedViews ? navItems.filter((item) => item.id === "help" || allowedViews.has(item.id)) : navItems;
+  const activeItem = navItems.find((item) => item.id === activeView) ?? navItems[0];
+  const activeGroup = navGroups.find((group) => group.items.some((item) => item.id === activeView));
+  const guidance = viewGuidance[activeView];
+  const nextItem = guidance.next && visibleNavItems.some((item) => item.id === guidance.next)
+    ? navItems.find((item) => item.id === guidance.next)
+    : null;
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">
@@ -271,6 +410,10 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
             <Button aria-label="Open command palette" size="icon" variant="ghost" onClick={() => setCommandOpen(true)}>
               <Command aria-hidden="true" />
             </Button>
+            <Button onClick={() => setActiveView("help")} type="button" variant="ghost">
+              <HelpCircle aria-hidden="true" />
+              <span className="hidden sm:inline">Help guide</span>
+            </Button>
             <Button aria-label="Toggle theme" size="icon" variant="ghost" onClick={toggleTheme}>
               {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
             </Button>
@@ -282,6 +425,47 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
         </header>
 
         {mobileNavOpen ? <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div> : null}
+
+        <section className="border-b bg-background/80 px-3 py-4 sm:px-5 lg:px-7">
+          <div className="mx-auto w-full max-w-[1480px] space-y-3">
+            <div className="flex flex-col gap-3 rounded-xl border bg-panel/86 p-4 shadow-line md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  {activeGroup?.label ?? "Workspace"} / {activeItem.label}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight">{activeItem.label}</h1>
+                  <Badge tone="accent">{guidance.step}</Badge>
+                </div>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  {guidance.outcome}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button onClick={() => setCommandOpen(true)} type="button" variant="secondary">
+                  <Command aria-hidden="true" />
+                  Search actions
+                </Button>
+                {nextItem ? (
+                  <Button
+                    onClick={() => setActiveView(nextItem.id)}
+                    type="button"
+                    variant="primary"
+                  >
+                    {guidance.nextLabel ?? nextItem.label}
+                    <ArrowRight aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {lastActionResult ? (
+              <section className="rounded-xl border border-success/30 bg-success/10 p-3" aria-live="polite">
+                <p className="text-sm font-semibold">Last action</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{lastActionResult}</p>
+              </section>
+            ) : null}
+          </div>
+        </section>
 
         <main className="mx-auto w-full max-w-[1480px] px-3 py-6 sm:px-5 lg:px-7">{children}</main>
       </div>

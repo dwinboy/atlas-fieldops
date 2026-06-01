@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, DatabaseZap, Fingerprint, LogIn, RadioTower, ShieldCheck } from "lucide-react";
+import { Activity, DatabaseZap, Eye, EyeOff, Fingerprint, KeyRound, LogIn, RadioTower, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const [email, setEmail] = useState("superadmin@example.com");
   const [password, setPassword] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("atlas-demo");
+  const [showPassword, setShowPassword] = useState(false);
 
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
@@ -29,6 +30,13 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       onAuthenticated(response.access_token);
     }
   });
+
+  function useDemoCredentials(): void {
+    setOrganizationSlug("atlas-demo");
+    setEmail("superadmin@example.com");
+    setPassword("ChangeMe12345!");
+    pushToast({ title: "Demo credentials filled", description: "Local development sign-in fields are ready.", tone: "success" });
+  }
 
   return (
     <section className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
@@ -118,6 +126,21 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           <p className="mt-2 text-sm text-muted-foreground">
             Use your organization slug, work email, and password to continue.
           </p>
+          <button
+            className="mt-4 flex w-full items-start gap-3 rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
+            onClick={useDemoCredentials}
+            type="button"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <KeyRound aria-hidden="true" size={16} />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold">Use local demo credentials</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Fills the demo slug, admin email, and temporary password for local development.
+              </span>
+            </span>
+          </button>
 
           <label className="mt-6 block text-sm font-medium" htmlFor="organization">
             Organization login slug
@@ -150,18 +173,28 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           <label className="mt-4 block text-sm font-medium" htmlFor="password">
             Password
           </label>
-          <Input
-            id="password"
-            className="mt-2 h-10"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            minLength={12}
-            required
-          />
+          <div className="relative mt-2">
+            <Input
+              id="password"
+              className="h-10 pr-10"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              minLength={12}
+              required
+            />
+            <button
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => setShowPassword((value) => !value)}
+              type="button"
+            >
+              {showPassword ? <EyeOff aria-hidden="true" size={15} /> : <Eye aria-hidden="true" size={15} />}
+            </button>
+          </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            After running make seed-admin, use ChangeMe12345! for local development.
+            After running <span className="font-mono text-foreground">make seed-admin</span>, use the local demo credentials above.
           </p>
 
           {mutation.isError ? (

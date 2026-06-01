@@ -220,7 +220,9 @@ export const editableRows = [
 export const exportJobs = [
   { id: "EXP-882", name: "Beneficiary registry", format: "XLSX", filter: "Active beneficiaries", status: "Ready", schedule: "Manual" },
   { id: "EXP-881", name: "Farm boundary map", format: "GeoJSON", filter: "Northwest program", status: "Ready", schedule: "Weekly" },
-  { id: "EXP-880", name: "Donor indicator report", format: "PDF", filter: "Q2 approved data", status: "Queued", schedule: "Monthly" }
+  { id: "EXP-880", name: "Donor indicator report", format: "PDF", filter: "Q2 approved data", status: "Queued", schedule: "Monthly" },
+  { id: "EXP-879", name: "Kobo migration package", format: "ZIP", filter: "Survey, media, and submissions", status: "Ready", schedule: "Manual" },
+  { id: "EXP-878", name: "GPS evidence layer", format: "KML", filter: "Approved GPS submissions", status: "Ready", schedule: "Weekly" }
 ];
 
 export const migrationSources = [
@@ -230,6 +232,36 @@ export const migrationSources = [
   "Excel beneficiary lists",
   "GeoJSON farm boundaries",
   "Access database migrations"
+];
+
+export const collectionChannels = [
+  { name: "Mobile app collection", status: "Ready", description: "Offline capture for assigned forms, GPS, signatures, media queues, and retry sync." },
+  { name: "Web form collection", status: "Configured", description: "Browser-based form access for desktop, tablet, and shared-device collection." },
+  { name: "Public link sharing", status: "Controlled", description: "External collection links require project sharing, access rules, and audit visibility." },
+  { name: "Kobo/ODK migration", status: "Supported", description: "Review imported XLSForm, CSV, JSON, ZIP, and media evidence packages before publishing." }
+];
+
+export const exportFormatCatalog = [
+  { format: "CSV", use: "Flat submission tables and lightweight analysis", readiness: "Ready" },
+  { format: "XLSX", use: "Excel review, donor workbooks, and migration handoff", readiness: "Ready" },
+  { format: "GeoJSON", use: "GIS layers for maps, boundaries, and GPS evidence", readiness: "Ready" },
+  { format: "KML", use: "Google Earth and field geography review", readiness: "Ready" },
+  { format: "ZIP", use: "Submission data, media files, and audit package", readiness: "Ready" },
+  { format: "JSON", use: "API handoff and system integrations", readiness: "Ready" }
+];
+
+export const mediaEvidenceItems = [
+  { id: "MED-2048", type: "Photo", record: "Farmer registration", status: "Reviewed", size: "1.8 MB", location: "Bamenda II" },
+  { id: "MED-2047", type: "Signature", record: "Beneficiary consent", status: "Required", size: "220 KB", location: "Dibombari" },
+  { id: "MED-2046", type: "Audio", record: "Case follow-up", status: "Transcription queued", size: "4.1 MB", location: "Bafoussam" },
+  { id: "MED-2045", type: "Video", record: "Infrastructure inspection", status: "Needs review", size: "12.4 MB", location: "Maroua" }
+];
+
+export const sharingPermissionMatrix = [
+  { role: "Data collector", submit: true, view: false, edit: false, export: false },
+  { role: "Supervisor", submit: true, view: true, edit: true, export: false },
+  { role: "Data manager", submit: false, view: true, edit: true, export: true },
+  { role: "External partner", submit: true, view: true, edit: false, export: false }
 ];
 
 export type FormTemplateCard = {

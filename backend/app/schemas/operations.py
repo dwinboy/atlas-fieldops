@@ -17,7 +17,8 @@ SUPPORTED_DATASET_TYPES = {
 }
 
 SUPPORTED_IMPORT_FORMATS = {"csv", "xlsx", "xls", "json", "geojson", "kml", "shapefile", "google_sheet"}
-SUPPORTED_EXPORT_FORMATS = {"csv", "xlsx", "pdf", "json", "geojson"}
+SUPPORTED_EXPORT_FORMATS = {"csv", "xlsx", "pdf", "json", "geojson", "kml", "zip"}
+SUPPORTED_MEDIA_TYPES = {"photo", "signature", "audio", "video", "file"}
 
 
 class ProgramCreate(BaseModel):
@@ -530,6 +531,83 @@ class ExportJobRead(BaseModel):
     status: str
     download_url: str | None
     scheduled: bool
+
+    model_config = {"from_attributes": True}
+
+
+class PublicCollectionLinkCreate(BaseModel):
+    form_id: UUID
+    slug: str = Field(min_length=3, max_length=160, pattern=r"^[a-z0-9-]+$")
+    title: str = Field(min_length=2, max_length=220)
+    description: str | None = Field(default=None, max_length=2000)
+    access_mode: Literal["public", "restricted", "partner"] = "public"
+    require_authentication: bool = False
+    allow_offline_web: bool = True
+    expires_at: datetime | None = None
+    allowed_domains: list[str] = Field(default_factory=list, max_length=20)
+    permission_json: dict[str, object] = Field(default_factory=dict)
+
+
+class PublicCollectionLinkRead(BaseModel):
+    id: UUID
+    form_id: UUID
+    slug: str
+    title: str
+    description: str | None
+    access_mode: str
+    status: str
+    require_authentication: bool
+    allow_offline_web: bool
+    expires_at: datetime | None
+    allowed_domains: list[str]
+    permission_json: dict[str, object]
+    submission_count: int
+    public_url: str
+
+    model_config = {"from_attributes": True}
+
+
+class MediaEvidenceCreate(BaseModel):
+    media_type: str = Field(min_length=3, max_length=40)
+    file_name: str = Field(min_length=2, max_length=240)
+    storage_url: str = Field(min_length=2, max_length=500)
+    mime_type: str = Field(min_length=3, max_length=120)
+    size_bytes: int = Field(default=0, ge=0)
+    submission_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    form_id: UUID | None = None
+    checksum: str | None = Field(default=None, max_length=160)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    captured_at: datetime | None = None
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_media_payload(self) -> "MediaEvidenceCreate":
+        if self.media_type not in SUPPORTED_MEDIA_TYPES:
+            raise ValueError(f"Unsupported media type: {self.media_type}")
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
+
+
+class MediaEvidenceRead(BaseModel):
+    id: UUID
+    submission_id: UUID | None
+    beneficiary_id: UUID | None
+    form_id: UUID | None
+    media_type: str
+    file_name: str
+    storage_url: str
+    mime_type: str
+    size_bytes: int
+    review_status: str
+    checksum: str | None
+    latitude: float | None
+    longitude: float | None
+    captured_at: datetime | None
+    metadata_json: dict[str, object]
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

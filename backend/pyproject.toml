@@ -1,7 +1,7 @@
 [project]
 name = "enterprise-data-backend"
 version = "0.1.0"
-description = "FastAPI backend for enterprise data collection"
+description = "FastAPI backend for Atlas FieldOps"
 requires-python = ">=3.12"
 dependencies = [
   "aiokafka>=0.10",
