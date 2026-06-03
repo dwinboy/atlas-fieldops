@@ -55,7 +55,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-local}
       APP_NAME: ${APP_NAME:-enterprise-data-platform}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://app:change-me-local-postgres@postgres:5432/data_platform}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env before starting the backend}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       JWT_SECRET: ${JWT_SECRET:-replace-me-with-generated-local-secret}
