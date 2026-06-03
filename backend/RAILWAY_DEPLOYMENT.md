@@ -29,11 +29,10 @@ Set these on the backend service:
 APP_ENV=production
 APP_NAME=Atlas FieldOps
 DATABASE_URL=${{ Postgres.DATABASE_URL }}
-DATABASE_SSL=true
 JWT_SECRET=<generate-a-long-random-secret>
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
-CORS_ORIGINS=https://atlas-fieldops-b321xccpu-dwinboys-projects.vercel.app
+CORS_ORIGINS=https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app
 KAFKA_BOOTSTRAP_SERVERS=
 ```
 
@@ -55,7 +54,9 @@ Without Redis, the app can still start, but Redis-backed features should not be 
 
 ## Migrations
 
-Automatic startup and pre-deploy migrations are disabled for Railway. After the service deploys and `DATABASE_URL` is confirmed in the Railway variables panel, run migrations manually from the backend service shell:
+Railway runs Alembic before deployment through `backend/railway.json`. The app
+and Alembic both read the same `DATABASE_URL` environment variable at runtime.
+To run migrations manually from the backend service shell:
 
 ```bash
 alembic upgrade head
@@ -84,6 +85,6 @@ INTERNAL_API_BASE_URL=https://<railway-backend-domain>/api/v1
 
 ## Notes
 
-- Migrations are intentionally manual on Railway so the app can start even if database variables are delayed or being debugged.
+- Keep `DATABASE_URL` as one complete Railway reference value. Do not split it into `PGUSER`, `PGPASSWORD`, `PGHOST`, or related variables.
 - The Docker start command listens on Railway's injected `$PORT`.
 - Do not commit secrets. Keep all production values in Railway variables.

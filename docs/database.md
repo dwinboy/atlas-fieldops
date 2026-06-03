@@ -27,22 +27,27 @@ Run commands from `backend`:
 
 ```bash
 cd backend
-DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/data_platform alembic upgrade head
+alembic upgrade head
 ```
 
 Create a migration after model changes:
 
 ```bash
 cd backend
-DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/data_platform alembic revision --autogenerate -m "describe change"
+alembic revision --autogenerate -m "describe change"
 ```
 
 Generate SQL for review:
 
 ```bash
 cd backend
-DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/data_platform alembic upgrade head --sql
+alembic upgrade head --sql
 ```
+
+Alembic reads `DATABASE_URL` from the runtime environment. Set it in your
+local `.env` file or shell before running these commands. Railway should set
+the backend service variable to `${{ Postgres.DATABASE_URL }}` or the matching
+database service reference.
 
 If Alembic is not installed in the active environment, install it in the backend
 environment before running the commands:

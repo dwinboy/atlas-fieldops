@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from logging.config import fileConfig
 
 from alembic import context
@@ -72,10 +73,14 @@ _TENANT_AWARE_MODELS = (
 )
 
 target_metadata: MetaData = Base.metadata
+logger = logging.getLogger(__name__)
 
 
 def _database_url() -> str:
-    return str(make_url(settings.database_url))
+    return settings.database_url
+
+
+config.set_main_option("sqlalchemy.url", _database_url())
 
 
 def _include_object(
@@ -123,9 +128,13 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    url = make_url(_database_url())
+    logger.info(
+        "database_migration_connecting",
+        extra={"host": url.host, "database": url.database},
+    )
     connectable = create_async_engine(
         _database_url(),
-        connect_args=settings.database_connect_args,
         poolclass=pool.NullPool,
     )
 
