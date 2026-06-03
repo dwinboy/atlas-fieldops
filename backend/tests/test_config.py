@@ -7,9 +7,10 @@ def test_database_url_can_be_empty_until_deployment_injects_it() -> None:
     assert settings.database_url == ""
 
 
-def test_default_cors_origins_include_production_vercel_frontend() -> None:
+def test_default_cors_origins_include_vercel_frontends() -> None:
     settings = Settings(database_url="")
 
+    assert "https://atlas-fieldops.vercel.app" in settings.cors_origins
     assert "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app" in settings.cors_origins
 
 
