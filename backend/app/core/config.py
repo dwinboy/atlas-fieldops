@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 from typing import Annotated, Any
 
+from pydantic import AliasChoices
 from pydantic import Field
 from pydantic import field_validator
 from pydantic import model_validator
@@ -48,7 +49,11 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="", min_length=0)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
-    cors_origins: Annotated[list[str], NoDecode] = REQUIRED_CORS_ORIGINS + LOCAL_CORS_ORIGINS
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default=REQUIRED_CORS_ORIGINS + LOCAL_CORS_ORIGINS,
+        validation_alias=AliasChoices("BACKEND_CORS_ORIGINS", "cors_origins"),
+    )
+    cors_origin_regex: str = r"^https://atlas-fieldops-.*\.vercel\.app$"
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -66,7 +71,7 @@ class Settings(BaseSettings):
             parsed = json.loads(value)
             if isinstance(parsed, list):
                 return parsed
-            raise ValueError("CORS_ORIGINS must be a JSON list of origins")
+            raise ValueError("BACKEND_CORS_ORIGINS must be a JSON list of origins")
         return [origin.strip() for origin in value.split(",") if origin.strip()]
 
     @model_validator(mode="after")

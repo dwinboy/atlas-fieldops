@@ -15,18 +15,18 @@ Atlas FieldOps is a monorepo. Deploy the Next.js web application as the Vercel p
 Set these variables in the Vercel project for Production, Preview, and Development:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=https://api.your-domain.com/api/v1
-INTERNAL_API_BASE_URL=https://api.your-domain.com/api/v1
+NEXT_PUBLIC_API_URL=https://backend-production-13c9.up.railway.app
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` is used by browser-side requests. `INTERNAL_API_BASE_URL` is used by server-rendered routes such as public collection pages.
+`NEXT_PUBLIC_API_URL` is the single frontend API base URL. The frontend app
+adds `/api/v1` automatically when the value is a backend root URL.
 
 ## Backend Requirements
 
 Before the Vercel frontend is considered live for users, the backend must be deployed and reachable over HTTPS. Configure the backend with:
 
 ```bash
-CORS_ORIGINS=["https://your-vercel-domain.vercel.app","https://your-production-domain.com"]
+BACKEND_CORS_ORIGINS=https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app,https://atlastfieldops.com
 ```
 
 Also configure production values for `DATABASE_URL`, `REDIS_URL`, `KAFKA_BOOTSTRAP_SERVERS`, `JWT_SECRET`, and any provider keys. Do not add secrets to the repository.

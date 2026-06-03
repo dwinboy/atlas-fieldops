@@ -773,28 +773,17 @@ export type TemplateDuplicateRequest = {
   publish?: boolean;
 };
 
-const railwayApiBaseUrl = "https://backend-production-13c9.up.railway.app/api/v1";
-const deprecatedApiHosts = ["atlas-fieldops.onrender.com"];
-
-export function resolveApiBaseUrl(...candidates: Array<string | undefined>): string {
-  for (const candidate of candidates) {
-    const apiUrl = candidate?.trim().replace(/\/+$/, "");
-    if (!apiUrl) {
-      continue;
-    }
-    if (deprecatedApiHosts.some((host) => apiUrl.includes(host))) {
-      continue;
-    }
-    return apiUrl.endsWith("/api/v1") ? apiUrl : `${apiUrl}/api/v1`;
+export function resolveApiBaseUrl(candidate: string | undefined): string {
+  const apiUrl = candidate?.trim().replace(/\/+$/, "");
+  if (!apiUrl) {
+    throw new Error("NEXT_PUBLIC_API_URL is required");
   }
-  return railwayApiBaseUrl;
+  return apiUrl.endsWith("/api/v1") ? apiUrl : `${apiUrl}/api/v1`;
 }
 
-const apiBaseUrl = resolveApiBaseUrl(
-  process.env.INTERNAL_API_BASE_URL,
-  process.env.NEXT_PUBLIC_API_URL,
-  process.env.NEXT_PUBLIC_API_BASE_URL
-);
+function getApiBaseUrl(): string {
+  return resolveApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+}
 
 export class ApiError extends Error {
   constructor(
@@ -818,7 +807,7 @@ async function request<T>(
     headers.set("authorization", `Bearer ${options.token}`);
   }
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...options,
     headers,
     body: options.bodyJson === undefined ? options.body : JSON.stringify(options.bodyJson)
@@ -1194,7 +1183,7 @@ export async function uploadImportFile(token: string, datasetType: string, file:
   const body = new FormData();
   body.set("dataset_type", datasetType);
   body.set("file", file);
-  const response = await fetch(`${apiBaseUrl}/operations/data/imports/upload`, {
+  const response = await fetch(`${getApiBaseUrl()}/operations/data/imports/upload`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, accept: "application/json" },
     body

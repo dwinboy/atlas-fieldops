@@ -32,7 +32,7 @@ DATABASE_URL=${{ Postgres.DATABASE_URL }}
 JWT_SECRET=<generate-a-long-random-secret>
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
-CORS_ORIGINS=https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app
+BACKEND_CORS_ORIGINS=https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app,https://atlastfieldops.com
 KAFKA_BOOTSTRAP_SERVERS=
 ```
 
@@ -97,8 +97,7 @@ Expected response:
 Then update Vercel:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=https://<railway-backend-domain>/api/v1
-INTERNAL_API_BASE_URL=https://<railway-backend-domain>/api/v1
+NEXT_PUBLIC_API_URL=https://<railway-backend-domain>
 ```
 
 ## Notes
