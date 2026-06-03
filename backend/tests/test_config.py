@@ -25,6 +25,8 @@ def test_default_cors_origins_include_vercel_frontends() -> None:
 
     assert "https://atlas-fieldops.vercel.app" in settings.cors_origins
     assert "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app" in settings.cors_origins
+    assert "https://atlastfieldops.com" in settings.cors_origins
+    assert "https://atlas-fieldops.vercel.app/app" not in settings.cors_origins
 
 
 def test_existing_async_sqlalchemy_url_is_preserved() -> None:
@@ -68,3 +70,4 @@ def test_required_vercel_origins_are_kept_when_host_env_overrides_cors() -> None
     assert "https://old-preview.vercel.app" in settings.cors_origins
     assert "https://atlas-fieldops.vercel.app" in settings.cors_origins
     assert "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app" in settings.cors_origins
+    assert "https://atlastfieldops.com" in settings.cors_origins

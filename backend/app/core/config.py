@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REQUIRED_CORS_ORIGINS = [
     "https://atlas-fieldops.vercel.app",
     "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app",
+    "https://atlastfieldops.com",
 ]
 
 LOCAL_CORS_ORIGINS = [
