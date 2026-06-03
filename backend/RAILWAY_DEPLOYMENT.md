@@ -19,7 +19,7 @@ backend
 /backend/railway.toml
 ```
 
-Railway will build the Dockerfile, run Alembic migrations in the pre-deploy step, then start FastAPI on Railway's `$PORT`.
+Railway will build the Dockerfile and start FastAPI on Railway's `$PORT`.
 
 ## Required Variables
 
@@ -53,6 +53,14 @@ REDIS_URL=${{ Redis.REDIS_URL }}
 
 Without Redis, the app can still start, but Redis-backed features should not be treated as production-ready.
 
+## Migrations
+
+Automatic startup and pre-deploy migrations are disabled for Railway. After the service deploys and `DATABASE_URL` is confirmed in the Railway variables panel, run migrations manually from the backend service shell:
+
+```bash
+alembic upgrade head
+```
+
 ## Deployment Checks
 
 After Railway deploys, verify:
@@ -76,7 +84,6 @@ INTERNAL_API_BASE_URL=https://<railway-backend-domain>/api/v1
 
 ## Notes
 
-- Migrations run through Railway's pre-deploy command: `sh scripts/railway-predeploy.sh`.
-- Runtime startup migrations are skipped automatically on Railway to avoid duplicate migration runs.
+- Migrations are intentionally manual on Railway so the app can start even if database variables are delayed or being debugged.
 - The Docker start command listens on Railway's injected `$PORT`.
 - Do not commit secrets. Keep all production values in Railway variables.

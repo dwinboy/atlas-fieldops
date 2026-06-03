@@ -1,6 +1,12 @@
 from app.core.config import Settings
 
 
+def test_database_url_can_be_empty_until_deployment_injects_it() -> None:
+    settings = Settings(database_url="", cors_origins=[])
+
+    assert settings.database_url == ""
+
+
 def test_render_postgres_url_is_normalized_for_async_sqlalchemy() -> None:
     settings = Settings(
         database_url="postgresql://app:secret@example.render.com:5432/atlas",

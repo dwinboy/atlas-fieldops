@@ -14,7 +14,6 @@ watchPatterns = [
 ]
 
 [deploy]
-preDeployCommand = "sh scripts/railway-predeploy.sh"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

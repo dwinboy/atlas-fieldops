@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     app_name: str = "enterprise-data-platform"
     app_env: str = "local"
-    database_url: str = "postgresql+asyncpg://app:app@localhost:5432/data_platform"
+    database_url: str = ""
     database_host: str | None = None
     database_port: int = 5432
     database_name: str | None = None
