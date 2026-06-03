@@ -26,7 +26,7 @@ def test_jwt_secret_reads_uppercase_env_var(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None, database_url="sqlite+aiosqlite:///test.db", cors_origins=[])
 
-    assert settings.jwt_secret == TEST_JWT_SECRET
+    assert settings.JWT_SECRET == TEST_JWT_SECRET
 
 
 def test_railway_postgres_url_is_normalized_for_async_sqlalchemy() -> None:

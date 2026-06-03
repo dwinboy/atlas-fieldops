@@ -25,7 +25,7 @@ def create_access_token(
     project_ids: list[str] | None = None,
     organization_unit_ids: list[str] | None = None,
 ) -> str:
-    if not settings.jwt_secret:
+    if not settings.JWT_SECRET:
         raise RuntimeError("JWT_SECRET must be configured")
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload: dict[str, Any] = {
@@ -38,14 +38,14 @@ def create_access_token(
         "organization_unit_ids": organization_unit_ids or [],
         "exp": expires_at,
     }
-    return cast(str, jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm))
+    return cast(str, jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.jwt_algorithm))
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    if not settings.jwt_secret:
+    if not settings.JWT_SECRET:
         raise ValueError("Invalid access token")
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.jwt_algorithm])
     except JWTError as exc:
         raise ValueError("Invalid access token") from exc
     return cast(dict[str, Any], payload)
