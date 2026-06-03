@@ -1,8 +1,5 @@
 {
   "build": {
     "builder": "dockerfile"
-  },
-  "deploy": {
-    "preDeployCommand": "python -m alembic upgrade head"
   }
 }

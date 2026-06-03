@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-# Railway injects service variables at runtime. Do not run migrations during
-# container startup; run them manually after deployment with: alembic upgrade head
+echo "Running database migrations..."
+python -m alembic upgrade head
+echo "Migrations completed successfully!"
+
 exec "$@"
