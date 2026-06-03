@@ -7,6 +7,12 @@ def test_database_url_can_be_empty_until_deployment_injects_it() -> None:
     assert settings.database_url == ""
 
 
+def test_default_cors_origins_include_production_vercel_frontend() -> None:
+    settings = Settings(database_url="")
+
+    assert "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app" in settings.cors_origins
+
+
 def test_render_postgres_url_is_normalized_for_async_sqlalchemy() -> None:
     settings = Settings(
         database_url="postgresql://app:secret@example.render.com:5432/atlas",
