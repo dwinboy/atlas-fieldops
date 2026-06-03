@@ -775,8 +775,9 @@ export type TemplateDuplicateRequest = {
 
 const apiBaseUrl =
   process.env.INTERNAL_API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
   process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://localhost:8000/api/v1";
+  "https://backend-production-13c9.up.railway.app/api/v1";
 
 export class ApiError extends Error {
   constructor(
