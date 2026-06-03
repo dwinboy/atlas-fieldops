@@ -37,7 +37,7 @@ def missing_database_url() -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
 
     app_name: str = "enterprise-data-platform"
     app_env: str = "local"

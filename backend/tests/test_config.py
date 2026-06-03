@@ -11,7 +11,9 @@ def test_database_url_is_required() -> None:
         Settings(database_url="", JWT_SECRET=TEST_JWT_SECRET, cors_origins=[])
 
 
-def test_jwt_secret_is_required() -> None:
+def test_jwt_secret_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+
     with pytest.raises(ValidationError, match="JWT_SECRET"):
         Settings(_env_file=None, database_url="sqlite+aiosqlite:///test.db", cors_origins=[])
 
