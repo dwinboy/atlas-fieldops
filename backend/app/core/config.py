@@ -4,8 +4,23 @@ from typing import Annotated, Any
 
 from pydantic import Field
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import NoDecode
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REQUIRED_CORS_ORIGINS = [
+    "https://atlas-fieldops.vercel.app",
+    "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app",
+]
+
+LOCAL_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:3010",
+    "http://127.0.0.1:3010",
+]
 
 
 def normalize_database_url(value: str) -> str:
@@ -32,16 +47,7 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="", min_length=0)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
-    cors_origins: Annotated[list[str], NoDecode] = [
-        "https://atlas-fieldops.vercel.app",
-        "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:3010",
-        "http://127.0.0.1:3010",
-    ]
+    cors_origins: Annotated[list[str], NoDecode] = REQUIRED_CORS_ORIGINS + LOCAL_CORS_ORIGINS
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -61,6 +67,12 @@ class Settings(BaseSettings):
                 return parsed
             raise ValueError("CORS_ORIGINS must be a JSON list of origins")
         return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+    @model_validator(mode="after")
+    def include_required_cors_origins(self) -> "Settings":
+        origins = list(dict.fromkeys([*self.cors_origins, *REQUIRED_CORS_ORIGINS]))
+        self.cors_origins = origins
+        return self
 
 
 @lru_cache

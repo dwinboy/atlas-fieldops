@@ -45,10 +45,8 @@ def test_cors_origins_accept_json_list_from_host_env() -> None:
         cors_origins='["https://atlas.vercel.app","https://atlas.example.com"]',
     )
 
-    assert settings.cors_origins == [
-        "https://atlas.vercel.app",
-        "https://atlas.example.com",
-    ]
+    assert "https://atlas.vercel.app" in settings.cors_origins
+    assert "https://atlas.example.com" in settings.cors_origins
 
 
 def test_cors_origins_accept_comma_separated_host_env() -> None:
@@ -57,7 +55,16 @@ def test_cors_origins_accept_comma_separated_host_env() -> None:
         cors_origins="https://atlas.vercel.app, https://atlas.example.com",
     )
 
-    assert settings.cors_origins == [
-        "https://atlas.vercel.app",
-        "https://atlas.example.com",
-    ]
+    assert "https://atlas.vercel.app" in settings.cors_origins
+    assert "https://atlas.example.com" in settings.cors_origins
+
+
+def test_required_vercel_origins_are_kept_when_host_env_overrides_cors() -> None:
+    settings = Settings(
+        database_url="sqlite+aiosqlite:///test.db",
+        cors_origins="https://old-preview.vercel.app",
+    )
+
+    assert "https://old-preview.vercel.app" in settings.cors_origins
+    assert "https://atlas-fieldops.vercel.app" in settings.cors_origins
+    assert "https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app" in settings.cors_origins

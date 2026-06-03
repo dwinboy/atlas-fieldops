@@ -39,6 +39,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Atlas FieldOps"
+  },
+  other: {
+    "mobile-web-app-capable": "yes"
   }
 };
 
