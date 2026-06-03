@@ -773,11 +773,28 @@ export type TemplateDuplicateRequest = {
   publish?: boolean;
 };
 
-const apiBaseUrl =
-  process.env.INTERNAL_API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "https://backend-production-13c9.up.railway.app/api/v1";
+const railwayApiBaseUrl = "https://backend-production-13c9.up.railway.app/api/v1";
+const deprecatedApiHosts = ["atlas-fieldops.onrender.com"];
+
+export function resolveApiBaseUrl(...candidates: Array<string | undefined>): string {
+  for (const candidate of candidates) {
+    const apiUrl = candidate?.trim().replace(/\/+$/, "");
+    if (!apiUrl) {
+      continue;
+    }
+    if (deprecatedApiHosts.some((host) => apiUrl.includes(host))) {
+      continue;
+    }
+    return apiUrl.endsWith("/api/v1") ? apiUrl : `${apiUrl}/api/v1`;
+  }
+  return railwayApiBaseUrl;
+}
+
+const apiBaseUrl = resolveApiBaseUrl(
+  process.env.INTERNAL_API_BASE_URL,
+  process.env.NEXT_PUBLIC_API_URL,
+  process.env.NEXT_PUBLIC_API_BASE_URL
+);
 
 export class ApiError extends Error {
   constructor(

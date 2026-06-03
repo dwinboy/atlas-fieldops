@@ -1,10 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, getHealth, inviteFieldOfficer, listSubmissions, login, reviewSubmission } from "@/lib/api";
+import {
+  ApiError,
+  getHealth,
+  inviteFieldOfficer,
+  listSubmissions,
+  login,
+  resolveApiBaseUrl,
+  reviewSubmission
+} from "@/lib/api";
 
 describe("api config", () => {
   it("keeps tests wired", () => {
     expect("frontend").toBe("frontend");
+  });
+
+  it("falls back to Railway when stale Render URLs are configured", () => {
+    expect(resolveApiBaseUrl("https://atlas-fieldops.onrender.com/api/v1")).toBe(
+      "https://backend-production-13c9.up.railway.app/api/v1"
+    );
+  });
+
+  it("normalizes backend root URLs to the versioned API path", () => {
+    expect(resolveApiBaseUrl("https://backend-production-13c9.up.railway.app")).toBe(
+      "https://backend-production-13c9.up.railway.app/api/v1"
+    );
   });
 
   it("sends JSON login payloads", async () => {
