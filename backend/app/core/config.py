@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_auth_events_topic: str = "identity.events.v1"
     kafka_submission_events_topic: str = "collection.events.v1"
-    jwt_secret: str = Field(validation_alias="JWT_SECRET", min_length=32)
+    jwt_secret: str = Field(alias="JWT_SECRET", min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     cors_origins: Annotated[list[str], NoDecode] = Field(
