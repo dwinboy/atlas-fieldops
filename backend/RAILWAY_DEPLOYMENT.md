@@ -62,6 +62,24 @@ To run migrations manually from the backend service shell:
 alembic upgrade head
 ```
 
+## First Super Admin
+
+After migrations have run, create or reset the first platform super admin from
+the Railway backend service shell:
+
+```bash
+SUPER_ADMIN_EMAIL=<admin-email> \
+SUPER_ADMIN_PASSWORD=<temporary-password-at-least-12-characters> \
+SUPER_ADMIN_FULL_NAME="Platform Administrator" \
+BOOTSTRAP_ORGANIZATION_NAME="Atlas FieldOps" \
+BOOTSTRAP_ORGANIZATION_SLUG=atlas \
+python scripts/bootstrap_super_admin.py
+```
+
+Use the printed organization slug on the login screen. The script is
+idempotent: running it again updates the same user, role membership, password,
+and global access grant.
+
 ## Deployment Checks
 
 After Railway deploys, verify:
