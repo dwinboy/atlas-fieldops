@@ -148,6 +148,21 @@ class OperationsRepository:
         await self.session.flush()
         return record
 
+    async def get_organizational_unit_by_code(
+        self,
+        *,
+        organization_id: UUID,
+        code: str,
+    ) -> OrganizationalUnit | None:
+        result = await self.session.execute(
+            select(OrganizationalUnit).where(
+                OrganizationalUnit.organization_id == organization_id,
+                OrganizationalUnit.code == code,
+                OrganizationalUnit.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def count_enterprise(self, model: type[OrganizationalUnit | OperationalTask | InterventionRecord | OperationalAsset | ProjectBudgetLine | KnowledgeDocument | WorkflowDefinition], organization_id: UUID) -> int:
         query = select(func.count()).select_from(model).where(model.organization_id == organization_id)
         if hasattr(model, "deleted_at"):

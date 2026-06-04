@@ -46,6 +46,7 @@ from app.schemas.operations import (
     OperationalTaskCreate,
     OperationalTaskRead,
     OrganizationalUnitCreate,
+    OrganizationalUnitImportResponse,
     OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
@@ -112,6 +113,33 @@ async def create_unit(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrganizationalUnitRead:
     return await OperationsService(session).create_unit(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.post(
+    "/units/import",
+    response_model=OrganizationalUnitImportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Bulk import organization units from CSV",
+)
+async def import_units(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.ORGANIZATION_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    file: UploadFile = File(...),
+) -> OrganizationalUnitImportResponse:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a CSV file")
+    try:
+        return await OperationsService(session).import_units_csv(
+            organization_uuid(principal),
+            user_uuid(principal),
+            await file.read(),
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post("/workflow-definitions", response_model=WorkflowDefinitionRead, status_code=status.HTTP_201_CREATED, summary="Configure approval workflow")

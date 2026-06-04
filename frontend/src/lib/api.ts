@@ -76,6 +76,20 @@ export type UserRead = {
   temporary_password?: string | null;
 };
 
+export type UserImportIssue = {
+  row_number: number;
+  email?: string | null;
+  message: string;
+};
+
+export type UserImportResponse = {
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+  users: UserRead[];
+  issues: UserImportIssue[];
+};
+
 export type UserUpdate = {
   full_name?: string;
   role_name?: string;
@@ -125,6 +139,20 @@ export type OrganizationUnitRead = {
   code: string;
   unit_type: string;
   region: string | null;
+};
+
+export type OrganizationUnitImportIssue = {
+  row_number: number;
+  code?: string | null;
+  message: string;
+};
+
+export type OrganizationUnitImportResponse = {
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+  units: OrganizationUnitRead[];
+  issues: OrganizationUnitImportIssue[];
 };
 
 export type DataRouteCreate = {
@@ -867,6 +895,21 @@ export async function createUser(token: string, payload: UserCreate): Promise<Us
   return request<UserRead>("/users", { method: "POST", token, bodyJson: payload });
 }
 
+export async function importUsers(token: string, file: File): Promise<UserImportResponse> {
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetch(`${getApiBaseUrl()}/users/import`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<UserImportResponse>;
+}
+
 export async function updateUser(token: string, userId: string, payload: UserUpdate): Promise<UserRead> {
   return request<UserRead>(`/users/${userId}`, { method: "PATCH", token, bodyJson: payload });
 }
@@ -885,6 +928,21 @@ export async function getAccessCatalog(token: string): Promise<AccessCatalog> {
 
 export async function listOrganizationUnits(token: string): Promise<OrganizationUnitRead[]> {
   return request<OrganizationUnitRead[]>("/roles/organization-units", { token });
+}
+
+export async function importOrganizationUnits(token: string, file: File): Promise<OrganizationUnitImportResponse> {
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetch(`${getApiBaseUrl()}/operations/units/import`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<OrganizationUnitImportResponse>;
 }
 
 export async function routeData(token: string, payload: DataRouteCreate): Promise<DataRouteRead> {
@@ -1340,6 +1398,8 @@ export const api = {
   getOperationalEcosystem,
   governExport,
   importFieldOfficers,
+  importOrganizationUnits,
+  importUsers,
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,

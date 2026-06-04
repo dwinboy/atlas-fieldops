@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, CheckCircle2, KeyRound, LockKeyhole, Plus, ShieldCheck, UserPlus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Building2, CheckCircle2, KeyRound, LockKeyhole, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import {
   createOrganization,
   createUser,
   getAccessCatalog,
+  importOrganizationUnits,
+  importUsers,
   listOrganizationUnits,
   listRoles,
   listUsers,
@@ -133,7 +135,10 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const [accessResult, setAccessResult] = useState("");
   const [routeResult, setRouteResult] = useState("");
   const [accountResult, setAccountResult] = useState("");
+  const [bulkImportResult, setBulkImportResult] = useState("");
   const [adminGuideResult, setAdminGuideResult] = useState("");
+  const usersFileInputRef = useRef<HTMLInputElement | null>(null);
+  const unitsFileInputRef = useRef<HTMLInputElement | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const isPreview = token === "preview-token";
 
@@ -214,6 +219,40 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
       await usersQuery.refetch();
     },
     onError: () => pushToast({ title: "User was not invited", description: "Check the email, role, and scope. You can only create roles allowed for your account.", tone: "danger" })
+  });
+
+  const usersImportMutation = useMutation({
+    mutationFn: (file: File) => importUsers(token ?? "", file),
+    onSuccess: async (response) => {
+      setBulkImportResult(`${response.created_count} user account${response.created_count === 1 ? "" : "s"} created. ${response.skipped_count} row${response.skipped_count === 1 ? "" : "s"} skipped.`);
+      pushToast({
+        title: "Users imported",
+        description: `${response.created_count} created, ${response.skipped_count} skipped`,
+        tone: response.error_count ? "warning" : "success"
+      });
+      await usersQuery.refetch();
+    },
+    onError: () => {
+      setBulkImportResult("User import failed. Use a CSV with email, full_name, and role_name columns. Optional columns: scope_type, geography_id, project_id, temporary_password.");
+      pushToast({ title: "User import failed", description: "Check the CSV columns and role permissions.", tone: "danger" });
+    }
+  });
+
+  const unitsImportMutation = useMutation({
+    mutationFn: (file: File) => importOrganizationUnits(token ?? "", file),
+    onSuccess: async (response) => {
+      setBulkImportResult(`${response.created_count} organization unit${response.created_count === 1 ? "" : "s"} created. ${response.skipped_count} row${response.skipped_count === 1 ? "" : "s"} skipped.`);
+      pushToast({
+        title: "Organization units imported",
+        description: `${response.created_count} created, ${response.skipped_count} skipped`,
+        tone: response.error_count ? "warning" : "success"
+      });
+      await unitsQuery.refetch();
+    },
+    onError: () => {
+      setBulkImportResult("Organization unit import failed. Use a CSV with name, code, and unit_type columns. Optional columns: parent_code, region.");
+      pushToast({ title: "Unit import failed", description: "Check the hierarchy CSV and your organization management permission.", tone: "danger" });
+    }
   });
 
   const userUpdateMutation = useMutation({
@@ -816,6 +855,102 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
           </div>
         </form>
       </div>
+
+      <section className="grid gap-4 xl:grid-cols-2" aria-label="Bulk imports">
+        <article className="rounded-lg border bg-panel p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <UploadCloud aria-hidden="true" size={18} />
+                <h2 className="text-sm font-semibold">Import users from CSV</h2>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Create many managers, reviewers, supervisors, and admin users in one upload while keeping role and scope checks active. Use Field team for mobile field officer rosters.
+              </p>
+            </div>
+            <Button
+              disabled={!token || isPreview || usersImportMutation.isPending}
+              onClick={() => usersFileInputRef.current?.click()}
+              type="button"
+              variant="secondary"
+            >
+              <UploadCloud aria-hidden="true" />
+              {usersImportMutation.isPending ? "Importing" : "Upload users"}
+            </Button>
+          </div>
+          <input
+            ref={usersFileInputRef}
+            className="sr-only"
+            type="file"
+            accept=".csv"
+            disabled={!token || isPreview || usersImportMutation.isPending}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) usersImportMutation.mutate(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <div className="mt-4 rounded-xl border bg-muted/35 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">CSV columns</p>
+            <p className="mt-2 font-mono text-xs leading-6 text-foreground">
+              email,full_name,role_name,scope_type,geography_id,project_id,temporary_password
+            </p>
+          </div>
+        </article>
+
+        <article className="rounded-lg border bg-panel p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building2 aria-hidden="true" size={18} />
+                <h2 className="text-sm font-semibold">Import regions and teams</h2>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Upload countries, regions, districts, offices, or field teams so scopes and routes match the real structure.
+              </p>
+            </div>
+            <Button
+              disabled={!token || isPreview || unitsImportMutation.isPending}
+              onClick={() => unitsFileInputRef.current?.click()}
+              type="button"
+              variant="secondary"
+            >
+              <UploadCloud aria-hidden="true" />
+              {unitsImportMutation.isPending ? "Importing" : "Upload units"}
+            </Button>
+          </div>
+          <input
+            ref={unitsFileInputRef}
+            className="sr-only"
+            type="file"
+            accept=".csv"
+            disabled={!token || isPreview || unitsImportMutation.isPending}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) unitsImportMutation.mutate(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <div className="mt-4 rounded-xl border bg-muted/35 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">CSV columns</p>
+            <p className="mt-2 font-mono text-xs leading-6 text-foreground">
+              name,code,unit_type,parent_code,region
+            </p>
+          </div>
+        </article>
+      </section>
+
+      {bulkImportResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <UploadCloud aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Bulk import result</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{bulkImportResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <DataTable columns={userColumns} emptyLabel="No users loaded yet" rows={displayedUsers} searchLabel="Search users" title="Users" />
 

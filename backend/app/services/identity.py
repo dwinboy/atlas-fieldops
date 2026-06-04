@@ -1,3 +1,5 @@
+import csv
+from io import StringIO
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +11,7 @@ from app.core.security import hash_password
 from app.models.identity import User
 from app.repositories.audit import AuditRepository
 from app.repositories.identity import IdentityRepository, OrganizationRepository, OrganizationUnitRepository, RoleRepository
-from app.schemas.identity import PasswordResetRead, OrganizationCreate, UserCreate, UserRead, UserUpdate
+from app.schemas.identity import PasswordResetRead, OrganizationCreate, UserCreate, UserImportIssue, UserImportResponse, UserRead, UserUpdate
 
 
 class IdentityConflictError(Exception):
@@ -185,6 +187,79 @@ class UserManagementService:
             *account,
             login_slug=organization.slug if organization is not None else None,
             temporary_password=payload.password,
+        )
+
+    async def import_users_csv(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        actor_roles: list[str],
+        content: bytes,
+    ) -> UserImportResponse:
+        text = content.decode("utf-8-sig")
+        reader = csv.DictReader(StringIO(text))
+        if reader.fieldnames is None:
+            raise ValueError("CSV file must include a header row")
+        normalized_headers = {header.strip().lower(): header for header in reader.fieldnames}
+        required_headers = {"email", "full_name", "role_name"}
+        missing_headers = sorted(required_headers - set(normalized_headers))
+        if missing_headers:
+            raise ValueError(f"Missing required columns: {', '.join(missing_headers)}")
+
+        created_users: list[UserRead] = []
+        issues: list[UserImportIssue] = []
+        seen_emails: set[str] = set()
+
+        for row_number, raw_row in enumerate(reader, start=2):
+            row = {key: (raw_row[value] or "").strip() for key, value in normalized_headers.items()}
+            email = row.get("email", "").lower()
+            full_name = row.get("full_name", "")
+            role_name = row.get("role_name", "")
+            if not email or not full_name or not role_name:
+                issues.append(UserImportIssue(row_number=row_number, email=email or None, message="email, full_name, and role_name are required"))
+                continue
+            if email in seen_emails:
+                issues.append(UserImportIssue(row_number=row_number, email=email, message="duplicate email in uploaded file"))
+                continue
+            seen_emails.add(email)
+            password = row.get("temporary_password") or "ChangeMe12345!"
+            if len(password) < 12:
+                issues.append(UserImportIssue(row_number=row_number, email=email, message="temporary_password must be at least 12 characters"))
+                continue
+            try:
+                user = await self.create_user(
+                    organization_id=organization_id,
+                    actor_user_id=actor_user_id,
+                    actor_roles=actor_roles,
+                    payload=UserCreate(
+                        email=email,
+                        full_name=full_name,
+                        password=password,
+                        role_name=role_name,
+                        scope_type=row.get("scope_type") or None,
+                        geography_ids=[row["geography_id"]] if row.get("geography_id") else [],
+                        project_ids=[row["project_id"]] if row.get("project_id") else [],
+                    ),
+                )
+                created_users.append(user)
+            except (IdentityConflictError, IdentityNotFoundError, IdentityPermissionError, ValueError) as exc:
+                issues.append(UserImportIssue(row_number=row_number, email=email, message=str(exc)))
+
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="users.imported",
+            resource_type="user",
+            resource_id=str(organization_id),
+            metadata={"created": len(created_users), "issues": len(issues)},
+        )
+        return UserImportResponse(
+            created_count=len(created_users),
+            skipped_count=len(issues),
+            error_count=len(issues),
+            users=created_users,
+            issues=issues,
         )
 
     @staticmethod

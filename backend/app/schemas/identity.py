@@ -57,6 +57,20 @@ class UserRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserImportIssue(BaseModel):
+    row_number: int
+    email: str | None = None
+    message: str
+
+
+class UserImportResponse(BaseModel):
+    created_count: int
+    skipped_count: int
+    error_count: int
+    users: list[UserRead] = Field(default_factory=list)
+    issues: list[UserImportIssue] = Field(default_factory=list)
+
+
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=200)
     role_name: str | None = Field(default=None, min_length=2, max_length=100)

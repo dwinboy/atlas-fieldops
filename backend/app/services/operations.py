@@ -1,3 +1,5 @@
+import csv
+from io import StringIO
 from uuid import UUID
 from typing import cast
 
@@ -60,6 +62,8 @@ from app.schemas.operations import (
     OperationalTaskCreate,
     OperationalTaskRead,
     OrganizationalUnitCreate,
+    OrganizationalUnitImportIssue,
+    OrganizationalUnitImportResponse,
     OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
@@ -434,6 +438,84 @@ class OperationsService:
         )
         await self.session.commit()
         return OrganizationalUnitRead.model_validate(unit)
+
+    async def import_units_csv(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        content: bytes,
+    ) -> OrganizationalUnitImportResponse:
+        text = content.decode("utf-8-sig")
+        reader = csv.DictReader(StringIO(text))
+        if reader.fieldnames is None:
+            raise ValueError("CSV file must include a header row")
+        normalized_headers = {header.strip().lower(): header for header in reader.fieldnames}
+        required_headers = {"name", "code", "unit_type"}
+        missing_headers = sorted(required_headers - set(normalized_headers))
+        if missing_headers:
+            raise ValueError(f"Missing required columns: {', '.join(missing_headers)}")
+
+        created_units: list[OrganizationalUnit] = []
+        issues: list[OrganizationalUnitImportIssue] = []
+        seen_codes: set[str] = set()
+
+        for row_number, raw_row in enumerate(reader, start=2):
+            row = {key: (raw_row[value] or "").strip() for key, value in normalized_headers.items()}
+            name = row.get("name", "")
+            code = row.get("code", "").lower()
+            unit_type = row.get("unit_type", "")
+            if not name or not code or not unit_type:
+                issues.append(OrganizationalUnitImportIssue(row_number=row_number, code=code or None, message="name, code, and unit_type are required"))
+                continue
+            if code in seen_codes:
+                issues.append(OrganizationalUnitImportIssue(row_number=row_number, code=code, message="duplicate code in uploaded file"))
+                continue
+            seen_codes.add(code)
+            if await self.repository.get_organizational_unit_by_code(organization_id=organization_id, code=code) is not None:
+                issues.append(OrganizationalUnitImportIssue(row_number=row_number, code=code, message="unit code already exists"))
+                continue
+            parent_unit_id = None
+            parent_code = row.get("parent_code", "").lower()
+            if parent_code:
+                parent = await self.repository.get_organizational_unit_by_code(organization_id=organization_id, code=parent_code)
+                if parent is None:
+                    parent = next((unit for unit in created_units if unit.code == parent_code), None)
+                if parent is None:
+                    issues.append(OrganizationalUnitImportIssue(row_number=row_number, code=code, message=f"parent_code {parent_code} was not found"))
+                    continue
+                parent_unit_id = parent.id
+            unit = await self.repository.create_enterprise_record(
+                OrganizationalUnit,
+                organization_id=organization_id,
+                values={
+                    "name": name,
+                    "code": code,
+                    "unit_type": unit_type,
+                    "parent_unit_id": parent_unit_id,
+                    "region": row.get("region") or None,
+                    "metadata_json": {},
+                },
+            )
+            created_units.append(unit)
+
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="org_units.imported",
+                source_module="organization",
+                summary=f"{len(created_units)} organization unit records were imported.",
+                payload={"created": len(created_units), "issues": len(issues)},
+            ),
+        )
+        await self.session.commit()
+        return OrganizationalUnitImportResponse(
+            created_count=len(created_units),
+            skipped_count=len(issues),
+            error_count=len(issues),
+            units=[OrganizationalUnitRead.model_validate(unit) for unit in created_units],
+            issues=issues,
+        )
 
     async def create_workflow_definition(self, organization_id: UUID, user_id: UUID, payload: WorkflowDefinitionCreate) -> WorkflowDefinitionRead:
         workflow = await self.repository.create_enterprise_record(WorkflowDefinition, organization_id=organization_id, values=payload.model_dump())

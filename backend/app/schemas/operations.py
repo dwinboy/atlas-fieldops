@@ -185,6 +185,20 @@ class OrganizationalUnitRead(OrganizationalUnitCreate):
     model_config = {"from_attributes": True}
 
 
+class OrganizationalUnitImportIssue(BaseModel):
+    row_number: int
+    code: str | None = None
+    message: str
+
+
+class OrganizationalUnitImportResponse(BaseModel):
+    created_count: int
+    skipped_count: int
+    error_count: int
+    units: list[OrganizationalUnitRead] = Field(default_factory=list)
+    issues: list[OrganizationalUnitImportIssue] = Field(default_factory=list)
+
+
 class WorkflowDefinitionCreate(BaseModel):
     name: str = Field(min_length=2, max_length=180)
     workflow_type: str = Field(min_length=2, max_length=80)

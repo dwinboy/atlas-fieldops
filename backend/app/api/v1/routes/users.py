@@ -1,14 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.identity import PasswordResetRead, UserCreate, UserRead, UserUpdate
+from app.schemas.identity import PasswordResetRead, UserCreate, UserImportResponse, UserRead, UserUpdate
 from app.services.identity import IdentityConflictError, IdentityNotFoundError, IdentityPermissionError, UserManagementService
 
 router = APIRouter()
@@ -51,6 +51,36 @@ async def create_user(
     except IdentityConflictError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/import",
+    response_model=UserImportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Bulk import users from CSV",
+)
+async def import_users(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_CREATE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    file: UploadFile = File(...),
+) -> UserImportResponse:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a CSV file")
+    try:
+        response = await UserManagementService(session).import_users_csv(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            actor_roles=principal.roles,
+            content=await file.read(),
+        )
+        await session.commit()
+        return response
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise
