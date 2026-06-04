@@ -95,7 +95,7 @@ type DataInteroperabilityCenterProps = {
 };
 
 type TokenAwareProps = {
-  token: string | null;
+  token?: string | null;
 };
 
 function PageHeader({
@@ -147,6 +147,38 @@ function ConnectedPanel({
   );
 }
 
+function SetupEmptyState({
+  title,
+  description,
+  steps
+}: {
+  title: string;
+  description: string;
+  steps?: string[];
+}) {
+  return (
+    <section className="rounded-lg border bg-panel p-5 shadow-line">
+      <div className="flex items-start gap-3">
+        <CheckCircle2 aria-hidden="true" className="mt-0.5 text-primary" size={18} />
+        <div>
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {steps?.length ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {steps.map((step, index) => (
+            <div className="rounded-md border bg-background p-3" key={step}>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Step {index + 1}</p>
+              <p className="mt-2 text-sm leading-6">{step}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function ActionButton({
   children,
   description,
@@ -186,30 +218,31 @@ function ActionButton({
   );
 }
 
-export function EnterpriseOperationsCenter() {
+export function EnterpriseOperationsCenter({ token }: TokenAwareProps) {
   const [enterpriseResult, setEnterpriseResult] = useState("");
+  const isPreview = token === "preview-token";
   const enterpriseMetrics = [
     {
       label: "Regional units",
-      value: "3",
+      value: isPreview ? "3" : "0",
       icon: Boxes,
       result: "Regional units define accountability, data visibility, approval routing, and local ownership. Use them to keep national, regional, and district teams working from the same governed structure."
     },
     {
       label: "Live workflows",
-      value: "3",
+      value: isPreview ? "3" : "0",
       icon: CheckCircle2,
       result: "Live workflows turn operational rules into queues, escalation paths, and audit trails. Review them before changing who approves data, corrections, duplicate checks, or field follow-up."
     },
     {
       label: "Tracked resources",
-      value: "258",
+      value: isPreview ? "258" : "0",
       icon: Smartphone,
       result: "Tracked resources connect devices, vehicles, supplies, and field assets to programs and teams. Use this view to confirm whether work has the right equipment before deployment."
     },
     {
       label: "Budget utilization",
-      value: "64%",
+      value: isPreview ? "64%" : "Not set",
       icon: WalletCards,
       result: "Budget utilization shows how much approved funding has already been used. Compare spending with delivery progress before approving new activities, procurements, or donor reports."
     }
@@ -254,6 +287,8 @@ export function EnterpriseOperationsCenter() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
+        {isPreview ? (
+          <>
         <ConnectedPanel title="Organizational hierarchy" description="Regional data isolation, accountability, and approval routing all begin here.">
           {enterpriseOperations.units.map((unit) => (
             <button
@@ -357,13 +392,26 @@ export function EnterpriseOperationsCenter() {
             </button>
           ))}
         </ConnectedPanel>
+          </>
+        ) : (
+          <SetupEmptyState
+            title="No enterprise operations have been configured yet"
+            description="This organization does not have regional units, approval workflows, tracked resources, budgets, or documents recorded yet. Atlas will show live operational records here after your team creates or imports them."
+            steps={[
+              "Create organization units from Organization management or import a structure CSV.",
+              "Invite managers and assign roles so approvals have clear owners.",
+              "Import programs, assets, indicators, and cases from the Data center when your setup files are ready."
+            ]}
+          />
+        )}
       </div>
     </section>
   );
 }
 
-export function OperationalEcosystem() {
+export function OperationalEcosystem({ token }: TokenAwareProps) {
   const [ecosystemResult, setEcosystemResult] = useState("");
+  const isPreview = token === "preview-token";
   return (
     <section aria-labelledby="ecosystem-title" className="space-y-5">
       <PageHeader
@@ -385,6 +433,8 @@ export function OperationalEcosystem() {
         </section>
       ) : null}
 
+      {isPreview ? (
+        <>
       <div className="rounded-lg border bg-panel p-4 shadow-line">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -511,6 +561,18 @@ export function OperationalEcosystem() {
           </button>
         ))}
       </div>
+        </>
+      ) : (
+        <SetupEmptyState
+          title="No connected operational chain exists yet"
+          description="A new organization starts empty. Once programs, forms, field officers, submissions, review queues, cases, and reports are created, this page will summarize the real workflow chain for this organization."
+          steps={[
+            "Create or import programs and beneficiaries.",
+            "Build forms and assign field officers.",
+            "Collect submissions and review them so dashboards and reports use live approved data."
+          ]}
+        />
+      )}
     </section>
   );
 }
@@ -534,20 +596,21 @@ function mapBeneficiary(row: BeneficiaryRead): Beneficiary {
 
 export function BeneficiaryRegistry({ token }: TokenAwareProps) {
   const [beneficiaryResult, setBeneficiaryResult] = useState("");
+  const isPreview = token === "preview-token";
   const beneficiariesQuery = useQuery({
     queryKey: ["beneficiaries", token],
     queryFn: () => listBeneficiaries(token ?? ""),
     enabled: Boolean(token && token !== "preview-token")
   });
-  const beneficiaryRows = beneficiariesQuery.data?.map(mapBeneficiary) ?? beneficiaries;
+  const beneficiaryRows = isPreview ? beneficiaries : beneficiariesQuery.data?.map(mapBeneficiary) ?? [];
   const withGpsCount = beneficiariesQuery.data?.filter((row) => row.latitude !== null && row.longitude !== null).length ?? 0;
-  const withGpsPercent = beneficiariesQuery.data?.length ? Math.round((withGpsCount / beneficiariesQuery.data.length) * 100) : 92;
-  const visitedCount = beneficiariesQuery.data?.filter((row) => row.last_visit_at).length ?? 41382;
-  const duplicateCount = beneficiariesQuery.data?.filter((row) => row.duplicate_risk_score > 15).length ?? 214;
+  const withGpsPercent = beneficiariesQuery.data?.length ? Math.round((withGpsCount / beneficiariesQuery.data.length) * 100) : isPreview ? 92 : 0;
+  const visitedCount = beneficiariesQuery.data?.filter((row) => row.last_visit_at).length ?? (isPreview ? 41382 : 0);
+  const duplicateCount = beneficiariesQuery.data?.filter((row) => row.duplicate_risk_score > 15).length ?? (isPreview ? 214 : 0);
   const registryActions = [
     {
       label: "Registered",
-      value: (beneficiariesQuery.data?.length ?? 98220).toLocaleString(),
+      value: (isPreview ? beneficiaries.length : beneficiariesQuery.data?.length ?? 0).toLocaleString(),
       icon: UsersRound,
       result: "The registry is the trusted list of people, households, farmers, groups, schools, clinics, or other entities served by programs. Use registration forms with consent, GPS, identity notes, and eligibility fields before assigning support."
     },
@@ -658,12 +721,13 @@ function mapProgram(row: ProgramRead): Program {
 
 export function ProgramManagement({ token }: TokenAwareProps) {
   const [programResult, setProgramResult] = useState("");
+  const isPreview = token === "preview-token";
   const programsQuery = useQuery({
     queryKey: ["programs", token],
     queryFn: () => listPrograms(token ?? ""),
     enabled: Boolean(token && token !== "preview-token")
   });
-  const programRows = programsQuery.data?.map(mapProgram) ?? programs;
+  const programRows = isPreview ? programs : programsQuery.data?.map(mapProgram) ?? [];
 
   const columns: TableColumn<Program>[] = [
     {
@@ -712,7 +776,7 @@ export function ProgramManagement({ token }: TokenAwareProps) {
         <aside className="rounded-lg border bg-panel p-4">
           <h2 className="text-sm font-semibold">Next milestones</h2>
           <div className="mt-4 space-y-3">
-            {programRows.map((program) => (
+            {programRows.length ? programRows.map((program) => (
               <button
                 key={program.id}
                 className="w-full rounded-md border bg-background p-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
@@ -726,7 +790,11 @@ export function ProgramManagement({ token }: TokenAwareProps) {
                 <p className="text-sm font-medium">{program.nextMilestone}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{program.name}</p>
               </button>
-            ))}
+            )) : (
+              <p className="rounded-md border bg-background p-3 text-sm leading-6 text-muted-foreground">
+                No milestones yet. Create or import a program, then connect forms, indicators, teams, and reporting periods.
+              </p>
+            )}
           </div>
         </aside>
       </div>
@@ -748,12 +816,13 @@ function mapIndicator(row: IndicatorRead): Indicator {
 
 export function IndicatorTracking({ token }: TokenAwareProps) {
   const [indicatorResult, setIndicatorResult] = useState("");
+  const isPreview = token === "preview-token";
   const indicatorsQuery = useQuery({
     queryKey: ["indicators", token],
     queryFn: () => listIndicators(token ?? ""),
     enabled: Boolean(token && token !== "preview-token")
   });
-  const indicatorRows = indicatorsQuery.data?.map(mapIndicator) ?? indicators;
+  const indicatorRows = isPreview ? indicators : indicatorsQuery.data?.map(mapIndicator) ?? [];
 
   const columns: TableColumn<Indicator>[] = [
     { key: "code", header: "Code", value: (row) => row.code, render: (row) => <span className="font-mono text-xs">{row.code}</span> },
@@ -831,12 +900,13 @@ function mapCase(row: CaseRead): CaseItem {
 
 export function CaseManagement({ token }: TokenAwareProps) {
   const [caseResult, setCaseResult] = useState("");
+  const isPreview = token === "preview-token";
   const casesQuery = useQuery({
     queryKey: ["cases", token],
     queryFn: () => listCases(token ?? ""),
     enabled: Boolean(token && token !== "preview-token")
   });
-  const caseRows = casesQuery.data?.map(mapCase) ?? cases;
+  const caseRows = isPreview ? cases : casesQuery.data?.map(mapCase) ?? [];
 
   const columns: TableColumn<CaseItem>[] = [
     { key: "id", header: "Case", value: (row) => row.id, render: (row) => <span className="font-mono text-xs">{row.id}</span> },
@@ -891,8 +961,9 @@ export function CaseManagement({ token }: TokenAwareProps) {
   );
 }
 
-export function GeospatialIntelligence() {
+export function GeospatialIntelligence({ token }: TokenAwareProps) {
   const [mapResult, setMapResult] = useState("");
+  const isPreview = token === "preview-token";
   function selectMapLayer(layer: string): void {
     setMapResult(`${layer} layer is ready. Turn this layer on when supervisors need location evidence, route planning, or offline verification.`);
   }
@@ -916,6 +987,7 @@ export function GeospatialIntelligence() {
           </div>
         </section>
       ) : null}
+      {isPreview ? (
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <section className="min-h-[420px] rounded-lg border bg-panel p-4">
           <div className="flex items-center justify-between">
@@ -967,6 +1039,17 @@ export function GeospatialIntelligence() {
           </div>
         </aside>
       </div>
+      ) : (
+        <SetupEmptyState
+          title="No map evidence has been collected yet"
+          description="This organization does not have live GPS submissions, mapped beneficiaries, facilities, routes, or coverage layers yet. Atlas will show real geographic coverage after field records with coordinates are collected or imported."
+          steps={[
+            "Enable GPS questions in forms or import records with latitude and longitude.",
+            "Assign field officers to regions and collect submissions.",
+            "Review location evidence before using it in reports or GIS exports."
+          ]}
+        />
+      )}
     </section>
   );
 }
@@ -992,12 +1075,13 @@ export function ReportingCenter({ token }: TokenAwareProps) {
   const [draftSummary, setDraftSummary] = useState("");
   const [reportResult, setReportResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const isPreview = token === "preview-token";
   const reportsQuery = useQuery({
     queryKey: ["reports", token],
     queryFn: () => listReports(token ?? ""),
     enabled: Boolean(token && token !== "preview-token")
   });
-  const reportRows = reportsQuery.data?.map(mapReport) ?? donorReports;
+  const reportRows = isPreview ? donorReports : reportsQuery.data?.map(mapReport) ?? [];
 
   function describeReport(row: DonorReport): void {
     const statusGuidance = row.status.toLowerCase().includes("ready")
@@ -1031,6 +1115,13 @@ export function ReportingCenter({ token }: TokenAwareProps) {
 
   function draftNarrativeSummary(): void {
     const readyReports = reportRows.filter((report) => report.status.toLowerCase().includes("ready")).length;
+    if (!reportRows.length) {
+      const emptySummary = "No donor report can be drafted yet because this organization does not have report packages, approved indicators, or reviewed operational evidence. Create reports after programs, indicators, submissions, and review workflows are active.";
+      setDraftSummary(emptySummary);
+      setReportResult(emptySummary);
+      pushToast({ title: "No report data yet", description: "Create report packages and approved indicators before drafting a summary.", tone: "warning" });
+      return;
+    }
     const nextSummary =
       `Program delivery is on track across ${reportRows.length} reporting package${reportRows.length === 1 ? "" : "s"}. ` +
       `${readyReports} report${readyReports === 1 ? " is" : "s are"} ready for review, with approved indicators, field submissions, and evidence prepared for donor-facing export. ` +
@@ -1106,8 +1197,9 @@ export function ReportingCenter({ token }: TokenAwareProps) {
   );
 }
 
-export function ConnectivityCenter() {
+export function ConnectivityCenter({ token }: TokenAwareProps) {
   const [connectivityResult, setConnectivityResult] = useState("");
+  const isPreview = token === "preview-token";
   return (
     <section className="space-y-5">
       <PageHeader
@@ -1127,6 +1219,8 @@ export function ConnectivityCenter() {
           </div>
         </section>
       ) : null}
+      {isPreview ? (
+        <>
       <div className="grid gap-3 md:grid-cols-4">
         {[
           ["Delta sync", "On", RefreshCw],
@@ -1171,6 +1265,18 @@ export function ConnectivityCenter() {
           ))}
         </div>
       </section>
+        </>
+      ) : (
+        <SetupEmptyState
+          title="No sync or connectivity activity yet"
+          description="A new organization has no mobile sync batches, retry queues, device uploads, SMS alerts, or fraud signals until teams start collecting data. This page will show real offline and data quality activity after field use begins."
+          steps={[
+            "Create forms and assign them to field officers.",
+            "Collect data from mobile or public links.",
+            "Return here to monitor sync retries, media uploads, and quality signals."
+          ]}
+        />
+      )}
     </section>
   );
 }
@@ -1483,9 +1589,9 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       <div className="grid gap-3 md:grid-cols-4">
         {[
           ["Supported imports", "CSV, XLSX, JSON, GeoJSON", FileSpreadsheet],
-          ["Rows waiting", "18,864", RefreshCw],
-          ["Bulk edits", "3 batches", Columns3],
-          ["Rollback", "Available", CheckCircle2]
+          ["Rows waiting", (isPreview ? 18864 : serverImportRows.length).toLocaleString(), RefreshCw],
+          ["Bulk edits", isPreview ? "3 batches" : selectedImportId ? "Available" : "None yet", Columns3],
+          ["Rollback", isPreview ? "Available" : selectedImportIsApplied ? "Available" : "After import", CheckCircle2]
         ].map(([label, value, Icon]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">
@@ -1617,17 +1723,23 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
                 </Button>
               </div>
             </div>
+            {isPreview || selectedImportId ? (
             <div className="mt-4 grid gap-2 md:grid-cols-2">
-              {importColumns.map((column) => (
+              {(isPreview ? importColumns : realImportColumns.map((column) => ({ source: column, target: column, confidence: "Saved" }))).map((column) => (
                 <div key={column.source} className="rounded-md border bg-background p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium">{column.source}</p>
-                    <Badge tone={column.confidence === "High" ? "success" : "warning"}>{column.confidence}</Badge>
+                    <Badge tone={column.confidence === "High" || column.confidence === "Saved" ? "success" : "warning"}>{column.confidence}</Badge>
                   </div>
                   <p className="mt-2 rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">{column.target}</p>
                 </div>
               ))}
             </div>
+            ) : (
+              <div className="mt-4 rounded-md border bg-background p-3 text-sm leading-6 text-muted-foreground">
+                No column mapping has been created yet. Upload a file to review source columns and save a reusable mapping.
+              </div>
+            )}
           </section>
         </div>
       </section>
@@ -1723,7 +1835,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       )}
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={exportJobs} searchLabel="Search exports" title="Exports and scheduled files" />
+        <DataTable columns={exportColumns} emptyLabel="No export jobs yet" rows={isPreview ? exportJobs : []} searchLabel="Search exports" title="Exports and scheduled files" />
         <aside className="rounded-lg border bg-panel p-4">
           <h2 className="text-sm font-semibold">Export formats</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Prepare filtered files for donors, supervisors, GIS tools, migration packages, or external systems.</p>
@@ -1760,8 +1872,10 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         {mediaEvidenceQuery.data?.length ? (
           <DataTable columns={serverMediaColumns} emptyLabel="No media evidence yet" rows={mediaEvidenceQuery.data} searchLabel="Search media evidence" title="Media gallery and evidence review" />
-        ) : (
+        ) : isPreview ? (
           <DataTable columns={mediaColumns} emptyLabel="No media evidence yet" rows={mediaEvidenceItems} searchLabel="Search media evidence" title="Media gallery and evidence review" />
+        ) : (
+          <DataTable columns={serverMediaColumns} emptyLabel="No media evidence yet" rows={[]} searchLabel="Search media evidence" title="Media gallery and evidence review" />
         )}
         <aside className="rounded-lg border bg-panel p-4">
           <h2 className="text-sm font-semibold">Media evidence workflow</h2>
@@ -1801,7 +1915,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
         </section>
       ) : null}
 
-      <DataTable columns={sharingColumns} emptyLabel="No sharing roles configured" rows={sharingPermissionMatrix} searchLabel="Search sharing roles" title="Project sharing and public collection permissions" />
+      <DataTable columns={sharingColumns} emptyLabel="No sharing roles configured" rows={isPreview ? sharingPermissionMatrix : []} searchLabel="Search sharing roles" title="Project sharing and public collection permissions" />
     </section>
   );
 }

@@ -357,8 +357,8 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
               <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Today</span>
               <StatusDot tone="online" />
             </div>
-            <p className="mt-2 text-sm font-semibold">128.4k submissions saved</p>
-            <p className="mt-1 text-xs text-muted-foreground">812 waiting to sync · 37 need retry</p>
+            <p className="mt-2 text-sm font-semibold">Workspace ready</p>
+            <p className="mt-1 text-xs text-muted-foreground">Create forms, import data, or invite teams to begin.</p>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pr-1 product-scrollbar">

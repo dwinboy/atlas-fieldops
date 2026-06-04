@@ -26,9 +26,10 @@ const starterWorkflows: WorkflowRow[] = [
   { id: "wf-4", name: "High-risk cases need manager approval", owner: "Program team", status: "blocked", sla: "6h", queue: 11 }
 ];
 
-export function WorkflowManagement() {
-  const [workflows, setWorkflows] = useState(starterWorkflows);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState(starterWorkflows[0]?.id ?? "");
+export function WorkflowManagement({ token }: { token?: string | null }) {
+  const isPreview = token === "preview-token";
+  const [workflows, setWorkflows] = useState<WorkflowRow[]>(() => (isPreview ? starterWorkflows : []));
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => (isPreview ? starterWorkflows[0]?.id ?? "" : ""));
   const [workflowResult, setWorkflowResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const selectedWorkflow = useMemo(
@@ -116,10 +117,10 @@ export function WorkflowManagement() {
 
       <div className="grid gap-3 lg:grid-cols-4">
         {([
-          ["Auto approved", "92.4%", CheckCircle2, "success" as const],
-          ["Needs review", "2,145", ShieldAlert, "warning" as const],
-          ["Typical review time", "8m 12s", TimerReset, "neutral" as const],
-          ["Overdue", "11", ShieldAlert, "danger" as const]
+          ["Auto approved", isPreview ? "92.4%" : "0", CheckCircle2, "success" as const],
+          ["Needs review", isPreview ? "2,145" : "0", ShieldAlert, "warning" as const],
+          ["Typical review time", isPreview ? "8m 12s" : "Not started", TimerReset, "neutral" as const],
+          ["Overdue", isPreview ? "11" : "0", ShieldAlert, "danger" as const]
         ] as const).map(([label, value, Icon, tone]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">
@@ -193,7 +194,16 @@ export function WorkflowManagement() {
         </aside>
       </div>
 
-      <ActivityTimeline />
+      {isPreview ? (
+        <ActivityTimeline />
+      ) : workflows.length ? null : (
+        <section className="rounded-lg border bg-panel p-4 shadow-line">
+          <h2 className="text-sm font-semibold">No approval activity yet</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            This organization has no live approval queues or workflow events yet. Create a workflow, connect it to forms, and collect submissions before review activity appears here.
+          </p>
+        </section>
+      )}
 
       <section className="rounded-lg border bg-panel p-4" aria-labelledby="approval-path-title">
         <h2 id="approval-path-title" className="text-sm font-semibold">

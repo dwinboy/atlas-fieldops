@@ -84,8 +84,8 @@ export function WorkspaceApp() {
 
   const content = {
     dashboard: <Dashboard token={token} />,
-    ecosystem: <OperationalEcosystem />,
-    enterprise: <EnterpriseOperationsCenter />,
+    ecosystem: <OperationalEcosystem token={token} />,
+    enterprise: <EnterpriseOperationsCenter token={token} />,
     governance: <GovernanceCommandCenter token={token} />,
     workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
@@ -98,10 +98,10 @@ export function WorkspaceApp() {
     forms: <DynamicForms token={token} />,
     submissions: <SubmissionReview token={token} />,
     cases: <CaseManagement token={token} />,
-    map: <GeospatialIntelligence />,
+    map: <GeospatialIntelligence token={token} />,
     analytics: <ReportingCenter token={token} />,
-    workflows: <WorkflowManagement />,
-    connectivity: <ConnectivityCenter />,
+    workflows: <WorkflowManagement token={token} />,
+    connectivity: <ConnectivityCenter token={token} />,
     help: <ProductHelpCenter />
   } satisfies Record<WorkspaceView, React.ReactNode>;
 
