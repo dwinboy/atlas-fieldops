@@ -1,14 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.collection import FieldOfficerInvite, FieldOfficerRead
+from app.schemas.collection import FieldOfficerImportResponse, FieldOfficerInvite, FieldOfficerRead
 from app.services.collection import CollectionNotFoundError, FieldOfficerService
 
 router = APIRouter()
@@ -43,6 +43,39 @@ async def invite_field_officer(
         await session.commit()
         officers = await service.list_officers(UUID(principal.organization_id))
         return next(officer for officer in officers if officer.id == profile.id)
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/import",
+    response_model=FieldOfficerImportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Bulk import field officers from CSV",
+)
+async def import_field_officers(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    file: UploadFile = File(...),
+) -> FieldOfficerImportResponse:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a CSV file")
+    service = FieldOfficerService(session)
+    try:
+        response = await service.import_officers_csv(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            content=await file.read(),
+        )
+        await session.commit()
+        return response
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

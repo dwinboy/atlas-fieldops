@@ -231,6 +231,20 @@ class FieldOfficerRead(BaseModel):
     is_active: bool
 
 
+class FieldOfficerImportIssue(BaseModel):
+    row_number: int
+    email: str | None = None
+    message: str
+
+
+class FieldOfficerImportResponse(BaseModel):
+    created_count: int
+    skipped_count: int
+    error_count: int
+    officers: list[FieldOfficerRead] = Field(default_factory=list)
+    issues: list[FieldOfficerImportIssue] = Field(default_factory=list)
+
+
 class SubmissionCreate(BaseModel):
     client_submission_id: str = Field(min_length=4, max_length=160)
     form_id: UUID

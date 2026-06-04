@@ -142,6 +142,8 @@ class UserManagementService:
     ) -> UserRead:
         if not is_assignable_role(payload.role_name, actor_roles):
             raise IdentityPermissionError("Role cannot be assigned by this user")
+        if await self.identity.get_by_email(payload.email) is not None:
+            raise IdentityConflictError("A user with this email already exists")
         role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
         if role is None:
             raise IdentityNotFoundError("Role not found")

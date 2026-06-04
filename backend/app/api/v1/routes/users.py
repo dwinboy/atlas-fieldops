@@ -9,7 +9,7 @@ from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.identity import PasswordResetRead, UserCreate, UserRead, UserUpdate
-from app.services.identity import IdentityNotFoundError, IdentityPermissionError, UserManagementService
+from app.services.identity import IdentityConflictError, IdentityNotFoundError, IdentityPermissionError, UserManagementService
 
 router = APIRouter()
 
@@ -48,6 +48,9 @@ async def create_user(
     except IdentityPermissionError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except IdentityConflictError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

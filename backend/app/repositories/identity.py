@@ -98,6 +98,12 @@ class IdentityRepository:
         await self.session.flush()
         return user
 
+    async def get_by_email(self, email: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.email == email, User.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
     async def add_membership(self, *, organization_id: UUID, user_id: UUID, role_id: UUID) -> Membership:
         membership = Membership(organization_id=organization_id, user_id=user_id, role_id=role_id)
         self.session.add(membership)

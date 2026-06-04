@@ -1183,6 +1183,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const canUpload = Boolean(token && token !== "preview-token");
+  const isPreview = token === "preview-token";
 
   const importJobsQuery = useQuery({
     queryKey: ["import-jobs", token],
@@ -1546,8 +1547,8 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
         </aside>
 
         <div className="min-w-0 space-y-5">
-          {importJobsQuery.data?.length ? (
-            <DataTable columns={serverImportColumnsDef} emptyLabel="No import jobs yet" rows={importJobsQuery.data} searchLabel="Search imports" title="Import history" />
+          {!isPreview ? (
+            <DataTable columns={serverImportColumnsDef} emptyLabel="No import jobs yet" rows={importJobsQuery.data ?? []} searchLabel="Search imports" title="Import history" />
           ) : (
             <DataTable columns={importColumnsDef} emptyLabel="No import jobs yet" rows={importJobs} searchLabel="Search imports" title="Import history" />
           )}
@@ -1609,7 +1610,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             </div>
             <Button
               onClick={() => {
-                const fallbackIssues = serverIssueRows.length || importValidationIssues.length;
+                const fallbackIssues = serverIssueRows.length || (isPreview ? importValidationIssues.length : 0);
                 setDataResult(
                   fallbackIssues
                     ? `${fallbackIssues} row${fallbackIssues === 1 ? "" : "s"} still need review before import. Fix missing values, invalid GPS, duplicates, or date issues first.`
@@ -1649,7 +1650,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
                   This import has no blocking validation issues and can be applied to the live registry.
                 </div>
               )
-            ) : (
+            ) : isPreview ? (
               importValidationIssues.map((issue) => (
                 <div key={`${issue.row}-${issue.field}`} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[80px_120px_1fr_auto] md:items-center">
                   <span className="text-sm font-medium">Row {issue.row}</span>
@@ -1661,6 +1662,10 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
                   <Badge tone={issue.severity === "Error" ? "danger" : "warning"}>{issue.severity}</Badge>
                 </div>
               ))
+            ) : (
+              <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
+                No import has been uploaded yet. Upload a CSV, Excel, JSON, or GeoJSON file to see row-level validation.
+              </div>
             )}
           </div>
         </section>
@@ -1680,8 +1685,10 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
 
       {serverImportRows.length ? (
         <DataTable columns={realEditableColumns} emptyLabel="No rows ready for editing" rows={serverImportRows} searchLabel="Search editable rows" title="Editable imported rows" />
-      ) : (
+      ) : isPreview ? (
         <DataTable columns={editableColumns} emptyLabel="No rows ready for editing" rows={editableRows} searchLabel="Search editable rows" title="Spreadsheet editing preview" />
+      ) : (
+        <DataTable columns={realEditableColumns} emptyLabel="No rows ready for editing. Upload an import file to review and edit rows before applying them." rows={[]} searchLabel="Search editable rows" title="Editable imported rows" />
       )}
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">

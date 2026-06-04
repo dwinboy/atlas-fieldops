@@ -97,8 +97,11 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
     enabled: Boolean(token && token !== "preview-token")
   });
 
-  const isPreview = token === "preview-token" || !submissionsQuery.data?.length;
-  const submissions = submissionsQuery.data?.length ? submissionsQuery.data : previewRows;
+  const isPreview = token === "preview-token";
+  const submissions = useMemo(
+    () => (isPreview ? previewRows : submissionsQuery.data ?? []),
+    [isPreview, previewRows, submissionsQuery.data]
+  );
   const selected = useMemo(
     () => submissions.find((submission) => submission.id === selectedId) ?? submissions[0],
     [selectedId, submissions]
@@ -291,7 +294,16 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
         </aside>
       </div>
 
-      <ActivityTimeline />
+      {submissions.length || isPreview ? (
+        <ActivityTimeline />
+      ) : (
+        <section className="rounded-lg border bg-panel p-4">
+          <h2 className="text-sm font-semibold">No review activity yet</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            New organizations will show submissions here after field officers collect and sync data. Until then, the queue stays empty so managers do not mistake demo records for live data.
+          </p>
+        </section>
+      )}
     </section>
   );
 }

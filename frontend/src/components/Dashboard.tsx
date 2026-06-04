@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
-import { dashboardMetrics } from "@/lib/mockData";
 import { getOperationsSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -17,6 +16,15 @@ const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 type DashboardProps = {
   token: string | null;
 };
+
+type AttentionItem = readonly [
+  item: string,
+  count: string,
+  sla: string,
+  tone: "success" | "warning" | "danger" | "neutral",
+  view: WorkspaceView,
+  result: string
+];
 
 export function Dashboard({ token }: DashboardProps) {
   const [dashboardResult, setDashboardResult] = useState("");
@@ -35,7 +43,22 @@ export function Dashboard({ token }: DashboardProps) {
         { label: "Indicators", value: summaryQuery.data.indicators.toLocaleString(), delta: "live", tone: "good" as const },
         { label: "Open cases", value: summaryQuery.data.open_cases.toLocaleString(), delta: "needs review", tone: summaryQuery.data.open_cases ? "warn" as const : "good" as const }
       ]
-    : dashboardMetrics;
+    : [
+        { label: "Beneficiaries", value: "0", delta: summaryQuery.isLoading ? "loading" : "not started", tone: "neutral" as const },
+        { label: "Active programs", value: "0", delta: summaryQuery.isLoading ? "loading" : "not started", tone: "neutral" as const },
+        { label: "Indicators", value: "0", delta: summaryQuery.isLoading ? "loading" : "not started", tone: "neutral" as const },
+        { label: "Open cases", value: "0", delta: summaryQuery.isLoading ? "loading" : "clear", tone: "good" as const }
+      ];
+  const hasOperationalData = Boolean(
+    summaryQuery.data &&
+      (
+        summaryQuery.data.beneficiaries ||
+        summaryQuery.data.active_programs ||
+        summaryQuery.data.indicators ||
+        summaryQuery.data.open_cases ||
+        summaryQuery.data.quality_flags
+      )
+  );
   const quickActions: { label: string; hint: string; result: string; view: WorkspaceView; icon: typeof Plus }[] = [
     { label: "Create form", hint: "Start from a template or blank form", result: "Opening templates. Pick a proven form, then customize labels, rules, and offline behavior before publishing.", view: "templates", icon: Plus },
     { label: "Review submissions", hint: "Approve, reject, or request corrections", result: "Opening the review queue. Start with submissions under review, add a reviewer comment, then approve or request corrections.", view: "submissions", icon: ShieldCheck },
@@ -43,6 +66,17 @@ export function Dashboard({ token }: DashboardProps) {
     { label: "Import data", hint: "Upload spreadsheets and fix issues", result: "Opening data tools. Upload a file, save mappings, fix validation issues, and apply clean records to the registry.", view: "data", icon: UploadCloud },
     { label: "Read help guide", hint: "Learn how to use the platform", result: "Opening the help guide. Use the beginner walkthroughs to understand forms, collection, review, data, reports, and admin workflows.", view: "help", icon: HelpCircle }
   ];
+  const attentionItems: AttentionItem[] = hasOperationalData
+    ? [
+        ["Open cases need follow-up", `${summaryQuery.data?.open_cases ?? 0} cases`, "Open cases", (summaryQuery.data?.open_cases ?? 0) ? "warning" : "success", "cases", "Opening cases so managers can review follow-ups and close resolved work."],
+        ["Data quality flags", `${summaryQuery.data?.quality_flags ?? 0} flags`, "Check data", (summaryQuery.data?.quality_flags ?? 0) ? "danger" : "success", "data", "Opening data tools so validation flags can be checked and resolved."],
+        ["Reporting baseline", `${summaryQuery.data?.indicators ?? 0} indicators`, "Track indicators", "neutral", "indicators", "Opening indicators so the team can confirm targets, baselines, and current progress."]
+      ]
+    : [
+        ["Set up team access", "No users imported yet", "Invite or import", "neutral", "organizations", "Opening Team and access so you can invite managers, reviewers, and field officers."],
+        ["Bring existing records", "No data imported yet", "Upload file", "neutral", "data", "Opening Data tools so you can upload CSV or Excel files and review mappings before applying records."],
+        ["Prepare first collection form", "No submissions yet", "Create form", "neutral", "templates", "Opening templates so you can create the first mobile-ready collection form."]
+      ];
 
   function openView(action: { label: string; result: string; view: WorkspaceView }): void {
     setDashboardResult(action.result);
@@ -154,6 +188,7 @@ export function Dashboard({ token }: DashboardProps) {
         })}
       </div>
 
+      {hasOperationalData ? (
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <section className="surface-premium rounded-2xl p-5" aria-labelledby="throughput-title">
           <div className="flex items-center justify-between">
@@ -195,6 +230,29 @@ export function Dashboard({ token }: DashboardProps) {
         </section>
         <ActivityTimeline />
       </div>
+      ) : (
+        <section className="rounded-2xl border bg-panel p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">This organization is ready for setup</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                No live operational records have been created yet. Start by inviting users, importing existing data, or creating the first mobile-ready form.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setActiveView("organizations")} type="button" variant="secondary">
+                Invite users
+              </Button>
+              <Button onClick={() => setActiveView("data")} type="button" variant="secondary">
+                Import data
+              </Button>
+              <Button onClick={() => setActiveView("templates")} type="button" variant="primary">
+                Create first form
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="surface-premium rounded-2xl p-5" aria-labelledby="work-queue-title">
@@ -219,11 +277,7 @@ export function Dashboard({ token }: DashboardProps) {
             </Button>
           </div>
           <div className="divide-y">
-            {([
-              ["Answers need a closer look", "1,216 submissions", "Open review queue", "warning" as const, "submissions" as WorkspaceView, "Opening submissions needing closer review. Check payload, GPS, evidence, and reviewer comments before approving."],
-              ["Possible duplicate records", "128 submissions", "Check duplicates", "danger" as const, "data" as WorkspaceView, "Opening data tools so duplicate records can be checked, mapped, and resolved before registry updates."],
-              ["Waiting for supervisor approval", "74 submissions", "Follow up today", "neutral" as const, "workflows" as WorkspaceView, "Opening approval rules so supervisor queues, escalation steps, and target review times can be checked."]
-            ] as const).map(([item, count, sla, tone, view, result]) => (
+            {attentionItems.map(([item, count, sla, tone, view, result]) => (
               <button
                 key={item}
                 className="grid w-full grid-cols-[1fr_auto] gap-4 py-3 text-left text-sm transition hover:bg-muted/35"
@@ -253,12 +307,12 @@ export function Dashboard({ token }: DashboardProps) {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Waiting to sync</dt>
-              <dd className="mt-2 text-xl font-semibold">812</dd>
+              <dd className="mt-2 text-xl font-semibold">0</dd>
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Need retry</dt>
-              <dd className="mt-2 text-xl font-semibold">37</dd>
+              <dd className="mt-2 text-xl font-semibold">0</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>
           </dl>

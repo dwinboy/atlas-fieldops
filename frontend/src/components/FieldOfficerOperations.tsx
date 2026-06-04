@@ -1,14 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { MapPin, RadioTower, RotateCcw, ShieldCheck, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { MapPin, RadioTower, RotateCcw, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { inviteFieldOfficer, listFieldOfficers, type FieldOfficerRead } from "@/lib/api";
+import { importFieldOfficers, inviteFieldOfficer, listFieldOfficers, type FieldOfficerRead } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type FieldOfficerOperationsProps = {
@@ -54,7 +54,9 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
   const [region, setRegion] = useState("");
   const [previewRows, setPreviewRows] = useState<FieldOfficerRead[]>(previewOfficers);
   const [inviteResult, setInviteResult] = useState("");
+  const [importResult, setImportResult] = useState("");
   const [refreshResult, setRefreshResult] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
   const officersQuery = useQuery({
@@ -81,8 +83,25 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
     }
   });
 
-  const isPreview = token === "preview-token" || !officersQuery.data?.length;
-  const officers = officersQuery.data?.length ? officersQuery.data : previewRows;
+  const importMutation = useMutation({
+    mutationFn: (file: File) => importFieldOfficers(token ?? "", file),
+    onSuccess: async (response) => {
+      setImportResult(`${response.created_count} officer account${response.created_count === 1 ? "" : "s"} created. ${response.skipped_count} row${response.skipped_count === 1 ? "" : "s"} skipped.`);
+      pushToast({
+        title: "Officer import complete",
+        description: `${response.created_count} created, ${response.skipped_count} skipped`,
+        tone: response.error_count ? "warning" : "success"
+      });
+      await officersQuery.refetch();
+    },
+    onError: () => {
+      setImportResult("Import failed. Use a CSV with email and full_name columns. Optional columns: phone_number, employee_code, home_region, temporary_password.");
+      pushToast({ title: "Officer import failed", description: "Check the file format and your officer management permission.", tone: "danger" });
+    }
+  });
+
+  const isPreview = token === "preview-token";
+  const officers = isPreview ? previewRows : officersQuery.data ?? [];
   const activeCount = officers.filter((officer) => officer.is_active).length;
 
   const columns: TableColumn<FieldOfficerRead>[] = [
@@ -161,7 +180,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           ["Active officers", String(activeCount), ShieldCheck],
           ["Synced last hour", String(officers.filter((officer) => officer.last_sync_at).length), RadioTower],
           ["Recent location", String(officers.filter((officer) => officer.last_latitude && officer.last_longitude).length), MapPin],
-          ["Correction queue", "17", RotateCcw]
+          ["Correction queue", "0", RotateCcw]
         ].map(([label, value, Icon]) => (
           <article key={label as string} className="rounded-lg border bg-panel p-4">
             <div className="flex items-center justify-between">
@@ -242,7 +261,41 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           ) : null}
         </form>
 
-        <DataTable columns={columns} emptyLabel="No field officers yet" rows={officers} searchLabel="Search officers" title="Officer roster" />
+        <div className="space-y-4">
+          <section className="rounded-lg border bg-panel p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold">Bulk import officers</h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Upload a CSV to create many field officer accounts in one action. Required columns: email, full_name. Optional: phone_number, employee_code, home_region, temporary_password.
+                </p>
+              </div>
+              <Button disabled={!token || isPreview || importMutation.isPending} onClick={() => fileInputRef.current?.click()} type="button" variant="secondary">
+                <UploadCloud aria-hidden="true" />
+                {importMutation.isPending ? "Importing" : "Upload CSV"}
+              </Button>
+            </div>
+            <input
+              ref={fileInputRef}
+              className="sr-only"
+              type="file"
+              accept=".csv"
+              disabled={!token || isPreview || importMutation.isPending}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) importMutation.mutate(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            {importResult ? (
+              <div className="mt-3 rounded-lg border bg-background p-3" aria-live="polite">
+                <p className="text-sm font-semibold">Import result</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{importResult}</p>
+              </div>
+            ) : null}
+          </section>
+          <DataTable columns={columns} emptyLabel="No field officers yet. Invite one person or upload a CSV to start the roster." rows={officers} searchLabel="Search officers" title="Officer roster" />
+        </div>
       </div>
     </section>
   );

@@ -1,4 +1,6 @@
+import csv
 from datetime import UTC, datetime
+from io import StringIO
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,8 @@ from app.schemas.collection import (
     DataFormCreate,
     FormCollectionCompatibility,
     FieldOfficerInvite,
+    FieldOfficerImportIssue,
+    FieldOfficerImportResponse,
     FieldOfficerRead,
     FormSchema,
     SubmissionRead,
@@ -186,6 +190,8 @@ class FieldOfficerService:
             role = await self.roles.get_by_name(organization_id=organization_id, name="collector")
         if role is None:
             raise CollectionNotFoundError("Field officer role not found")
+        if await self.identity.get_by_email(payload.email) is not None:
+            raise ValueError("A user with this email already exists")
 
         user = await self.identity.create_user(
             email=payload.email,
@@ -209,6 +215,81 @@ class FieldOfficerService:
             metadata={"email": payload.email, "region": payload.home_region},
         )
         return profile
+
+    async def import_officers_csv(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        content: bytes,
+    ) -> FieldOfficerImportResponse:
+        text = content.decode("utf-8-sig")
+        reader = csv.DictReader(StringIO(text))
+        if reader.fieldnames is None:
+            raise ValueError("CSV file must include a header row")
+        normalized_headers = {header.strip().lower(): header for header in reader.fieldnames}
+        required_headers = {"email", "full_name"}
+        missing_headers = sorted(required_headers - set(normalized_headers))
+        if missing_headers:
+            raise ValueError(f"Missing required columns: {', '.join(missing_headers)}")
+
+        created_profiles = []
+        issues: list[FieldOfficerImportIssue] = []
+        seen_emails: set[str] = set()
+
+        for row_number, raw_row in enumerate(reader, start=2):
+            row = {key.strip().lower(): (raw_row[value] or "").strip() for key, value in normalized_headers.items()}
+            email = row.get("email", "").lower()
+            full_name = row.get("full_name", "")
+            if not email or not full_name:
+                issues.append(FieldOfficerImportIssue(row_number=row_number, email=email or None, message="email and full_name are required"))
+                continue
+            if email in seen_emails:
+                issues.append(FieldOfficerImportIssue(row_number=row_number, email=email, message="duplicate email in uploaded file"))
+                continue
+            seen_emails.add(email)
+            if await self.identity.get_by_email(email) is not None:
+                issues.append(FieldOfficerImportIssue(row_number=row_number, email=email, message="email already exists in the system"))
+                continue
+            temporary_password = row.get("temporary_password") or "ChangeMe12345!"
+            if len(temporary_password) < 12:
+                issues.append(FieldOfficerImportIssue(row_number=row_number, email=email, message="temporary_password must be at least 12 characters"))
+                continue
+            try:
+                profile = await self.invite_officer(
+                    organization_id=organization_id,
+                    actor_user_id=actor_user_id,
+                    payload=FieldOfficerInvite(
+                        email=email,
+                        full_name=full_name,
+                        phone_number=row.get("phone_number") or None,
+                        employee_code=row.get("employee_code") or None,
+                        home_region=row.get("home_region") or row.get("region") or None,
+                        temporary_password=temporary_password,
+                    ),
+                )
+                created_profiles.append(profile)
+            except ValueError as exc:
+                issues.append(FieldOfficerImportIssue(row_number=row_number, email=email, message=str(exc)))
+
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_officer.imported",
+            resource_type="field_officer",
+            resource_id=str(organization_id),
+            metadata={"created": len(created_profiles), "issues": len(issues)},
+        )
+        officers = await self.list_officers(organization_id)
+        created_ids = {profile.id for profile in created_profiles}
+        created_officers = [officer for officer in officers if officer.id in created_ids]
+        return FieldOfficerImportResponse(
+            created_count=len(created_profiles),
+            skipped_count=len(issues),
+            error_count=len(issues),
+            officers=created_officers,
+            issues=issues,
+        )
 
     async def list_officers(self, organization_id: UUID) -> list[FieldOfficerRead]:
         rows = await self.officers.list(organization_id)

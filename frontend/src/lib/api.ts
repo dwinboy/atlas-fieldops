@@ -410,6 +410,20 @@ export type FieldOfficerRead = {
   is_active: boolean;
 };
 
+export type FieldOfficerImportIssue = {
+  row_number: number;
+  email?: string | null;
+  message: string;
+};
+
+export type FieldOfficerImportResponse = {
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+  officers: FieldOfficerRead[];
+  issues: FieldOfficerImportIssue[];
+};
+
 export type SubmissionRead = {
   id: string;
   client_submission_id: string;
@@ -1126,6 +1140,21 @@ export async function inviteFieldOfficer(token: string, payload: FieldOfficerInv
   return request<FieldOfficerRead>("/field-officers", { method: "POST", token, bodyJson: payload });
 }
 
+export async function importFieldOfficers(token: string, file: File): Promise<FieldOfficerImportResponse> {
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetch(`${getApiBaseUrl()}/field-officers/import`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    body
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.json() as Promise<FieldOfficerImportResponse>;
+}
+
 export async function listSubmissions(token: string, status?: string): Promise<SubmissionRead[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return request<SubmissionRead[]>(`/submissions${query}`, { token });
@@ -1310,6 +1339,7 @@ export const api = {
   getOrganizationContext,
   getOperationalEcosystem,
   governExport,
+  importFieldOfficers,
   inviteFieldOfficer,
   getOperationsSummary,
   listBeneficiaries,
