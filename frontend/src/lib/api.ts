@@ -20,6 +20,10 @@ export type CurrentPrincipal = {
   full_name?: string | null;
   organization_slug?: string | null;
   organization_name?: string | null;
+  platform_admin?: boolean;
+  support_mode?: boolean;
+  platform_organization_id?: string | null;
+  platform_organization_slug?: string | null;
   roles: string[];
   permissions?: string[];
   scope_type?: string;
@@ -42,6 +46,15 @@ export type OrganizationRead = {
   is_active: boolean;
   owner_email?: string | null;
   temporary_password?: string | null;
+};
+
+export type PlatformOrganizationRead = {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  user_count: number;
+  owner_email?: string | null;
 };
 
 export type OrganizationContext = {
@@ -885,6 +898,22 @@ export async function getOrganizationContext(token: string): Promise<Organizatio
 
 export async function createOrganization(token: string, payload: OrganizationCreate): Promise<OrganizationRead> {
   return request<OrganizationRead>("/organizations", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listPlatformOrganizations(token: string): Promise<PlatformOrganizationRead[]> {
+  return request<PlatformOrganizationRead[]>("/organizations/platform", { token });
+}
+
+export async function updatePlatformOrganizationStatus(token: string, organizationId: string, isActive: boolean): Promise<PlatformOrganizationRead> {
+  return request<PlatformOrganizationRead>(`/organizations/platform/${organizationId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: { is_active: isActive }
+  });
+}
+
+export async function createOrganizationSupportSession(token: string, organizationId: string): Promise<TokenResponse> {
+  return request<TokenResponse>(`/organizations/platform/${organizationId}/support-session`, { method: "POST", token });
 }
 
 export async function listUsers(token: string): Promise<UserRead[]> {

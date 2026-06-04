@@ -7,9 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.dependencies import get_current_principal, require_permission, require_role
 from app.app_db import get_session
 from app.core.permissions import Permission
-from app.schemas.auth import CurrentPrincipal
+from app.core.security import create_access_token
 from app.repositories.identity import OrganizationRepository
-from app.schemas.identity import OrganizationContextRead, OrganizationCreate, OrganizationRead
+from app.schemas.auth import CurrentPrincipal, TokenResponse
+from app.schemas.identity import (
+    OrganizationContextRead,
+    OrganizationCreate,
+    OrganizationRead,
+    OrganizationStatusUpdate,
+    PlatformOrganizationRead,
+)
 from app.services.identity import IdentityConflictError, OrganizationService
 
 router = APIRouter()
@@ -36,6 +43,90 @@ async def create_organization(
     except Exception:
         await session.rollback()
         raise
+
+
+@router.get(
+    "/platform",
+    response_model=list[PlatformOrganizationRead],
+    summary="List all organization tenants for platform support",
+)
+async def list_organizations(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[PlatformOrganizationRead]:
+    repository = OrganizationRepository(session)
+    organizations = await repository.list_all()
+    rows: list[PlatformOrganizationRead] = []
+    for organization in organizations:
+        rows.append(
+            PlatformOrganizationRead(
+                id=organization.id,
+                name=organization.name,
+                slug=organization.slug,
+                is_active=organization.is_active,
+                user_count=await repository.count_users(organization.id),
+                owner_email=await repository.owner_email(organization.id),
+            )
+        )
+    return rows
+
+
+@router.patch(
+    "/platform/{organization_id}",
+    response_model=PlatformOrganizationRead,
+    summary="Activate or deactivate an organization tenant",
+)
+async def update_organization_status(
+    organization_id: UUID,
+    payload: OrganizationStatusUpdate,
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformOrganizationRead:
+    repository = OrganizationRepository(session)
+    organization = await repository.get(organization_id)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    organization.is_active = payload.is_active
+    await session.commit()
+    return PlatformOrganizationRead(
+        id=organization.id,
+        name=organization.name,
+        slug=organization.slug,
+        is_active=organization.is_active,
+        user_count=await repository.count_users(organization.id),
+        owner_email=await repository.owner_email(organization.id),
+    )
+
+
+@router.post(
+    "/platform/{organization_id}/support-session",
+    response_model=TokenResponse,
+    summary="Open a platform super admin support session inside an organization",
+)
+async def create_support_session(
+    organization_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TokenResponse:
+    repository = OrganizationRepository(session)
+    organization = await repository.get(organization_id)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    token = create_access_token(
+        subject=principal.user_id,
+        organization_id=str(organization.id),
+        roles=["super_admin"],
+        email=principal.email,
+        full_name=principal.full_name,
+        organization_slug=organization.slug,
+        organization_name=organization.name,
+        platform_admin=True,
+        support_mode=True,
+        platform_organization_id=principal.platform_organization_id or principal.organization_id,
+        platform_organization_slug=principal.platform_organization_slug or principal.organization_slug,
+        scope_type="global",
+    )
+    return TokenResponse(access_token=token)
 
 
 @router.get("/me", response_model=OrganizationContextRead, summary="Current tenant context")

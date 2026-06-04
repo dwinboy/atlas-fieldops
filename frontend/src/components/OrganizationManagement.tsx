@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Building2, CheckCircle2, KeyRound, LockKeyhole, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
+import { Building2, CheckCircle2, KeyRound, LifeBuoy, LockKeyhole, Plus, ShieldCheck, UploadCloud, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -10,18 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import {
   createOrganization,
+  createOrganizationSupportSession,
   createUser,
   getAccessCatalog,
   importOrganizationUnits,
   importUsers,
+  listPlatformOrganizations,
   listOrganizationUnits,
   listRoles,
   listUsers,
   resetUserPassword,
   routeData,
+  updatePlatformOrganizationStatus,
   updateUser,
   type AccessCatalog,
   type CurrentPrincipal,
+  type PlatformOrganizationRead,
   type RoleRead,
   type UserRead
 } from "@/lib/api";
@@ -30,6 +34,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 type OrganizationManagementProps = {
   token: string | null;
   principal?: CurrentPrincipal;
+  onTokenChanged?: (token: string) => void;
 };
 
 const previewUsers: UserRead[] = [
@@ -106,7 +111,7 @@ const previewCatalog: AccessCatalog = {
   workflow_actions: ["collect_data", "review_data", "approve_submission", "request_correction", "export_report"]
 };
 
-export function OrganizationManagement({ token, principal }: OrganizationManagementProps) {
+export function OrganizationManagement({ token, principal, onTokenChanged }: OrganizationManagementProps) {
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
@@ -137,10 +142,12 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
   const [accountResult, setAccountResult] = useState("");
   const [bulkImportResult, setBulkImportResult] = useState("");
   const [adminGuideResult, setAdminGuideResult] = useState("");
+  const [platformResult, setPlatformResult] = useState("");
   const usersFileInputRef = useRef<HTMLInputElement | null>(null);
   const unitsFileInputRef = useRef<HTMLInputElement | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const isPreview = token === "preview-token";
+  const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
 
   const usersQuery = useQuery({
     queryKey: ["users", token],
@@ -166,7 +173,12 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     enabled: Boolean(token && !isPreview)
   });
 
-  const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
+  const platformOrganizationsQuery = useQuery({
+    queryKey: ["platform-organizations", token],
+    queryFn: () => listPlatformOrganizations(token ?? ""),
+    enabled: Boolean(token && !isPreview && isSuperAdmin)
+  });
+
   const accessLoading = usersQuery.isLoading || rolesQuery.isLoading || catalogQuery.isLoading || unitsQuery.isLoading;
   const accessError = usersQuery.isError || rolesQuery.isError || catalogQuery.isError || unitsQuery.isError;
 
@@ -194,8 +206,44 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
         description: `Login slug: ${organization.slug}${organization.owner_email ? ` · owner: ${organization.owner_email}` : ""}`,
         tone: "success"
       });
+      void platformOrganizationsQuery.refetch();
     },
     onError: () => pushToast({ title: "Organization was not created", description: "Only super admins can create organizations, and slugs must be unique.", tone: "danger" })
+  });
+
+  const supportSessionMutation = useMutation({
+    mutationFn: (organization: PlatformOrganizationRead) => createOrganizationSupportSession(token ?? "", organization.id),
+    onSuccess: (response, organization) => {
+      setPlatformResult(`Support session opened for ${organization.name}. You are still the platform super admin, but the workspace is now showing ${organization.slug} so you can inspect users, forms, submissions, imports, and configuration problems.`);
+      pushToast({
+        title: "Support session opened",
+        description: `Now viewing ${organization.name}`,
+        tone: "success"
+      });
+      onTokenChanged?.(response.access_token);
+    },
+    onError: () => {
+      setPlatformResult("Support session could not be opened. Confirm the organization still exists and your account has the platform super admin role.");
+      pushToast({ title: "Support session failed", description: "Could not open this organization for troubleshooting.", tone: "danger" });
+    }
+  });
+
+  const organizationStatusMutation = useMutation({
+    mutationFn: (payload: { organization: PlatformOrganizationRead; active: boolean }) =>
+      updatePlatformOrganizationStatus(token ?? "", payload.organization.id, payload.active),
+    onSuccess: async (organization) => {
+      setPlatformResult(`${organization.name} is now ${organization.is_active ? "active" : "inactive"}. ${organization.is_active ? "Its users can sign in again if their accounts are active." : "Its users cannot sign in until the organization is reactivated."}`);
+      pushToast({
+        title: organization.is_active ? "Organization activated" : "Organization deactivated",
+        description: `${organization.name} status was updated.`,
+        tone: organization.is_active ? "success" : "warning"
+      });
+      await platformOrganizationsQuery.refetch();
+    },
+    onError: () => {
+      setPlatformResult("Organization status could not be changed. Try again after confirming your platform super admin session is active.");
+      pushToast({ title: "Organization status unchanged", description: "The platform action failed.", tone: "danger" });
+    }
   });
 
   const userMutation = useMutation({
@@ -528,6 +576,66 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
     }
   ];
 
+  const platformOrganizationColumns: TableColumn<PlatformOrganizationRead>[] = [
+    {
+      key: "name",
+      header: "Organization",
+      value: (organization) => `${organization.name} ${organization.slug}`,
+      render: (organization) => (
+        <div>
+          <p className="font-medium">{organization.name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{organization.slug}</p>
+        </div>
+      )
+    },
+    {
+      key: "owner",
+      header: "Owner",
+      value: (organization) => organization.owner_email ?? "",
+      render: (organization) => organization.owner_email ?? "No owner assigned"
+    },
+    {
+      key: "users",
+      header: "Users",
+      align: "right",
+      value: (organization) => String(organization.user_count),
+      render: (organization) => organization.user_count.toLocaleString()
+    },
+    {
+      key: "status",
+      header: "Status",
+      value: (organization) => (organization.is_active ? "active" : "inactive"),
+      render: (organization) => <Badge tone={organization.is_active ? "success" : "warning"}>{organization.is_active ? "Active" : "Inactive"}</Badge>
+    },
+    {
+      key: "actions",
+      header: "Support actions",
+      value: (organization) => organization.id,
+      render: (organization) => (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={supportSessionMutation.isPending}
+            onClick={() => supportSessionMutation.mutate(organization)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            Open support
+          </Button>
+          <Button
+            disabled={organizationStatusMutation.isPending}
+            onClick={() => organizationStatusMutation.mutate({ organization, active: !organization.is_active })}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {organization.is_active ? "Deactivate" : "Activate"}
+          </Button>
+        </div>
+      )
+    }
+  ];
+
   return (
     <section aria-labelledby="organization-title" className="space-y-5">
       <div className="surface-premium rounded-2xl p-5">
@@ -582,6 +690,46 @@ export function OrganizationManagement({ token, principal }: OrganizationManagem
               <h2 className="text-sm font-semibold">Admin guidance</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">{adminGuideResult}</p>
             </div>
+          </div>
+        </section>
+      ) : null}
+
+      {isSuperAdmin ? (
+        <section className="surface-premium rounded-2xl p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <LifeBuoy aria-hidden="true" size={18} />
+                <h2 className="text-sm font-semibold">Platform organization management</h2>
+              </div>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                This area is for the developer/platform super admin account. Use it to create tenants, open a support session inside an organization, reactivate suspended workspaces, or troubleshoot configuration problems without being treated as a normal organization user.
+              </p>
+              {principal?.support_mode ? (
+                <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-warning">
+                  Support mode is active for {principal.organization_name ?? principal.organization_slug}. You are viewing this organization as the platform super admin.
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="accent">{platformOrganizationsQuery.data?.length ?? 0} organizations</Badge>
+              <Badge tone="neutral">{platformOrganizationsQuery.data?.filter((organization) => organization.is_active).length ?? 0} active</Badge>
+            </div>
+          </div>
+          {platformResult ? (
+            <div className="mt-4 rounded-xl border border-primary/25 bg-primary/10 p-3" aria-live="polite">
+              <p className="text-sm font-semibold">Platform result</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{platformResult}</p>
+            </div>
+          ) : null}
+          <div className="mt-4">
+            <DataTable
+              columns={platformOrganizationColumns}
+              emptyLabel="No organizations have been created yet"
+              rows={platformOrganizationsQuery.data ?? []}
+              searchLabel="Search organizations by name, slug, owner, or status"
+              title={platformOrganizationsQuery.isFetching ? "Organizations syncing" : "All organizations"}
+            />
           </div>
         </section>
       ) : null}

@@ -33,6 +33,7 @@ class AuthService:
             full_name=user.full_name,
             organization_slug=organization.slug,
             organization_name=organization.name,
+            platform_admin=role.name == "super_admin",
             scope_type=scope_type,
             geography_ids=[grant.geography_id for grant in grants if grant.geography_id],
             project_ids=[grant.project_id for grant in grants if grant.project_id],

@@ -19,6 +19,10 @@ class CurrentPrincipal(BaseModel):
     full_name: str | None = None
     organization_slug: str | None = None
     organization_name: str | None = None
+    platform_admin: bool = False
+    support_mode: bool = False
+    platform_organization_id: str | None = None
+    platform_organization_slug: str | None = None
     roles: list[str]
     permissions: list[str] = []
     scope_type: str = "own"

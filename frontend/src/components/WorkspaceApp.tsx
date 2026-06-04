@@ -92,7 +92,16 @@ export function WorkspaceApp() {
     programs: <ProgramManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,
     indicators: <IndicatorTracking token={token} />,
-    organizations: <OrganizationManagement token={token} principal={principalQuery.data} />,
+    organizations: (
+      <OrganizationManagement
+        token={token}
+        principal={principalQuery.data}
+        onTokenChanged={(nextToken) => {
+          setToken(nextToken);
+          writeToken(nextToken);
+        }}
+      />
+    ),
     officers: <FieldOfficerOperations token={token} />,
     templates: <FormTemplateLibrary token={token} />,
     forms: <DynamicForms token={token} />,

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import RoleDefinition, ScopeType
@@ -28,6 +28,38 @@ class OrganizationRepository:
     async def get_by_slug(self, slug: str) -> Organization | None:
         result = await self.session.execute(
             select(Organization).where(Organization.slug == slug, Organization.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
+    async def list_all(self) -> list[Organization]:
+        result = await self.session.execute(
+            select(Organization).where(Organization.deleted_at.is_(None)).order_by(Organization.name)
+        )
+        return list(result.scalars())
+
+    async def count_users(self, organization_id: UUID) -> int:
+        result = await self.session.execute(
+            select(func.count(Membership.user_id)).where(
+                Membership.organization_id == organization_id,
+                Membership.deleted_at.is_(None),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def owner_email(self, organization_id: UUID) -> str | None:
+        result = await self.session.execute(
+            select(User.email)
+            .join(Membership, Membership.user_id == User.id)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                Membership.organization_id == organization_id,
+                Membership.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+                Role.name.in_(["owner", "organization_owner"]),
+            )
+            .order_by(User.created_at)
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

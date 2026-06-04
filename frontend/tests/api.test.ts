@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   getHealth,
+  createOrganizationSupportSession,
   inviteFieldOfficer,
+  listPlatformOrganizations,
   listSubmissions,
   login,
   resolveApiBaseUrl,
+  updatePlatformOrganizationStatus,
   reviewSubmission
 } from "@/lib/api";
 
@@ -76,5 +79,19 @@ describe("api config", () => {
     expect((fetchMock.mock.calls[0][1] as RequestInit).body).toContain("approve");
     expect(fetchMock.mock.calls[1][0]).toContain("/field-officers");
     expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain("officer@example.com");
+  });
+
+  it("uses platform organization support endpoints", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ access_token: "support-token", token_type: "bearer" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listPlatformOrganizations("token");
+    await updatePlatformOrganizationStatus("token", "org-1", false);
+    await createOrganizationSupportSession("token", "org-1");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/organizations/platform");
+    expect(fetchMock.mock.calls[1][0]).toContain("/organizations/platform/org-1");
+    expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain("false");
+    expect(fetchMock.mock.calls[2][0]).toContain("/organizations/platform/org-1/support-session");
   });
 });

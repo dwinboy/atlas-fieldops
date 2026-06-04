@@ -56,6 +56,35 @@ def test_access_token_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
     assert payload["roles"] == ["admin"]
 
 
+async def test_current_principal_extracts_platform_support_claims(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    token = create_access_token(
+        "platform-user-1",
+        "tenant-org-1",
+        ["super_admin"],
+        email="admin@atlasfieldops.com",
+        full_name="Atlas Platform Admin",
+        organization_slug="tenant-a",
+        organization_name="Tenant A",
+        platform_admin=True,
+        support_mode=True,
+        platform_organization_id="platform-org-1",
+        platform_organization_slug="atlas",
+        scope_type="global",
+    )
+
+    principal = await get_current_principal(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
+
+    assert principal.roles == ["super_admin"]
+    assert principal.organization_id == "tenant-org-1"
+    assert principal.organization_slug == "tenant-a"
+    assert principal.platform_admin is True
+    assert principal.support_mode is True
+    assert principal.platform_organization_id == "platform-org-1"
+    assert principal.platform_organization_slug == "atlas"
+    assert principal.scope_type == "global"
+
+
 def test_access_token_requires_configured_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("JWT_SECRET", raising=False)
 

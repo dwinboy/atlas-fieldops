@@ -23,6 +23,21 @@ class OrganizationRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PlatformOrganizationRead(BaseModel):
+    id: UUID
+    name: str
+    slug: str
+    is_active: bool
+    user_count: int = 0
+    owner_email: EmailStr | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class OrganizationStatusUpdate(BaseModel):
+    is_active: bool
+
+
 class OrganizationContextRead(BaseModel):
     organization_id: UUID
     name: str
