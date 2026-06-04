@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import os
 from typing import Any, cast
 
 import bcrypt
@@ -15,6 +16,13 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
+def get_jwt_secret() -> str:
+    secret = os.environ.get("JWT_SECRET", "").strip()
+    if len(secret) < 32:
+        raise RuntimeError("JWT_SECRET must be configured")
+    return secret
+
+
 def create_access_token(
     subject: str,
     organization_id: str,
@@ -25,8 +33,7 @@ def create_access_token(
     project_ids: list[str] | None = None,
     organization_unit_ids: list[str] | None = None,
 ) -> str:
-    if not settings.JWT_SECRET:
-        raise RuntimeError("JWT_SECRET must be configured")
+    secret = get_jwt_secret()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload: dict[str, Any] = {
         "sub": subject,
@@ -38,14 +45,13 @@ def create_access_token(
         "organization_unit_ids": organization_unit_ids or [],
         "exp": expires_at,
     }
-    return cast(str, jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.jwt_algorithm))
+    return cast(str, jwt.encode(payload, secret, algorithm=settings.jwt_algorithm))
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    if not settings.JWT_SECRET:
-        raise ValueError("Invalid access token")
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.jwt_algorithm])
-    except JWTError as exc:
+        secret = get_jwt_secret()
+        payload = jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
+    except (JWTError, RuntimeError) as exc:
         raise ValueError("Invalid access token") from exc
     return cast(dict[str, Any], payload)

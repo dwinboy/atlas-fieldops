@@ -1,5 +1,4 @@
 import json
-import os
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -37,13 +36,6 @@ def missing_database_url() -> str:
     raise RuntimeError("DATABASE_URL is required but is not set")
 
 
-def read_jwt_secret() -> str:
-    value = os.environ.get("JWT_SECRET", "").strip()
-    if not value:
-        raise RuntimeError("JWT_SECRET is required but is not set")
-    return value
-
-
 class Settings(BaseSettings):
     # Railway injects production configuration as runtime environment variables.
     model_config = SettingsConfigDict(extra="ignore")
@@ -55,7 +47,6 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_auth_events_topic: str = "identity.events.v1"
     kafka_submission_events_topic: str = "collection.events.v1"
-    JWT_SECRET: str = Field(default_factory=read_jwt_secret, min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     cors_origins: Annotated[list[str], NoDecode] = Field(

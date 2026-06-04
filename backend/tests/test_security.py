@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import os
 from types import SimpleNamespace
 from typing import Any, cast
 from uuid import uuid4
@@ -35,7 +36,7 @@ def test_password_hash_round_trip() -> None:
 
 
 def test_access_token_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     token = create_access_token("user-1", "org-1", ["admin"])
     payload = decode_access_token(token)
     assert payload["sub"] == "user-1"
@@ -44,14 +45,14 @@ def test_access_token_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_access_token_requires_configured_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "")
+    monkeypatch.delenv("JWT_SECRET", raising=False)
 
     with pytest.raises(RuntimeError, match="JWT_SECRET must be configured"):
         create_access_token("user-1", "org-1", ["admin"])
 
 
 def test_decode_rejects_tampered_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     token = create_access_token("user-1", "org-1", ["admin"])
     header, payload, signature = token.split(".")
     tampered_token = f"{header}.{payload[:-2]}xx.{signature}"
@@ -61,7 +62,7 @@ def test_decode_rejects_tampered_token(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_decode_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     expired_token = jwt.encode(
         {
             "sub": "user-1",
@@ -69,7 +70,7 @@ def test_decode_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
             "roles": ["admin"],
             "exp": datetime.now(UTC) - timedelta(minutes=1),
         },
-        settings.JWT_SECRET,
+        os.environ["JWT_SECRET"],
         algorithm=settings.jwt_algorithm,
     )
 
@@ -78,7 +79,7 @@ def test_decode_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_current_principal_extracts_token_claims(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     token = create_access_token("user-1", "org-1", ["admin", "reviewer"])
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
@@ -255,7 +256,7 @@ def build_identity(
 
 
 async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     password_hash = hash_password("correct horse battery staple")
     service = object.__new__(AuthService)
     service.users = cast(Any, FakeUserRepository(build_identity(password_hash=password_hash, role_name="admin")))
@@ -275,7 +276,7 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
 
 
 async def test_auth_service_includes_persisted_access_grants(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "JWT_SECRET", "test-secret-with-enough-length")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
     password_hash = hash_password("correct horse battery staple")
     grant = SimpleNamespace(
         scope_type="region",
