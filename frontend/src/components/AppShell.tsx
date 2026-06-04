@@ -19,6 +19,7 @@ import {
   Menu,
   Moon,
   PanelLeftClose,
+  Shield,
   RadioTower,
   ShieldCheck,
   Sun,
@@ -50,6 +51,12 @@ type NavItem = { id: WorkspaceView; label: string; hint: string; icon: typeof La
 type ViewGuidance = { step: string; outcome: string; next?: WorkspaceView; nextLabel?: string };
 
 const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Platform",
+    items: [
+      { id: "platform", label: "Platform console", hint: "Organizations & support", icon: Shield }
+    ]
+  },
   {
     label: "Daily work",
     items: [
@@ -105,6 +112,12 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
 
 const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
+  platform: {
+    step: "Operate platform",
+    outcome: "Manage organizations, support sessions, tenant status, setup health, and platform-only operator tools.",
+    next: "help",
+    nextLabel: "Read guidance"
+  },
   dashboard: {
     step: "Start here",
     outcome: "Use this daily summary to decide what needs review, sync attention, or team follow-up.",
@@ -266,7 +279,14 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme);
 
   const allowedViews = principal?.menu_views?.length ? new Set(principal.menu_views) : null;
-  const visibleNavItems = allowedViews ? navItems.filter((item) => item.id === "help" || allowedViews.has(item.id)) : navItems;
+  const isSupportMode = principal?.support_mode ?? false;
+  const isPlatformAdmin = principal?.platform_admin ?? false;
+  const platformConsoleMode = isPlatformAdmin && !isSupportMode;
+  const visibleNavItems = platformConsoleMode
+    ? navItems.filter((item) => item.id === "platform" || item.id === "help")
+    : allowedViews
+      ? navItems.filter((item) => item.id === "help" || allowedViews.has(item.id))
+      : navItems.filter((item) => item.id !== "platform" || isPlatformAdmin);
   const activeItem = navItems.find((item) => item.id === activeView) ?? navItems[0];
   const activeGroup = navGroups.find((group) => group.items.some((item) => item.id === activeView));
   const guidance = viewGuidance[activeView];
@@ -276,7 +296,6 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
   const accountName = principal?.full_name?.trim() || principal?.email || "Signed-in user";
   const accountRole = principal?.roles?.[0]?.replaceAll("_", " ") ?? "Active account";
   const accountScope = principal?.scope_type ? `${principal.scope_type.replace("_", " ")} access` : "Workspace access";
-  const isSupportMode = principal?.support_mode ?? false;
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">

@@ -149,6 +149,7 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const isPreview = token === "preview-token";
   const isSuperAdmin = principal?.roles.includes("super_admin") ?? false;
+  const isPlatformOwnerConsole = isSuperAdmin && !principal?.support_mode;
 
   const usersQuery = useQuery({
     queryKey: ["users", token],
@@ -177,7 +178,7 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
   const platformOrganizationsQuery = useQuery({
     queryKey: ["platform-organizations", token],
     queryFn: () => listPlatformOrganizations(token ?? ""),
-    enabled: Boolean(token && !isPreview && isSuperAdmin)
+    enabled: Boolean(token && !isPreview && isPlatformOwnerConsole)
   });
 
   const accessLoading = usersQuery.isLoading || rolesQuery.isLoading || catalogQuery.isLoading || unitsQuery.isLoading;
@@ -708,7 +709,7 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
         </section>
       ) : null}
 
-      {isSuperAdmin ? (
+      {isPlatformOwnerConsole ? (
         <section className="surface-premium rounded-2xl p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
@@ -817,7 +818,7 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        {isSuperAdmin ? (
+        {isPlatformOwnerConsole ? (
           <form
             className="rounded-lg border bg-panel p-4"
             onSubmit={(event) => {

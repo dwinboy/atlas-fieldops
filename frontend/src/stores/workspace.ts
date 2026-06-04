@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 export type ThemeMode = "light" | "dark";
 export type WorkspaceView =
+  | "platform"
   | "dashboard"
   | "ecosystem"
   | "enterprise"

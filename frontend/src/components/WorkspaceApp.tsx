@@ -26,6 +26,7 @@ import {
 } from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
+import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
@@ -38,6 +39,7 @@ export function WorkspaceApp() {
   const [token, setToken] = useState<string | null>(null);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const theme = useWorkspaceStore((state) => state.theme);
   const isPreviewToken = token === "preview-token";
 
@@ -77,6 +79,24 @@ export function WorkspaceApp() {
     });
   }, [isPreviewToken, principalQuery.isError, pushToast, token]);
 
+  const isPlatformConsoleMode = Boolean(principalQuery.data?.platform_admin && !principalQuery.data.support_mode);
+
+  useEffect(() => {
+    if (!principalQuery.data) {
+      return;
+    }
+    if (!principalQuery.data.platform_admin && activeView === "platform") {
+      setActiveView("dashboard");
+      return;
+    }
+    if (!principalQuery.data.support_mode && activeView !== "platform" && activeView !== "help") {
+      setActiveView("platform");
+    }
+    if (principalQuery.data.support_mode && activeView === "platform") {
+      setActiveView("dashboard");
+    }
+  }, [activeView, principalQuery.data, setActiveView]);
+
   if (!token) {
     return (
       <>
@@ -108,12 +128,25 @@ export function WorkspaceApp() {
   }
 
   const organizationLabel =
-    organizationQuery.data?.name ??
+    isPlatformConsoleMode
+      ? "Atlas FieldOps Platform"
+      : organizationQuery.data?.name ??
     (principalQuery.data?.organization_id
       ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
       : "Organization workspace");
+  const organizationSlug = isPlatformConsoleMode ? "platform-console" : organizationQuery.data?.slug;
 
   const content = {
+    platform: (
+      <PlatformConsole
+        token={token}
+        principal={principalQuery.data}
+        onTokenChanged={(nextToken) => {
+          setToken(nextToken);
+          writeToken(nextToken);
+        }}
+      />
+    ),
     dashboard: <Dashboard token={token} />,
     ecosystem: <OperationalEcosystem token={token} />,
     enterprise: <EnterpriseOperationsCenter token={token} />,
@@ -153,10 +186,10 @@ export function WorkspaceApp() {
       }}
       organizationLabel={organizationLabel}
       organizationLogoUrl={organizationQuery.data?.logo_url}
-      organizationSlug={organizationQuery.data?.slug}
+      organizationSlug={organizationSlug}
       principal={principalQuery.data}
     >
-      <CommandPalette />
+      <CommandPalette principal={principalQuery.data} />
       <NotificationCenter />
       <AnimatePresence mode="wait">
         <motion.div

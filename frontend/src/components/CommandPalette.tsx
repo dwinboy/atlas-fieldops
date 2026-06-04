@@ -1,15 +1,17 @@
 "use client";
 
-import { BarChart3, Boxes, Building2, ClipboardList, Database, Files, Fingerprint, GitPullRequestArrow, HelpCircle, LayoutDashboard, Map, Search, ShieldCheck, UsersRound, Wifi, X } from "lucide-react";
+import { BarChart3, Boxes, Building2, ClipboardList, Database, Files, Fingerprint, GitPullRequestArrow, HelpCircle, LayoutDashboard, Map, Search, Shield, ShieldCheck, UsersRound, Wifi, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import type { CurrentPrincipal } from "@/lib/api";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard; keywords: string[] }[] = [
+  { label: "Open platform console", hint: "Organizations, tenant status, support sessions, and platform health", view: "platform", group: "Platform", icon: Shield, keywords: ["platform", "super admin", "tenant", "support", "organization"] },
   { label: "Open home", hint: "See today’s submissions, reviews, and sync status", view: "dashboard", group: "Daily work", icon: LayoutDashboard, keywords: ["today", "home", "dashboard", "tasks"] },
   { label: "Open ecosystem", hint: "See how projects, people, forms, reviews, and reports connect", view: "ecosystem", group: "Daily work", icon: Boxes, keywords: ["overview", "connections", "platform"] },
   { label: "Open enterprise operations", hint: "Manage governance, workflows, assets, budgets, and documents", view: "enterprise", group: "Daily work", icon: Building2, keywords: ["operations", "assets", "budget"] },
@@ -32,7 +34,7 @@ const commands: { label: string; hint: string; view: WorkspaceView; group: strin
   { label: "Open help guide", hint: "Learn how to use Atlas FieldOps step by step", view: "help", group: "Support", icon: HelpCircle, keywords: ["help", "guide", "documentation", "how to"] }
 ];
 
-export function CommandPalette() {
+export function CommandPalette({ principal }: { principal?: CurrentPrincipal | null }) {
   const commandOpen = useWorkspaceStore((state) => state.commandOpen);
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -52,12 +54,13 @@ export function CommandPalette() {
   }, [setCommandOpen]);
 
   const filtered = useMemo(() => {
+    const visibleCommands = principal?.platform_admin ? commands : commands.filter((command) => command.view !== "platform");
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
-      return commands;
+      return visibleCommands;
     }
-    return commands.filter((command) => `${command.label} ${command.hint} ${command.group} ${command.keywords.join(" ")}`.toLowerCase().includes(normalized));
-  }, [query]);
+    return visibleCommands.filter((command) => `${command.label} ${command.hint} ${command.group} ${command.keywords.join(" ")}`.toLowerCase().includes(normalized));
+  }, [principal?.platform_admin, query]);
 
   return (
     <Modal
