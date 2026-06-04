@@ -77,7 +77,7 @@ import {
   programs,
   sharingPermissionMatrix
 } from "@/lib/mockData";
-import { useWorkspaceStore } from "@/stores/workspace";
+import { type WorkspaceView, useWorkspaceStore } from "@/stores/workspace";
 
 type Beneficiary = (typeof beneficiaries)[number];
 type Program = (typeof programs)[number];
@@ -182,21 +182,46 @@ function SetupEmptyState({
 function ActionButton({
   children,
   description,
+  nextLabel,
+  nextView,
   title,
+  tone = "neutral",
   variant = "primary"
 }: {
   children: ReactNode;
   description: string;
+  nextLabel?: string;
+  nextView?: WorkspaceView;
   title: string;
+  tone?: "neutral" | "success" | "warning" | "danger";
   variant?: "primary" | "secondary" | "ghost";
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const [resultVisible, setResultVisible] = useState(false);
 
   function handleAction(): void {
     setResultVisible(true);
-    pushToast({ title, description, tone: "success" });
+    pushToast({ title, description, tone });
   }
+
+  const resultToneClass =
+    tone === "success"
+      ? "border-success/30 bg-success/10"
+      : tone === "warning"
+        ? "border-warning/30 bg-warning/10"
+        : tone === "danger"
+          ? "border-danger/30 bg-danger/10"
+          : "border-primary/20 bg-primary/5";
+
+  const resultIconClass =
+    tone === "success"
+      ? "text-success"
+      : tone === "warning"
+        ? "text-warning"
+        : tone === "danger"
+          ? "text-danger"
+          : "text-primary";
 
   return (
     <div className="flex flex-col items-stretch gap-2 md:items-end">
@@ -204,12 +229,18 @@ function ActionButton({
         {children}
       </Button>
       {resultVisible ? (
-        <div className="max-w-sm rounded-lg border border-success/30 bg-success/10 p-3 text-left shadow-line" aria-live="polite">
+        <div className={`max-w-sm rounded-lg border p-3 text-left shadow-line ${resultToneClass}`} aria-live="polite">
           <div className="flex gap-2">
-            <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={16} />
+            <CheckCircle2 aria-hidden="true" className={`mt-0.5 shrink-0 ${resultIconClass}`} size={16} />
             <div>
               <p className="text-sm font-semibold text-foreground">{title}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+              {nextView ? (
+                <Button className="mt-3" onClick={() => setActiveView(nextView)} size="sm" type="button" variant="secondary">
+                  {nextLabel ?? "Open next step"}
+                  <ArrowUpRight aria-hidden="true" />
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -254,7 +285,7 @@ export function EnterpriseOperationsCenter({ token }: TokenAwareProps) {
         eyebrow="Enterprise operations"
         title="Governance, resources, budgets, and work in one place"
         description="Connect regional structures, approval chains, assets, documents, budgets, tasks, and interventions to the same operational workflow graph."
-        action={<ActionButton title="Connected record ready" description="A governed operational record workflow has been opened."><Plus aria-hidden="true" /> Create connected record</ActionButton>}
+        action={<ActionButton title="Start enterprise setup" description="Enterprise records are created from Team & access and Data tools. Create organization units first, then import assets, budgets, and documents when ready." nextView="organizations" nextLabel="Open Team & access"><Plus aria-hidden="true" /> Start setup</ActionButton>}
       />
 
       {enterpriseResult ? (
@@ -418,7 +449,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
         eyebrow="Operational ecosystem"
         title="One connected field operations system"
         description="See how programs, people, forms, submissions, approvals, analytics, and follow-ups work together as one operational chain."
-        action={<ActionButton title="Live context recalculated" description="Programs, submissions, indicators, approvals, and reports are synced."><RefreshCw aria-hidden="true" /> Recalculate live context</ActionButton>}
+        action={<ActionButton title="Build the operating chain" description="Create programs, forms, field teams, and approved submissions before live operational context can be recalculated." nextView="programs" nextLabel="Open Programs"><RefreshCw aria-hidden="true" /> Check setup</ActionButton>}
       />
 
       {ecosystemResult ? (
@@ -671,7 +702,7 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
         eyebrow="Beneficiaries"
         title="Beneficiary registry"
         description="Search households, farmers, cooperatives, schools, clinics, and groups with simple quality signals and visit history."
-        action={<ActionButton title="Beneficiary workflow opened" description="Registration, duplicate checks, GPS, and consent steps are ready."><Plus aria-hidden="true" /> Register beneficiary</ActionButton>}
+        action={<ActionButton title="Register beneficiaries from Data tools" description="Use Data tools to import existing beneficiary files, or build a registration form from Templates for field collection." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add beneficiaries</ActionButton>}
       />
       {beneficiaryResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -758,7 +789,7 @@ export function ProgramManagement({ token }: TokenAwareProps) {
         eyebrow="Programs"
         title="Programs and projects"
         description="Plan interventions, monitor milestones, and keep donor-funded work easy to understand across regions."
-        action={<ActionButton title="Program workflow opened" description="Project setup, geography, indicators, officers, and reporting are ready."><Plus aria-hidden="true" /> New program</ActionButton>}
+        action={<ActionButton title="Create programs from Data tools" description="Download the programs CSV template, upload your program list, and apply it to the registry before field rollout." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add programs</ActionButton>}
       />
       {programResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -860,7 +891,7 @@ export function IndicatorTracking({ token }: TokenAwareProps) {
         eyebrow="Indicators"
         title="Indicator tracking"
         description="Track baselines, targets, progress, and donor reporting metrics without burying teams in spreadsheets."
-        action={<ActionButton title="Indicator workflow opened" description="Baseline, target, formula, and reporting fields are ready."><Plus aria-hidden="true" /> Add indicator</ActionButton>}
+        action={<ActionButton title="Add indicators from Data tools" description="Import indicators with baseline, target, current value, unit, and reporting frequency so progress is calculated consistently." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add indicators</ActionButton>}
       />
       {indicatorResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -943,7 +974,7 @@ export function CaseManagement({ token }: TokenAwareProps) {
         eyebrow="Cases"
         title="Case management"
         description="Manage complaints, referrals, corrections, and follow-ups with clear ownership and simple next actions."
-        action={<ActionButton title="Case workflow opened" description="Referral, complaint, escalation, and follow-up fields are ready."><Plus aria-hidden="true" /> Open case</ActionButton>}
+        action={<ActionButton title="Open cases from Data tools" description="Import case lists or collect cases through a form; open cases will then appear here with owners, priorities, and due dates." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add cases</ActionButton>}
       />
       {caseResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -974,7 +1005,7 @@ export function GeospatialIntelligence({ token }: TokenAwareProps) {
         eyebrow="Map"
         title="Geospatial coverage"
         description="See where field work is happening, where coverage is weak, and which areas need supervisor attention."
-        action={<ActionButton title="GeoJSON export prepared" description="Coverage layers are ready for GIS export." variant="secondary"><Download aria-hidden="true" /> Export GeoJSON</ActionButton>}
+        action={<ActionButton title="Prepare map evidence" description="Collect GPS through forms or import records with latitude and longitude before exporting GeoJSON coverage layers." nextView="forms" nextLabel="Open Forms" variant="secondary"><Download aria-hidden="true" /> Prepare export</ActionButton>}
       />
       {mapResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -1137,7 +1168,7 @@ export function ReportingCenter({ token }: TokenAwareProps) {
         eyebrow="Reports"
         title="Donor reporting"
         description="Prepare indicator reports, narrative summaries, logframes, and map exports for donors and program teams."
-        action={<ActionButton title="Report builder opened" description="Donor report sections and live operational data are ready."><Plus aria-hidden="true" /> New report</ActionButton>}
+        action={<ActionButton title="Prepare reporting inputs" description="Reports need programs, indicators, approved submissions, and evidence before a donor package can be created." nextView="indicators" nextLabel="Open Indicators"><Plus aria-hidden="true" /> Prepare report</ActionButton>}
       />
       {reportResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -1206,7 +1237,7 @@ export function ConnectivityCenter({ token }: TokenAwareProps) {
         eyebrow="Connectivity"
         title="Offline and communication center"
         description="Keep field teams confident when networks are weak with clear sync, retry, SMS, and WhatsApp readiness."
-        action={<ActionButton title="Retry queue started" description="Failed uploads, media, and sync batches have been queued for retry."><RefreshCw aria-hidden="true" /> Retry failed uploads</ActionButton>}
+        action={<ActionButton title="No retry queue yet" description="Retry controls become useful after field officers collect data and devices attempt to sync. Start by assigning officers to forms." nextView="officers" nextLabel="Open Field officers" tone="warning"><RefreshCw aria-hidden="true" /> Check retry queue</ActionButton>}
       />
       {connectivityResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">

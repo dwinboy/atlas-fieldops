@@ -32,6 +32,8 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => (isPreview ? starterWorkflows[0]?.id ?? "" : ""));
   const [workflowResult, setWorkflowResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const createWorkflowLabel = isPreview ? "New workflow" : "Add draft rule";
+  const workflowBadgeLabel = isPreview ? "Active rule" : "Setup required";
   const selectedWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? workflows[0],
     [selectedWorkflowId, workflows]
@@ -74,11 +76,15 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
     };
     setWorkflows((current) => [nextWorkflow, ...current]);
     setSelectedWorkflowId(nextWorkflow.id);
-    setWorkflowResult(`${nextWorkflow.name} was created as a draft owned by ${nextWorkflow.owner}. Configure conditions, owner, and SLA before routing live submissions.`);
+    setWorkflowResult(
+      isPreview
+        ? `${nextWorkflow.name} was created as a draft owned by ${nextWorkflow.owner}. Configure conditions, owner, and SLA before routing live submissions.`
+        : `${nextWorkflow.name} was added as a planning draft. Confirm the owner, target time, forms, and approval conditions before using it with live submissions.`
+    );
     pushToast({
-      title: "Workflow draft created",
-      description: "A supervisor review workflow is ready to configure.",
-      tone: "success"
+      title: isPreview ? "Workflow draft created" : "Draft approval rule added",
+      description: isPreview ? "A supervisor review workflow is ready to configure." : "Review the draft setup before connecting it to live forms.",
+      tone: isPreview ? "success" : "neutral"
     });
   }
 
@@ -93,8 +99,16 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
           : workflow
       )
     );
-    setWorkflowResult(`${selectedWorkflow.name} is ready to test with sample submissions. It will route matching data to ${selectedWorkflow.owner.toLowerCase()} with a ${selectedWorkflow.sla} target time.`);
-    pushToast({ title: "Workflow ready for review", description: `${selectedWorkflow.name} can now be tested with sample submissions.`, tone: "success" });
+    setWorkflowResult(
+      isPreview
+        ? `${selectedWorkflow.name} is ready to test with sample submissions. It will route matching data to ${selectedWorkflow.owner.toLowerCase()} with a ${selectedWorkflow.sla} target time.`
+        : `${selectedWorkflow.name} is ready for management review as a draft. Connect it to saved forms and approval conditions before routing live submissions to ${selectedWorkflow.owner.toLowerCase()}.`
+    );
+    pushToast({
+      title: "Workflow ready for review",
+      description: isPreview ? `${selectedWorkflow.name} can now be tested with sample submissions.` : `${selectedWorkflow.name} is marked for review before live use.`,
+      tone: "success"
+    });
   }
 
   return (
@@ -111,7 +125,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
         </div>
         <Button onClick={createWorkflow} type="button" variant="primary">
           <Plus aria-hidden="true" />
-          New workflow
+          {createWorkflowLabel}
         </Button>
       </div>
 
@@ -130,7 +144,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
             <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
             <Badge tone={tone} className="mt-3">
               <StatusDot tone={tone === "danger" ? "offline" : tone === "warning" ? "warning" : "online"} />
-              Active rule
+              {workflowBadgeLabel}
             </Badge>
           </article>
         ))}
@@ -200,7 +214,7 @@ export function WorkflowManagement({ token }: { token?: string | null }) {
         <section className="rounded-lg border bg-panel p-4 shadow-line">
           <h2 className="text-sm font-semibold">No approval activity yet</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            This organization has no live approval queues or workflow events yet. Create a workflow, connect it to forms, and collect submissions before review activity appears here.
+            This organization has no live approval queues or workflow events yet. Add a draft approval rule, connect it to forms, and collect submissions before review activity appears here.
           </p>
         </section>
       )}
