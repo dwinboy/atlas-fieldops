@@ -7,7 +7,16 @@ from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
 from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, DonorReportCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate, MediaEvidenceCreate, PublicCollectionLinkCreate
 from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
-from app.services.operations import OperationsService, indicator_progress, infer_mapping, validate_sample_rows
+from app.services.operations import (
+    OperationsService,
+    asset_values_from_import_row,
+    case_values_from_import_row,
+    indicator_progress,
+    indicator_values_from_import_row,
+    infer_mapping,
+    program_values_from_import_row,
+    validate_sample_rows,
+)
 
 
 def test_me_permissions_are_role_scoped() -> None:
@@ -104,6 +113,33 @@ def test_import_mapping_and_validation_catch_operational_data_errors() -> None:
 
     assert mapping[0].target_field == "display_name"
     assert {issue.issue_type for issue in issues} == {"missing_required", "duplicate_row", "invalid_coordinate", "invalid_phone"}
+
+
+def test_import_mapping_supports_operational_dataset_aliases() -> None:
+    program_mapping = infer_mapping("programs", ["Program Name", "Program Code", "Area"])
+    case_mapping = infer_mapping("cases", ["Case No", "Case Title", "Category"])
+    asset_mapping = infer_mapping("assets", ["Asset ID", "Asset Name", "Location"])
+
+    assert [item.target_field for item in program_mapping] == ["name", "slug", "region"]
+    assert [item.target_field for item in case_mapping] == ["case_number", "title", "case_type"]
+    assert [item.target_field for item in asset_mapping] == ["asset_code", "name", "region"]
+
+
+def test_import_row_converters_create_applyable_payloads() -> None:
+    program = program_values_from_import_row({"name": "Nutrition Program", "slug": "nutrition", "region": "North"})
+    indicator = indicator_values_from_import_row({"code": "hh_1", "name": "Households reached", "target_value": "100"})
+    case = case_values_from_import_row({"case_number": "CASE-1", "title": "Follow up missing evidence"})
+    asset = asset_values_from_import_row({"asset_code": "TAB-1", "asset_type": "tablet", "name": "Field tablet", "condition": "new"})
+
+    assert program == {"name": "Nutrition Program", "slug": "nutrition", "region": "North"}
+    assert indicator is not None
+    assert indicator["code"] == "HH_1"
+    assert indicator["target_value"] == 100
+    assert case is not None
+    assert case["case_type"] == "general"
+    assert case["status"] == "open"
+    assert asset is not None
+    assert asset["metadata_json"] == {"imported_fields": {"condition": "new"}}
 
 
 def test_import_and_export_payloads_enforce_supported_formats() -> None:

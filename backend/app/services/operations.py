@@ -103,6 +103,31 @@ FIELD_ALIASES = {
         "target_value": ["target", "target value"],
         "current_value": ["current", "actual", "reported value"],
     },
+    "programs": {
+        "name": ["name", "program", "program name", "project", "project name"],
+        "slug": ["slug", "code", "program code", "project code"],
+        "region": ["region", "area", "location"],
+    },
+    "cases": {
+        "case_number": ["case number", "case no", "case id", "id"],
+        "case_type": ["case type", "type", "category"],
+        "title": ["title", "case title", "summary"],
+        "priority": ["priority"],
+        "status": ["status"],
+        "notes": ["notes", "description"],
+    },
+    "assets": {
+        "asset_code": ["asset code", "asset id", "code", "id"],
+        "asset_type": ["asset type", "type", "category"],
+        "name": ["name", "asset name", "description"],
+        "region": ["region", "location", "area"],
+    },
+    "organization_units": {
+        "name": ["name", "unit name", "office", "team"],
+        "code": ["code", "unit code", "id"],
+        "unit_type": ["unit type", "type", "level"],
+        "region": ["region", "geography", "location"],
+    },
 }
 
 
@@ -276,6 +301,85 @@ def beneficiary_values_from_import_row(row: dict[str, object]) -> dict[str, obje
         "latitude": optional_float(row.get("latitude")),
         "longitude": optional_float(row.get("longitude")),
         "profile_json": profile_json,
+    }
+
+
+def program_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    name = optional_text(row.get("name"))
+    slug = optional_text(row.get("slug"))
+    if name is None:
+        return None
+    if slug is None:
+        slug = name.lower().replace(" ", "-")[:120]
+    return {"name": name, "slug": slug, "region": optional_text(row.get("region"))}
+
+
+def indicator_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    code = optional_text(row.get("code"))
+    name = optional_text(row.get("name"))
+    if code is None or name is None:
+        return None
+    return {
+        "code": code.upper(),
+        "name": name,
+        "description": optional_text(row.get("description")),
+        "unit": optional_text(row.get("unit")) or "count",
+        "reporting_frequency": optional_text(row.get("reporting_frequency")) or "monthly",
+        "baseline_value": optional_float(row.get("baseline_value")) or 0,
+        "target_value": optional_float(row.get("target_value")) or 0,
+        "current_value": optional_float(row.get("current_value")) or 0,
+        "sdg_code": optional_text(row.get("sdg_code")),
+        "formula": optional_text(row.get("formula")),
+    }
+
+
+def case_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    case_number = optional_text(row.get("case_number"))
+    title = optional_text(row.get("title"))
+    if case_number is None or title is None:
+        return None
+    return {
+        "case_number": case_number,
+        "case_type": optional_text(row.get("case_type")) or "general",
+        "title": title,
+        "priority": optional_text(row.get("priority")) or "normal",
+        "status": optional_text(row.get("status")) or "open",
+        "notes": optional_text(row.get("notes")),
+    }
+
+
+def asset_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    asset_code = optional_text(row.get("asset_code"))
+    name = optional_text(row.get("name"))
+    if asset_code is None or name is None:
+        return None
+    return {
+        "asset_code": asset_code,
+        "asset_type": optional_text(row.get("asset_type")) or "equipment",
+        "name": name,
+        "region": optional_text(row.get("region")),
+        "metadata_json": {
+            "imported_fields": {
+                key: value
+                for key, value in row.items()
+                if key not in {"asset_code", "asset_type", "name", "region"}
+            }
+        },
+    }
+
+
+def organization_unit_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
+    name = optional_text(row.get("name"))
+    code = optional_text(row.get("code"))
+    unit_type = optional_text(row.get("unit_type"))
+    if name is None or code is None or unit_type is None:
+        return None
+    return {
+        "name": name,
+        "code": code.lower(),
+        "unit_type": unit_type,
+        "region": optional_text(row.get("region")),
+        "metadata_json": {},
     }
 
 
@@ -874,8 +978,9 @@ class OperationsService:
         job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
         if job is None:
             raise KeyError("Import job not found")
-        if job.dataset_type != "beneficiaries":
-            raise ValueError("Only beneficiary imports can be applied to live records right now")
+        supported_apply_types = {"beneficiaries", "programs", "indicators", "cases", "assets", "organization_units"}
+        if job.dataset_type not in supported_apply_types:
+            raise ValueError(f"{job.dataset_type.replace('_', ' ').title()} imports can be previewed and cleaned, but cannot be applied to live records yet")
 
         rows = await self.repository.list_import_rows(organization_id=organization_id, import_job_id=import_job_id)
         mapping = import_mapping_by_source(job.mapping_json)
@@ -888,30 +993,144 @@ class OperationsService:
                 skipped_rows += 1
                 continue
             mapped = mapped_row_values(row.edited_data_json, mapping)
-            values = beneficiary_values_from_import_row(mapped)
-            if values is None:
+            target_type = job.dataset_type.rstrip("s")
+            target_id: str | None = None
+            project_id: UUID | None = None
+            values: dict[str, object] | None = None
+
+            if job.dataset_type == "beneficiaries":
+                values = beneficiary_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_beneficiary = await self.repository.get_beneficiary_by_uid(
+                    organization_id=organization_id,
+                    beneficiary_uid=cast(str, values["beneficiary_uid"]),
+                )
+                if existing_beneficiary is None:
+                    beneficiary = await self.repository.create_beneficiary(organization_id=organization_id, values=values)
+                    created_records += 1
+                else:
+                    beneficiary = await self.repository.update_beneficiary(existing_beneficiary, values)
+                    updated_records += 1
+                target_type = "beneficiary"
+                target_id = str(beneficiary.id)
+                project_id = beneficiary.project_id
+            elif job.dataset_type == "programs":
+                values = program_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_program = await self.repository.get_program_by_slug(
+                    organization_id=organization_id,
+                    slug=cast(str, values["slug"]),
+                )
+                if existing_program is None:
+                    program = await self.repository.create_program(
+                        organization_id=organization_id,
+                        name=cast(str, values["name"]),
+                        slug=cast(str, values["slug"]),
+                        region=cast(str | None, values.get("region")),
+                    )
+                    created_records += 1
+                else:
+                    program = await self.repository.update_program(existing_program, values)
+                    updated_records += 1
+                target_type = "program"
+                target_id = str(program.id)
+                project_id = program.id
+            elif job.dataset_type == "indicators":
+                values = indicator_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_indicator = await self.repository.get_indicator_by_code(
+                    organization_id=organization_id,
+                    code=cast(str, values["code"]),
+                )
+                if existing_indicator is None:
+                    indicator = await self.repository.create_indicator(organization_id=organization_id, values=values)
+                    created_records += 1
+                else:
+                    indicator = await self.repository.update_indicator(existing_indicator, values)
+                    updated_records += 1
+                target_type = "indicator"
+                target_id = str(indicator.id)
+                project_id = indicator.project_id
+            elif job.dataset_type == "cases":
+                values = case_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_case = await self.repository.get_case_by_number(
+                    organization_id=organization_id,
+                    case_number=cast(str, values["case_number"]),
+                )
+                if existing_case is None:
+                    case = await self.repository.create_case(organization_id=organization_id, values=values)
+                    created_records += 1
+                else:
+                    case = await self.repository.update_case(existing_case, values)
+                    updated_records += 1
+                target_type = "case"
+                target_id = str(case.id)
+                project_id = case.project_id
+            elif job.dataset_type == "assets":
+                values = asset_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_asset = await self.repository.get_asset_by_code(
+                    organization_id=organization_id,
+                    asset_code=cast(str, values["asset_code"]),
+                )
+                if existing_asset is None:
+                    asset = await self.repository.create_enterprise_record(
+                        OperationalAsset,
+                        organization_id=organization_id,
+                        values=values,
+                    )
+                    created_records += 1
+                else:
+                    asset = await self.repository.update_asset(existing_asset, values)
+                    updated_records += 1
+                target_type = "asset"
+                target_id = str(asset.id)
+                project_id = asset.project_id
+            elif job.dataset_type == "organization_units":
+                values = organization_unit_values_from_import_row(mapped)
+                if values is None:
+                    skipped_rows += 1
+                    continue
+                existing_unit = await self.repository.get_organizational_unit_by_code(
+                    organization_id=organization_id,
+                    code=cast(str, values["code"]),
+                )
+                if existing_unit is None:
+                    unit = await self.repository.create_enterprise_record(
+                        OrganizationalUnit,
+                        organization_id=organization_id,
+                        values=values,
+                    )
+                    created_records += 1
+                else:
+                    unit = await self.repository.update_organizational_unit(existing_unit, values)
+                    updated_records += 1
+                target_type = "organization_unit"
+                target_id = str(unit.id)
+
+            if target_id is None:
                 skipped_rows += 1
                 continue
-
-            existing = await self.repository.get_beneficiary_by_uid(
-                organization_id=organization_id,
-                beneficiary_uid=cast(str, values["beneficiary_uid"]),
-            )
-            if existing is None:
-                beneficiary = await self.repository.create_beneficiary(organization_id=organization_id, values=values)
-                created_records += 1
-            else:
-                beneficiary = await self.repository.update_beneficiary(existing, values)
-                updated_records += 1
 
             await self.repository.upsert_operational_link(
                 organization_id=organization_id,
                 source_type="data_import",
                 source_id=str(job.id),
-                target_type="beneficiary",
-                target_id=str(beneficiary.id),
+                target_type=target_type,
+                target_id=target_id,
                 relationship_type="applied_to",
-                project_id=beneficiary.project_id,
+                project_id=project_id,
                 metadata_json={"source_name": job.source_name, "row_number": row.row_number},
             )
 
@@ -932,7 +1151,7 @@ class OperationsService:
             payload=OperationalEventCreate(
                 event_type="data_import.applied",
                 source_module="data",
-                summary=f"{job.source_name} applied to the beneficiary registry.",
+                summary=f"{job.source_name} applied to {job.dataset_type.replace('_', ' ')} records.",
                 priority="normal" if skipped_rows == 0 else "high",
                 payload={
                     "dataset_type": job.dataset_type,
@@ -954,7 +1173,7 @@ class OperationsService:
             updated_records=updated_records,
             skipped_rows=skipped_rows,
             dataset_type=job.dataset_type,
-            message=f"Applied {changed} beneficiary record{'s' if changed != 1 else ''}.",
+            message=f"Applied {changed} {job.dataset_type.replace('_', ' ')} record{'s' if changed != 1 else ''}.",
         )
 
     async def create_mapping_template(self, organization_id: UUID, payload: MappingTemplateCreate) -> None:

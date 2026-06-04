@@ -46,6 +46,23 @@ class OperationsRepository:
         await self.session.flush()
         return program
 
+    async def get_program_by_slug(self, *, organization_id: UUID, slug: str) -> Project | None:
+        result = await self.session.execute(
+            select(Project).where(
+                Project.organization_id == organization_id,
+                Project.slug == slug,
+                Project.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_program(self, program: Project, values: dict[str, object]) -> Project:
+        for key in ("name", "region"):
+            if key in values:
+                setattr(program, key, values[key])
+        await self.session.flush()
+        return program
+
     async def list_programs(self, organization_id: UUID) -> list[Project]:
         result = await self.session.execute(
             select(Project)
@@ -91,6 +108,23 @@ class OperationsRepository:
         await self.session.flush()
         return indicator
 
+    async def get_indicator_by_code(self, *, organization_id: UUID, code: str) -> MonitoringIndicator | None:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.code == code,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_indicator(self, indicator: MonitoringIndicator, values: dict[str, object]) -> MonitoringIndicator:
+        for key, value in values.items():
+            if key != "code":
+                setattr(indicator, key, value)
+        await self.session.flush()
+        return indicator
+
     async def list_indicators(self, organization_id: UUID) -> list[MonitoringIndicator]:
         result = await self.session.execute(
             select(MonitoringIndicator)
@@ -102,6 +136,23 @@ class OperationsRepository:
     async def create_case(self, *, organization_id: UUID, values: dict[str, object]) -> CaseRecord:
         case = CaseRecord(organization_id=organization_id, **values)
         self.session.add(case)
+        await self.session.flush()
+        return case
+
+    async def get_case_by_number(self, *, organization_id: UUID, case_number: str) -> CaseRecord | None:
+        result = await self.session.execute(
+            select(CaseRecord).where(
+                CaseRecord.organization_id == organization_id,
+                CaseRecord.case_number == case_number,
+                CaseRecord.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_case(self, case: CaseRecord, values: dict[str, object]) -> CaseRecord:
+        for key, value in values.items():
+            if key != "case_number":
+                setattr(case, key, value)
         await self.session.flush()
         return case
 
@@ -147,6 +198,34 @@ class OperationsRepository:
         self.session.add(record)
         await self.session.flush()
         return record
+
+    async def get_asset_by_code(self, *, organization_id: UUID, asset_code: str) -> OperationalAsset | None:
+        result = await self.session.execute(
+            select(OperationalAsset).where(
+                OperationalAsset.organization_id == organization_id,
+                OperationalAsset.asset_code == asset_code,
+                OperationalAsset.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_asset(self, asset: OperationalAsset, values: dict[str, object]) -> OperationalAsset:
+        for key, value in values.items():
+            if key != "asset_code":
+                setattr(asset, key, value)
+        await self.session.flush()
+        return asset
+
+    async def update_organizational_unit(
+        self,
+        unit: OrganizationalUnit,
+        values: dict[str, object],
+    ) -> OrganizationalUnit:
+        for key, value in values.items():
+            if key != "code":
+                setattr(unit, key, value)
+        await self.session.flush()
+        return unit
 
     async def get_organizational_unit_by_code(
         self,

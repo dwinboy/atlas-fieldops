@@ -12,6 +12,8 @@ SUPPORTED_DATASET_TYPES = {
     "indicators",
     "programs",
     "cases",
+    "assets",
+    "organization_units",
     "field_officers",
     "historical_migration",
 }

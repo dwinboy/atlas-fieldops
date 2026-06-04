@@ -1184,6 +1184,33 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const canUpload = Boolean(token && token !== "preview-token");
   const isPreview = token === "preview-token";
+  const datasetOptions = ["beneficiaries", "programs", "indicators", "cases", "assets", "organization_units", "submissions", "geospatial", "field_officers", "historical_migration"];
+  const templateColumns: Record<string, string[]> = {
+    beneficiaries: ["beneficiary_uid", "display_name", "beneficiary_type", "phone_number", "region", "district", "community", "latitude", "longitude"],
+    programs: ["name", "slug", "region"],
+    indicators: ["code", "name", "unit", "reporting_frequency", "baseline_value", "target_value", "current_value"],
+    cases: ["case_number", "case_type", "title", "priority", "status", "notes"],
+    assets: ["asset_code", "asset_type", "name", "region"],
+    organization_units: ["name", "code", "unit_type", "region"],
+    submissions: ["client_submission_id", "form_id", "field_officer_id", "captured_at", "payload_json"],
+    geospatial: ["name", "code", "latitude", "longitude", "region"],
+    field_officers: ["email", "full_name", "phone_number", "employee_code", "home_region", "temporary_password"],
+    historical_migration: ["source_system", "record_type", "external_id", "name", "status", "notes"]
+  };
+  const applyableDatasets = new Set(["beneficiaries", "programs", "indicators", "cases", "assets", "organization_units"]);
+
+  function downloadTemplate(): void {
+    const columns = templateColumns[datasetType] ?? ["name", "code"];
+    const csv = `${columns.join(",")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `atlas-${datasetType}-template.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setDataResult(`${datasetType.replaceAll("_", " ")} template downloaded. Fill the columns, save as CSV, then upload it here.`);
+  }
 
   const importJobsQuery = useQuery({
     queryKey: ["import-jobs", token],
@@ -1298,6 +1325,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
   const serverImportRows = importRowsQuery.data ?? [];
   const selectedImportJob = importJobsQuery.data?.find((job) => job.id === selectedImportId);
   const selectedImportIsApplied = selectedImportJob?.status === "applied";
+  const selectedImportCanApply = selectedImportJob ? applyableDatasets.has(selectedImportJob.dataset_type) : false;
   const serverIssueRows = serverImportRows.filter((row) => row.issue_count > 0 || row.validation_status === "needs_fixes" || row.validation_status === "conflict");
 
   useEffect(() => {
@@ -1500,7 +1528,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             <label className="mt-4 block text-sm font-medium">
               Dataset
               <Select className="mt-2" value={datasetType} onChange={(event) => setDatasetType(event.target.value)}>
-                {["beneficiaries", "submissions", "geospatial", "indicators", "programs", "cases", "field_officers", "historical_migration"].map((item) => (
+                {datasetOptions.map((item) => (
                   <option key={item} value={item}>{item.replaceAll("_", " ")}</option>
                 ))}
               </Select>
@@ -1508,6 +1536,9 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               Upload CSV, XLSX, JSON, or GeoJSON files. Parsed rows appear in the editable grid below.
             </p>
+            <Button className="mt-3 w-full" onClick={downloadTemplate} type="button" variant="secondary">
+              <Download aria-hidden="true" /> Download CSV template
+            </Button>
             {!canUpload ? (
               <p className="mt-3 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-xs text-warning">
                 Uploads are disabled in preview mode. Sign in with an account that has data import access.
@@ -1576,13 +1607,13 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
                   <Save aria-hidden="true" /> Save mapping
                 </Button>
                 <Button
-                  disabled={!selectedImportId || !canUpload || selectedImportIsApplied || applyMutation.isPending}
+                  disabled={!selectedImportId || !canUpload || selectedImportIsApplied || !selectedImportCanApply || applyMutation.isPending}
                   onClick={() => applyMutation.mutate()}
                   size="sm"
                   variant="primary"
                 >
                   <CheckCircle2 aria-hidden="true" />
-                  {applyMutation.isPending ? "Applying" : selectedImportIsApplied ? "Already applied" : "Apply to registry"}
+                  {applyMutation.isPending ? "Applying" : selectedImportIsApplied ? "Already applied" : selectedImportCanApply ? "Apply to registry" : "Preview only"}
                 </Button>
               </div>
             </div>
