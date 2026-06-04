@@ -21,6 +21,7 @@ import {
   listUsers,
   resetUserPassword,
   routeData,
+  returnToPlatformSession,
   updatePlatformOrganizationStatus,
   updateUser,
   type AccessCatalog,
@@ -243,6 +244,19 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
     onError: () => {
       setPlatformResult("Organization status could not be changed. Try again after confirming your platform super admin session is active.");
       pushToast({ title: "Organization status unchanged", description: "The platform action failed.", tone: "danger" });
+    }
+  });
+
+  const returnPlatformMutation = useMutation({
+    mutationFn: () => returnToPlatformSession(token ?? ""),
+    onSuccess: (response) => {
+      setPlatformResult("Returned to the platform console. You are no longer viewing a tenant support session.");
+      pushToast({ title: "Returned to platform", description: "Platform console session restored.", tone: "success" });
+      onTokenChanged?.(response.access_token);
+    },
+    onError: () => {
+      setPlatformResult("Could not return to the platform console. Sign out and log back in with the platform organization slug if this continues.");
+      pushToast({ title: "Return failed", description: "Could not restore the platform console session.", tone: "danger" });
     }
   });
 
@@ -706,9 +720,22 @@ export function OrganizationManagement({ token, principal, onTokenChanged }: Org
                 This area is for the developer/platform super admin account. Use it to create tenants, open a support session inside an organization, reactivate suspended workspaces, or troubleshoot configuration problems without being treated as a normal organization user.
               </p>
               {principal?.support_mode ? (
-                <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs leading-5 text-warning">
-                  Support mode is active for {principal.organization_name ?? principal.organization_slug}. You are viewing this organization as the platform super admin.
-                </p>
+                <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                  <p className="text-xs leading-5 text-warning">
+                    Support mode is active for {principal.organization_name ?? principal.organization_slug}. You are viewing this organization as the platform super admin.
+                  </p>
+                  <Button
+                    className="mt-3"
+                    disabled={returnPlatformMutation.isPending}
+                    onClick={() => returnPlatformMutation.mutate()}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <LifeBuoy aria-hidden="true" />
+                    {returnPlatformMutation.isPending ? "Returning" : "Return to platform console"}
+                  </Button>
+                </div>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">

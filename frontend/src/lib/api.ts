@@ -916,6 +916,10 @@ export async function createOrganizationSupportSession(token: string, organizati
   return request<TokenResponse>(`/organizations/platform/${organizationId}/support-session`, { method: "POST", token });
 }
 
+export async function returnToPlatformSession(token: string): Promise<TokenResponse> {
+  return request<TokenResponse>("/organizations/platform/session/return", { method: "POST", token });
+}
+
 export async function listUsers(token: string): Promise<UserRead[]> {
   return request<UserRead[]>("/users", { token });
 }

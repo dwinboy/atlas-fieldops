@@ -9,6 +9,7 @@ import {
   listSubmissions,
   login,
   resolveApiBaseUrl,
+  returnToPlatformSession,
   updatePlatformOrganizationStatus,
   reviewSubmission
 } from "@/lib/api";
@@ -88,10 +89,12 @@ describe("api config", () => {
     await listPlatformOrganizations("token");
     await updatePlatformOrganizationStatus("token", "org-1", false);
     await createOrganizationSupportSession("token", "org-1");
+    await returnToPlatformSession("token");
 
     expect(fetchMock.mock.calls[0][0]).toContain("/organizations/platform");
     expect(fetchMock.mock.calls[1][0]).toContain("/organizations/platform/org-1");
     expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain("false");
     expect(fetchMock.mock.calls[2][0]).toContain("/organizations/platform/org-1/support-session");
+    expect(fetchMock.mock.calls[3][0]).toContain("/organizations/platform/session/return");
   });
 });

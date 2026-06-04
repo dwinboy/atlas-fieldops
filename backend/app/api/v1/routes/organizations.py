@@ -71,6 +71,37 @@ async def list_organizations(
     return rows
 
 
+@router.post(
+    "/platform/session/return",
+    response_model=TokenResponse,
+    summary="Return a platform super admin from tenant support mode to the platform console",
+)
+async def return_to_platform_session(
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TokenResponse:
+    platform_organization_id = principal.platform_organization_id or principal.organization_id
+    repository = OrganizationRepository(session)
+    organization = await repository.get(UUID(platform_organization_id))
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform organization not found")
+    token = create_access_token(
+        subject=principal.user_id,
+        organization_id=str(organization.id),
+        roles=["super_admin"],
+        email=principal.email,
+        full_name=principal.full_name,
+        organization_slug=organization.slug,
+        organization_name=organization.name,
+        platform_admin=True,
+        support_mode=False,
+        platform_organization_id=str(organization.id),
+        platform_organization_slug=organization.slug,
+        scope_type="global",
+    )
+    return TokenResponse(access_token=token)
+
+
 @router.patch(
     "/platform/{organization_id}",
     response_model=PlatformOrganizationRead,
