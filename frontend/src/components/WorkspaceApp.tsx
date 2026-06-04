@@ -1,7 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
+import { LifeBuoy, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -29,9 +30,11 @@ import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
 import { SubmissionReview } from "@/components/SubmissionReview";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { WorkforceGovernanceCenter } from "@/components/WorkforceGovernanceCenter";
-import { getCurrentPrincipal, getOrganizationContext } from "@/lib/api";
+import { getCurrentPrincipal, getOrganizationContext, returnToPlatformSession } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -64,6 +67,27 @@ export function WorkspaceApp() {
     queryKey: ["organization-context", token],
     queryFn: () => getOrganizationContext(token ?? ""),
     enabled: Boolean(token && !isPreviewToken)
+  });
+
+  const returnSupportMutation = useMutation({
+    mutationFn: () => returnToPlatformSession(token ?? ""),
+    onSuccess: (response) => {
+      setToken(response.access_token);
+      writeToken(response.access_token);
+      setActiveView("platform");
+      pushToast({
+        title: "Returned to platform console",
+        description: "Tenant support mode is closed and your platform operator session is active.",
+        tone: "success"
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Could not return to platform",
+        description: "Sign in again with the platform super admin account if the support session has expired.",
+        tone: "danger"
+      });
+    }
   });
 
   useEffect(() => {
@@ -191,6 +215,28 @@ export function WorkspaceApp() {
     >
       <CommandPalette principal={principalQuery.data} />
       <NotificationCenter />
+      {principalQuery.data?.platform_admin && principalQuery.data.support_mode ? (
+        <section className="mb-4 rounded-2xl border border-warning/30 bg-warning/10 p-4 shadow-line">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <LifeBuoy aria-hidden="true" className="mt-0.5 text-warning" size={18} />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold">Tenant support mode</h2>
+                  <Badge tone="warning">Platform support</Badge>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  You are viewing this organization to troubleshoot a tenant issue. Return to the platform console when the support task is complete.
+                </p>
+              </div>
+            </div>
+            <Button disabled={returnSupportMutation.isPending} onClick={() => returnSupportMutation.mutate()} type="button" variant="primary">
+              <RotateCcw aria-hidden="true" />
+              Return to platform
+            </Button>
+          </div>
+        </section>
+      ) : null}
       <AnimatePresence mode="wait">
         <motion.div
           key={activeView}
