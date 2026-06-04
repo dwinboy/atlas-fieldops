@@ -57,6 +57,73 @@ export type PlatformOrganizationRead = {
   owner_email?: string | null;
 };
 
+export type PlatformSummaryRead = {
+  organization_count: number;
+  active_organization_count: number;
+  inactive_organization_count: number;
+  tenant_user_count: number;
+  platform_admin_count: number;
+  organizations_without_owner_count: number;
+  audit_event_count: number;
+};
+
+export type PlatformUserRead = {
+  user_id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  role_name: string;
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  membership_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlatformAuditLogRead = {
+  id: string;
+  organization_id: string;
+  organization_name?: string | null;
+  organization_slug?: string | null;
+  actor_user_id?: string | null;
+  actor_email?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type PlatformOrganizationUsageRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  is_active: boolean;
+  user_count: number;
+  owner_email?: string | null;
+  form_count: number;
+  submission_count: number;
+  beneficiary_count: number;
+  field_officer_count: number;
+  import_job_count: number;
+  export_job_count: number;
+  audit_event_count: number;
+};
+
+export type PlatformSettingsRead = {
+  app_name: string;
+  app_env: string;
+  api_version: string;
+  cors_origins: string[];
+  cors_origin_regex: string;
+  access_token_expire_minutes: number;
+  database_configured: boolean;
+  jwt_secret_configured: boolean;
+  redis_configured: boolean;
+  kafka_configured: boolean;
+};
+
 export type OrganizationContext = {
   organization_id: string;
   name: string;
@@ -920,6 +987,26 @@ export async function returnToPlatformSession(token: string): Promise<TokenRespo
   return request<TokenResponse>("/organizations/platform/session/return", { method: "POST", token });
 }
 
+export async function getPlatformSummary(token: string): Promise<PlatformSummaryRead> {
+  return request<PlatformSummaryRead>("/platform/summary", { token });
+}
+
+export async function listPlatformUsers(token: string): Promise<PlatformUserRead[]> {
+  return request<PlatformUserRead[]>("/platform/users", { token });
+}
+
+export async function listPlatformAuditLogs(token: string, limit = 50): Promise<PlatformAuditLogRead[]> {
+  return request<PlatformAuditLogRead[]>(`/platform/audit-logs?limit=${limit}`, { token });
+}
+
+export async function listPlatformUsage(token: string): Promise<PlatformOrganizationUsageRead[]> {
+  return request<PlatformOrganizationUsageRead[]>("/platform/usage", { token });
+}
+
+export async function getPlatformSettings(token: string): Promise<PlatformSettingsRead> {
+  return request<PlatformSettingsRead>("/platform/settings", { token });
+}
+
 export async function listUsers(token: string): Promise<UserRead[]> {
   return request<UserRead[]>("/users", { token });
 }
@@ -1423,6 +1510,8 @@ export const api = {
   createValidationRule,
   getCurrentPrincipal,
   getHealth,
+  getPlatformSettings,
+  getPlatformSummary,
   getFormTemplate,
   getFormCollectionCompatibility,
   getGovernanceSummary,
@@ -1457,7 +1546,10 @@ export const api = {
   listLineageEvents,
   listMasterDataEntries,
   listOperationalZones,
+  listPlatformAuditLogs,
   listPrograms,
+  listPlatformUsage,
+  listPlatformUsers,
   listReports,
   listRetentionPolicies,
   listRoles,

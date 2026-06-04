@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +8,7 @@ from app.api.v1.dependencies import get_current_principal, require_permission, r
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.core.security import create_access_token
+from app.repositories.audit import AuditRepository
 from app.repositories.identity import OrganizationRepository
 from app.schemas.auth import CurrentPrincipal, TokenResponse
 from app.schemas.identity import (
@@ -22,6 +23,13 @@ from app.services.identity import IdentityConflictError, OrganizationService
 router = APIRouter()
 
 
+def principal_user_uuid(principal: CurrentPrincipal) -> UUID | None:
+    try:
+        return UUID(principal.user_id)
+    except ValueError:
+        return None
+
+
 @router.post(
     "",
     response_model=OrganizationRead,
@@ -30,11 +38,24 @@ router = APIRouter()
 )
 async def create_organization(
     payload: OrganizationCreate,
-    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> object:
     try:
-        organization = await OrganizationService(session).create_organization(payload)
+        organization = cast(dict[str, object], await OrganizationService(session).create_organization(payload))
+        organization_id = UUID(str(organization["id"]))
+        await AuditRepository(session).append(
+            organization_id=organization_id,
+            actor_user_id=principal_user_uuid(principal),
+            action="platform.organization_created",
+            resource_type="organization",
+            resource_id=str(organization_id),
+            metadata={
+                "slug": organization["slug"],
+                "name": organization["name"],
+                "owner_email": organization["owner_email"] or "",
+            },
+        )
         await session.commit()
         return organization
     except IdentityConflictError as exc:
@@ -85,6 +106,15 @@ async def return_to_platform_session(
     organization = await repository.get(UUID(platform_organization_id))
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Platform organization not found")
+    await AuditRepository(session).append(
+        organization_id=organization.id,
+        actor_user_id=principal_user_uuid(principal),
+        action="platform.support_session_returned",
+        resource_type="organization",
+        resource_id=str(principal.organization_id),
+        metadata={"platform_organization_slug": organization.slug, "support_organization_slug": principal.organization_slug or ""},
+    )
+    await session.commit()
     token = create_access_token(
         subject=principal.user_id,
         organization_id=str(organization.id),
@@ -110,7 +140,7 @@ async def return_to_platform_session(
 async def update_organization_status(
     organization_id: UUID,
     payload: OrganizationStatusUpdate,
-    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> PlatformOrganizationRead:
     repository = OrganizationRepository(session)
@@ -118,6 +148,14 @@ async def update_organization_status(
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     organization.is_active = payload.is_active
+    await AuditRepository(session).append(
+        organization_id=organization.id,
+        actor_user_id=principal_user_uuid(principal),
+        action="platform.organization_status_updated",
+        resource_type="organization",
+        resource_id=str(organization.id),
+        metadata={"slug": organization.slug, "is_active": organization.is_active},
+    )
     await session.commit()
     return PlatformOrganizationRead(
         id=organization.id,
@@ -143,6 +181,15 @@ async def create_support_session(
     organization = await repository.get(organization_id)
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    await AuditRepository(session).append(
+        organization_id=organization.id,
+        actor_user_id=principal_user_uuid(principal),
+        action="platform.support_session_opened",
+        resource_type="organization",
+        resource_id=str(organization.id),
+        metadata={"slug": organization.slug, "name": organization.name},
+    )
+    await session.commit()
     token = create_access_token(
         subject=principal.user_id,
         organization_id=str(organization.id),

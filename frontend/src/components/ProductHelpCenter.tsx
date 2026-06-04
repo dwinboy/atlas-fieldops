@@ -58,6 +58,7 @@ const onboardingPath = [
 ];
 
 const rolePaths = [
+  ["Platform super admin", "Create organizations, manage tenant status, open support sessions, review platform health, audit logs, usage metrics, and safe runtime settings."],
   ["Organization admin", "Set up team access, roles, projects, approval workflows, and governance rules before field activity begins."],
   ["M&E manager", "Create indicators, connect forms to projects, monitor data quality, and prepare reports from approved submissions."],
   ["Field supervisor", "Assign officers, monitor sync health, review submissions, request corrections, and track field coverage."],
@@ -66,6 +67,47 @@ const rolePaths = [
 ];
 
 const helpTopics: HelpTopic[] = [
+  {
+    id: "platform-console",
+    title: "Manage the platform as a super admin",
+    purpose: "The Platform console is for Atlas FieldOps operators who manage the whole platform. It is separate from tenant workspaces and should be used for organization setup, production support, usage review, audit checks, and safe configuration review.",
+    audience: "Platform super admins and trusted support operators",
+    view: "platform",
+    icon: ShieldCheck,
+    whenToUse: "Use the Platform console when onboarding a new organization, checking production readiness, opening a tenant support session, reviewing platform administrators, or investigating tenant-level issues.",
+    beforeYouStart: [
+      "Confirm you are signed in with the platform super admin account, not a tenant owner account.",
+      "Verify the Railway backend has DATABASE_URL, JWT_SECRET, and BACKEND_CORS_ORIGINS configured.",
+      "Prepare verified organization details before creating a new tenant: name, slug, owner name, owner email, and temporary password."
+    ],
+    steps: [
+      "Open Platform console from the navigation.",
+      "Use Dashboard to review tenant count, platform admin count, audit events, API health, JWT readiness, and setup attention.",
+      "Use Organizations to create a tenant, activate or deactivate access, and confirm every organization has an owner email.",
+      "Use Support sessions to enter a tenant only when troubleshooting a real issue. The support banner will show that you are not acting as a normal tenant user.",
+      "Use Platform users to review super admin accounts and confirm they belong to the correct platform organization.",
+      "Use Audit logs to review organization creation, status changes, support sessions, and tenant workflow events.",
+      "Use Usage and plans to compare organization users, forms, submissions, beneficiaries, imports, exports, and audit event volumes.",
+      "Use Settings to review safe runtime configuration such as CORS origins, token expiry, database readiness, JWT readiness, Redis, and Kafka status."
+    ],
+    dataLanguage: ["Organization count", "Platform admin", "Support mode", "Audit event", "Runtime setting", "Tenant usage"],
+    goodPractice: [
+      "Keep platform work and tenant work separate so support actions are clear and auditable.",
+      "Use support mode instead of asking tenant users for their passwords.",
+      "Return to the platform console immediately after finishing tenant troubleshooting.",
+      "Create organizations only from verified onboarding information."
+    ],
+    avoid: [
+      "Do not use the super admin account for routine tenant data entry.",
+      "Do not deactivate an organization unless access must be paused for security, contract, or operational reasons.",
+      "Do not enable editable global settings without an audited backend configuration endpoint."
+    ],
+    result: "The platform operator can safely manage tenants, diagnose setup problems, and support organizations without confusing platform ownership with tenant operations.",
+    nextActions: [
+      { label: "Create organization", view: "platform" },
+      { label: "Read governance guidance", view: "governance" }
+    ]
+  },
   {
     id: "daily-work",
     title: "Use the daily workspace",

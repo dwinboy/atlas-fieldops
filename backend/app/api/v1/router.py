@@ -1,11 +1,12 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import auth, field_officers, forms, governance, health, operations, organization_governance, organizations, roles, submissions, users
+from app.api.v1.routes import auth, field_officers, forms, governance, health, operations, organization_governance, organizations, platform, roles, submissions, users
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
+api_router.include_router(platform.router, prefix="/platform", tags=["platform"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(roles.router, prefix="/roles", tags=["roles"])
 api_router.include_router(field_officers.router, prefix="/field-officers", tags=["field officers"])

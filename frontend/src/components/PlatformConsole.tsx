@@ -32,10 +32,18 @@ import {
   createOrganization,
   createOrganizationSupportSession,
   getHealth,
+  getPlatformSettings,
+  getPlatformSummary,
   listPlatformOrganizations,
+  listPlatformAuditLogs,
+  listPlatformUsage,
+  listPlatformUsers,
   updatePlatformOrganizationStatus,
+  type PlatformAuditLogRead,
+  type PlatformOrganizationUsageRead,
   type CurrentPrincipal,
-  type PlatformOrganizationRead
+  type PlatformOrganizationRead,
+  type PlatformUserRead
 } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -124,12 +132,47 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
     enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
   });
 
+  const summaryQuery = useQuery({
+    queryKey: ["platform-summary", token],
+    queryFn: () => getPlatformSummary(token ?? ""),
+    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+  });
+
+  const platformUsersQuery = useQuery({
+    queryKey: ["platform-users", token],
+    queryFn: () => listPlatformUsers(token ?? ""),
+    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+  });
+
+  const auditLogsQuery = useQuery({
+    queryKey: ["platform-audit-logs", token],
+    queryFn: () => listPlatformAuditLogs(token ?? "", 50),
+    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+  });
+
+  const usageQuery = useQuery({
+    queryKey: ["platform-usage", token],
+    queryFn: () => listPlatformUsage(token ?? ""),
+    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: ["platform-settings", token],
+    queryFn: () => getPlatformSettings(token ?? ""),
+    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+  });
+
   const organizations = organizationsQuery.data ?? [];
-  const activeOrganizations = organizations.filter((organization) => organization.is_active).length;
-  const suspendedOrganizations = organizations.length - activeOrganizations;
-  const totalUsers = organizations.reduce((sum, organization) => sum + organization.user_count, 0);
-  const organizationsWithoutOwner = organizations.filter((organization) => !organization.owner_email).length;
-  const setupAttentionCount = suspendedOrganizations + organizationsWithoutOwner + (healthQuery.isError ? 1 : 0);
+  const platformUsers = platformUsersQuery.data ?? [];
+  const auditLogs = auditLogsQuery.data ?? [];
+  const usageRows = usageQuery.data ?? [];
+  const activeOrganizations = summaryQuery.data?.active_organization_count ?? organizations.filter((organization) => organization.is_active).length;
+  const suspendedOrganizations = summaryQuery.data?.inactive_organization_count ?? organizations.length - activeOrganizations;
+  const totalUsers = summaryQuery.data?.tenant_user_count ?? organizations.reduce((sum, organization) => sum + organization.user_count, 0);
+  const organizationsWithoutOwner = summaryQuery.data?.organizations_without_owner_count ?? organizations.filter((organization) => !organization.owner_email).length;
+  const platformAdminCount = summaryQuery.data?.platform_admin_count ?? platformUsers.length;
+  const auditEventCount = summaryQuery.data?.audit_event_count ?? auditLogs.length;
+  const setupAttentionCount = suspendedOrganizations + organizationsWithoutOwner + (healthQuery.isError ? 1 : 0) + (settingsQuery.data?.jwt_secret_configured === false ? 1 : 0);
   const currentOrigin = typeof window === "undefined" ? "Production frontend origin" : window.location.origin;
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://backend-production-13c9.up.railway.app";
 
@@ -263,11 +306,105 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
     [statusMutation, supportMutation]
   );
 
+  const platformUserColumns = useMemo<TableColumn<PlatformUserRead>[]>(
+    () => [
+      {
+        key: "user",
+        header: "Platform user",
+        value: (user) => `${user.full_name} ${user.email}`,
+        render: (user) => (
+          <div>
+            <p className="font-medium">{user.full_name}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
+          </div>
+        )
+      },
+      {
+        key: "role",
+        header: "Role",
+        value: (user) => user.role_name,
+        render: (user) => <Badge tone="accent">{user.role_name.replaceAll("_", " ")}</Badge>
+      },
+      {
+        key: "home",
+        header: "Home organization",
+        value: (user) => `${user.organization_name} ${user.organization_slug}`,
+        render: (user) => (
+          <div>
+            <p>{user.organization_name}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{user.organization_slug}</p>
+          </div>
+        )
+      },
+      {
+        key: "status",
+        header: "Status",
+        value: (user) => (user.is_active && user.membership_active ? "active" : "inactive"),
+        render: (user) => <Badge tone={user.is_active && user.membership_active ? "success" : "warning"}>{user.is_active && user.membership_active ? "Active" : "Inactive"}</Badge>
+      }
+    ],
+    []
+  );
+
+  const usageColumns = useMemo<TableColumn<PlatformOrganizationUsageRead>[]>(
+    () => [
+      {
+        key: "organization",
+        header: "Organization",
+        value: (row) => `${row.organization_name} ${row.organization_slug}`,
+        render: (row) => (
+          <div>
+            <p className="font-medium">{row.organization_name}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{row.organization_slug}</p>
+          </div>
+        )
+      },
+      {
+        key: "users",
+        align: "right",
+        header: "Users",
+        value: (row) => String(row.user_count),
+        render: (row) => row.user_count.toLocaleString()
+      },
+      {
+        key: "forms",
+        align: "right",
+        header: "Forms",
+        value: (row) => String(row.form_count),
+        render: (row) => row.form_count.toLocaleString()
+      },
+      {
+        key: "submissions",
+        align: "right",
+        header: "Submissions",
+        value: (row) => String(row.submission_count),
+        render: (row) => row.submission_count.toLocaleString()
+      },
+      {
+        key: "imports",
+        align: "right",
+        header: "Imports",
+        value: (row) => String(row.import_job_count),
+        render: (row) => row.import_job_count.toLocaleString()
+      },
+      {
+        key: "audit",
+        align: "right",
+        header: "Audit events",
+        value: (row) => String(row.audit_event_count),
+        render: (row) => row.audit_event_count.toLocaleString()
+      }
+    ],
+    []
+  );
+
   const metricCards = [
     ["Organizations", organizations.length.toLocaleString(), Building2, "All tenant workspaces"],
     ["Active", activeOrganizations.toLocaleString(), CheckCircle2, "Can sign in"],
     ["Suspended", suspendedOrganizations.toLocaleString(), LockKeyhole, "Temporarily disabled"],
     ["Tenant users", totalUsers.toLocaleString(), UsersRound, "Across organizations"],
+    ["Platform admins", platformAdminCount.toLocaleString(), UserCog, "Operator accounts"],
+    ["Audit events", auditEventCount.toLocaleString(), FileClock, "Recent governance history"],
     ["Needs attention", setupAttentionCount.toLocaleString(), Activity, "Owner/status/health"]
   ] as const;
 
@@ -347,7 +484,7 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         {metricCards.map(([label, value, Icon, detail]) => (
           <article className="rounded-lg border bg-panel p-4 shadow-line" key={label}>
             <div className="flex items-center justify-between gap-3">
@@ -396,6 +533,7 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               {[
                 ["Account boundary", "Platform account", "You are managing Atlas FieldOps, not operating as a tenant user."],
                 ["Production API", healthQuery.data?.status === "ok" ? "Online" : healthQuery.isError ? "Check required" : "Checking", configuredApiUrl],
+                ["JWT secret", settingsQuery.data?.jwt_secret_configured ? "Configured" : settingsQuery.data ? "Missing" : "Checking", "Railway must provide JWT_SECRET with at least 32 characters."],
                 ["Frontend origin", currentOrigin, "This origin must be present in backend CORS settings."]
               ].map(([title, value, detail]) => (
                 <article className="rounded-lg border bg-panel p-4 shadow-line" key={title}>
@@ -487,24 +625,33 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           title="Platform users and admins"
           description="Platform users are different from tenant users. They manage the Atlas FieldOps platform, enter support sessions, and resolve operational issues across organizations."
         >
-          <div className="grid gap-3 lg:grid-cols-2">
-            <article className="rounded-lg border bg-panel p-4 shadow-line">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold">{principal?.full_name ?? principal?.email ?? "Current platform admin"}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{principal?.email ?? "Signed-in operator"}</p>
-                </div>
-                <Badge tone="accent">Super admin</Badge>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                This account can create organizations, activate or deactivate tenants, and open support sessions. It should not be used for routine tenant data entry.
-              </p>
-            </article>
-            <RequirementCard
-              title="Invite and remove platform admins"
-              status="Backend endpoint needed"
-              description="Add a platform-only user endpoint with invite, deactivate, role assignment, MFA status, last sign-in, and audit logging before exposing admin creation in production."
+          <div className="grid gap-4">
+            <DataTable
+              columns={platformUserColumns}
+              emptyLabel={platformUsersQuery.isFetching ? "Loading platform admins..." : "No platform admins found"}
+              rows={platformUsers}
+              searchLabel="Search platform admins"
+              title="Platform administrator accounts"
             />
+            <div className="grid gap-3 lg:grid-cols-2">
+              <article className="rounded-lg border bg-panel p-4 shadow-line">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">{principal?.full_name ?? principal?.email ?? "Current platform admin"}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{principal?.email ?? "Signed-in operator"}</p>
+                  </div>
+                  <Badge tone="accent">Current session</Badge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  This account can create organizations, activate or deactivate tenants, and open support sessions. It should not be used for routine tenant data entry.
+                </p>
+              </article>
+              <RequirementCard
+                title="Invite and remove platform admins"
+                status="Controlled backend action"
+                description="The console can now list platform admins. The next control should add audited invite, deactivate, role assignment, MFA status, and last sign-in fields before admin creation is exposed."
+              />
+            </div>
           </div>
         </SectionShell>
       ) : null}
@@ -540,27 +687,42 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         >
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="space-y-3">
-              {actionLog.length ? (
-                actionLog.map((item) => (
-                  <article className="rounded-lg border bg-panel p-4 shadow-line" key={`${item.time}-${item.action}-${item.detail}`}>
+              {auditLogs.length ? (
+                auditLogs.map((item: PlatformAuditLogRead) => (
+                  <article className="rounded-lg border bg-panel p-4 shadow-line" key={item.id}>
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold">{item.action}</p>
-                      <span className="text-xs text-muted-foreground">{item.time}</span>
+                      <p className="text-sm font-semibold">{item.action.replaceAll("_", " ")}</p>
+                      <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()}</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {item.organization_name ?? "Unknown organization"} · {item.actor_email ?? "System action"} · {item.resource_type}
+                    </p>
+                    {Object.keys(item.metadata).length ? (
+                      <p className="mt-2 rounded-md bg-muted/45 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
+                        {JSON.stringify(item.metadata)}
+                      </p>
+                    ) : null}
                   </article>
                 ))
               ) : (
                 <p className="rounded-lg border border-dashed p-4 text-sm leading-6 text-muted-foreground">
-                  Persistent platform audit history is not connected yet. This page will display saved operator events when the backend audit endpoint is added.
+                  {auditLogsQuery.isFetching ? "Loading platform audit history..." : "No platform audit events found yet. New organization, status, and support actions will appear here after deployment."}
                 </p>
               )}
             </div>
-            <RequirementCard
-              title="Persistent platform audit API"
-              status="Backend endpoint needed"
-              description="Expose read-only platform audit logs with filters by organization, actor, action, date range, and risk level. Store support-session start and return events."
-            />
+            <div className="space-y-3">
+              <article className="rounded-lg border bg-panel p-4 shadow-line">
+                <h3 className="text-sm font-semibold">Audit coverage</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  The backend now records platform organization creation, status changes, support session openings, and support returns. Tenant workflow audit events also appear here.
+                </p>
+              </article>
+              <RequirementCard
+                title="Advanced audit filters"
+                status="Next control"
+                description="Add date range, action type, organization, actor, and export filters when audit volume grows beyond the recent event feed."
+              />
+            </div>
           </div>
         </SectionShell>
       ) : null}
@@ -568,7 +730,7 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
       {activeSection === "usage" ? (
         <SectionShell
           title="Usage, plans, and readiness"
-          description="Use organization counts and user totals today, then connect submissions, storage, billing plan, and quota telemetry when the usage service is available."
+          description="Review real tenant usage across users, forms, submissions, beneficiaries, field officers, imports, exports, and audit events."
         >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
@@ -584,15 +746,24 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               </article>
             ))}
           </div>
+          <div className="mt-4">
+            <DataTable
+              columns={usageColumns}
+              emptyLabel={usageQuery.isFetching ? "Loading usage metrics..." : "No tenant usage metrics found"}
+              rows={usageRows}
+              searchLabel="Search usage by organization"
+              title="Tenant usage metrics"
+            />
+          </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             <RequirementCard
               title="Plan and quota controls"
-              status="Usage service needed"
-              description="Add plan fields, storage usage, submission volume, API usage, form limits, and billing status before enabling paid-plan enforcement."
+              status="Next control"
+              description="Usage metrics are now live. Add plan fields, quota limits, billing status, storage volume, and payment state before enabling paid-plan enforcement."
             />
             <RequirementCard
               title="Tenant health scoring"
-              status="Telemetry needed"
+              status="Next control"
               description="Score each organization by failed logins, sync failures, stale owners, inactive users, import errors, and unresolved workflow queues."
             />
           </div>
@@ -607,8 +778,12 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           <div className="grid gap-3 lg:grid-cols-2">
             {[
               ["API base URL", configuredApiUrl, Database],
+              ["Backend environment", settingsQuery.data?.app_env ?? "Checking", RadioTower],
               ["Frontend origin", currentOrigin, Search],
-              ["Token policy", "JWT secret required in Railway; access tokens expire by backend setting.", KeyRound],
+              ["Token policy", `${settingsQuery.data?.access_token_expire_minutes ?? 60} minute access token expiry. JWT secret: ${settingsQuery.data?.jwt_secret_configured ? "configured" : settingsQuery.data ? "missing" : "checking"}.`, KeyRound],
+              ["Database", settingsQuery.data?.database_configured ? "Configured" : settingsQuery.data ? "Missing" : "Checking", Database],
+              ["Kafka events", settingsQuery.data?.kafka_configured ? "Configured" : "Optional or not configured", Activity],
+              ["Redis", settingsQuery.data?.redis_configured ? "Configured" : "Optional or not configured", SlidersHorizontal],
               ["CORS policy", "Specific origins only. Do not use wildcard origins with credentials.", ShieldCheck]
             ].map(([title, detail, Icon]) => (
               <article className="rounded-lg border bg-panel p-4 shadow-line" key={title as string}>
@@ -620,11 +795,22 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               </article>
             ))}
           </div>
+          <div className="mt-4 rounded-lg border bg-panel p-4 shadow-line">
+            <h3 className="text-sm font-semibold">Allowed browser origins</h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(settingsQuery.data?.cors_origins ?? [currentOrigin]).map((origin) => (
+                <Badge key={origin} tone={origin === currentOrigin ? "success" : "neutral"}>{origin}</Badge>
+              ))}
+            </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Preview regex: {settingsQuery.data?.cors_origin_regex ?? "Loading from backend settings"}
+            </p>
+          </div>
           <div className="mt-4 rounded-lg border border-warning/25 bg-warning/10 p-4">
             <div className="flex gap-2">
               <AlertTriangle aria-hidden="true" className="mt-0.5 text-warning" size={17} />
               <p className="text-sm leading-6 text-muted-foreground">
-                Editable global settings are intentionally locked until the backend provides audited configuration storage. This prevents accidental production-wide changes from the browser only.
+                Editable global settings remain locked until the backend provides audited configuration updates. This prevents accidental production-wide changes from the browser only.
               </p>
             </div>
           </div>
