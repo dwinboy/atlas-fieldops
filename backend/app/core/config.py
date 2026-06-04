@@ -37,6 +37,7 @@ def missing_database_url() -> str:
 
 
 class Settings(BaseSettings):
+    # Railway injects production configuration as runtime environment variables.
     model_config = SettingsConfigDict(extra="ignore")
 
     app_name: str = "enterprise-data-platform"
