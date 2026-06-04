@@ -273,6 +273,9 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
   const nextItem = guidance.next && visibleNavItems.some((item) => item.id === guidance.next)
     ? navItems.find((item) => item.id === guidance.next)
     : null;
+  const accountName = principal?.full_name?.trim() || principal?.email || "Signed-in user";
+  const accountRole = principal?.roles?.[0]?.replaceAll("_", " ") ?? "Active account";
+  const accountScope = principal?.scope_type ? `${principal.scope_type.replace("_", " ")} access` : "Workspace access";
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">
@@ -405,8 +408,17 @@ export function AppShell({ children, onSignOut, organizationLabel, organizationL
           <div className="flex items-center gap-2">
             <Badge tone="success" className="hidden gap-1.5 sm:inline-flex">
               <RadioTower aria-hidden="true" size={13} />
-              {principal?.roles?.[0]?.replaceAll("_", " ") ?? "Online"}
+              {accountRole}
             </Badge>
+            <div className="hidden min-w-0 max-w-[240px] items-center gap-2 rounded-lg border bg-background/80 px-2.5 py-1.5 shadow-line md:flex">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                {organizationInitials(accountName)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-foreground">{accountName}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{accountScope}</p>
+              </div>
+            </div>
             <Button aria-label="Open command palette" size="icon" variant="ghost" onClick={() => setCommandOpen(true)}>
               <Command aria-hidden="true" />
             </Button>

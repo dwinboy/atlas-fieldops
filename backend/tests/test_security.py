@@ -37,10 +37,22 @@ def test_password_hash_round_trip() -> None:
 
 def test_access_token_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
-    token = create_access_token("user-1", "org-1", ["admin"])
+    token = create_access_token(
+        "user-1",
+        "org-1",
+        ["admin"],
+        email="user@example.com",
+        full_name="Amina Manager",
+        organization_slug="acme",
+        organization_name="Acme Relief",
+    )
     payload = decode_access_token(token)
     assert payload["sub"] == "user-1"
     assert payload["organization_id"] == "org-1"
+    assert payload["email"] == "user@example.com"
+    assert payload["full_name"] == "Amina Manager"
+    assert payload["organization_slug"] == "acme"
+    assert payload["organization_name"] == "Acme Relief"
     assert payload["roles"] == ["admin"]
 
 
@@ -80,13 +92,25 @@ def test_decode_rejects_expired_token(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def test_current_principal_extracts_token_claims(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
-    token = create_access_token("user-1", "org-1", ["admin", "reviewer"])
+    token = create_access_token(
+        "user-1",
+        "org-1",
+        ["admin", "reviewer"],
+        email="user@example.com",
+        full_name="Amina Manager",
+        organization_slug="acme",
+        organization_name="Acme Relief",
+    )
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
     principal = await get_current_principal(credentials)
 
     assert principal.user_id == "user-1"
     assert principal.organization_id == "org-1"
+    assert principal.email == "user@example.com"
+    assert principal.full_name == "Amina Manager"
+    assert principal.organization_slug == "acme"
+    assert principal.organization_name == "Acme Relief"
     assert principal.roles == ["admin", "reviewer"]
     assert "users.view" in principal.permissions
     assert "dashboard" in principal.menu_views
@@ -248,8 +272,14 @@ def build_identity(
     role_name: str = "collector",
     grants: list[object] | None = None,
 ) -> tuple[object, object, object, object, list[object]]:
-    user = SimpleNamespace(id=uuid4(), password_hash=password_hash, is_active=user_active)
-    organization = SimpleNamespace(id=uuid4(), is_active=organization_active)
+    user = SimpleNamespace(
+        id=uuid4(),
+        email="user@example.com",
+        full_name="Amina Manager",
+        password_hash=password_hash,
+        is_active=user_active,
+    )
+    organization = SimpleNamespace(id=uuid4(), name="Acme Relief", slug="acme", is_active=organization_active)
     membership = SimpleNamespace(is_active=membership_active)
     role = SimpleNamespace(name=role_name)
     return user, organization, membership, role, grants or []
@@ -270,6 +300,10 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     payload = decode_access_token(token_response.access_token)
     assert token_response.token_type == "bearer"
     assert payload["roles"] == ["admin"]
+    assert payload["email"] == "user@example.com"
+    assert payload["full_name"] == "Amina Manager"
+    assert payload["organization_slug"] == "acme"
+    assert payload["organization_name"] == "Acme Relief"
     assert payload["scope_type"] == "country"
     assert payload["sub"]
     assert payload["organization_id"]

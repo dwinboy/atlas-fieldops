@@ -15,6 +15,10 @@ class TokenResponse(BaseModel):
 class CurrentPrincipal(BaseModel):
     user_id: str
     organization_id: str
+    email: EmailStr | None = None
+    full_name: str | None = None
+    organization_slug: str | None = None
+    organization_name: str | None = None
     roles: list[str]
     permissions: list[str] = []
     scope_type: str = "own"

@@ -16,6 +16,10 @@ export type TokenResponse = {
 export type CurrentPrincipal = {
   user_id: string;
   organization_id: string;
+  email?: string | null;
+  full_name?: string | null;
+  organization_slug?: string | null;
+  organization_name?: string | null;
   roles: string[];
   permissions?: string[];
   scope_type?: string;

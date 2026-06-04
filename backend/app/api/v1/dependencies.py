@@ -33,6 +33,10 @@ async def get_current_principal(
     return CurrentPrincipal(
         user_id=str(payload["sub"]),
         organization_id=str(payload["organization_id"]),
+        email=payload.get("email"),
+        full_name=payload.get("full_name"),
+        organization_slug=payload.get("organization_slug"),
+        organization_name=payload.get("organization_name"),
         roles=roles,
         permissions=permissions,
         scope_type=scope_type,
