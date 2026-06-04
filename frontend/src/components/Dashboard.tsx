@@ -311,7 +311,7 @@ export function Dashboard({ token }: DashboardProps) {
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
             <div className="rounded-xl border bg-background/80 p-3">
-              <dt className="text-muted-foreground">Need retry</dt>
+              <dt className="text-muted-foreground">Retry queue</dt>
               <dd className="mt-2 text-xl font-semibold">0</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>
@@ -320,7 +320,7 @@ export function Dashboard({ token }: DashboardProps) {
             <div className="flex items-start gap-2">
               <FileText aria-hidden="true" className="mt-0.5 text-warning" size={16} />
               <p className="leading-6 text-muted-foreground">
-                Data is saved locally on devices first. Failed uploads stay in the retry queue until connectivity improves.
+                Data is saved locally on devices first. Uploads that need another attempt stay in the retry queue until connectivity improves.
               </p>
             </div>
           </div>

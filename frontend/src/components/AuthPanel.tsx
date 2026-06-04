@@ -2,13 +2,23 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity, DatabaseZap, Eye, EyeOff, Fingerprint, KeyRound, LogIn, RadioTower, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  DatabaseZap,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  KeyRound,
+  LogIn,
+  RadioTower,
+  ShieldCheck,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { login } from "@/lib/api";
+import { ApiError, login } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type AuthPanelProps = {
@@ -27,16 +37,29 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: (response) => {
-      pushToast({ title: "Signed in", description: "Workspace ready", tone: "success" });
+      pushToast({
+        title: "Signed in",
+        description: "Workspace ready",
+        tone: "success",
+      });
       onAuthenticated(response.access_token);
-    }
+    },
   });
+
+  const signInErrorMessage =
+    mutation.error instanceof ApiError && mutation.error.status === 422
+      ? "Check that the organization slug is correct and the email address uses a valid business email format."
+      : "Sign in failed. Check the organization slug, email, password, and that the account is active in that organization.";
 
   function useDemoCredentials(): void {
     setOrganizationSlug("atlas-demo");
     setEmail("superadmin@example.com");
     setPassword("ChangeMe12345!");
-    pushToast({ title: "Demo credentials filled", description: "Local development sign-in fields are ready.", tone: "success" });
+    pushToast({
+      title: "Demo credentials filled",
+      description: "Local development sign-in fields are ready.",
+      tone: "success",
+    });
   }
 
   return (
@@ -59,16 +82,22 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               Field data your team can trust.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
-              Build forms, guide field officers, review submissions, and keep work moving even when connectivity is unreliable.
+              Build forms, guide field officers, review submissions, and keep
+              work moving even when connectivity is unreliable.
             </p>
             <div className="mt-10 grid max-w-2xl grid-cols-3 border-y py-5 text-sm">
               {[
                 ["128.4k", "saved today"],
                 ["96.8%", "clean submissions"],
-                ["812", "waiting to sync"]
+                ["812", "waiting to sync"],
               ].map(([value, label]) => (
-                <div key={label} className="border-r px-4 first:pl-0 last:border-r-0">
-                  <p className="text-xl font-semibold tracking-tight">{value}</p>
+                <div
+                  key={label}
+                  className="border-r px-4 first:pl-0 last:border-r-0"
+                >
+                  <p className="text-xl font-semibold tracking-tight">
+                    {value}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">{label}</p>
                 </div>
               ))}
@@ -77,7 +106,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
           <div className="surface-premium hidden rounded-2xl p-5 xl:block">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Today’s status</p>
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                Today’s status
+              </p>
               <Badge tone="success" className="gap-1.5">
                 <RadioTower aria-hidden="true" size={13} />
                 Online
@@ -87,14 +118,21 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               {[
                 ["Organization", "Ready", "100%"],
                 ["Review history", "Recording", "Live"],
-                ["Offline sync", "Waiting", "812"]
+                ["Offline sync", "Waiting", "812"],
               ].map(([label, status, value]) => (
-                <div key={label} className="grid grid-cols-[1fr_auto] gap-3 border-t pt-4 first:border-t-0 first:pt-0">
+                <div
+                  key={label}
+                  className="grid grid-cols-[1fr_auto] gap-3 border-t pt-4 first:border-t-0 first:pt-0"
+                >
                   <div>
                     <p className="text-sm font-medium">{label}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{status}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {status}
+                    </p>
                   </div>
-                  <p className="font-mono text-xs text-muted-foreground">{value}</p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {value}
+                  </p>
                 </div>
               ))}
             </div>
@@ -110,7 +148,11 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
         className="flex items-center border-l bg-panel/95 px-6 py-10 shadow-elevated backdrop-blur"
         onSubmit={(event) => {
           event.preventDefault();
-          mutation.mutate({ email, password, organization_slug: organizationSlug });
+          mutation.mutate({
+            email,
+            password,
+            organization_slug: organizationSlug,
+          });
         }}
       >
         <div className="mx-auto w-full max-w-sm">
@@ -137,15 +179,21 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
                 <KeyRound aria-hidden="true" size={16} />
               </span>
               <span>
-                <span className="block text-sm font-semibold">Use local demo credentials</span>
+                <span className="block text-sm font-semibold">
+                  Use local demo credentials
+                </span>
                 <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  Fills the demo slug, admin email, and temporary password for local development.
+                  Fills the demo slug, admin email, and temporary password for
+                  local development.
                 </span>
               </span>
             </button>
           ) : null}
 
-          <label className="mt-6 block text-sm font-medium" htmlFor="organization">
+          <label
+            className="mt-6 block text-sm font-medium"
+            htmlFor="organization"
+          >
             Organization login slug
           </label>
           <Input
@@ -157,7 +205,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             required
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Enter the slug created for your organization, for example <span className="font-mono text-foreground">acme-health</span>.
+            Enter the slug created for your organization, for example{" "}
+            <span className="font-mono text-foreground">acme-health</span>.
           </p>
 
           <label className="mt-4 block text-sm font-medium" htmlFor="email">
@@ -193,16 +242,24 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               onClick={() => setShowPassword((value) => !value)}
               type="button"
             >
-              {showPassword ? <EyeOff aria-hidden="true" size={15} /> : <Eye aria-hidden="true" size={15} />}
+              {showPassword ? (
+                <EyeOff aria-hidden="true" size={15} />
+              ) : (
+                <Eye aria-hidden="true" size={15} />
+              )}
             </button>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Use the password provided by your administrator. Temporary passwords should be changed after first sign-in.
+            Use the password provided by your administrator. Temporary passwords
+            should be changed after first sign-in.
           </p>
 
           {mutation.isError ? (
-            <p className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
-              Sign in failed. Check the organization slug, email, password, and that the account is active in that organization.
+            <p
+              className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger"
+              role="alert"
+            >
+              {signInErrorMessage}
             </p>
           ) : null}
 
@@ -218,7 +275,12 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           <Button
             className="mt-3 w-full"
             onClick={() => {
-              pushToast({ title: "Preview mode", description: "Loaded demo workspace without backend credentials", tone: "neutral" });
+              pushToast({
+                title: "Preview mode",
+                description:
+                  "Loaded demo workspace without backend credentials",
+                tone: "neutral",
+              });
               onAuthenticated("preview-token");
             }}
             type="button"
@@ -227,7 +289,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             Preview workspace
           </Button>
           <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            Access is limited to your organization, and important actions are recorded for review.
+            Access is limited to your organization, and important actions are
+            recorded for review.
           </p>
         </div>
       </form>

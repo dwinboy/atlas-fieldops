@@ -23,7 +23,7 @@ import {
   IndicatorTracking,
   OperationalEcosystem,
   ProgramManagement,
-  ReportingCenter
+  ReportingCenter,
 } from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
@@ -34,7 +34,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { WorkforceGovernanceCenter } from "@/components/WorkforceGovernanceCenter";
-import { getCurrentPrincipal, getOrganizationContext, returnToPlatformSession } from "@/lib/api";
+import {
+  getCurrentPrincipal,
+  getOrganizationContext,
+  returnToPlatformSession,
+} from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -60,13 +64,13 @@ export function WorkspaceApp() {
   const principalQuery = useQuery({
     queryKey: ["principal", token],
     queryFn: () => getCurrentPrincipal(token ?? ""),
-    enabled: Boolean(token && !isPreviewToken)
+    enabled: Boolean(token && !isPreviewToken),
   });
 
   const organizationQuery = useQuery({
     queryKey: ["organization-context", token],
     queryFn: () => getOrganizationContext(token ?? ""),
-    enabled: Boolean(token && !isPreviewToken)
+    enabled: Boolean(token && !isPreviewToken),
   });
 
   const returnSupportMutation = useMutation({
@@ -77,17 +81,19 @@ export function WorkspaceApp() {
       setActiveView("platform");
       pushToast({
         title: "Returned to platform console",
-        description: "Tenant support mode is closed and your platform operator session is active.",
-        tone: "success"
+        description:
+          "Tenant support mode is closed and your platform operator session is active.",
+        tone: "success",
       });
     },
     onError: () => {
       pushToast({
         title: "Could not return to platform",
-        description: "Sign in again with the platform super admin account if the support session has expired.",
-        tone: "danger"
+        description:
+          "Sign in again with the platform super admin account if the support session has expired.",
+        tone: "danger",
       });
-    }
+    },
   });
 
   useEffect(() => {
@@ -98,12 +104,15 @@ export function WorkspaceApp() {
     setToken(null);
     pushToast({
       title: "Session needs sign-in",
-      description: "Your saved session could not be verified. Sign in again to continue.",
-      tone: "warning"
+      description:
+        "Your saved session could not be verified. Sign in again to continue.",
+      tone: "warning",
     });
   }, [isPreviewToken, principalQuery.isError, pushToast, token]);
 
-  const isPlatformConsoleMode = Boolean(principalQuery.data?.platform_admin && !principalQuery.data.support_mode);
+  const isPlatformConsoleMode = Boolean(
+    principalQuery.data?.platform_admin && !principalQuery.data.support_mode,
+  );
 
   useEffect(() => {
     if (!principalQuery.data) {
@@ -113,7 +122,12 @@ export function WorkspaceApp() {
       setActiveView("dashboard");
       return;
     }
-    if (!principalQuery.data.support_mode && activeView !== "platform" && activeView !== "help") {
+    if (
+      principalQuery.data.platform_admin &&
+      !principalQuery.data.support_mode &&
+      activeView !== "platform" &&
+      activeView !== "help"
+    ) {
       setActiveView("platform");
     }
     if (principalQuery.data.support_mode && activeView === "platform") {
@@ -140,9 +154,12 @@ export function WorkspaceApp() {
       <>
         <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
           <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
-            <p className="text-sm font-semibold">Checking your workspace access</p>
+            <p className="text-sm font-semibold">
+              Checking your workspace access
+            </p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Atlas is confirming your account, organization, role, and menu permissions before opening the workspace.
+              Atlas is confirming your account, organization, role, and menu
+              permissions before opening the workspace.
             </p>
           </div>
         </section>
@@ -151,14 +168,15 @@ export function WorkspaceApp() {
     );
   }
 
-  const organizationLabel =
-    isPlatformConsoleMode
-      ? "Atlas FieldOps Platform"
-      : organizationQuery.data?.name ??
-    (principalQuery.data?.organization_id
-      ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
-      : "Organization workspace");
-  const organizationSlug = isPlatformConsoleMode ? "platform-console" : organizationQuery.data?.slug;
+  const organizationLabel = isPlatformConsoleMode
+    ? "Atlas FieldOps Platform"
+    : (organizationQuery.data?.name ??
+      (principalQuery.data?.organization_id
+        ? `Organization ${principalQuery.data.organization_id.slice(0, 8)}`
+        : "Organization workspace"));
+  const organizationSlug = isPlatformConsoleMode
+    ? "platform-console"
+    : organizationQuery.data?.slug;
 
   const content = {
     platform: (
@@ -199,7 +217,7 @@ export function WorkspaceApp() {
     analytics: <ReportingCenter token={token} />,
     workflows: <WorkflowManagement token={token} />,
     connectivity: <ConnectivityCenter token={token} />,
-    help: <ProductHelpCenter />
+    help: <ProductHelpCenter />,
   } satisfies Record<WorkspaceView, React.ReactNode>;
 
   return (
@@ -215,22 +233,34 @@ export function WorkspaceApp() {
     >
       <CommandPalette principal={principalQuery.data} />
       <NotificationCenter />
-      {principalQuery.data?.platform_admin && principalQuery.data.support_mode ? (
+      {principalQuery.data?.platform_admin &&
+      principalQuery.data.support_mode ? (
         <section className="mb-4 rounded-2xl border border-warning/30 bg-warning/10 p-4 shadow-line">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
-              <LifeBuoy aria-hidden="true" className="mt-0.5 text-warning" size={18} />
+              <LifeBuoy
+                aria-hidden="true"
+                className="mt-0.5 text-warning"
+                size={18}
+              />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-semibold">Tenant support mode</h2>
                   <Badge tone="warning">Platform support</Badge>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  You are viewing this organization to troubleshoot a tenant issue. Return to the platform console when the support task is complete.
+                  You are viewing this organization to troubleshoot a tenant
+                  issue. Return to the platform console when the support task is
+                  complete.
                 </p>
               </div>
             </div>
-            <Button disabled={returnSupportMutation.isPending} onClick={() => returnSupportMutation.mutate()} type="button" variant="primary">
+            <Button
+              disabled={returnSupportMutation.isPending}
+              onClick={() => returnSupportMutation.mutate()}
+              type="button"
+              variant="primary"
+            >
               <RotateCcw aria-hidden="true" />
               Return to platform
             </Button>

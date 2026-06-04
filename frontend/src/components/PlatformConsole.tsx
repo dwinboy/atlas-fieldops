@@ -20,7 +20,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UserCog,
-  UsersRound
+  UsersRound,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -43,7 +43,7 @@ import {
   type PlatformOrganizationUsageRead,
   type CurrentPrincipal,
   type PlatformOrganizationRead,
-  type PlatformUserRead
+  type PlatformUserRead,
 } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -53,7 +53,16 @@ type PlatformConsoleProps = {
   token: string | null;
 };
 
-type PlatformSection = "dashboard" | "organizations" | "support" | "users" | "health" | "audit" | "usage" | "settings" | "onboarding";
+type PlatformSection =
+  | "dashboard"
+  | "organizations"
+  | "support"
+  | "users"
+  | "health"
+  | "audit"
+  | "usage"
+  | "settings"
+  | "onboarding";
 
 type ActionLog = {
   action: string;
@@ -61,7 +70,11 @@ type ActionLog = {
   time: string;
 };
 
-const sections: { id: PlatformSection; label: string; icon: typeof Building2 }[] = [
+const sections: {
+  id: PlatformSection;
+  label: string;
+  icon: typeof Building2;
+}[] = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "organizations", label: "Organizations", icon: Building2 },
   { id: "support", label: "Support sessions", icon: LifeBuoy },
@@ -70,7 +83,7 @@ const sections: { id: PlatformSection; label: string; icon: typeof Building2 }[]
   { id: "audit", label: "Audit logs", icon: FileClock },
   { id: "usage", label: "Usage and plans", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings },
-  { id: "onboarding", label: "Onboarding", icon: ClipboardCheck }
+  { id: "onboarding", label: "Onboarding", icon: ClipboardCheck },
 ];
 
 function slugify(value: string): string {
@@ -82,37 +95,66 @@ function slugify(value: string): string {
 }
 
 function formatTime(): string {
-  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date());
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
 }
 
-function SectionShell({ children, description, title }: { children: React.ReactNode; description: string; title: string }) {
+function SectionShell({
+  children,
+  description,
+  title,
+}: {
+  children: React.ReactNode;
+  description: string;
+  title: string;
+}) {
   return (
     <section className="surface-premium rounded-2xl p-5">
       <div className="mb-4">
         <h2 className="text-base font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
       </div>
       {children}
     </section>
   );
 }
 
-function RequirementCard({ description, status, title }: { description: string; status: string; title: string }) {
+function RequirementCard({
+  description,
+  status,
+  title,
+}: {
+  description: string;
+  status: string;
+  title: string;
+}) {
   return (
     <article className="rounded-lg border bg-panel p-4 shadow-line">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         <Badge tone="warning">{status}</Badge>
       </div>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        {description}
+      </p>
     </article>
   );
 }
 
-export function PlatformConsole({ onTokenChanged, principal, token }: PlatformConsoleProps) {
-  const [activeSection, setActiveSection] = useState<PlatformSection>("dashboard");
+export function PlatformConsole({
+  onTokenChanged,
+  principal,
+  token,
+}: PlatformConsoleProps) {
+  const [activeSection, setActiveSection] =
+    useState<PlatformSection>("dashboard");
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
+  const [organizationSlugEdited, setOrganizationSlugEdited] = useState(false);
   const [ownerFullName, setOwnerFullName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("ChangeMe12345!");
@@ -123,61 +165,99 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
   const organizationsQuery = useQuery({
     queryKey: ["platform-console-organizations", token],
     queryFn: () => listPlatformOrganizations(token ?? ""),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const healthQuery = useQuery({
     queryKey: ["platform-health"],
     queryFn: getHealth,
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const summaryQuery = useQuery({
     queryKey: ["platform-summary", token],
     queryFn: () => getPlatformSummary(token ?? ""),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const platformUsersQuery = useQuery({
     queryKey: ["platform-users", token],
     queryFn: () => listPlatformUsers(token ?? ""),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const auditLogsQuery = useQuery({
     queryKey: ["platform-audit-logs", token],
     queryFn: () => listPlatformAuditLogs(token ?? "", 50),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const usageQuery = useQuery({
     queryKey: ["platform-usage", token],
     queryFn: () => listPlatformUsage(token ?? ""),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const settingsQuery = useQuery({
     queryKey: ["platform-settings", token],
     queryFn: () => getPlatformSettings(token ?? ""),
-    enabled: Boolean(token && principal?.platform_admin && !principal.support_mode)
+    enabled: Boolean(
+      token && principal?.platform_admin && !principal.support_mode,
+    ),
   });
 
   const organizations = organizationsQuery.data ?? [];
   const platformUsers = platformUsersQuery.data ?? [];
   const auditLogs = auditLogsQuery.data ?? [];
   const usageRows = usageQuery.data ?? [];
-  const activeOrganizations = summaryQuery.data?.active_organization_count ?? organizations.filter((organization) => organization.is_active).length;
-  const suspendedOrganizations = summaryQuery.data?.inactive_organization_count ?? organizations.length - activeOrganizations;
-  const totalUsers = summaryQuery.data?.tenant_user_count ?? organizations.reduce((sum, organization) => sum + organization.user_count, 0);
-  const organizationsWithoutOwner = summaryQuery.data?.organizations_without_owner_count ?? organizations.filter((organization) => !organization.owner_email).length;
-  const platformAdminCount = summaryQuery.data?.platform_admin_count ?? platformUsers.length;
-  const auditEventCount = summaryQuery.data?.audit_event_count ?? auditLogs.length;
-  const setupAttentionCount = suspendedOrganizations + organizationsWithoutOwner + (healthQuery.isError ? 1 : 0) + (settingsQuery.data?.jwt_secret_configured === false ? 1 : 0);
-  const currentOrigin = typeof window === "undefined" ? "Production frontend origin" : window.location.origin;
-  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://backend-production-13c9.up.railway.app";
+  const activeOrganizations =
+    summaryQuery.data?.active_organization_count ??
+    organizations.filter((organization) => organization.is_active).length;
+  const suspendedOrganizations =
+    summaryQuery.data?.inactive_organization_count ??
+    organizations.length - activeOrganizations;
+  const totalUsers =
+    summaryQuery.data?.tenant_user_count ??
+    organizations.reduce(
+      (sum, organization) => sum + organization.user_count,
+      0,
+    );
+  const organizationsWithoutOwner =
+    summaryQuery.data?.organizations_without_owner_count ??
+    organizations.filter((organization) => !organization.owner_email).length;
+  const platformAdminCount =
+    summaryQuery.data?.platform_admin_count ?? platformUsers.length;
+  const auditEventCount =
+    summaryQuery.data?.audit_event_count ?? auditLogs.length;
+  const setupAttentionCount =
+    suspendedOrganizations +
+    organizationsWithoutOwner +
+    (healthQuery.isError ? 1 : 0) +
+    (settingsQuery.data?.jwt_secret_configured === false ? 1 : 0);
+  const currentOrigin =
+    typeof window === "undefined"
+      ? "Production frontend origin"
+      : window.location.origin;
+  const configuredApiUrl =
+    process.env.NEXT_PUBLIC_API_URL ??
+    "https://backend-production-13c9.up.railway.app";
 
   const addActionLog = (action: string, detail: string) => {
-    setActionLog((rows) => [{ action, detail, time: formatTime() }, ...rows].slice(0, 8));
+    setActionLog((rows) =>
+      [{ action, detail, time: formatTime() }, ...rows].slice(0, 8),
+    );
   };
 
   const organizationMutation = useMutation({
@@ -187,7 +267,7 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         slug: organizationSlug,
         owner_email: ownerEmail,
         owner_full_name: ownerFullName,
-        owner_password: ownerPassword
+        owner_password: ownerPassword,
       }),
     onSuccess: async (organization) => {
       const message = `${organization.name} was created. Login slug: ${organization.slug}. Owner: ${organization.owner_email ?? ownerEmail}.`;
@@ -195,57 +275,98 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
       addActionLog("Organization created", message);
       setOrganizationName("");
       setOrganizationSlug("");
+      setOrganizationSlugEdited(false);
       setOwnerFullName("");
       setOwnerEmail("");
       setOwnerPassword("ChangeMe12345!");
-      pushToast({ title: "Organization created", description: `${organization.name} is ready for owner sign-in.`, tone: "success" });
+      pushToast({
+        title: "Organization created",
+        description: `${organization.name} is ready for owner sign-in.`,
+        tone: "success",
+      });
       await organizationsQuery.refetch();
+      await summaryQuery.refetch();
+      await auditLogsQuery.refetch();
+      await usageQuery.refetch();
     },
     onError: () => {
-      const message = "Organization was not created. Confirm the slug is unique, owner details are valid, and your platform super admin session is active.";
+      const message =
+        "Organization was not created. Confirm the slug is unique, owner details are valid, and your platform super admin session is active.";
       setPlatformResult(message);
       addActionLog("Organization create failed", message);
-      pushToast({ title: "Organization was not created", description: "Check slug, owner details, and platform permissions.", tone: "danger" });
-    }
+      pushToast({
+        title: "Organization was not created",
+        description: "Check slug, owner details, and platform permissions.",
+        tone: "danger",
+      });
+    },
   });
 
   const statusMutation = useMutation({
-    mutationFn: (payload: { organization: PlatformOrganizationRead; active: boolean }) =>
-      updatePlatformOrganizationStatus(token ?? "", payload.organization.id, payload.active),
+    mutationFn: (payload: {
+      organization: PlatformOrganizationRead;
+      active: boolean;
+    }) =>
+      updatePlatformOrganizationStatus(
+        token ?? "",
+        payload.organization.id,
+        payload.active,
+      ),
     onSuccess: async (organization) => {
       const message = `${organization.name} is now ${organization.is_active ? "active" : "inactive"}.`;
       setPlatformResult(message);
       addActionLog("Organization status changed", message);
       pushToast({
-        title: organization.is_active ? "Organization activated" : "Organization deactivated",
+        title: organization.is_active
+          ? "Organization activated"
+          : "Organization deactivated",
         description: `${organization.name} status was updated.`,
-        tone: organization.is_active ? "success" : "warning"
+        tone: organization.is_active ? "success" : "warning",
       });
       await organizationsQuery.refetch();
+      await summaryQuery.refetch();
+      await auditLogsQuery.refetch();
+      await usageQuery.refetch();
     },
     onError: () => {
-      const message = "Organization status could not be changed. Confirm your platform session and try again.";
+      const message =
+        "Organization status could not be changed. Confirm your platform session and try again.";
       setPlatformResult(message);
       addActionLog("Status change failed", message);
-      pushToast({ title: "Status unchanged", description: "The platform action failed.", tone: "danger" });
-    }
+      pushToast({
+        title: "Status unchanged",
+        description: "The platform action failed.",
+        tone: "danger",
+      });
+    },
   });
 
   const supportMutation = useMutation({
-    mutationFn: (organization: PlatformOrganizationRead) => createOrganizationSupportSession(token ?? "", organization.id),
+    mutationFn: (organization: PlatformOrganizationRead) =>
+      createOrganizationSupportSession(token ?? "", organization.id),
     onSuccess: (response, organization) => {
       const message = `Support session opened for ${organization.name}. You are now viewing tenant data as platform support.`;
       setPlatformResult(message);
       addActionLog("Support session opened", message);
-      pushToast({ title: "Support session opened", description: `Now viewing ${organization.name}`, tone: "success" });
+      pushToast({
+        title: "Support session opened",
+        description: `Now viewing ${organization.name}`,
+        tone: "success",
+      });
+      void auditLogsQuery.refetch();
       onTokenChanged?.(response.access_token);
     },
     onError: () => {
-      const message = "Support session could not be opened. Confirm the tenant exists and your super admin session is active.";
+      const message =
+        "Support session could not be opened. Confirm the tenant exists and your super admin session is active.";
       setPlatformResult(message);
       addActionLog("Support session failed", message);
-      pushToast({ title: "Support session failed", description: "Could not open this organization.", tone: "danger" });
-    }
+      pushToast({
+        title: "Support session failed",
+        description: "Could not open this organization.",
+        tone: "danger",
+      });
+    },
   });
 
   const columns = useMemo<TableColumn<PlatformOrganizationRead>[]>(
@@ -257,28 +378,38 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         render: (organization) => (
           <div>
             <p className="font-medium">{organization.name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{organization.slug}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {organization.slug}
+            </p>
           </div>
-        )
+        ),
       },
       {
         key: "owner",
         header: "Owner",
         value: (organization) => organization.owner_email ?? "",
-        render: (organization) => organization.owner_email ?? <span className="text-warning">Owner setup needed</span>
+        render: (organization) =>
+          organization.owner_email ?? (
+            <span className="text-warning">Owner setup needed</span>
+          ),
       },
       {
         key: "users",
         align: "right",
         header: "Users",
         value: (organization) => String(organization.user_count),
-        render: (organization) => organization.user_count.toLocaleString()
+        render: (organization) => organization.user_count.toLocaleString(),
       },
       {
         key: "status",
         header: "Status",
-        value: (organization) => (organization.is_active ? "active" : "inactive"),
-        render: (organization) => <Badge tone={organization.is_active ? "success" : "warning"}>{organization.is_active ? "Active" : "Inactive"}</Badge>
+        value: (organization) =>
+          organization.is_active ? "active" : "inactive",
+        render: (organization) => (
+          <Badge tone={organization.is_active ? "success" : "warning"}>
+            {organization.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
       },
       {
         key: "actions",
@@ -286,13 +417,24 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         value: (organization) => organization.id,
         render: (organization) => (
           <div className="flex flex-wrap gap-2">
-            <Button disabled={supportMutation.isPending} onClick={() => supportMutation.mutate(organization)} size="sm" type="button" variant="secondary">
+            <Button
+              disabled={supportMutation.isPending}
+              onClick={() => supportMutation.mutate(organization)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
               <LifeBuoy aria-hidden="true" />
               Open support
             </Button>
             <Button
               disabled={statusMutation.isPending}
-              onClick={() => statusMutation.mutate({ organization, active: !organization.is_active })}
+              onClick={() =>
+                statusMutation.mutate({
+                  organization,
+                  active: !organization.is_active,
+                })
+              }
               size="sm"
               type="button"
               variant="ghost"
@@ -300,10 +442,10 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               {organization.is_active ? "Deactivate" : "Activate"}
             </Button>
           </div>
-        )
-      }
+        ),
+      },
     ],
-    [statusMutation, supportMutation]
+    [statusMutation, supportMutation],
   );
 
   const platformUserColumns = useMemo<TableColumn<PlatformUserRead>[]>(
@@ -317,13 +459,15 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
             <p className="font-medium">{user.full_name}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
           </div>
-        )
+        ),
       },
       {
         key: "role",
         header: "Role",
         value: (user) => user.role_name,
-        render: (user) => <Badge tone="accent">{user.role_name.replaceAll("_", " ")}</Badge>
+        render: (user) => (
+          <Badge tone="accent">{user.role_name.replaceAll("_", " ")}</Badge>
+        ),
       },
       {
         key: "home",
@@ -332,18 +476,29 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         render: (user) => (
           <div>
             <p>{user.organization_name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{user.organization_slug}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {user.organization_slug}
+            </p>
           </div>
-        )
+        ),
       },
       {
         key: "status",
         header: "Status",
-        value: (user) => (user.is_active && user.membership_active ? "active" : "inactive"),
-        render: (user) => <Badge tone={user.is_active && user.membership_active ? "success" : "warning"}>{user.is_active && user.membership_active ? "Active" : "Inactive"}</Badge>
-      }
+        value: (user) =>
+          user.is_active && user.membership_active ? "active" : "inactive",
+        render: (user) => (
+          <Badge
+            tone={
+              user.is_active && user.membership_active ? "success" : "warning"
+            }
+          >
+            {user.is_active && user.membership_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
     ],
-    []
+    [],
   );
 
   const usageColumns = useMemo<TableColumn<PlatformOrganizationUsageRead>[]>(
@@ -355,57 +510,94 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         render: (row) => (
           <div>
             <p className="font-medium">{row.organization_name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{row.organization_slug}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {row.organization_slug}
+            </p>
           </div>
-        )
+        ),
       },
       {
         key: "users",
         align: "right",
         header: "Users",
         value: (row) => String(row.user_count),
-        render: (row) => row.user_count.toLocaleString()
+        render: (row) => row.user_count.toLocaleString(),
       },
       {
         key: "forms",
         align: "right",
         header: "Forms",
         value: (row) => String(row.form_count),
-        render: (row) => row.form_count.toLocaleString()
+        render: (row) => row.form_count.toLocaleString(),
       },
       {
         key: "submissions",
         align: "right",
         header: "Submissions",
         value: (row) => String(row.submission_count),
-        render: (row) => row.submission_count.toLocaleString()
+        render: (row) => row.submission_count.toLocaleString(),
       },
       {
         key: "imports",
         align: "right",
         header: "Imports",
         value: (row) => String(row.import_job_count),
-        render: (row) => row.import_job_count.toLocaleString()
+        render: (row) => row.import_job_count.toLocaleString(),
       },
       {
         key: "audit",
         align: "right",
         header: "Audit events",
         value: (row) => String(row.audit_event_count),
-        render: (row) => row.audit_event_count.toLocaleString()
-      }
+        render: (row) => row.audit_event_count.toLocaleString(),
+      },
     ],
-    []
+    [],
   );
 
   const metricCards = [
-    ["Organizations", organizations.length.toLocaleString(), Building2, "All tenant workspaces"],
-    ["Active", activeOrganizations.toLocaleString(), CheckCircle2, "Can sign in"],
-    ["Suspended", suspendedOrganizations.toLocaleString(), LockKeyhole, "Temporarily disabled"],
-    ["Tenant users", totalUsers.toLocaleString(), UsersRound, "Across organizations"],
-    ["Platform admins", platformAdminCount.toLocaleString(), UserCog, "Operator accounts"],
-    ["Audit events", auditEventCount.toLocaleString(), FileClock, "Recent governance history"],
-    ["Needs attention", setupAttentionCount.toLocaleString(), Activity, "Owner/status/health"]
+    [
+      "Organizations",
+      organizations.length.toLocaleString(),
+      Building2,
+      "All tenant workspaces",
+    ],
+    [
+      "Active",
+      activeOrganizations.toLocaleString(),
+      CheckCircle2,
+      "Can sign in",
+    ],
+    [
+      "Suspended",
+      suspendedOrganizations.toLocaleString(),
+      LockKeyhole,
+      "Temporarily disabled",
+    ],
+    [
+      "Tenant users",
+      totalUsers.toLocaleString(),
+      UsersRound,
+      "Across organizations",
+    ],
+    [
+      "Platform admins",
+      platformAdminCount.toLocaleString(),
+      UserCog,
+      "Operator accounts",
+    ],
+    [
+      "Audit events",
+      auditEventCount.toLocaleString(),
+      FileClock,
+      "Recent governance history",
+    ],
+    [
+      "Needs attention",
+      setupAttentionCount.toLocaleString(),
+      Activity,
+      "Owner/status/health",
+    ],
   ] as const;
 
   const organizationForm = (
@@ -417,42 +609,83 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
       }}
     >
       <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Organization name</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Organization name
+        </span>
         <Input
-          onBlur={() => {
-            if (!organizationSlug) {
-              setOrganizationSlug(slugify(organizationName));
+          onChange={(event) => {
+            const nextName = event.target.value;
+            setOrganizationName(nextName);
+            if (!organizationSlugEdited) {
+              setOrganizationSlug(slugify(nextName));
             }
           }}
-          onChange={(event) => setOrganizationName(event.target.value)}
           placeholder="North District Health Program"
           required
           value={organizationName}
         />
       </label>
       <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Login slug</span>
-        <Input onChange={(event) => setOrganizationSlug(slugify(event.target.value))} placeholder="north-health" required value={organizationSlug} />
+        <span className="text-xs font-medium text-muted-foreground">
+          Login slug
+        </span>
+        <Input
+          onChange={(event) => {
+            setOrganizationSlugEdited(true);
+            setOrganizationSlug(slugify(event.target.value));
+          }}
+          placeholder="north-health"
+          required
+          value={organizationSlug}
+        />
       </label>
       <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Owner full name</span>
-        <Input onChange={(event) => setOwnerFullName(event.target.value)} placeholder="Amina Bello" required value={ownerFullName} />
+        <span className="text-xs font-medium text-muted-foreground">
+          Owner full name
+        </span>
+        <Input
+          onChange={(event) => setOwnerFullName(event.target.value)}
+          placeholder="Amina Bello"
+          required
+          value={ownerFullName}
+        />
       </label>
       <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Owner email</span>
-        <Input onChange={(event) => setOwnerEmail(event.target.value)} placeholder="owner@example.org" required type="email" value={ownerEmail} />
+        <span className="text-xs font-medium text-muted-foreground">
+          Owner email
+        </span>
+        <Input
+          onChange={(event) => setOwnerEmail(event.target.value)}
+          placeholder="owner@example.org"
+          required
+          type="email"
+          value={ownerEmail}
+        />
       </label>
       <label className="space-y-1.5 lg:col-span-2">
-        <span className="text-xs font-medium text-muted-foreground">Temporary password</span>
-        <Input minLength={10} onChange={(event) => setOwnerPassword(event.target.value)} required type="text" value={ownerPassword} />
+        <span className="text-xs font-medium text-muted-foreground">
+          Temporary password
+        </span>
+        <Input
+          minLength={10}
+          onChange={(event) => setOwnerPassword(event.target.value)}
+          required
+          type="text"
+          value={ownerPassword}
+        />
       </label>
       <div className="flex flex-wrap gap-2 lg:col-span-2">
-        <Button disabled={organizationMutation.isPending} type="submit" variant="primary">
+        <Button
+          disabled={organizationMutation.isPending}
+          type="submit"
+          variant="primary"
+        >
           <Plus aria-hidden="true" />
           Create organization
         </Button>
         <Button
           onClick={() => {
+            setOrganizationSlugEdited(false);
             setOrganizationSlug(slugify(organizationName));
           }}
           type="button"
@@ -469,12 +702,20 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
       <div className="surface-premium rounded-2xl p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Platform owner</p>
-            <h1 id="platform-console-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Platform owner
+            </p>
+            <h1
+              id="platform-console-title"
+              className="mt-2 text-2xl font-semibold tracking-tight"
+            >
               Platform console
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Manage Atlas FieldOps as the platform operator. Create organizations, control tenant status, enter support sessions, review readiness, and keep platform work separate from tenant work.
+              Manage Atlas FieldOps as the platform operator. Create
+              organizations, control tenant status, enter support sessions,
+              review readiness, and keep platform work separate from tenant
+              work.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -486,18 +727,30 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
         {metricCards.map(([label, value, Icon, detail]) => (
-          <article className="rounded-lg border bg-panel p-4 shadow-line" key={label}>
+          <article
+            className="rounded-lg border bg-panel p-4 shadow-line"
+            key={label}
+          >
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">{label}</p>
-              <Icon aria-hidden="true" className="text-muted-foreground" size={17} />
+              <Icon
+                aria-hidden="true"
+                className="text-muted-foreground"
+                size={17}
+              />
             </div>
-            <p className="mt-3 text-2xl font-semibold tracking-tight">{value}</p>
+            <p className="mt-3 text-2xl font-semibold tracking-tight">
+              {value}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
           </article>
         ))}
       </div>
 
-      <nav className="flex gap-2 overflow-x-auto rounded-2xl border bg-panel p-2 shadow-line" aria-label="Platform console sections">
+      <nav
+        className="flex gap-2 overflow-x-auto rounded-2xl border bg-panel p-2 shadow-line"
+        aria-label="Platform console sections"
+      >
         {sections.map((section) => {
           const Icon = section.icon;
           return (
@@ -518,8 +771,12 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
 
       {platformResult ? (
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <p className="text-sm font-medium text-primary">Latest platform action</p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{platformResult}</p>
+          <p className="text-sm font-medium text-primary">
+            Latest platform action
+          </p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {platformResult}
+          </p>
         </div>
       ) : null}
 
@@ -531,15 +788,46 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           >
             <div className="grid gap-3 md:grid-cols-3">
               {[
-                ["Account boundary", "Platform account", "You are managing Atlas FieldOps, not operating as a tenant user."],
-                ["Production API", healthQuery.data?.status === "ok" ? "Online" : healthQuery.isError ? "Check required" : "Checking", configuredApiUrl],
-                ["JWT secret", settingsQuery.data?.jwt_secret_configured ? "Configured" : settingsQuery.data ? "Missing" : "Checking", "Railway must provide JWT_SECRET with at least 32 characters."],
-                ["Frontend origin", currentOrigin, "This origin must be present in backend CORS settings."]
+                [
+                  "Account boundary",
+                  "Platform account",
+                  "You are managing Atlas FieldOps, not operating as a tenant user.",
+                ],
+                [
+                  "Production API",
+                  healthQuery.data?.status === "ok"
+                    ? "Online"
+                    : healthQuery.isError
+                      ? "Check required"
+                      : "Checking",
+                  configuredApiUrl,
+                ],
+                [
+                  "JWT secret",
+                  settingsQuery.data?.jwt_secret_configured
+                    ? "Configured"
+                    : settingsQuery.data
+                      ? "Missing"
+                      : "Checking",
+                  "Railway must provide JWT_SECRET with at least 32 characters.",
+                ],
+                [
+                  "Frontend origin",
+                  currentOrigin,
+                  "This origin must be present in backend CORS settings.",
+                ],
               ].map(([title, value, detail]) => (
-                <article className="rounded-lg border bg-panel p-4 shadow-line" key={title}>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
+                <article
+                  className="rounded-lg border bg-panel p-4 shadow-line"
+                  key={title}
+                >
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    {title}
+                  </p>
                   <p className="mt-2 text-sm font-semibold">{value}</p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    {detail}
+                  </p>
                 </article>
               ))}
             </div>
@@ -550,10 +838,14 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
                   "Create tenant organizations only from verified customer or program requests.",
                   "Use support mode only when investigating a tenant issue, then return to platform console.",
                   "Deactivate an organization only when access must be paused for security, contract, or operational reasons.",
-                  "Use session audit and usage telemetry requirements to guide the next backend hardening pass."
+                  "Use session audit and usage telemetry requirements to guide the next backend hardening pass.",
                 ].map((item) => (
                   <div className="flex gap-2" key={item}>
-                    <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" size={16} />
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="mt-0.5 text-success"
+                      size={16}
+                    />
                     <span>{item}</span>
                   </div>
                 ))}
@@ -561,21 +853,33 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
             </div>
           </SectionShell>
 
-          <SectionShell title="Current session audit" description="Recent platform actions from this browser session. Persistent audit history needs the platform audit endpoint listed below.">
+          <SectionShell
+            title="Current session audit"
+            description="Recent platform actions from this browser session. Persistent audit history needs the platform audit endpoint listed below."
+          >
             <div className="space-y-3">
               {actionLog.length ? (
                 actionLog.map((item) => (
-                  <article className="rounded-lg border bg-panel p-3" key={`${item.time}-${item.action}-${item.detail}`}>
+                  <article
+                    className="rounded-lg border bg-panel p-3"
+                    key={`${item.time}-${item.action}-${item.detail}`}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-medium">{item.action}</p>
-                      <span className="text-xs text-muted-foreground">{item.time}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {item.time}
+                      </span>
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {item.detail}
+                    </p>
                   </article>
                 ))
               ) : (
                 <p className="rounded-lg border border-dashed p-4 text-sm leading-6 text-muted-foreground">
-                  No platform actions in this browser session yet. Create an organization, change status, or open support to see immediate operator history.
+                  No platform actions in this browser session yet. Create an
+                  organization, change status, or open support to see immediate
+                  operator history.
                 </p>
               )}
             </div>
@@ -585,8 +889,17 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
 
       {activeSection === "organizations" ? (
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <DataTable columns={columns} emptyLabel="No organizations yet" rows={organizations} searchLabel="Search organizations" title="Platform organizations" />
-          <SectionShell title="Create organization" description="Create a tenant workspace and its first organization owner. Give the owner the slug, email, and temporary password after creation.">
+          <DataTable
+            columns={columns}
+            emptyLabel="No organizations yet"
+            rows={organizations}
+            searchLabel="Search organizations"
+            title="Platform organizations"
+          />
+          <SectionShell
+            title="Create organization"
+            description="Create a tenant workspace and its first organization owner. Give the owner the slug, email, and temporary password after creation."
+          >
             {organizationForm}
           </SectionShell>
         </section>
@@ -599,18 +912,33 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {organizations.map((organization) => (
-              <article className="rounded-lg border bg-panel p-4 shadow-line" key={organization.id}>
+              <article
+                className="rounded-lg border bg-panel p-4 shadow-line"
+                key={organization.id}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold">{organization.name}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">{organization.slug}</p>
+                    <h3 className="text-sm font-semibold">
+                      {organization.name}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {organization.slug}
+                    </p>
                   </div>
-                  <Badge tone={organization.is_active ? "success" : "warning"}>{organization.is_active ? "Active" : "Inactive"}</Badge>
+                  <Badge tone={organization.is_active ? "success" : "warning"}>
+                    {organization.is_active ? "Active" : "Inactive"}
+                  </Badge>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Owner: {organization.owner_email ?? "Owner not assigned"} · Users: {organization.user_count.toLocaleString()}
+                  Owner: {organization.owner_email ?? "Owner not assigned"} ·
+                  Users: {organization.user_count.toLocaleString()}
                 </p>
-                <Button className="mt-4 w-full" disabled={supportMutation.isPending} onClick={() => supportMutation.mutate(organization)} type="button">
+                <Button
+                  className="mt-4 w-full"
+                  disabled={supportMutation.isPending}
+                  onClick={() => supportMutation.mutate(organization)}
+                  type="button"
+                >
                   <LifeBuoy aria-hidden="true" />
                   Open support mode
                 </Button>
@@ -628,7 +956,11 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           <div className="grid gap-4">
             <DataTable
               columns={platformUserColumns}
-              emptyLabel={platformUsersQuery.isFetching ? "Loading platform admins..." : "No platform admins found"}
+              emptyLabel={
+                platformUsersQuery.isFetching
+                  ? "Loading platform admins..."
+                  : "No platform admins found"
+              }
               rows={platformUsers}
               searchLabel="Search platform admins"
               title="Platform administrator accounts"
@@ -637,13 +969,21 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               <article className="rounded-lg border bg-panel p-4 shadow-line">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold">{principal?.full_name ?? principal?.email ?? "Current platform admin"}</h3>
-                    <p className="mt-1 text-xs text-muted-foreground">{principal?.email ?? "Signed-in operator"}</p>
+                    <h3 className="text-sm font-semibold">
+                      {principal?.full_name ??
+                        principal?.email ??
+                        "Current platform admin"}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {principal?.email ?? "Signed-in operator"}
+                    </p>
                   </div>
                   <Badge tone="accent">Current session</Badge>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  This account can create organizations, activate or deactivate tenants, and open support sessions. It should not be used for routine tenant data entry.
+                  This account can create organizations, activate or deactivate
+                  tenants, and open support sessions. It should not be used for
+                  routine tenant data entry.
                 </p>
               </article>
               <RequirementCard
@@ -663,17 +1003,54 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Backend API", healthQuery.data?.status === "ok" ? "Online" : healthQuery.isError ? "Needs review" : "Checking", healthQuery.data?.status === "ok" ? "success" : healthQuery.isError ? "danger" : "warning", configuredApiUrl],
-              ["Database", healthQuery.data?.status === "ok" ? "Reachable" : "Unknown", healthQuery.data?.status === "ok" ? "success" : "warning", "Health route confirms API readiness. Add deep DB check for stronger diagnostics."],
-              ["CORS origin", currentOrigin, "accent", "Railway BACKEND_CORS_ORIGINS must include this origin exactly."],
-              ["Kafka events", "Optional", "warning", "Startup warnings are acceptable when Kafka is not provisioned; event publishing is disabled gracefully."]
+              [
+                "Backend API",
+                healthQuery.data?.status === "ok"
+                  ? "Online"
+                  : healthQuery.isError
+                    ? "Needs review"
+                    : "Checking",
+                healthQuery.data?.status === "ok"
+                  ? "success"
+                  : healthQuery.isError
+                    ? "danger"
+                    : "warning",
+                configuredApiUrl,
+              ],
+              [
+                "Database",
+                healthQuery.data?.status === "ok" ? "Reachable" : "Unknown",
+                healthQuery.data?.status === "ok" ? "success" : "warning",
+                "Health route confirms API readiness. Add deep DB check for stronger diagnostics.",
+              ],
+              [
+                "CORS origin",
+                currentOrigin,
+                "accent",
+                "Railway BACKEND_CORS_ORIGINS must include this origin exactly.",
+              ],
+              [
+                "Kafka events",
+                "Optional",
+                "warning",
+                "Startup warnings are acceptable when Kafka is not provisioned; event publishing is disabled gracefully.",
+              ],
             ].map(([label, value, tone, detail]) => (
-              <article className="rounded-lg border bg-panel p-4 shadow-line" key={label}>
+              <article
+                className="rounded-lg border bg-panel p-4 shadow-line"
+                key={label}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-sm font-semibold">{label}</h3>
-                  <Badge tone={tone as "success" | "warning" | "danger" | "accent"}>{value}</Badge>
+                  <Badge
+                    tone={tone as "success" | "warning" | "danger" | "accent"}
+                  >
+                    {value}
+                  </Badge>
                 </div>
-                <p className="mt-3 text-xs leading-5 text-muted-foreground">{detail}</p>
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                  {detail}
+                </p>
               </article>
             ))}
           </div>
@@ -689,13 +1066,22 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
             <div className="space-y-3">
               {auditLogs.length ? (
                 auditLogs.map((item: PlatformAuditLogRead) => (
-                  <article className="rounded-lg border bg-panel p-4 shadow-line" key={item.id}>
+                  <article
+                    className="rounded-lg border bg-panel p-4 shadow-line"
+                    key={item.id}
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold">{item.action.replaceAll("_", " ")}</p>
-                      <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()}</span>
+                      <p className="text-sm font-semibold">
+                        {item.action.replaceAll("_", " ")}
+                      </p>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(item.created_at).toLocaleString()}
+                      </span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {item.organization_name ?? "Unknown organization"} · {item.actor_email ?? "System action"} · {item.resource_type}
+                      {item.organization_name ?? "Unknown organization"} ·{" "}
+                      {item.actor_email ?? "System action"} ·{" "}
+                      {item.resource_type}
                     </p>
                     {Object.keys(item.metadata).length ? (
                       <p className="mt-2 rounded-md bg-muted/45 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
@@ -706,7 +1092,9 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
                 ))
               ) : (
                 <p className="rounded-lg border border-dashed p-4 text-sm leading-6 text-muted-foreground">
-                  {auditLogsQuery.isFetching ? "Loading platform audit history..." : "No platform audit events found yet. New organization, status, and support actions will appear here after deployment."}
+                  {auditLogsQuery.isFetching
+                    ? "Loading platform audit history..."
+                    : "No platform audit events found yet. New organization, status, and support actions will appear here after deployment."}
                 </p>
               )}
             </div>
@@ -714,7 +1102,9 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
               <article className="rounded-lg border bg-panel p-4 shadow-line">
                 <h3 className="text-sm font-semibold">Audit coverage</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  The backend now records platform organization creation, status changes, support session openings, and support returns. Tenant workflow audit events also appear here.
+                  The backend now records platform organization creation, status
+                  changes, support session openings, and support returns. Tenant
+                  workflow audit events also appear here.
                 </p>
               </article>
               <RequirementCard
@@ -734,12 +1124,31 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
         >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Organizations", organizations.length.toLocaleString(), "Total tenants on the platform"],
-              ["Active tenants", activeOrganizations.toLocaleString(), "Organizations currently allowed to sign in"],
-              ["Total users", totalUsers.toLocaleString(), "Tenant users reported by the organization API"],
-              ["Suspended tenants", suspendedOrganizations.toLocaleString(), "Tenants blocked from normal access"]
+              [
+                "Organizations",
+                organizations.length.toLocaleString(),
+                "Total tenants on the platform",
+              ],
+              [
+                "Active tenants",
+                activeOrganizations.toLocaleString(),
+                "Organizations currently allowed to sign in",
+              ],
+              [
+                "Total users",
+                totalUsers.toLocaleString(),
+                "Tenant users reported by the organization API",
+              ],
+              [
+                "Suspended tenants",
+                suspendedOrganizations.toLocaleString(),
+                "Tenants blocked from normal access",
+              ],
             ].map(([label, value, detail]) => (
-              <article className="rounded-lg border bg-panel p-4 shadow-line" key={label}>
+              <article
+                className="rounded-lg border bg-panel p-4 shadow-line"
+                key={label}
+              >
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <p className="mt-3 text-2xl font-semibold">{value}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
@@ -749,7 +1158,11 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           <div className="mt-4">
             <DataTable
               columns={usageColumns}
-              emptyLabel={usageQuery.isFetching ? "Loading usage metrics..." : "No tenant usage metrics found"}
+              emptyLabel={
+                usageQuery.isFetching
+                  ? "Loading usage metrics..."
+                  : "No tenant usage metrics found"
+              }
               rows={usageRows}
               searchLabel="Search usage by organization"
               title="Tenant usage metrics"
@@ -778,39 +1191,91 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
           <div className="grid gap-3 lg:grid-cols-2">
             {[
               ["API base URL", configuredApiUrl, Database],
-              ["Backend environment", settingsQuery.data?.app_env ?? "Checking", RadioTower],
+              [
+                "Backend environment",
+                settingsQuery.data?.app_env ?? "Checking",
+                RadioTower,
+              ],
               ["Frontend origin", currentOrigin, Search],
-              ["Token policy", `${settingsQuery.data?.access_token_expire_minutes ?? 60} minute access token expiry. JWT secret: ${settingsQuery.data?.jwt_secret_configured ? "configured" : settingsQuery.data ? "missing" : "checking"}.`, KeyRound],
-              ["Database", settingsQuery.data?.database_configured ? "Configured" : settingsQuery.data ? "Missing" : "Checking", Database],
-              ["Kafka events", settingsQuery.data?.kafka_configured ? "Configured" : "Optional or not configured", Activity],
-              ["Redis", settingsQuery.data?.redis_configured ? "Configured" : "Optional or not configured", SlidersHorizontal],
-              ["CORS policy", "Specific origins only. Do not use wildcard origins with credentials.", ShieldCheck]
+              [
+                "Token policy",
+                `${settingsQuery.data?.access_token_expire_minutes ?? 60} minute access token expiry. JWT secret: ${settingsQuery.data?.jwt_secret_configured ? "configured" : settingsQuery.data ? "missing" : "checking"}.`,
+                KeyRound,
+              ],
+              [
+                "Database",
+                settingsQuery.data?.database_configured
+                  ? "Configured"
+                  : settingsQuery.data
+                    ? "Missing"
+                    : "Checking",
+                Database,
+              ],
+              [
+                "Kafka events",
+                settingsQuery.data?.kafka_configured
+                  ? "Configured"
+                  : "Optional or not configured",
+                Activity,
+              ],
+              [
+                "Redis",
+                settingsQuery.data?.redis_configured
+                  ? "Configured"
+                  : "Optional or not configured",
+                SlidersHorizontal,
+              ],
+              [
+                "CORS policy",
+                "Specific origins only. Do not use wildcard origins with credentials.",
+                ShieldCheck,
+              ],
             ].map(([title, detail, Icon]) => (
-              <article className="rounded-lg border bg-panel p-4 shadow-line" key={title as string}>
+              <article
+                className="rounded-lg border bg-panel p-4 shadow-line"
+                key={title as string}
+              >
                 <div className="flex items-center gap-2">
                   <Icon aria-hidden="true" className="text-primary" size={17} />
                   <h3 className="text-sm font-semibold">{title as string}</h3>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail as string}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {detail as string}
+                </p>
               </article>
             ))}
           </div>
           <div className="mt-4 rounded-lg border bg-panel p-4 shadow-line">
             <h3 className="text-sm font-semibold">Allowed browser origins</h3>
             <div className="mt-3 flex flex-wrap gap-2">
-              {(settingsQuery.data?.cors_origins ?? [currentOrigin]).map((origin) => (
-                <Badge key={origin} tone={origin === currentOrigin ? "success" : "neutral"}>{origin}</Badge>
-              ))}
+              {(settingsQuery.data?.cors_origins ?? [currentOrigin]).map(
+                (origin) => (
+                  <Badge
+                    key={origin}
+                    tone={origin === currentOrigin ? "success" : "neutral"}
+                  >
+                    {origin}
+                  </Badge>
+                ),
+              )}
             </div>
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Preview regex: {settingsQuery.data?.cors_origin_regex ?? "Loading from backend settings"}
+              Preview regex:{" "}
+              {settingsQuery.data?.cors_origin_regex ??
+                "Loading from backend settings"}
             </p>
           </div>
           <div className="mt-4 rounded-lg border border-warning/25 bg-warning/10 p-4">
             <div className="flex gap-2">
-              <AlertTriangle aria-hidden="true" className="mt-0.5 text-warning" size={17} />
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 text-warning"
+                size={17}
+              />
               <p className="text-sm leading-6 text-muted-foreground">
-                Editable global settings remain locked until the backend provides audited configuration updates. This prevents accidental production-wide changes from the browser only.
+                Editable global settings remain locked until the backend
+                provides audited configuration updates. This prevents accidental
+                production-wide changes from the browser only.
               </p>
             </div>
           </div>
@@ -819,27 +1284,56 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
 
       {activeSection === "onboarding" ? (
         <section className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <SectionShell title="New organization setup" description="Use this form to create the tenant and its first owner. The owner completes workspace setup after sign-in.">
+          <SectionShell
+            title="New organization setup"
+            description="Use this form to create the tenant and its first owner. The owner completes workspace setup after sign-in."
+          >
             {organizationForm}
           </SectionShell>
-          <SectionShell title="Setup checklist" description="Follow these steps so a new tenant starts cleanly and does not inherit demo data or platform-only configuration.">
+          <SectionShell
+            title="Setup checklist"
+            description="Follow these steps so a new tenant starts cleanly and does not inherit demo data or platform-only configuration."
+          >
             <div className="grid gap-3 md:grid-cols-2">
               {[
-                ["Create tenant", "Create organization, slug, owner email, and temporary password from verified onboarding information."],
-                ["Owner signs in", "Ask the organization owner to sign in, change password, and confirm the organization name."],
-                ["Configure team", "Create departments, regions, roles, field officers, and reviewer accounts inside the tenant."],
-                ["Import starter data", "Use tenant data tools to import officers, beneficiaries, geography, indicators, and organization units."],
-                ["Build forms", "Create or import collection forms, validate them, and publish only when ready for field use."],
-                ["Verify empty state", "Confirm dashboard, submissions, reports, and work queues show no demo data until real records are entered."]
+                [
+                  "Create tenant",
+                  "Create organization, slug, owner email, and temporary password from verified onboarding information.",
+                ],
+                [
+                  "Owner signs in",
+                  "Ask the organization owner to sign in, change password, and confirm the organization name.",
+                ],
+                [
+                  "Configure team",
+                  "Create departments, regions, roles, field officers, and reviewer accounts inside the tenant.",
+                ],
+                [
+                  "Import starter data",
+                  "Use tenant data tools to import officers, beneficiaries, geography, indicators, and organization units.",
+                ],
+                [
+                  "Build forms",
+                  "Create or import collection forms, validate them, and publish only when ready for field use.",
+                ],
+                [
+                  "Verify empty state",
+                  "Confirm dashboard, submissions, reports, and work queues show no demo data until real records are entered.",
+                ],
               ].map(([title, detail], index) => (
-                <article className="rounded-lg border bg-panel p-4 shadow-line" key={title}>
+                <article
+                  className="rounded-lg border bg-panel p-4 shadow-line"
+                  key={title}
+                >
                   <div className="flex items-center gap-2">
                     <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                       {index + 1}
                     </span>
                     <h3 className="text-sm font-semibold">{title}</h3>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {detail}
+                  </p>
                 </article>
               ))}
             </div>
@@ -849,11 +1343,19 @@ export function PlatformConsole({ onTokenChanged, principal, token }: PlatformCo
 
       <div className="rounded-lg border bg-panel p-4 shadow-line">
         <div className="flex items-start gap-3">
-          <SlidersHorizontal aria-hidden="true" className="mt-0.5 text-primary" size={18} />
+          <SlidersHorizontal
+            aria-hidden="true"
+            className="mt-0.5 text-primary"
+            size={18}
+          />
           <div>
             <h2 className="text-sm font-semibold">Production boundary</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Organization creation, status changes, and support sessions are live platform actions. Platform users, persistent audit, usage plans, and editable settings are exposed as operator work areas with clear backend requirements so the UI does not pretend to save data that has no API yet.
+              Organization creation, status changes, and support sessions are
+              live platform actions. Platform users, persistent audit, usage
+              plans, and editable settings are exposed as operator work areas
+              with clear backend requirements so the UI does not pretend to save
+              data that has no API yet.
             </p>
           </div>
         </div>
