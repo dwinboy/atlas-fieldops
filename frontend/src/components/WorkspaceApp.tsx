@@ -37,7 +37,9 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 export function WorkspaceApp() {
   const [token, setToken] = useState<string | null>(null);
   const activeView = useWorkspaceStore((state) => state.activeView);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const theme = useWorkspaceStore((state) => state.theme);
+  const isPreviewToken = token === "preview-token";
 
   useEffect(() => {
     const storedToken = readToken();
@@ -53,14 +55,27 @@ export function WorkspaceApp() {
   const principalQuery = useQuery({
     queryKey: ["principal", token],
     queryFn: () => getCurrentPrincipal(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreviewToken)
   });
 
   const organizationQuery = useQuery({
     queryKey: ["organization-context", token],
     queryFn: () => getOrganizationContext(token ?? ""),
-    enabled: Boolean(token)
+    enabled: Boolean(token && !isPreviewToken)
   });
+
+  useEffect(() => {
+    if (!token || isPreviewToken || !principalQuery.isError) {
+      return;
+    }
+    clearToken();
+    setToken(null);
+    pushToast({
+      title: "Session needs sign-in",
+      description: "Your saved session could not be verified. Sign in again to continue.",
+      tone: "warning"
+    });
+  }, [isPreviewToken, principalQuery.isError, pushToast, token]);
 
   if (!token) {
     return (
@@ -71,6 +86,22 @@ export function WorkspaceApp() {
             writeToken(nextToken);
           }}
         />
+        <NotificationCenter />
+      </>
+    );
+  }
+
+  if (!isPreviewToken && principalQuery.isLoading) {
+    return (
+      <>
+        <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
+          <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
+            <p className="text-sm font-semibold">Checking your workspace access</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Atlas is confirming your account, organization, role, and menu permissions before opening the workspace.
+            </p>
+          </div>
+        </section>
         <NotificationCenter />
       </>
     );

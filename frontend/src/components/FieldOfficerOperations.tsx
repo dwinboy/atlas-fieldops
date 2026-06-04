@@ -162,16 +162,31 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           </p>
         </div>
         <Button
-          onClick={() => {
-            void officersQuery.refetch();
-            setRefreshResult(`${activeCount} active officer${activeCount === 1 ? "" : "s"} checked. Recent sync, device pairing, and GPS fields are visible in the roster.`);
+          disabled={officersQuery.isFetching}
+          onClick={async () => {
+            if (!token) {
+              setRefreshResult("Sign in before refreshing field team status.");
+              pushToast({ title: "Sign in required", description: "Field status is only available for signed-in users.", tone: "warning" });
+              return;
+            }
+            let refreshedActiveCount = activeCount;
+            if (!isPreview) {
+              const result = await officersQuery.refetch();
+              if (result.isError) {
+                setRefreshResult("Field status could not be refreshed. Check your field officer permission or try again after the backend is reachable.");
+                pushToast({ title: "Refresh failed", description: "Check your field officer permission or backend connection.", tone: "danger" });
+                return;
+              }
+              refreshedActiveCount = (result.data ?? []).filter((officer) => officer.is_active).length;
+            }
+            setRefreshResult(`${refreshedActiveCount} active officer${refreshedActiveCount === 1 ? "" : "s"} checked. Recent sync, device pairing, and GPS fields are visible in the roster.`);
             pushToast({ title: "Field status refreshed", description: "Officer sync, device, and location details were checked.", tone: "success" });
           }}
           type="button"
           variant="primary"
         >
           <RotateCcw aria-hidden="true" />
-          Refresh status
+          {officersQuery.isFetching ? "Refreshing" : "Refresh status"}
         </Button>
       </div>
 

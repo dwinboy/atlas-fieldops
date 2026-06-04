@@ -312,6 +312,7 @@ export function DynamicForms({ token }: DynamicFormsProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
   const [builderResult, setBuilderResult] = useState("");
   const pendingTemplateId = useWorkspaceStore((state) => state.pendingTemplateId);
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const backendFormsQuery = useQuery({
@@ -341,6 +342,14 @@ export function DynamicForms({ token }: DynamicFormsProps) {
         tone: "success"
       });
       await backendFormsQuery.refetch();
+    },
+    onError: () => {
+      setBuilderResult("The form was not saved. Check your form management permission and confirm the form has at least one question before publishing.");
+      pushToast({
+        title: "Form was not saved",
+        description: "Check permissions and required form fields before trying again.",
+        tone: "danger"
+      });
     }
   });
   const serverCompatibilityQuery = useQuery({
@@ -522,6 +531,11 @@ export function DynamicForms({ token }: DynamicFormsProps) {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
+              if (token && token !== "preview-token" && !isPersistedSelectedForm) {
+                setBuilderResult("Save this form to the backend before requesting a backend XLSForm export. Draft-only forms can still be reviewed in the on-screen preview.");
+                pushToast({ title: "Save form first", description: "Backend export is available after the form is saved.", tone: "warning" });
+                return;
+              }
               const surveyRows = selectedFormWorkbook?.survey.length ?? 0;
               setBuilderResult(`${selectedForm?.name ?? "Form"} is ready to export with ${surveyRows} survey rows, ${selectedFormWorkbook?.choices.length ?? 0} choices, and XLSForm-compatible settings.`);
               pushToast({ title: "Export prepared", description: `${selectedForm?.name ?? "Form"} is ready as JSON and XLSForm with ${surveyRows} survey rows.`, tone: "success" });
@@ -536,8 +550,9 @@ export function DynamicForms({ token }: DynamicFormsProps) {
           </Button>
           <Button
             onClick={() => {
-              setBuilderResult("Import workflow is ready. Use Data tools to review XLSForm, JSON, CSV, and Kobo/ODK migration structures before applying imported data.");
-              pushToast({ title: "Import workflow ready", description: "XLSForm, JSON, CSV, and Kobo/ODK migration structures can be reviewed in Data tools.", tone: "neutral" });
+              setBuilderResult("Import files are handled in Data tools so validation, column mapping, versioning, and rollback stay in one governed workflow.");
+              pushToast({ title: "Opening Data tools", description: "Review XLSForm, JSON, CSV, and Kobo/ODK migration files in Data tools.", tone: "neutral" });
+              setActiveView("data");
             }}
             type="button"
           >

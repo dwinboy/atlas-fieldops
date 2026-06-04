@@ -16,10 +16,11 @@ type AuthPanelProps = {
 };
 
 export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
-  const [email, setEmail] = useState("superadmin@example.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationSlug, setOrganizationSlug] = useState("atlas-demo");
+  const [organizationSlug, setOrganizationSlug] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const demoLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
 
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
@@ -126,21 +127,23 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           <p className="mt-2 text-sm text-muted-foreground">
             Use your organization slug, work email, and password to continue.
           </p>
-          <button
-            className="mt-4 flex w-full items-start gap-3 rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
-            onClick={useDemoCredentials}
-            type="button"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
-              <KeyRound aria-hidden="true" size={16} />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold">Use local demo credentials</span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Fills the demo slug, admin email, and temporary password for local development.
+          {demoLoginEnabled ? (
+            <button
+              className="mt-4 flex w-full items-start gap-3 rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5"
+              onClick={useDemoCredentials}
+              type="button"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+                <KeyRound aria-hidden="true" size={16} />
               </span>
-            </span>
-          </button>
+              <span>
+                <span className="block text-sm font-semibold">Use local demo credentials</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  Fills the demo slug, admin email, and temporary password for local development.
+                </span>
+              </span>
+            </button>
+          ) : null}
 
           <label className="mt-6 block text-sm font-medium" htmlFor="organization">
             Organization login slug
@@ -154,7 +157,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             required
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Enter the slug created for your organization, for example <span className="font-mono text-foreground">atlas-demo</span>.
+            Enter the slug created for your organization, for example <span className="font-mono text-foreground">acme-health</span>.
           </p>
 
           <label className="mt-4 block text-sm font-medium" htmlFor="email">
@@ -194,7 +197,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </button>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            After running <span className="font-mono text-foreground">make seed-admin</span>, use the local demo credentials above.
+            Use the password provided by your administrator. Temporary passwords should be changed after first sign-in.
           </p>
 
           {mutation.isError ? (

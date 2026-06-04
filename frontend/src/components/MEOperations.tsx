@@ -1464,6 +1464,28 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
   const selectedImportIsApplied = selectedImportJob?.status === "applied";
   const selectedImportCanApply = selectedImportJob ? applyableDatasets.has(selectedImportJob.dataset_type) : false;
   const serverIssueRows = serverImportRows.filter((row) => row.issue_count > 0 || row.validation_status === "needs_fixes" || row.validation_status === "conflict");
+  const liveCollectionChannels = [
+    {
+      name: "Mobile app collection",
+      status: selectedImportId || publicLinksQuery.data?.length ? "Ready" : "Needs forms",
+      description: "Assign published forms to field officers before mobile collection, GPS evidence, media queues, and retry sync become active."
+    },
+    {
+      name: "Web form collection",
+      status: publicLinksQuery.data?.length ? "Configured" : "Needs link",
+      description: "Create a controlled public collection link from a saved form before browser-based collection is available."
+    },
+    {
+      name: "Public link sharing",
+      status: publicLinksQuery.data?.length ? "Controlled" : "Not configured",
+      description: "External collection links appear after a saved form has access rules, audit visibility, and a public URL."
+    },
+    {
+      name: "Kobo/ODK migration",
+      status: importJobsQuery.data?.length ? "In review" : "Ready to upload",
+      description: "Upload XLSForm, CSV, JSON, ZIP, or media evidence packages in Data tools before applying migrated records."
+    }
+  ];
 
   useEffect(() => {
     if (!selectedImportId && importJobsQuery.data?.length) {
@@ -1635,7 +1657,7 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
       </div>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Collection channels">
-        {collectionChannels.map((channel) => (
+        {(isPreview ? collectionChannels : liveCollectionChannels).map((channel) => (
           <article className="rounded-lg border bg-panel p-4" key={channel.name}>
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-sm font-semibold">{channel.name}</h2>
@@ -1730,6 +1752,15 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
               <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => {
+                    if (!isPreview && !selectedImportId) {
+                      setDataResult("Upload a file before saving a reusable column mapping. Mapping appears after Atlas reads the source columns.");
+                      pushToast({
+                        title: "Upload required",
+                        description: "Upload a file before saving a mapping.",
+                        tone: "warning"
+                      });
+                      return;
+                    }
                     setDataResult(`${datasetType.replaceAll("_", " ")} column mapping was saved for future imports. Atlas will reuse these matches when similar files are uploaded.`);
                     pushToast({
                       title: "Mapping saved",
@@ -1886,8 +1917,8 @@ export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenter
             disabled={exportMutation.isPending}
             onClick={() => {
               if (!canUpload) {
-                setDataResult("Preview ZIP export prepared. It would include reviewed media, audit records, and selected dataset files when export access is available.");
-                pushToast({ title: "Preview export prepared", description: "A ZIP package preview is ready for review.", tone: "success" });
+                setDataResult("ZIP export is a production action. Sign in with data export access before creating media, audit, and dataset packages.");
+                pushToast({ title: "Export access required", description: "Sign in with data export access before creating ZIP packages.", tone: "warning" });
                 return;
               }
               exportMutation.mutate();

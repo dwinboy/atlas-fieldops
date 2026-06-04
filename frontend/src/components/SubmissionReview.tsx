@@ -90,6 +90,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
   const [reviewResult, setReviewResult] = useState("");
   const [exportResult, setExportResult] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
 
   const submissionsQuery = useQuery({
     queryKey: ["submissions", token],
@@ -114,6 +115,10 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
       setReviewResult(`${submission.client_submission_id} is now ${formatStatus(submission.status)}. Reviewer note: ${variables.comment}`);
       pushToast({ title: `Submission ${variables.action.replace("_", " ")}`, description: selected?.client_submission_id, tone: "success" });
       await submissionsQuery.refetch();
+    },
+    onError: () => {
+      setReviewResult("Review action failed. Confirm the submission is still open, add a clear comment when requesting correction, and check your review permission.");
+      pushToast({ title: "Review action failed", description: "Check submission status and review permission.", tone: "danger" });
     }
   });
 
@@ -182,6 +187,11 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
       pushToast({ title: `Preview ${action.replace("_", " ")}`, description: selected?.client_submission_id, tone: "success" });
       return;
     }
+    if (!selected) {
+      setReviewResult("Select a submission before applying a review decision.");
+      pushToast({ title: "No submission selected", description: "Choose a submission from the review queue first.", tone: "warning" });
+      return;
+    }
     reviewMutation.mutate({ action, comment });
   }
 
@@ -201,8 +211,19 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
           onClick={() => {
             const approved = submissions.filter((submission) => submission.status === "approved").length;
             const corrections = submissions.filter((submission) => submission.status === "correction_requested").length;
-            setExportResult(`${approved} approved submission${approved === 1 ? "" : "s"} and ${corrections} correction request${corrections === 1 ? "" : "s"} are ready for supervisor export.`);
-            pushToast({ title: "Reviewed export prepared", description: "Approved and corrected submissions are ready for export.", tone: "success" });
+            if (!submissions.length) {
+              setExportResult("There are no submissions to export yet. Collect and review field data before preparing supervisor or donor exports.");
+              pushToast({ title: "No reviewed data yet", description: "Collect and review submissions before exporting.", tone: "warning" });
+              return;
+            }
+            if (!approved) {
+              setExportResult(`${corrections} correction request${corrections === 1 ? "" : "s"} found, but no approved submissions are ready for export yet. Approve clean submissions first.`);
+              pushToast({ title: "No approved submissions", description: "Approve submissions before creating a reviewed export.", tone: "warning" });
+              return;
+            }
+            setExportResult(`${approved} approved submission${approved === 1 ? "" : "s"} and ${corrections} correction request${corrections === 1 ? "" : "s"} are ready. Use Data tools to create the governed export package.`);
+            pushToast({ title: "Open Data tools for export", description: "Create governed export packages from Data tools.", tone: "neutral" });
+            setActiveView("data");
           }}
           type="button"
         >
@@ -268,7 +289,7 @@ export function SubmissionReview({ token }: SubmissionReviewProps) {
                   <Button
                     key={action}
                     className={cn(action === "request_correction" && "col-span-2")}
-                    disabled={reviewMutation.isPending}
+                    disabled={!selected || reviewMutation.isPending}
                     onClick={() => runPreviewAction(action)}
                     variant={variant}
                   >
