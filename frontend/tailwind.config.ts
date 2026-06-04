@@ -30,12 +30,36 @@ const config: Config = {
     "bg-warning/10",
     "bg-danger",
     "bg-danger/10",
+    "bg-section-admin/10",
+    "bg-section-collect/10",
+    "bg-section-daily/10",
+    "bg-section-governance/10",
+    "bg-section-monitor/10",
+    "bg-section-operate/10",
+    "bg-section-platform/10",
+    "bg-section-support/10",
+    "border-section-admin/20",
+    "border-section-collect/20",
+    "border-section-daily/20",
+    "border-section-governance/20",
+    "border-section-monitor/20",
+    "border-section-operate/20",
+    "border-section-platform/20",
+    "border-section-support/20",
+    "text-section-admin",
+    "text-section-collect",
+    "text-section-daily",
+    "text-section-governance",
+    "text-section-monitor",
+    "text-section-operate",
+    "text-section-platform",
+    "text-section-support",
     "hover:bg-primary/90",
     "hover:bg-muted",
     "hover:bg-muted/60",
     "hover:bg-danger/90",
     "hover:text-foreground",
-    "focus-visible:ring-ring/35"
+    "focus-visible:ring-ring/35",
   ],
   theme: {
     extend: {
@@ -47,38 +71,54 @@ const config: Config = {
         foreground: "hsl(var(--foreground))",
         muted: {
           DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))"
+          foreground: "hsl(var(--muted-foreground))",
         },
         panel: {
           DEFAULT: "hsl(var(--panel))",
-          foreground: "hsl(var(--panel-foreground))"
+          foreground: "hsl(var(--panel-foreground))",
         },
         primary: {
           DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))"
+          foreground: "hsl(var(--primary-foreground))",
         },
         accent: {
           DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))"
+          foreground: "hsl(var(--accent-foreground))",
         },
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
-        danger: "hsl(var(--danger))"
+        danger: "hsl(var(--danger))",
+        section: {
+          daily: "hsl(var(--section-daily))",
+          collect: "hsl(var(--section-collect))",
+          monitor: "hsl(var(--section-monitor))",
+          operate: "hsl(var(--section-operate))",
+          admin: "hsl(var(--section-admin))",
+          support: "hsl(var(--section-support))",
+          platform: "hsl(var(--section-platform))",
+          governance: "hsl(var(--section-governance))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        xl: "var(--radius)",
+        "2xl": "var(--radius)",
+        "3xl": "calc(var(--radius) + 4px)",
       },
       boxShadow: {
         line: "inset 0 0 0 1px hsl(var(--border))",
-        elevated: "0 18px 50px -30px rgba(15, 23, 42, 0.35)"
+        elevated: "0 18px 50px -30px rgba(15, 23, 42, 0.35)",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"]
+        mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"],
       },
       transitionTimingFunction: {
-        product: "cubic-bezier(0.2, 0.8, 0.2, 1)"
-      }
-    }
+        product: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };
 
 export default config;

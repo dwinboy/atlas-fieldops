@@ -2,29 +2,37 @@
 
 import {
   ArrowRight,
-  BarChart3,
-  Boxes,
-  Building2,
+  BookOpenCheck,
+  BriefcaseBusiness,
   ChevronLeft,
-  ClipboardList,
+  ChartNoAxesCombined,
+  CircleAlert,
+  ClipboardCheck,
+  ClipboardPenLine,
+  CloudUpload,
   Command,
-  Database,
+  DatabaseZap,
   Fingerprint,
-  Files,
-  GitPullRequestArrow,
+  FileChartColumn,
+  Gauge,
+  GitBranch,
+  HeartHandshake,
   HelpCircle,
+  KeyRound,
+  Landmark,
   LayoutDashboard,
+  Library,
   LogOut,
-  Map,
+  MapPinned,
   Menu,
   Moon,
+  Network,
   PanelLeftClose,
-  Shield,
   RadioTower,
-  ShieldCheck,
   Sun,
+  UserRoundCog,
   UsersRound,
-  Wifi,
+  Workflow,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -47,17 +55,105 @@ type AppShellProps = {
   principal?: CurrentPrincipal | null;
 };
 
+type ViewTone =
+  | "daily"
+  | "collect"
+  | "monitor"
+  | "operate"
+  | "admin"
+  | "support"
+  | "platform"
+  | "governance";
+
 type NavItem = {
   id: WorkspaceView;
   label: string;
   hint: string;
   icon: typeof LayoutDashboard;
+  tone: ViewTone;
 };
 type ViewGuidance = {
   step: string;
   outcome: string;
   next?: WorkspaceView;
   nextLabel?: string;
+};
+
+const viewToneStyles: Record<
+  ViewTone,
+  {
+    badge: ViewTone;
+    header: string;
+    icon: string;
+    navActive: string;
+    navIcon: string;
+    navRail: string;
+  }
+> = {
+  daily: {
+    badge: "daily",
+    header: "border-section-daily/20 bg-section-daily/10",
+    icon: "border border-section-daily/20 bg-section-daily/10 text-section-daily",
+    navActive: "bg-section-daily/10 text-section-daily shadow-line",
+    navIcon: "bg-section-daily/10 text-section-daily",
+    navRail: "bg-section-daily",
+  },
+  collect: {
+    badge: "collect",
+    header: "border-section-collect/20 bg-section-collect/10",
+    icon: "border border-section-collect/20 bg-section-collect/10 text-section-collect",
+    navActive: "bg-section-collect/10 text-section-collect shadow-line",
+    navIcon: "bg-section-collect/10 text-section-collect",
+    navRail: "bg-section-collect",
+  },
+  monitor: {
+    badge: "monitor",
+    header: "border-section-monitor/20 bg-section-monitor/10",
+    icon: "border border-section-monitor/20 bg-section-monitor/10 text-section-monitor",
+    navActive: "bg-section-monitor/10 text-section-monitor shadow-line",
+    navIcon: "bg-section-monitor/10 text-section-monitor",
+    navRail: "bg-section-monitor",
+  },
+  operate: {
+    badge: "operate",
+    header: "border-section-operate/20 bg-section-operate/10",
+    icon: "border border-section-operate/20 bg-section-operate/10 text-section-operate",
+    navActive: "bg-section-operate/10 text-section-operate shadow-line",
+    navIcon: "bg-section-operate/10 text-section-operate",
+    navRail: "bg-section-operate",
+  },
+  admin: {
+    badge: "admin",
+    header: "border-section-admin/20 bg-section-admin/10",
+    icon: "border border-section-admin/20 bg-section-admin/10 text-section-admin",
+    navActive: "bg-section-admin/10 text-section-admin shadow-line",
+    navIcon: "bg-section-admin/10 text-section-admin",
+    navRail: "bg-section-admin",
+  },
+  support: {
+    badge: "support",
+    header: "border-section-support/20 bg-section-support/10",
+    icon: "border border-section-support/20 bg-section-support/10 text-section-support",
+    navActive: "bg-section-support/10 text-section-support shadow-line",
+    navIcon: "bg-section-support/10 text-section-support",
+    navRail: "bg-section-support",
+  },
+  platform: {
+    badge: "platform",
+    header: "border-section-platform/20 bg-section-platform/10",
+    icon: "border border-section-platform/20 bg-section-platform/10 text-section-platform",
+    navActive: "bg-section-platform/10 text-section-platform shadow-line",
+    navIcon: "bg-section-platform/10 text-section-platform",
+    navRail: "bg-section-platform",
+  },
+  governance: {
+    badge: "governance",
+    header: "border-section-governance/20 bg-section-governance/10",
+    icon: "border border-section-governance/20 bg-section-governance/10 text-section-governance",
+    navActive: "bg-section-governance/10 text-section-governance shadow-line",
+    navIcon: "bg-section-governance/10 text-section-governance",
+    navRail: "bg-section-governance",
+  },
 };
 
 const navGroups: { label: string; items: NavItem[] }[] = [
@@ -68,7 +164,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "platform",
         label: "Platform console",
         hint: "Organizations & support",
-        icon: Shield,
+        icon: Landmark,
+        tone: "platform",
       },
     ],
   },
@@ -79,19 +176,22 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "dashboard",
         label: "Today",
         hint: "What needs action",
-        icon: LayoutDashboard,
+        icon: Gauge,
+        tone: "daily",
       },
       {
         id: "submissions",
         label: "Review queue",
         hint: "Approve data",
-        icon: ShieldCheck,
+        icon: ClipboardCheck,
+        tone: "daily",
       },
       {
         id: "connectivity",
         label: "Sync health",
         hint: "Offline & retry",
-        icon: Wifi,
+        icon: CloudUpload,
+        tone: "daily",
       },
     ],
   },
@@ -102,25 +202,29 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "templates",
         label: "Templates",
         hint: "Start faster",
-        icon: Files,
+        icon: Library,
+        tone: "collect",
       },
       {
         id: "forms",
         label: "Form builder",
         hint: "Surveys & logic",
-        icon: ClipboardList,
+        icon: ClipboardPenLine,
+        tone: "collect",
       },
       {
         id: "beneficiaries",
         label: "Beneficiaries",
         hint: "People & households",
-        icon: UsersRound,
+        icon: HeartHandshake,
+        tone: "collect",
       },
       {
         id: "officers",
         label: "Field teams",
         hint: "People & assignments",
-        icon: UsersRound,
+        icon: UserRoundCog,
+        tone: "collect",
       },
     ],
   },
@@ -131,20 +235,29 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "programs",
         label: "Projects",
         hint: "Programs & donors",
-        icon: Building2,
+        icon: Network,
+        tone: "monitor",
       },
       {
         id: "indicators",
         label: "Indicators",
         hint: "Targets & results",
-        icon: BarChart3,
+        icon: ChartNoAxesCombined,
+        tone: "monitor",
       },
-      { id: "map", label: "Map", hint: "Coverage & GPS", icon: Map },
+      {
+        id: "map",
+        label: "Map",
+        hint: "Coverage & GPS",
+        icon: MapPinned,
+        tone: "monitor",
+      },
       {
         id: "analytics",
         label: "Reports",
         hint: "Exports & donors",
-        icon: BarChart3,
+        icon: FileChartColumn,
+        tone: "monitor",
       },
     ],
   },
@@ -155,37 +268,43 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "ecosystem",
         label: "Ecosystem",
         hint: "Connected work",
-        icon: Boxes,
+        icon: GitBranch,
+        tone: "operate",
       },
       {
         id: "enterprise",
         label: "Operations",
         hint: "Assets & budgets",
-        icon: Building2,
+        icon: BriefcaseBusiness,
+        tone: "operate",
       },
       {
         id: "cases",
         label: "Cases",
         hint: "Follow-ups",
-        icon: GitPullRequestArrow,
+        icon: CircleAlert,
+        tone: "operate",
       },
       {
         id: "data",
         label: "Data tools",
         hint: "Import & edit",
-        icon: Database,
+        icon: DatabaseZap,
+        tone: "operate",
       },
       {
         id: "workforce",
         label: "Workforce",
         hint: "Teams & access",
         icon: UsersRound,
+        tone: "admin",
       },
       {
         id: "governance",
         label: "Governance",
         hint: "Audit & quality",
         icon: Fingerprint,
+        tone: "governance",
       },
     ],
   },
@@ -196,13 +315,15 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "organizations",
         label: "Team & access",
         hint: "Roles & regions",
-        icon: Building2,
+        icon: KeyRound,
+        tone: "admin",
       },
       {
         id: "workflows",
         label: "Approvals",
         hint: "Rules & escalation",
-        icon: GitPullRequestArrow,
+        icon: Workflow,
+        tone: "admin",
       },
     ],
   },
@@ -213,7 +334,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
         id: "help",
         label: "Help guide",
         hint: "How to use Atlas",
-        icon: HelpCircle,
+        icon: BookOpenCheck,
+        tone: "support",
       },
     ],
   },
@@ -440,6 +562,8 @@ export function AppShell({
       : navItems.filter((item) => item.id !== "platform" || isPlatformAdmin);
   const activeItem =
     navItems.find((item) => item.id === activeView) ?? navItems[0];
+  const activeTone = viewToneStyles[activeItem.tone];
+  const ActiveIcon = activeItem.icon;
   const activeGroup = navGroups.find((group) =>
     group.items.some((item) => item.id === activeView),
   );
@@ -476,13 +600,14 @@ export function AppShell({
             {groupItems.map((item) => {
               const Icon = item.icon;
               const active = activeView === item.id;
+              const tone = viewToneStyles[item.tone];
               return (
                 <button
                   key={item.id}
                   className={cn(
-                    "group flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
+                    "group relative flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
                     active
-                      ? "bg-primary/10 text-primary shadow-line"
+                      ? tone.navActive
                       : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                     collapsedSidebar && "justify-center px-0",
                   )}
@@ -492,7 +617,26 @@ export function AppShell({
                   }}
                   type="button"
                 >
-                  <Icon aria-hidden="true" size={18} />
+                  {active ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute left-0 top-2 h-7 w-1 rounded-r-full",
+                        tone.navRail,
+                        collapsedSidebar && "left-1",
+                      )}
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+                      active
+                        ? tone.navIcon
+                        : "bg-muted/50 text-muted-foreground group-hover:bg-background group-hover:text-foreground",
+                    )}
+                  >
+                    <Icon aria-hidden="true" size={17} />
+                  </span>
                   <span
                     className={cn("min-w-0", collapsedSidebar && "sr-only")}
                   >
@@ -708,22 +852,32 @@ export function AppShell({
           <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>
         ) : null}
 
-        <section className="border-b bg-background/80 px-3 py-4 sm:px-5 lg:px-7">
+        <section
+          className={cn(
+            "border-b px-3 py-5 sm:px-5 lg:px-7",
+            activeTone.header,
+          )}
+        >
           <div className="mx-auto w-full max-w-[1480px] space-y-3">
-            <div className="flex flex-col gap-3 rounded-xl border bg-panel/86 p-4 shadow-line md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  {activeGroup?.label ?? "Workspace"} / {activeItem.label}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-semibold tracking-tight">
-                    {activeItem.label}
-                  </h1>
-                  <Badge tone="accent">{guidance.step}</Badge>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <span className={cn("section-icon", activeTone.icon)}>
+                  <ActiveIcon aria-hidden="true" size={20} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {activeGroup?.label ?? "Workspace"} / {activeItem.label}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h1 className="text-xl font-semibold tracking-tight">
+                      {activeItem.label}
+                    </h1>
+                    <Badge tone={activeTone.badge}>{guidance.step}</Badge>
+                  </div>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {guidance.outcome}
+                  </p>
                 </div>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {guidance.outcome}
-                </p>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Button

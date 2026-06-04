@@ -11,14 +11,22 @@
   --muted-foreground: 216 10% 43%;
   --border: 214 18% 88%;
   --input: 214 18% 86%;
-  --ring: 180 70% 28%;
-  --primary: 180 72% 25%;
+  --ring: 154 58% 34%;
+  --primary: 154 58% 28%;
   --primary-foreground: 0 0% 100%;
   --accent: 216 20% 18%;
   --accent-foreground: 0 0% 100%;
   --success: 158 58% 36%;
   --warning: 39 87% 48%;
   --danger: 0 72% 48%;
+  --section-daily: 154 58% 28%;
+  --section-collect: 166 66% 31%;
+  --section-monitor: 212 72% 44%;
+  --section-operate: 258 46% 52%;
+  --section-admin: 38 78% 44%;
+  --section-support: 190 72% 36%;
+  --section-platform: 222 30% 22%;
+  --section-governance: 343 56% 45%;
   --radius: 8px;
 }
 
@@ -31,14 +39,22 @@
   --muted-foreground: 215 12% 65%;
   --border: 220 13% 21%;
   --input: 220 13% 24%;
-  --ring: 178 72% 38%;
-  --primary: 178 72% 34%;
+  --ring: 154 64% 48%;
+  --primary: 154 56% 46%;
   --primary-foreground: 0 0% 100%;
   --accent: 210 18% 88%;
   --accent-foreground: 220 22% 8%;
   --success: 158 58% 45%;
   --warning: 39 87% 55%;
   --danger: 0 72% 58%;
+  --section-daily: 154 56% 46%;
+  --section-collect: 166 58% 46%;
+  --section-monitor: 212 78% 62%;
+  --section-operate: 258 56% 66%;
+  --section-admin: 38 84% 58%;
+  --section-support: 190 72% 54%;
+  --section-platform: 220 20% 84%;
+  --section-governance: 343 64% 62%;
 }
 
 * {
@@ -47,8 +63,12 @@
 
 body {
   background:
-    radial-gradient(circle at 12% -10%, rgba(15, 118, 110, 0.08), transparent 30rem),
-    radial-gradient(circle at 90% 4%, rgba(59, 130, 246, 0.05), transparent 26rem),
+    linear-gradient(
+      180deg,
+      hsl(var(--background)) 0%,
+      hsl(var(--primary) / 0.05) 55%,
+      hsl(var(--background)) 100%
+    ),
     hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings:
@@ -68,11 +88,22 @@ h3 {
 .surface-premium {
   border: 1px solid hsl(var(--border) / 0.82);
   background:
-    linear-gradient(180deg, hsl(var(--panel) / 0.96), hsl(var(--panel) / 0.9)),
+    linear-gradient(180deg, hsl(var(--panel) / 0.98), hsl(var(--panel) / 0.92)),
     hsl(var(--panel));
   box-shadow:
     0 1px 0 hsl(var(--panel-foreground) / 0.03),
     0 22px 60px -42px rgb(15 23 42 / 0.42);
+}
+
+.section-icon {
+  align-items: center;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px -22px currentColor;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
 }
 
 .soft-grid {
@@ -90,7 +121,12 @@ h3 {
 
 .animated-sync-bar::after {
   animation: sync-sweep 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.48), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.48),
+    transparent
+  );
   content: "";
   inset: 0;
   position: absolute;

@@ -20,7 +20,7 @@ export function DataTable<T>({
   emptyLabel,
   rows,
   searchLabel,
-  title
+  title,
 }: {
   columns: TableColumn<T>[];
   emptyLabel: string;
@@ -29,34 +29,41 @@ export function DataTable<T>({
   title: string;
 }) {
   const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<string | null>(columns.find((column) => column.value)?.key ?? null);
+  const [sortKey, setSortKey] = useState<string | null>(
+    columns.find((column) => column.value)?.key ?? null,
+  );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return rows;
-    }
-
-    const matchingRows = rows.filter((row) =>
-      columns.some((column) => {
-        const value = column.value?.(row);
-        return value?.toLowerCase().includes(normalizedQuery);
-      })
+    const matchingRows = normalizedQuery
+      ? rows.filter((row) =>
+          columns.some((column) => {
+            const value = column.value?.(row);
+            return value?.toLowerCase().includes(normalizedQuery);
+          }),
+        )
+      : rows;
+    const sortedColumn = columns.find(
+      (column) => column.key === sortKey && column.value,
     );
-    const sortedColumn = columns.find((column) => column.key === sortKey && column.value);
     if (!sortedColumn) {
       return matchingRows;
     }
     return [...matchingRows].sort((left, right) => {
       const leftValue = sortedColumn.value?.(left) ?? "";
       const rightValue = sortedColumn.value?.(right) ?? "";
-      return sortDirection === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
+      return sortDirection === "asc"
+        ? leftValue.localeCompare(rightValue)
+        : rightValue.localeCompare(leftValue);
     });
   }, [columns, query, rows, sortDirection, sortKey]);
 
   return (
-    <section className="surface-premium overflow-hidden rounded-2xl" aria-labelledby={`${title}-title`}>
-      <div className="flex flex-col gap-3 border-b px-5 py-4 md:flex-row md:items-center md:justify-between">
+    <section
+      className="surface-premium overflow-hidden rounded-2xl"
+      aria-labelledby={`${title}-title`}
+    >
+      <div className="flex flex-col gap-3 border-b bg-muted/20 px-5 py-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 id={`${title}-title`} className="text-sm font-semibold">
             {title}
@@ -65,11 +72,20 @@ export function DataTable<T>({
             Showing {filteredRows.length} of {rows.length}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <label className="relative min-w-64">
             <span className="sr-only">{searchLabel}</span>
-            <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-            <Input className="pl-9" placeholder={searchLabel} value={query} onChange={(event) => setQuery(event.target.value)} />
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={15}
+            />
+            <Input
+              className="pl-9"
+              placeholder={searchLabel}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </label>
           {query ? (
             <Button size="sm" variant="secondary" onClick={() => setQuery("")}>
@@ -82,16 +98,22 @@ export function DataTable<T>({
 
       <div className="overflow-x-auto product-scrollbar">
         <table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="sticky top-0 bg-muted/55 text-muted-foreground backdrop-blur">
+          <thead className="sticky top-0 bg-panel/95 text-muted-foreground shadow-line backdrop-blur">
             <tr>
               {columns.map((column) => (
                 <th key={column.key} className="px-4 py-2.5 font-medium">
                   {column.value ? (
                     <button
-                      className={column.align === "right" ? "ml-auto flex justify-end gap-1.5" : "flex items-center gap-1.5"}
+                      className={
+                        column.align === "right"
+                          ? "ml-auto flex justify-end gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-muted hover:text-foreground"
+                          : "flex items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-muted hover:text-foreground"
+                      }
                       onClick={() => {
                         if (sortKey === column.key) {
-                          setSortDirection((value) => (value === "asc" ? "desc" : "asc"));
+                          setSortDirection((value) =>
+                            value === "asc" ? "desc" : "asc",
+                          );
                           return;
                         }
                         setSortKey(column.key);
@@ -103,7 +125,15 @@ export function DataTable<T>({
                       <ArrowDownUp aria-hidden="true" size={12} />
                     </button>
                   ) : (
-                    <span className={column.align === "right" ? "flex justify-end" : "flex items-center"}>{column.header}</span>
+                    <span
+                      className={
+                        column.align === "right"
+                          ? "flex justify-end"
+                          : "flex items-center"
+                      }
+                    >
+                      {column.header}
+                    </span>
                   )}
                 </th>
               ))}
@@ -111,9 +141,16 @@ export function DataTable<T>({
           </thead>
           <tbody className="divide-y">
             {filteredRows.map((row, index) => (
-              <tr key={index} className="transition-colors hover:bg-muted/35">
+              <tr key={index} className="transition-colors hover:bg-primary/5">
                 {columns.map((column) => (
-                  <td key={column.key} className={column.align === "right" ? "px-4 py-3.5 text-right" : "px-4 py-3.5"}>
+                  <td
+                    key={column.key}
+                    className={
+                      column.align === "right"
+                        ? "px-4 py-3.5 text-right"
+                        : "px-4 py-3.5"
+                    }
+                  >
                     {column.render(row)}
                   </td>
                 ))}
@@ -121,11 +158,18 @@ export function DataTable<T>({
             ))}
             {filteredRows.length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-muted-foreground" colSpan={columns.length}>
-                  <div className="mx-auto max-w-sm">
-                    <p className="font-medium text-foreground">{query ? "No matches found" : emptyLabel}</p>
+                <td
+                  className="px-4 py-12 text-center text-muted-foreground"
+                  colSpan={columns.length}
+                >
+                  <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
+                    <p className="font-medium text-foreground">
+                      {query ? "No matches found" : emptyLabel}
+                    </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {query ? "Try a different search term or clear the search." : "New records will appear here when they are available."}
+                      {query
+                        ? "Try a different search term or clear the search."
+                        : "New records will appear here when they are available."}
                     </p>
                   </div>
                 </td>
