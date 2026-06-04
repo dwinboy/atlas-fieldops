@@ -38,6 +38,17 @@ def test_frontend_origin_can_preflight_api_requests() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:3001"
 
 
+def test_frontend_origin_receives_cors_header_on_auth_errors() -> None:
+    client = TestClient(create_app())
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Origin": "https://atlas-fieldops.vercel.app"},
+    )
+
+    assert response.status_code in {401, 403}
+    assert response.headers["access-control-allow-origin"] == "https://atlas-fieldops.vercel.app"
+
+
 def test_organization_context_schema_exposes_display_identity() -> None:
     payload = OrganizationContextRead(
         organization_id="00000000-0000-0000-0000-000000000001",

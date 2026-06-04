@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.types import ASGIApp
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -23,7 +24,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await event_publisher.stop()
 
 
-def create_app() -> FastAPI:
+def create_app() -> ASGIApp:
     configure_logging()
     app = FastAPI(
         title=settings.app_name,
@@ -32,20 +33,19 @@ def create_app() -> FastAPI:
         docs_url="/api/v1/docs",
         lifespan=lifespan,
     )
-    app.add_middleware(
-        CORSMiddleware,
+    app.middleware("http")(request_context_middleware)
+    app.include_router(api_router, prefix="/api/v1")
+    FastAPIInstrumentor.instrument_app(app)
+    Instrumentator().instrument(app).expose(app)
+
+    return CORSMiddleware(
+        app,
         allow_origins=settings.cors_origins,
         allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.middleware("http")(request_context_middleware)
-    app.include_router(api_router, prefix="/api/v1")
-    FastAPIInstrumentor.instrument_app(app)
-    Instrumentator().instrument(app).expose(app)
-
-    return app
 
 
 app = create_app()

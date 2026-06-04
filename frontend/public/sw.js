@@ -1,4 +1,4 @@
-const CACHE_NAME = "atlas-fieldops-shell-v1";
+const CACHE_NAME = "atlas-fieldops-shell-v2";
 const SHELL_URLS = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -18,6 +18,13 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") {
+    return;
+  }
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+  if (url.pathname.startsWith("/_next/")) {
     return;
   }
 
