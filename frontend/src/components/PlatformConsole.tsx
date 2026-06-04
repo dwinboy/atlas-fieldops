@@ -222,6 +222,23 @@ export function PlatformConsole({
   const platformUsers = platformUsersQuery.data ?? [];
   const auditLogs = auditLogsQuery.data ?? [];
   const usageRows = usageQuery.data ?? [];
+  const readinessSource = usageRows.length
+    ? usageRows
+    : organizations.map((organization) => ({
+        organization_id: organization.id,
+        organization_name: organization.name,
+        organization_slug: organization.slug,
+        is_active: organization.is_active,
+        user_count: organization.user_count,
+        owner_email: organization.owner_email,
+        form_count: 0,
+        submission_count: 0,
+        beneficiary_count: 0,
+        field_officer_count: 0,
+        import_job_count: 0,
+        export_job_count: 0,
+        audit_event_count: 0,
+      }));
   const activeOrganizations =
     summaryQuery.data?.active_organization_count ??
     organizations.filter((organization) => organization.is_active).length;
@@ -246,6 +263,35 @@ export function PlatformConsole({
     organizationsWithoutOwner +
     (healthQuery.isError ? 1 : 0) +
     (settingsQuery.data?.jwt_secret_configured === false ? 1 : 0);
+  const tenantReadinessRows = readinessSource
+    .map((row) => {
+      const issues = [
+        !row.is_active ? "Workspace inactive" : null,
+        !row.owner_email ? "Missing owner email" : null,
+        row.user_count === 0 ? "No users" : null,
+        row.field_officer_count === 0 ? "No field officers" : null,
+        row.form_count === 0 ? "No forms" : null,
+        row.beneficiary_count === 0 ? "No beneficiary data" : null,
+        row.submission_count === 0 ? "No submissions" : null,
+      ].filter(Boolean) as string[];
+      const readinessScore = Math.max(
+        0,
+        Math.round(((7 - issues.length) / 7) * 100),
+      );
+      return {
+        ...row,
+        issues,
+        readinessScore,
+        readinessStatus:
+          readinessScore >= 80
+            ? "Ready"
+            : readinessScore >= 45
+              ? "In progress"
+              : "Needs onboarding",
+      };
+    })
+    .sort((left, right) => left.readinessScore - right.readinessScore)
+    .slice(0, 5);
   const currentOrigin =
     typeof window === "undefined"
       ? "Production frontend origin"
@@ -851,6 +897,79 @@ export function PlatformConsole({
                 ))}
               </div>
             </div>
+          </SectionShell>
+
+          <SectionShell
+            title="Tenant readiness watchlist"
+            description="Identify organizations that need setup support before they can collect, review, and report reliable data."
+          >
+            {tenantReadinessRows.length ? (
+              <div className="space-y-3">
+                {tenantReadinessRows.map((organization) => (
+                  <article
+                    className="rounded-lg border bg-panel p-4 shadow-line"
+                    key={organization.organization_id}
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold">
+                            {organization.organization_name}
+                          </h3>
+                          <Badge
+                            tone={
+                              organization.readinessScore >= 80
+                                ? "success"
+                                : organization.readinessScore >= 45
+                                  ? "warning"
+                                  : "danger"
+                            }
+                          >
+                            {organization.readinessStatus}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {organization.organization_slug} ·{" "}
+                          {organization.readinessScore}% ready
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => setActiveSection("support")}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <LifeBuoy aria-hidden="true" />
+                        Support
+                      </Button>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${organization.readinessScore}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {organization.issues.length ? (
+                        organization.issues.slice(0, 4).map((issue) => (
+                          <Badge key={issue} tone="neutral">
+                            {issue}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge tone="success">No blocking setup issues</Badge>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed bg-muted/20 p-5 text-sm leading-6 text-muted-foreground">
+                Usage data will appear here after organizations are created and
+                the backend returns tenant activity. Use Onboarding to create
+                the first tenant.
+              </div>
+            )}
           </SectionShell>
 
           <SectionShell
