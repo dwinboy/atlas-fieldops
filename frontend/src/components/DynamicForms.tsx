@@ -66,7 +66,7 @@ import {
   Variable,
   Workflow,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -328,6 +328,7 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
 }
 
 type DynamicFormsProps = {
+  initialDraft?: DynamicForm;
   token: string | null;
 };
 
@@ -1312,8 +1313,9 @@ function SortableField({
   );
 }
 
-export function DynamicForms({ token }: DynamicFormsProps) {
-  const [forms, setForms] = useState<DynamicForm[]>([]);
+export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
+  const initialDraftIdRef = useRef(initialDraft?.id ?? "");
+  const [forms, setForms] = useState<DynamicForm[]>(() => (initialDraft ? [initialDraft] : []));
   const [selectedFormId, setSelectedFormId] = useState("");
   const [selectedFieldId, setSelectedFieldId] = useState("");
   const [builderMode, setBuilderMode] = useState<"builder" | "templates">(
@@ -1364,7 +1366,11 @@ export function DynamicForms({ token }: DynamicFormsProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     formTemplates[0]?.id ?? "",
   );
-  const [builderResult, setBuilderResult] = useState("");
+  const [builderResult, setBuilderResult] = useState(
+    initialDraft
+      ? `${initialDraft.name} draft shell was created. Add sections, questions, validation, logic, controls, then review readiness before publishing.`
+      : "",
+  );
   const pendingTemplateId = useWorkspaceStore(
     (state) => state.pendingTemplateId,
   );
@@ -2436,6 +2442,23 @@ export function DynamicForms({ token }: DynamicFormsProps) {
     setPendingTemplateId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTemplateId, setPendingTemplateId]);
+
+  useEffect(() => {
+    if (!initialDraft || initialDraftIdRef.current === initialDraft.id) {
+      return;
+    }
+    initialDraftIdRef.current = initialDraft.id;
+    setForms((current) => [initialDraft, ...current.filter((form) => form.id !== initialDraft.id)]);
+    setSelectedFormId(initialDraft.id);
+    setSelectedFieldId(initialDraft.fields[0]?.id ?? "");
+    setSelectedPageId(defaultPages(initialDraft)[0]?.id ?? "");
+    setSelectedSectionId(initialDraft.sections[0]?.id ?? "");
+    setBuilderMode("builder");
+    setBuilderFocusPanel("build");
+    setBuilderResult(
+      `${initialDraft.name} draft shell was created. Add sections, questions, validation, logic, controls, then review readiness before publishing.`,
+    );
+  }, [initialDraft]);
 
   useEffect(() => {
     if (!allForms.length) {

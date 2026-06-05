@@ -11,6 +11,7 @@ export type FormsSection =
 
 export type FormDetailTab =
   | "Overview"
+  | "Builder"
   | "Questions"
   | "Reference Data"
   | "Permissions"
@@ -18,6 +19,8 @@ export type FormDetailTab =
   | "Data Quality"
   | "Governance"
   | "Mapping Settings"
+  | "Preview"
+  | "Review"
   | "Version History"
   | "Audit Trail";
 
@@ -73,6 +76,7 @@ export const formsSections: {
 
 export const formDetailTabs: FormDetailTab[] = [
   "Overview",
+  "Builder",
   "Questions",
   "Reference Data",
   "Permissions",
@@ -80,6 +84,8 @@ export const formDetailTabs: FormDetailTab[] = [
   "Data Quality",
   "Governance",
   "Mapping Settings",
+  "Preview",
+  "Review",
   "Version History",
   "Audit Trail",
 ];

@@ -17,18 +17,19 @@ import {
   ShieldCheck,
   Smartphone,
   Workflow,
+  type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
-import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
 import { listForms, listFormTemplates } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { FormCreationWorkspace } from "@/modules/forms/FormCreationWorkspace";
 import {
   formDetailTabs,
   formsSections,
@@ -72,7 +73,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [activeSection, setActiveSection] = useState<FormsSection>("dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
-  const [builderOpen, setBuilderOpen] = useState(false);
+  const [creationOpen, setCreationOpen] = useState(false);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
@@ -122,28 +123,14 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       render: (form) => (
         <div className="flex justify-end gap-2">
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">View</Button>
-          <Button onClick={() => openForm(form, "Questions")} size="sm" variant="ghost">Edit</Button>
+          <Button onClick={() => openForm(form, "Builder")} size="sm" variant="ghost">Edit</Button>
         </div>
       ),
     },
   ];
 
-  if (builderOpen) {
-    return (
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-4 shadow-line md:flex-row md:items-center md:justify-between">
-          <div>
-            <Badge tone="collect">FORMS / QUESTIONS</Badge>
-            <h1 className="mt-2 text-xl font-semibold">Enterprise form builder</h1>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              The builder is the single canonical place for questions, templates, validation, controls, mobile deployment, import, and version readiness.
-            </p>
-          </div>
-          <Button onClick={() => setBuilderOpen(false)} variant="secondary">Back to Forms workspace</Button>
-        </div>
-        <DynamicForms token={token} />
-      </section>
-    );
+  if (creationOpen) {
+    return <FormCreationWorkspace existingForms={forms} onBack={() => setCreationOpen(false)} token={token} />;
   }
 
   return (
@@ -163,7 +150,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManageForms} onClick={() => setBuilderOpen(true)} variant="primary">
+            <Button disabled={!canManageForms} onClick={() => setCreationOpen(true)} variant="primary">
               <Plus aria-hidden="true" />
               Create form
             </Button>
@@ -194,7 +181,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         <FormDetailWorkspace
           form={selectedForm}
           onClose={() => setSelectedFormId(null)}
-          onOpenBuilder={() => setBuilderOpen(true)}
+          onOpenBuilder={() => setCreationOpen(true)}
           onOpenDataQuality={() => setActiveView("dataQuality")}
           onOpenMapping={() => setActiveView("map")}
           onOpenSubmissions={() => setActiveView("submissions")}
@@ -210,7 +197,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       {!selectedForm && ["all", "draft", "published", "archived"].includes(activeSection) ? (
         <section className="space-y-4">
           <SectionHeader
-            action={<Button disabled={!canManageForms} onClick={() => setBuilderOpen(true)} variant="primary"><Plus aria-hidden="true" /> Create form</Button>}
+            action={<Button disabled={!canManageForms} onClick={() => setCreationOpen(true)} variant="primary"><Plus aria-hidden="true" /> Create form</Button>}
             description={formsSections.find((section) => section.id === activeSection)?.description ?? "Manage forms"}
             title={formsSections.find((section) => section.id === activeSection)?.label ?? "Forms"}
           />
@@ -220,11 +207,11 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       ) : null}
 
       {!selectedForm && activeSection === "templates" ? (
-        <TemplatesSection onOpenBuilder={() => setBuilderOpen(true)} templates={templates} />
+        <TemplatesSection onOpenBuilder={() => setCreationOpen(true)} templates={templates} />
       ) : null}
 
       {!selectedForm && activeSection === "reference-data" ? (
-        <ReferenceDataSection onOpenBuilder={() => setBuilderOpen(true)} />
+        <ReferenceDataSection onOpenBuilder={() => setCreationOpen(true)} />
       ) : null}
     </section>
   );
@@ -329,13 +316,16 @@ function FormDetailWorkspace({ form, onClose, onOpenBuilder, onOpenDataQuality, 
         ))}
       </div>
       {tab === "Overview" ? <FormOverview form={form} /> : null}
-      {tab === "Questions" ? <FormTabCard actionLabel="Open Builder" icon={ClipboardPenLine} onAction={onOpenBuilder} title="Professional Survey Builder" lines={["Question library, templates, drag-and-drop ordering, inline editing, validation, logic, calculations, preview, import, and deployment all live in the builder.", `${form.questions} questions across ${form.sections} section(s).`, "Published versions remain protected; edits create draft versions before publishing."]} /> : null}
+      {tab === "Builder" ? <FormTabCard actionLabel="Open Builder" icon={ClipboardPenLine} onAction={onOpenBuilder} title="Professional Survey Builder" lines={["Approved route: /forms/:formId/builder.", "Question library, templates, drag-and-drop ordering, inline editing, validation, logic, calculations, preview, import, and deployment all live in the builder.", `${form.questions} questions across ${form.sections} section(s).`]} /> : null}
+      {tab === "Questions" ? <FormTabCard actionLabel="Open Builder" icon={ClipboardPenLine} onAction={onOpenBuilder} title="Question Structure" lines={["Questions are managed through the canonical builder so there is no duplicate form designer.", "Use sections, groups, repeat groups, variable names, validation, option lists, reference bindings, and logic from the builder.", "Published versions remain protected; edits create draft versions before publishing."]} /> : null}
       {tab === "Reference Data" ? <FormTabCard actionLabel="Manage in Builder" icon={Database} onAction={onOpenBuilder} title="Reference Data Binding" lines={["Bind fields to countries, regions, districts, communities, facilities, donors, beneficiaries, and custom lists.", "Support controlled values, hierarchy, active/inactive values, effective dates, and version-aware warnings.", "Prevent invalid free-text values when controlled lists are required."]} /> : null}
       {tab === "Permissions" ? <FormTabCard actionLabel="Manage Permissions" icon={ShieldCheck} onAction={onOpenBuilder} title="Form Access Control" lines={["Configure role, user, team, project, and location-level access.", "Control view, edit, publish, archive, assign, export, review, approve, and manage controls permissions.", "Field officers should only see assigned published forms."]} /> : null}
       {tab === "Workflow" ? <FormTabCard actionLabel="Configure Workflow" icon={Workflow} onAction={onOpenBuilder} title="Approval Workflow" lines={["Simple, standard, and correction workflows are configurable per form.", "Reviewer role, team, location scope, required comments, and SLA rules are form-level settings.", "Submission decisions remain in Submissions, with form workflow determining the path."]} /> : null}
       {tab === "Data Quality" ? <FormTabCard actionLabel="Open Data Quality" icon={ClipboardCheck} onAction={onOpenDataQuality} title="Data Quality Rules" lines={["Required fields, ranges, duplicate detection, outliers, GPS validation, consent checks, duration rules, and severity controls.", "Critical rules can block submission or route records for correction.", "Detailed investigation belongs in Data Quality."]} /> : null}
       {tab === "Governance" ? <FormTabCard actionLabel="Manage Governance" icon={ShieldCheck} onAction={onOpenBuilder} title="Form Governance" lines={["Set status, consent, edits after approval, duplicate prevention, retention, masking, export restrictions, and record locking.", "High-risk changes require reason capture and immutable audit evidence.", "Governance Administration remains outside Forms; this is form-level governance only."]} /> : null}
       {tab === "Mapping Settings" ? <FormTabCard actionLabel="Open Mapping" icon={MapPinned} onAction={onOpenMapping} title="Form Mapping Settings" lines={["Require GPS, set accuracy thresholds, boundary validation, allowed collection areas, coordinate masking, and duplicate GPS detection.", "GIS analysis remains in Mapping; Forms only defines collection behavior.", "Submission GPS evidence stays tied to the form version used in the field."]} /> : null}
+      {tab === "Preview" ? <FormTabCard actionLabel="Open Preview Flow" icon={Smartphone} onAction={onOpenBuilder} title="Preview & Test" lines={["Approved route: /forms/:formId/preview.", "Test web, tablet, mobile, enumerator, and respondent modes before publishing.", "Preview runs are test-only and do not count as real submissions."]} /> : null}
+      {tab === "Review" ? <FormTabCard actionLabel="Open Publish Review" icon={ClipboardCheck} onAction={onOpenBuilder} title="Publish Readiness Review" lines={["Approved route: /forms/:formId/review.", "Publishing is blocked when critical checks fail: missing project, no questions, duplicate variables, invalid logic, or unreviewed controls.", "Publishing creates an immutable version and makes the form available for field assignments."]} /> : null}
       {tab === "Version History" ? <FormTabCard actionLabel="Open Builder" icon={GitBranch} onAction={onOpenBuilder} title="Version History" lines={[`Current version: v${form.version}.`, "Published forms are never overwritten silently.", "Old submissions remain linked to the exact version used during collection."]} /> : null}
       {tab === "Audit Trail" ? <FormTabCard actionLabel="Open Submissions" icon={History} onAction={onOpenSubmissions} title="Audit Trail" lines={["Track form created, question changes, rule changes, permissions, workflow, publish, archive, export, and submission events.", "Audit records are immutable and integrate with Governance Audit Trail.", "Authorized users can filter/export logs for form accountability."]} /> : null}
     </section>
@@ -423,7 +413,7 @@ function ReferenceDataSection({ onOpenBuilder }: { onOpenBuilder: () => void }) 
   );
 }
 
-function FormTabCard({ actionLabel, icon: Icon, lines, onAction, title }: { actionLabel: string; icon: typeof ClipboardPenLine; lines: string[]; onAction: () => void; title: string }) {
+function FormTabCard({ actionLabel, icon: Icon, lines, onAction, title }: { actionLabel: string; icon: LucideIcon; lines: string[]; onAction: () => void; title: string }) {
   return (
     <div className="rounded-2xl border bg-background/50 p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -477,7 +467,7 @@ function Signal({ label, tone = "neutral", value }: { label: string; tone?: "suc
   );
 }
 
-function InsightCard({ icon: Icon, lines, title }: { icon: typeof History; lines: string[]; title: string }) {
+function InsightCard({ icon: Icon, lines, title }: { icon: LucideIcon; lines: string[]; title: string }) {
   return (
     <div className="rounded-2xl border bg-panel p-5 shadow-line">
       <div className="flex items-center gap-2">

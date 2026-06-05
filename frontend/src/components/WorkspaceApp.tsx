@@ -9,7 +9,6 @@ import { AppShell } from "@/components/AppShell";
 import { AuthPanel } from "@/components/AuthPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
-import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
 import { FormTemplateLibrary } from "@/components/FormTemplateLibrary";
 import {
   BeneficiaryRegistry,
@@ -47,6 +46,7 @@ import {
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { AdministrationModule } from "@/modules/administration/AdministrationModule";
+import { FieldOperationsModule } from "@/modules/field-operations/FieldOperationsModule";
 import { FormsModule } from "@/modules/forms/FormsModule";
 import { GovernanceModule } from "@/modules/governance/GovernanceModule";
 import { ProjectsModule } from "@/modules/projects/ProjectsModule";
@@ -250,17 +250,7 @@ export function WorkspaceApp() {
         },
       ],
     ),
-    officers: moduleWorkspace(
-      "officers",
-      <FieldOfficerOperations token={token} />,
-      [
-        {
-          label: "Review sync",
-          description: "Open field monitoring and submission sync signals.",
-          onClick: () => setActiveView("dataQuality"),
-        },
-      ],
-    ),
+    officers: <FieldOperationsModule token={token} principal={principalQuery.data} />,
     templates: <FormTemplateLibrary token={token} />,
     forms: <FormsModule token={token} principal={principalQuery.data} />,
     submissions: moduleWorkspace(
