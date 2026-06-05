@@ -9,10 +9,8 @@ import { AppShell } from "@/components/AppShell";
 import { AuthPanel } from "@/components/AuthPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
-import { DynamicForms } from "@/components/DynamicForms";
 import { FieldOfficerOperations } from "@/components/FieldOfficerOperations";
 import { FormTemplateLibrary } from "@/components/FormTemplateLibrary";
-import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import {
   BeneficiaryRegistry,
   CaseManagement,
@@ -22,11 +20,9 @@ import {
   GeospatialIntelligence,
   IndicatorTracking,
   OperationalEcosystem,
-  ProgramManagement,
   ReportingCenter,
 } from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
-import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
 import {
@@ -51,6 +47,10 @@ import {
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { AdministrationModule } from "@/modules/administration/AdministrationModule";
+import { FormsModule } from "@/modules/forms/FormsModule";
+import { GovernanceModule } from "@/modules/governance/GovernanceModule";
+import { ProjectsModule } from "@/modules/projects/ProjectsModule";
+import { UsersTeamsModule } from "@/modules/users-teams/UsersTeamsModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 export function WorkspaceApp() {
@@ -186,17 +186,6 @@ export function WorkspaceApp() {
       }}
     />
   );
-  const organizationManagement = (
-    <OrganizationManagement
-      token={token}
-      principal={principalQuery.data}
-      onTokenChanged={(nextToken) => {
-        setToken(nextToken);
-        writeToken(nextToken);
-      }}
-    />
-  );
-
   function moduleWorkspace(
     view: WorkspaceView,
     child: React.ReactNode,
@@ -216,17 +205,7 @@ export function WorkspaceApp() {
     dashboard: <Dashboard token={token} principal={principalQuery.data} />,
     ecosystem: <OperationalEcosystem token={token} />,
     enterprise: <EnterpriseOperationsCenter token={token} />,
-    governance: moduleWorkspace(
-      "governance",
-      <GovernanceCommandCenter token={token} />,
-      [
-        {
-          label: "Approval queue",
-          description: "Open submissions waiting for governance action.",
-          onClick: () => setActiveView("submissions"),
-        },
-      ],
-    ),
+    governance: <GovernanceModule token={token} principal={principalQuery.data} />,
     workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
     dataQuality: moduleWorkspace("dataQuality", null, [
@@ -241,17 +220,7 @@ export function WorkspaceApp() {
         onClick: () => setActiveView("map"),
       },
     ]),
-    programs: moduleWorkspace(
-      "programs",
-      <ProgramManagement token={token} />,
-      [
-        {
-          label: "Create form",
-          description: "Open Forms to build project data collection tools.",
-          onClick: () => setActiveView("forms"),
-        },
-      ],
-    ),
+    programs: <ProjectsModule token={token} principal={principalQuery.data} />,
     surveys: <SurveyManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,
     indicators: moduleWorkspace(
@@ -265,7 +234,22 @@ export function WorkspaceApp() {
         },
       ],
     ),
-    organizations: moduleWorkspace("organizations", organizationManagement),
+    organizations: moduleWorkspace(
+      "organizations",
+      <UsersTeamsModule token={token} principal={principalQuery.data} />,
+      [
+        {
+          label: "Open field teams",
+          description: "Manage assignments and field execution.",
+          onClick: () => setActiveView("officers"),
+        },
+        {
+          label: "Audit trail",
+          description: "Review immutable governance events.",
+          onClick: () => setActiveView("governance"),
+        },
+      ],
+    ),
     officers: moduleWorkspace(
       "officers",
       <FieldOfficerOperations token={token} />,
@@ -278,17 +262,7 @@ export function WorkspaceApp() {
       ],
     ),
     templates: <FormTemplateLibrary token={token} />,
-    forms: moduleWorkspace(
-      "forms",
-      <DynamicForms token={token} />,
-      [
-        {
-          label: "Review data",
-          description: "Open submissions collected through forms.",
-          onClick: () => setActiveView("submissions"),
-        },
-      ],
-    ),
+    forms: <FormsModule token={token} principal={principalQuery.data} />,
     submissions: moduleWorkspace(
       "submissions",
       <SubmissionReview token={token} />,

@@ -328,6 +328,14 @@ export type RoleRead = {
   permissions: string[];
 };
 
+export type RoleCreate = {
+  name: string;
+  label?: string;
+  description?: string;
+  scope_type?: string;
+  permissions: string[];
+};
+
 export type AccessCatalog = {
   roles: {
     name: string;
@@ -468,6 +476,16 @@ export type ExportLogRead = {
   anonymized: boolean;
   record_count: number;
   risk_score: number;
+  created_at: string;
+};
+
+export type ConsentRecordRead = {
+  id: string;
+  beneficiary_id: string | null;
+  subject_identifier: string;
+  consent_type: string;
+  status: string;
+  captured_at: string | null;
   created_at: string;
 };
 
@@ -625,6 +643,39 @@ export type AccessSimulationRead = {
   reasons: string[];
 };
 
+export type UsersTeamsSummaryRead = {
+  total_users: number;
+  active_users: number;
+  inactive_users: number;
+  suspended_users: number;
+  pending_invitations: number;
+  locked_accounts: number;
+  teams: number;
+  organizations: number;
+  roles: number;
+  pending_access_requests: number;
+  active_sessions: number;
+  high_risk_sessions: number;
+  permission_alerts: number;
+  recent_activity: number;
+  access_health_score: number;
+};
+
+export type UsersTeamsActivityLogRead = {
+  id: string;
+  user_id?: string | null;
+  user_label?: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  status: string;
+  ip_address?: string | null;
+  device?: string | null;
+  location?: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
 export type FieldOfficerInvite = {
   email: string;
   full_name: string;
@@ -757,6 +808,106 @@ export type ProgramRead = {
   slug: string;
   region: string | null;
   is_active: boolean;
+};
+
+export type ProjectCreate = {
+  name: string;
+  project_code: string;
+  description?: string | null;
+  program_type?: string | null;
+  category?: string | null;
+  donor?: string | null;
+  implementing_organization?: string | null;
+  country?: string | null;
+  region?: string | null;
+  district?: string | null;
+  community?: string | null;
+  owner?: string | null;
+  status?: string;
+};
+
+export type ProjectSummaryRead = {
+  total_projects: number;
+  active_projects: number;
+  draft_projects: number;
+  closed_projects: number;
+  total_beneficiaries: number;
+  total_submissions: number;
+  active_forms: number;
+  active_field_officers: number;
+  project_completion_rate: number;
+  indicator_achievement_rate: number;
+  attention_projects: number;
+  risk_alerts: number;
+};
+
+export type ProjectListItemRead = {
+  id: string;
+  name: string;
+  project_code: string;
+  status: string;
+  donor?: string | null;
+  country?: string | null;
+  region?: string | null;
+  owner?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  active_forms: number;
+  active_assignments: number;
+  total_submissions: number;
+  indicator_count: number;
+  beneficiary_count: number;
+  progress_percent: number;
+  health_score: number;
+  health_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectRelatedRecordRead = {
+  id: string;
+  label: string;
+  status: string;
+  category?: string | null;
+  metric?: string | null;
+  updated_at?: string | null;
+};
+
+export type ProjectAuditEventRead = {
+  id: string;
+  user?: string | null;
+  action: string;
+  resource_type: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  reason?: string | null;
+  created_at: string;
+};
+
+export type ProjectDetailRead = ProjectListItemRead & {
+  description?: string | null;
+  program_type?: string | null;
+  category?: string | null;
+  implementing_organization?: string | null;
+  forms: ProjectRelatedRecordRead[];
+  indicators: ProjectRelatedRecordRead[];
+  locations: ProjectRelatedRecordRead[];
+  teams: ProjectRelatedRecordRead[];
+  assignments: ProjectRelatedRecordRead[];
+  submissions: ProjectRelatedRecordRead[];
+  reports: ProjectRelatedRecordRead[];
+  audit_trail: ProjectAuditEventRead[];
+};
+
+export type ProjectTemplateRead = {
+  id: string;
+  name: string;
+  template_type: string;
+  description: string;
+  forms: number;
+  indicators: number;
+  governance_controls: number;
+  status: string;
 };
 
 export type IndicatorRead = {
@@ -1504,6 +1655,10 @@ export async function listRoles(token: string): Promise<RoleRead[]> {
   return request<RoleRead[]>("/roles", { token });
 }
 
+export async function createRole(token: string, payload: RoleCreate): Promise<RoleRead> {
+  return request<RoleRead>("/roles", { method: "POST", token, bodyJson: payload });
+}
+
 export async function getAccessCatalog(token: string): Promise<AccessCatalog> {
   return request<AccessCatalog>("/roles/catalog", { token });
 }
@@ -1590,6 +1745,10 @@ export async function listExportLogs(token: string): Promise<ExportLogRead[]> {
   return request<ExportLogRead[]>("/governance/export-logs", { token });
 }
 
+export async function listConsentRecords(token: string): Promise<ConsentRecordRead[]> {
+  return request<ConsentRecordRead[]>("/governance/consent-records", { token });
+}
+
 export async function governExport(token: string, payload: {
   dataset_type: string;
   export_format: string;
@@ -1606,6 +1765,14 @@ export async function listMasterDataEntries(token: string): Promise<MasterDataEn
 
 export async function getOrganizationGovernanceSummary(token: string): Promise<OrganizationGovernanceSummary> {
   return request<OrganizationGovernanceSummary>("/organization-governance/summary", { token });
+}
+
+export async function getUsersTeamsSummary(token: string): Promise<UsersTeamsSummaryRead> {
+  return request<UsersTeamsSummaryRead>("/users-teams/summary", { token });
+}
+
+export async function listUsersTeamsActivityLogs(token: string, limit = 100): Promise<UsersTeamsActivityLogRead[]> {
+  return request<UsersTeamsActivityLogRead[]>(`/users-teams/activity-logs?limit=${limit}`, { token });
 }
 
 export async function listDepartments(token: string): Promise<DepartmentRead[]> {
@@ -1828,6 +1995,26 @@ export async function listPrograms(token: string): Promise<ProgramRead[]> {
   return request<ProgramRead[]>("/operations/programs", { token });
 }
 
+export async function getProjectsSummary(token: string): Promise<ProjectSummaryRead> {
+  return request<ProjectSummaryRead>("/projects/summary", { token });
+}
+
+export async function listProjects(token: string): Promise<ProjectListItemRead[]> {
+  return request<ProjectListItemRead[]>("/projects", { token });
+}
+
+export async function createProject(token: string, payload: ProjectCreate): Promise<ProjectListItemRead> {
+  return request<ProjectListItemRead>("/projects", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getProjectDetail(token: string, projectId: string): Promise<ProjectDetailRead> {
+  return request<ProjectDetailRead>(`/projects/${projectId}`, { token });
+}
+
+export async function listProjectTemplates(token: string): Promise<ProjectTemplateRead[]> {
+  return request<ProjectTemplateRead[]>("/projects/templates", { token });
+}
+
 export async function listSurveys(token: string, projectId?: string): Promise<SurveyRead[]> {
   const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   return request<SurveyRead[]>(`/surveys${query}`, { token });
@@ -2005,6 +2192,8 @@ export const api = {
   createDevice,
   createOrganization,
   createExportJob,
+  createProject,
+  createRole,
   createMediaEvidence,
   createPublicCollectionLink,
   createOperationalZone,
@@ -2026,10 +2215,13 @@ export const api = {
   getHealth,
   getPlatformSettings,
   getPlatformSummary,
+  getProjectDetail,
+  getProjectsSummary,
   getFormTemplate,
   getFormCollectionCompatibility,
   getGovernanceSummary,
   getOrganizationGovernanceSummary,
+  getUsersTeamsSummary,
   getOrganizationContext,
   getOperationalEcosystem,
   governExport,
@@ -2051,6 +2243,7 @@ export const api = {
   listAdministrationSystemSettings,
   listApprovalMatrices,
   listClearanceLevels,
+  listConsentRecords,
   listDelegations,
   listDepartments,
   listDevices,
@@ -2070,6 +2263,8 @@ export const api = {
   listOperationalZones,
   listPlatformAuditLogs,
   listPrograms,
+  listProjects,
+  listProjectTemplates,
   listSurveyTeam,
   listSurveys,
   listPlatformUsage,
@@ -2080,6 +2275,7 @@ export const api = {
   listSessionLogs,
   listSubmissions,
   listTeams,
+  listUsersTeamsActivityLogs,
   listValidationRules,
   listUsers,
   listWorkforceProfiles,

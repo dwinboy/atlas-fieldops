@@ -684,11 +684,11 @@ export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
     nextLabel: "Open submissions",
   },
   programs: {
-    step: "Plan programs",
+    step: "Plan projects",
     outcome:
       "Create and manage projects with forms, indicators, locations, teams, assignments, submissions, reports, settings, and audit trails.",
-    next: "forms",
-    nextLabel: "Create forms",
+    next: "programs",
+    nextLabel: "Create project",
   },
   surveys: {
     step: "Manage surveys",
@@ -885,4 +885,3 @@ export function getBreadcrumbsForView(
     { label: item.label, route: item.route },
   ];
 }
-

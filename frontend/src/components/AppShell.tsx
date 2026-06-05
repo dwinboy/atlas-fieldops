@@ -189,6 +189,7 @@ export function AppShell({
     guidance.next && visibleNavItems.some((item) => item.id === guidance.next)
       ? getNavigationItemByView(guidance.next)
       : null;
+  const nextActionItem = nextItem?.id === activeView ? null : nextItem;
   const accountName =
     principal?.full_name?.trim() || principal?.email || "Signed-in user";
   const accountRole =
@@ -517,13 +518,13 @@ export function AppShell({
                   <Command aria-hidden="true" />
                   Search actions
                 </Button>
-                {nextItem ? (
+                {nextActionItem ? (
                   <Button
-                    onClick={() => setActiveView(nextItem.id)}
+                    onClick={() => setActiveView(nextActionItem.id)}
                     type="button"
                     variant="primary"
                   >
-                    {guidance.nextLabel ?? nextItem.label}
+                    {guidance.nextLabel ?? nextActionItem.label}
                     <ArrowRight aria-hidden="true" />
                   </Button>
                 ) : null}

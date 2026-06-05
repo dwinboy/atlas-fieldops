@@ -249,6 +249,59 @@ const helpTopics: HelpTopic[] = [
     ],
   },
   {
+    id: "users-teams",
+    title: "Manage users, teams, roles, and access",
+    purpose:
+      "Users & Teams is the People workspace. It controls who can sign in, which role they have, which team they belong to, where they can work, and what actions they can perform.",
+    audience:
+      "System admins, organization owners, M&E managers, data managers, and supervisors with assigned team visibility",
+    view: "organizations",
+    icon: UsersRound,
+    whenToUse:
+      "Use Users & Teams when creating accounts, importing many users, assigning roles, organizing teams, checking organization structure, testing access, or reviewing identity activity.",
+    beforeYouStart: [
+      "Confirm the user belongs to the correct organization before creating or editing their account.",
+      "Choose the least powerful role that still lets the person complete their work.",
+      "Prepare team, location, project, and supervisor assignments before field work begins.",
+    ],
+    steps: [
+      "Open Users & Teams under People.",
+      "Review Overview first to check total users, active users, roles, teams, access alerts, active sessions, and permission readiness.",
+      "Use Users to create one user, import many users from CSV, activate or deactivate access, assign roles, and reset temporary passwords.",
+      "Use Roles to review permission sets and create custom roles from the approved permission catalog.",
+      "Use Teams to create operational teams, assign team leads, and organize field officers, supervisors, data quality officers, and analysts.",
+      "Use Organizations to review the tenant organization hierarchy such as head office, regional office, and district office.",
+      "Use Permissions to inspect the permission matrix and run access tests before assigning sensitive work.",
+      "Use Activity Logs to monitor account, role, team, permission, and identity changes. Use Governance for the full immutable audit trail.",
+    ],
+    dataLanguage: [
+      "User",
+      "Role",
+      "Permission",
+      "Team",
+      "Organization unit",
+      "Access scope",
+      "Activity log",
+    ],
+    goodPractice: [
+      "Keep user accounts active only while people are working for the organization.",
+      "Assign supervisors by team and location so they only see the records they should review.",
+      "Test access after changing sensitive roles or permissions.",
+      "Use CSV import when onboarding many field officers or supervisors.",
+    ],
+    avoid: [
+      "Do not manage global reference data here; use Administration.",
+      "Do not create governance policies here; use Governance.",
+      "Do not give field officers broad organization access when own-record or assigned-form access is enough.",
+    ],
+    result:
+      "Managers understand who is using the platform, how people are organized, and whether access is controlled correctly.",
+    nextActions: [
+      { label: "Open Users & Teams", view: "organizations" },
+      { label: "Review Governance", view: "governance" },
+    ],
+  },
+  {
     id: "daily-work",
     title: "Use the dashboard",
     purpose:
@@ -308,42 +361,48 @@ const helpTopics: HelpTopic[] = [
   },
   {
     id: "programs",
-    title: "Set up programs and projects",
+    title: "Manage projects",
     purpose:
-      "Projects organize donors, geographies, milestones, outcomes, indicators, beneficiaries, surveys, teams, and reports. They give field data its business and M&E context.",
+      "Projects are the operational foundation of Atlas FieldOps. They organize donor context, locations, teams, forms, assignments, submissions, indicators, reports, settings, and audit history without replacing the specialist modules that manage those records.",
     audience: "Organization administrators and M&E managers",
     view: "programs",
     icon: Building2,
     whenToUse:
       "Use Projects when launching a new program, adding a donor-funded activity, defining implementation geography, or preparing a reporting structure.",
     beforeYouStart: [
-      "Prepare the program name, donor, implementation period, geography, reporting requirements, and responsible team.",
-      "Confirm which surveys and indicators will belong to the project.",
-      "Agree on who can edit the project and who can only view or report on it.",
+      "Prepare the project name, code, program type, donor, implementing organization, owner, and location scope.",
+      "Confirm which forms, indicators, teams, assignments, submissions, reports, and governance controls will belong to the project.",
+      "Agree on who can create, activate, suspend, close, archive, or only view the project.",
     ],
     steps: [
       "Open Projects under Operations.",
-      "Create a new project or select an existing project to update.",
-      "Enter the project name, donor, geography, start date, end date, milestones, and implementation status.",
-      "Create the project survey plan before creating forms. Each baseline, midline, endline, registration, monitoring, or evaluation activity should become a survey.",
-      "Review the project summary to confirm that field activity, approvals, and reporting outputs will be tied to the correct program.",
+      "Review the Projects Dashboard to see total projects, active projects, draft projects, closed projects, beneficiaries, submissions, active forms, field officers, completion, indicator achievement, health, risks, and deadlines.",
+      "Use All Projects to search, filter, export, and open project workspaces.",
+      "Create a project with the guided wizard: basic information, locations, project structure, indicators, forms, governance, and review.",
+      "Open a project workspace and use the mandatory tabs: Overview, Forms, Indicators, Locations, Teams, Assignments, Submissions, Reports, Settings, and Audit Trail.",
+      "Use each tab as a contextual view. Open Forms, Indicators, Users & Teams, Submissions, Reports, Mapping, or Governance when detailed work belongs in those modules.",
+      "Review project health before activation or management meetings. Health combines progress, assignments, indicators, submissions, and data quality risk.",
     ],
     dataLanguage: [
-      "Program name",
+      "Project name",
+      "Project code",
       "Donor",
       "Geography",
-      "Milestones",
-      "Surveys",
-      "Reporting period",
+      "Project health",
+      "Assignments",
+      "Indicators",
+      "Audit trail",
     ],
     goodPractice: [
       "Use clear project names that match donor or internal reporting language.",
       "Keep geography consistent across projects, beneficiaries, maps, and reports.",
-      "Review project setup before creating surveys to avoid collecting data under the wrong program.",
+      "Use project templates for repeated baseline, monitoring, evaluation, registration, or multi-country structures.",
+      "Review project setup before publishing forms or assigning field teams.",
     ],
     avoid: [
       "Do not create duplicate projects for the same donor activity.",
-      "Do not create survey forms until the project geography and reporting period are correct.",
+      "Do not manage form design, submission review, GIS analysis, user accounts, or system settings inside Projects.",
+      "Do not activate a project until ownership, locations, teams, indicators, forms, and governance are clear.",
     ],
     result:
       "Submissions, beneficiaries, indicators, maps, and reports are linked to the right program structure.",
