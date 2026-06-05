@@ -55,6 +55,7 @@ describe("platform navigation architecture", () => {
       "Users & Teams",
       "Governance",
       "Administration",
+      "Help Guide",
     ]);
     expect(getDefaultWorkspaceView(principal)).toBe("dashboard");
     expect(isWorkspaceViewAllowed("platform", principal)).toBe(false);
@@ -67,6 +68,7 @@ describe("platform navigation architecture", () => {
       "Forms",
       "Field Operations",
       "Submissions",
+      "Help Guide",
     ]);
     expect(isWorkspaceViewAllowed("administration", principal)).toBe(false);
     expect(isWorkspaceViewAllowed("analytics", principal)).toBe(false);
@@ -78,6 +80,10 @@ describe("platform navigation architecture", () => {
       roles: [],
     });
 
-    expect(visibleLabels(principal)).toEqual(["Forms", "Administration"]);
+    expect(visibleLabels(principal)).toEqual([
+      "Forms",
+      "Administration",
+      "Help Guide",
+    ]);
   });
 });

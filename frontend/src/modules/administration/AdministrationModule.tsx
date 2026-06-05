@@ -449,6 +449,64 @@ function SectionHeader({
   );
 }
 
+function AdministrationModuleSelector({
+  activeSection,
+  onSelect,
+}: {
+  activeSection: AdministrationSection;
+  onSelect: (section: AdministrationSection) => void;
+}) {
+  return (
+    <section
+      aria-label="Administration settings"
+      className="rounded-2xl border bg-panel p-4 shadow-line"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Administration settings</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Open location hierarchy, reference data, notifications, APIs,
+            integrations, system settings, and backup controls.
+          </p>
+        </div>
+        <Badge tone="neutral">{administrationPages.length} modules</Badge>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {administrationPages.map((page) => {
+          const Icon = page.icon;
+          const active = activeSection === page.id;
+          return (
+            <button
+              className={cn(
+                "rounded-xl border bg-background p-3 text-left transition hover:border-primary/35 hover:bg-primary/5",
+                active && "border-primary/40 bg-primary/10 text-primary",
+              )}
+              key={page.id}
+              onClick={() => onSelect(page.id)}
+              type="button"
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border bg-panel">
+                  <Icon aria-hidden="true" size={15} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">
+                    {page.title.replace("Administration ", "")}
+                  </span>
+                  <span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">
+                    {page.route}
+                  </span>
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function FilterBar({
   category,
   environment,
@@ -1882,37 +1940,12 @@ export function AdministrationModule({
         onPrimaryAction={openPrimaryAction}
       />
 
-      <div className="grid gap-2 rounded-2xl border bg-panel p-2 shadow-line md:grid-cols-2 xl:grid-cols-4">
-        {administrationPages.map((page) => {
-          const Icon = page.icon;
-          const active = activeSection === page.id;
-          return (
-            <button
-              className={cn(
-                "rounded-xl p-3 text-left transition hover:bg-primary/5",
-                active && "bg-primary/10 text-primary",
-              )}
-              key={page.id}
-              onClick={() => setActiveSection(page.id)}
-              type="button"
-            >
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border bg-background">
-                  <Icon aria-hidden="true" size={15} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold">
-                    {page.title.replace("Administration ", "")}
-                  </span>
-                  <span className="mt-1 block truncate font-mono text-[11px] text-muted-foreground">
-                    {page.route}
-                  </span>
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {activeSection !== "dashboard" ? (
+        <AdministrationModuleSelector
+          activeSection={activeSection}
+          onSelect={setActiveSection}
+        />
+      ) : null}
 
       {actionResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4">
@@ -1943,21 +1976,27 @@ export function AdministrationModule({
       ) : null}
 
       {activeSection === "dashboard" ? (
-        <AdministrationDashboard
-          activeNotificationCount={activeNotificationCount(notificationRules)}
-          activeReferenceValueCount={activeReferenceValueCount(referenceLists)}
-          apiKeys={apiKeys}
-          auditRecords={auditQuery.data ?? []}
-          backupJobs={backupJobs}
-          changes={changes}
-          failedJobs={failedJobs}
-          featureFlags={featureFlags}
-          healthStatus={platformHealth}
-          integrations={integrations}
-          metrics={overviewMetrics}
-          runtimeSettings={runtimeSettings}
-          summary={platformSummary}
-        />
+        <>
+          <AdministrationDashboard
+            activeNotificationCount={activeNotificationCount(notificationRules)}
+            activeReferenceValueCount={activeReferenceValueCount(referenceLists)}
+            apiKeys={apiKeys}
+            auditRecords={auditQuery.data ?? []}
+            backupJobs={backupJobs}
+            changes={changes}
+            failedJobs={failedJobs}
+            featureFlags={featureFlags}
+            healthStatus={platformHealth}
+            integrations={integrations}
+            metrics={overviewMetrics}
+            runtimeSettings={runtimeSettings}
+            summary={platformSummary}
+          />
+          <AdministrationModuleSelector
+            activeSection={activeSection}
+            onSelect={setActiveSection}
+          />
+        </>
       ) : null}
 
       {activeSection === "location-hierarchy" ? (

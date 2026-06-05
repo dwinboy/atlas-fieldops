@@ -200,11 +200,12 @@ export function WorkspaceApp() {
     view: WorkspaceView,
     child: React.ReactNode,
     actions: ModuleWorkspaceAction[] = [],
+    showSections = true,
   ): React.ReactNode {
     const item = getNavigationItemByView(view);
     if (!item) return child;
     return (
-      <ModuleWorkspace actions={actions} item={item}>
+      <ModuleWorkspace actions={actions} item={item} showSections={showSections}>
         {child}
       </ModuleWorkspace>
     );
@@ -301,6 +302,7 @@ export function WorkspaceApp() {
           onClick: () => setActiveView("governance"),
         },
       ],
+      false,
     ),
     officers: <FieldOperationsModule token={token} principal={principalQuery.data} />,
     templates: <FormTemplateLibrary token={token} />,
@@ -311,31 +313,8 @@ export function WorkspaceApp() {
     analytics: <ReportsModule token={token} principal={principalQuery.data} />,
     workflows: <WorkflowManagement token={token} />,
     connectivity: <ConnectivityCenter token={token} />,
-    administration: moduleWorkspace(
-      "administration",
-      <AdministrationModule token={token} principal={principalQuery.data} />,
-      [
-        ...(principalQuery.data?.platform_admin && !principalQuery.data.support_mode
-          ? [
-              {
-                label: "Platform console",
-                description:
-                  "Open tenant support and organization management tools.",
-                onClick: () => setActiveView("platform"),
-              },
-            ]
-          : []),
-        {
-          label: "Open users",
-          description: "Manage accounts and roles from Users & Teams.",
-          onClick: () => setActiveView("organizations"),
-        },
-        {
-          label: "Open governance",
-          description: "Review audit, approval, policy, and compliance controls.",
-          onClick: () => setActiveView("governance"),
-        },
-      ],
+    administration: (
+      <AdministrationModule token={token} principal={principalQuery.data} />
     ),
     help: <ProductHelpCenter />,
   } satisfies Record<WorkspaceView, React.ReactNode>;

@@ -28,9 +28,6 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             ))}
-            <Link className="transition hover:text-[#10201c]" href="/blog">
-              Blog
-            </Link>
           </nav>
           <div className="hidden items-center gap-2 lg:flex">
             <Button asChild variant="ghost">
@@ -58,7 +55,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
               </button>
             </div>
             <nav className="mt-8 grid gap-2 text-base font-medium" aria-label="Mobile navigation">
-              {[...navItems, { label: "Blog", href: "/blog" }, { label: "Case Studies", href: "/case-studies" }, { label: "Security", href: "/security" }, { label: "About", href: "/about" }].map((item) => (
+              {[...navItems, { label: "Case Studies", href: "/case-studies" }, { label: "Security", href: "/security" }, { label: "About", href: "/about" }].map((item) => (
                 <Link className="rounded-md px-3 py-3 hover:bg-black/5" href={item.href} key={item.href} onClick={() => setOpen(false)}>
                   {item.label}
                 </Link>

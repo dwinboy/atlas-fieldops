@@ -5,7 +5,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Command,
-  HelpCircle,
   LogOut,
   Menu,
   Moon,
@@ -424,6 +423,7 @@ export function AppShell({
             </div>
             <Button
               aria-label="Open command palette"
+              className="sm:hidden"
               size="icon"
               variant="ghost"
               onClick={() => setCommandOpen(true)}
@@ -431,14 +431,17 @@ export function AppShell({
               <Command aria-hidden="true" />
             </Button>
             <Button
-              aria-label="Help guide"
-              className="hidden sm:inline-flex"
-              onClick={() => setActiveView("help")}
+              aria-label="Open command center"
+              className="hidden gap-2 sm:inline-flex"
+              onClick={() => setCommandOpen(true)}
               type="button"
-              variant="ghost"
+              variant="secondary"
             >
-              <HelpCircle aria-hidden="true" />
-              <span className="hidden sm:inline">Help guide</span>
+              <Command aria-hidden="true" />
+              <span>Command center</span>
+              <kbd className="rounded border bg-background/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
             </Button>
             <Button
               aria-label="Toggle theme"

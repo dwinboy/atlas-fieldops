@@ -19,6 +19,7 @@ type ModuleWorkspaceProps = {
   children?: ReactNode;
   className?: string;
   item: NavigationItem;
+  showSections?: boolean;
   status?: string;
 };
 
@@ -27,6 +28,7 @@ export function ModuleWorkspace({
   children,
   className,
   item,
+  showSections = true,
   status = "Architecture aligned",
 }: ModuleWorkspaceProps) {
   const Icon = item.icon;
@@ -73,7 +75,7 @@ export function ModuleWorkspace({
         </div>
       </div>
 
-      {areas.length ? (
+      {showSections && areas.length ? (
         <section
           aria-label={`${item.label} sections`}
           className="rounded-2xl border bg-panel/80 p-4 shadow-line"

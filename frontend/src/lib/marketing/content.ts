@@ -33,6 +33,7 @@ export const navItems = [
   { label: "Use Cases", href: "/use-cases" },
   { label: "Pricing", href: "/pricing" },
   { label: "Resources", href: "/resources" },
+  { label: "Blog", href: "/blog" },
 ];
 
 export const platformModules = [

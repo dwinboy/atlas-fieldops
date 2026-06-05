@@ -434,26 +434,24 @@ const sidebarSections: NavigationSection[] = [
           { label: "Backup & Recovery", route: "/administration/backup-recovery", description: "Data backup, restore, and recovery settings." },
         ],
       },
+      {
+        id: "help",
+        label: "Help Guide",
+        hint: "Product guidance",
+        description:
+          "Beginner-friendly guidance for major Atlas FieldOps workflows.",
+        route: "/help",
+        domain: "SYSTEM",
+        icon: BookOpenCheck,
+        tone: "support",
+        allowedRoles: allManagerRoles,
+        keywords: ["help", "guide", "documentation", "how to"],
+      },
     ],
   },
 ];
 
-const supportItems: NavigationItem[] = [
-  {
-    id: "help",
-    label: "Help Guide",
-    hint: "How to use Atlas",
-    description:
-      "Beginner-friendly guidance for major Atlas FieldOps workflows.",
-    route: "/help",
-    domain: "SUPPORT",
-    icon: BookOpenCheck,
-    tone: "support",
-    allowedRoles: allManagerRoles,
-    hiddenFromSidebar: true,
-    keywords: ["help", "guide", "documentation", "how to"],
-  },
-];
+const supportItems: NavigationItem[] = [];
 
 const legacyItems: NavigationItem[] = [
   {
@@ -809,7 +807,7 @@ export function canAccessNavigationItem(
   principal?: CurrentPrincipal | null,
 ): boolean {
   if (item.id === "help") {
-    return true;
+    return !principal?.platform_admin || Boolean(principal.support_mode);
   }
 
   const roleAccess = hasRoleAccess(item.allowedRoles, principal);
