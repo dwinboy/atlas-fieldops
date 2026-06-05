@@ -88,6 +88,7 @@ class IndicatorCreate(BaseModel):
     code: str = Field(min_length=2, max_length=80, pattern=r"^[A-Z0-9_.-]+$")
     name: str = Field(min_length=2, max_length=240)
     project_id: UUID | None = None
+    survey_id: UUID | None = None
     description: str | None = Field(default=None, max_length=2000)
     unit: str = Field(default="count", max_length=60)
     reporting_frequency: str = Field(default="monthly", pattern=r"^(monthly|quarterly|annual)$")
@@ -101,6 +102,7 @@ class IndicatorCreate(BaseModel):
 class IndicatorRead(BaseModel):
     id: UUID
     project_id: UUID | None
+    survey_id: UUID | None
     code: str
     name: str
     description: str | None
@@ -148,6 +150,7 @@ class CaseRead(BaseModel):
 class DonorReportCreate(BaseModel):
     name: str = Field(min_length=2, max_length=220)
     project_id: UUID | None = None
+    survey_id: UUID | None = None
     donor: str | None = Field(default=None, max_length=160)
     report_type: str = Field(default="indicator", max_length=80)
     period_start: date | None = None
@@ -159,6 +162,7 @@ class DonorReportCreate(BaseModel):
 class DonorReportRead(BaseModel):
     id: UUID
     project_id: UUID | None
+    survey_id: UUID | None
     name: str
     donor: str | None
     report_type: str

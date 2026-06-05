@@ -4,6 +4,7 @@ import {
   Boxes,
   Building2,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Database,
   FileText,
@@ -44,12 +45,12 @@ const onboardingPath = [
     text: "Use your organization slug, email, and password. After signing in, confirm you are in the correct organization before creating records or approving work.",
   },
   {
-    title: "Start from Today",
-    text: "Use Today to review the guided setup plan, management health scorecard, pending reviews, sync issues, and priority actions before opening detailed workspaces.",
+    title: "Start from Dashboard",
+    text: "Use Dashboard to review active form cards, response counts, synced records, review queues, role focus, setup health, data quality, and priority actions before opening detailed workspaces.",
   },
   {
     title: "Complete organization readiness",
-    text: "Follow the readiness plan: create team access, projects, indicators, imports, and the first form so every submission has a clear program context.",
+    text: "Follow the readiness plan: create team access, projects, surveys, indicators, imports, and the first survey form so every submission has project and survey context.",
   },
   {
     title: "Collect, review, and report",
@@ -68,7 +69,7 @@ const rolePaths = [
   ],
   [
     "M&E manager",
-    "Create indicators, connect forms to projects, monitor data quality, and prepare reports from approved submissions.",
+    "Create surveys inside projects, link indicators, connect forms to surveys, monitor data quality, and prepare reports from approved submissions.",
   ],
   [
     "Field supervisor",
@@ -86,6 +87,59 @@ const rolePaths = [
 
 const helpTopics: HelpTopic[] = [
   {
+    id: "platform-navigation",
+    title: "Understand the platform navigation",
+    purpose:
+      "Atlas FieldOps is organized into business domains so managers can move from projects, to forms, to fieldwork, to submissions, to analysis, to governance without hunting through duplicate pages.",
+    audience:
+      "All users, especially new organization admins, M&E managers, supervisors, and data managers",
+    view: "dashboard",
+    icon: Boxes,
+    whenToUse:
+      "Use this guide when you are not sure where a task belongs or when training a new team member on the platform structure.",
+    beforeYouStart: [
+      "Confirm your account role because the sidebar only shows modules your role can access.",
+      "Use Search if you know the task name but not the correct module.",
+      "Remember that detailed work belongs in the module, while Dashboard only summarizes what needs attention.",
+    ],
+    steps: [
+      "Open Dashboard first for the high-level operating picture: active forms, submissions, quality, approvals, indicators, field activity, and maps.",
+      "Use Projects for program setup, project teams, locations, assignments, indicators, reports, and project audit history.",
+      "Use Forms for the builder, templates, reference data, permissions, workflow, data quality settings, governance, mapping settings, versions, and audit trail for each form.",
+      "Use Field Operations for field officers, supervisors, assignments, work plans, targets, and monitoring.",
+      "Use Submissions for collected records, review, approval, rejection, correction, and archive.",
+      "Use Mapping, Indicators, Reports, and Data Quality for analysis, quality investigation, and formal outputs.",
+      "Use Users & Teams for accounts, roles, teams, organizations, permissions, and activity logs.",
+      "Use Governance for audit, policies, approvals, retention, consent, compliance, and data stewardship.",
+      "Use Administration only for system-wide settings, reference data, location hierarchy, APIs, integrations, notifications, and backup or recovery controls.",
+    ],
+    dataLanguage: [
+      "Business domain",
+      "Project",
+      "Form",
+      "Submission",
+      "Indicator",
+      "Report",
+      "Governance",
+    ],
+    goodPractice: [
+      "Keep form-level controls inside Forms, not Administration.",
+      "Keep system-wide settings inside Administration, not Governance.",
+      "Use Data Quality to investigate issues before exporting reports.",
+    ],
+    avoid: [
+      "Do not create duplicate pages for the same task in different modules.",
+      "Do not treat Dashboard as a place for deep editing or report building.",
+      "Do not put GIS tools inside Reports unless the output is a static report artifact.",
+    ],
+    result:
+      "Users know where to go next and the platform stays clean, predictable, and easier to support.",
+    nextActions: [
+      { label: "Open Dashboard", view: "dashboard" },
+      { label: "Build forms", view: "forms" },
+    ],
+  },
+  {
     id: "platform-console",
     title: "Manage the platform as a super admin",
     purpose:
@@ -101,7 +155,7 @@ const helpTopics: HelpTopic[] = [
       "Prepare verified organization details before creating a new tenant: name, slug, owner name, owner email, and temporary password.",
     ],
     steps: [
-      "Open Platform console from the navigation.",
+      "Open Administration from the navigation when signed in as a platform super admin.",
       "Use Dashboard to review tenant count, platform admin count, audit events, API health, JWT readiness, and setup attention.",
       "Use Organizations to create a tenant, activate or deactivate access, and confirm every organization has an owner email.",
       "Use Support sessions to enter a tenant only when troubleshooting a real issue. The support banner will show that you are not acting as a normal tenant user.",
@@ -138,9 +192,9 @@ const helpTopics: HelpTopic[] = [
   },
   {
     id: "daily-work",
-    title: "Use the daily workspace",
+    title: "Use the dashboard",
     purpose:
-      "Today is the operational starting point. It shows guided setup, management health, what needs attention now, submissions, review queues, sync health, data quality, and field team activity.",
+      "Dashboard is the operational starting point. It starts with active form activity cards, then shows role-specific guidance, guided setup, management health, the data quality path, what needs attention now, review queues, sync health, and field team activity.",
     audience: "Program managers, supervisors, and operations leads",
     view: "dashboard",
     icon: BookOpenCheck,
@@ -152,18 +206,26 @@ const helpTopics: HelpTopic[] = [
       "Make sure the reporting period you are reviewing matches the current field activity window.",
     ],
     steps: [
-      "Open Today from the left navigation.",
+      "Open Dashboard from the left navigation.",
+      "Review Active forms and responses first to see which forms are live or already receiving submissions.",
+      "Use each form card to check response count, synced records, pending review, approved responses, and last sync.",
+      "Open a form card to see the form name, its purpose or use, number of responses, sync status, project and survey context, and edit or review actions.",
+      "Use the small question-mark help buttons when you need a short explanation without crowding the dashboard.",
+      "Read Your role focus to understand what your account is responsible for and which workspaces are most important for your role.",
       "Review Organization readiness plan to see whether team access, projects, indicators, imports, and the first form are complete.",
       "Use Management signals to check setup readiness, data quality, M&E reporting readiness, and offline sync readiness.",
+      "Use Data quality path to move from form design, to quality detection, to correction, and finally to approved reporting.",
       "Read the summary cards for beneficiaries, active programs, indicators, open cases, clean submissions, and review wait time.",
       "Review Needs attention to identify duplicates, pending approvals, overdue corrections, or records that need manual checking.",
       "Use Manager questions to jump directly to the workspace that answers who can work, what will be measured, whether data is safe, or what needs action today.",
       "Use quick actions when you need to create a form, review submissions, invite an officer, or import data.",
-      "Open the relevant workspace from the card or quick action, complete the task, then return to Today to confirm the issue is reduced or resolved.",
+      "Open the relevant workspace from the card or quick action, complete the task, then return to Dashboard to confirm the issue is reduced or resolved.",
     ],
     dataLanguage: [
+      "Role focus",
       "Setup readiness",
       "Data quality",
+      "Data quality path",
       "M&E reporting",
       "Offline ready",
       "Submissions saved",
@@ -171,12 +233,12 @@ const helpTopics: HelpTopic[] = [
       "Open cases",
     ],
     goodPractice: [
-      "Treat Today as the operational control room, not the place to edit every record.",
+      "Treat Dashboard as the operational control room, not the place to edit every record.",
       "Resolve high-risk items first, such as possible duplicates or submissions waiting for supervisor action.",
       "Use the review and sync indicators together; a low review queue can still hide offline submissions that have not synced yet.",
     ],
     avoid: [
-      "Do not report final numbers from Today until submissions have synced and passed review.",
+      "Do not report final numbers from Dashboard until submissions have synced and passed review.",
       "Do not ignore repeated retry or sync warnings; they can indicate field officers need support.",
     ],
     result:
@@ -190,7 +252,7 @@ const helpTopics: HelpTopic[] = [
     id: "programs",
     title: "Set up programs and projects",
     purpose:
-      "Projects organize donors, geographies, milestones, indicators, assigned teams, forms, and reports. They give field data its business and M&E context.",
+      "Projects organize donors, geographies, milestones, outcomes, indicators, beneficiaries, surveys, teams, and reports. They give field data its business and M&E context.",
     audience: "Organization administrators and M&E managers",
     view: "programs",
     icon: Building2,
@@ -198,14 +260,14 @@ const helpTopics: HelpTopic[] = [
       "Use Projects when launching a new program, adding a donor-funded activity, defining implementation geography, or preparing a reporting structure.",
     beforeYouStart: [
       "Prepare the program name, donor, implementation period, geography, reporting requirements, and responsible team.",
-      "Confirm which indicators and forms will belong to the project.",
+      "Confirm which surveys and indicators will belong to the project.",
       "Agree on who can edit the project and who can only view or report on it.",
     ],
     steps: [
-      "Open Projects under Plan & monitor.",
+      "Open Projects under Operations.",
       "Create a new project or select an existing project to update.",
       "Enter the project name, donor, geography, start date, end date, milestones, and implementation status.",
-      "Connect the project to indicators, forms, field officers, beneficiary groups, and expected reports.",
+      "Create the project survey plan before creating forms. Each baseline, midline, endline, registration, monitoring, or evaluation activity should become a survey.",
       "Review the project summary to confirm that field activity, approvals, and reporting outputs will be tied to the correct program.",
     ],
     dataLanguage: [
@@ -213,47 +275,109 @@ const helpTopics: HelpTopic[] = [
       "Donor",
       "Geography",
       "Milestones",
-      "Assigned forms",
+      "Surveys",
       "Reporting period",
     ],
     goodPractice: [
       "Use clear project names that match donor or internal reporting language.",
       "Keep geography consistent across projects, beneficiaries, maps, and reports.",
-      "Review project setup before assigning forms to avoid collecting data under the wrong program.",
+      "Review project setup before creating surveys to avoid collecting data under the wrong program.",
     ],
     avoid: [
       "Do not create duplicate projects for the same donor activity.",
-      "Do not attach forms or indicators until the project geography and reporting period are correct.",
+      "Do not create survey forms until the project geography and reporting period are correct.",
     ],
     result:
       "Submissions, beneficiaries, indicators, maps, and reports are linked to the right program structure.",
     nextActions: [
+      { label: "Manage surveys", view: "surveys" },
       { label: "Track indicators", view: "indicators" },
-      { label: "Build forms", view: "forms" },
+    ],
+  },
+  {
+    id: "surveys",
+    title: "Manage surveys as M&E activities",
+    purpose:
+      "Surveys are the main operational object in Atlas FieldOps. A survey represents the actual M&E activity, such as a baseline, midline, endline, registration, monitoring, verification, assessment, evaluation, or follow-up exercise.",
+    audience: "Project managers, M&E managers, survey managers, supervisors, data quality officers, analysts, and enumerator coordinators",
+    view: "surveys",
+    icon: ClipboardCheck,
+    whenToUse:
+      "Use Survey Management after a project exists and before creating any form. Every form, submission, indicator comparison, and survey report should belong to a survey.",
+    beforeYouStart: [
+      "Select the project that owns the survey.",
+      "Prepare the survey title, survey code, survey type, manager, date range, geography, target population, and linked indicators.",
+      "Confirm who will own the survey and which staff will supervise, collect, review, analyze, and approve data.",
+    ],
+    steps: [
+      "Open Surveys under Plan & monitor.",
+      "Select the project that contains the M&E activity.",
+      "Create the survey with a clear title, unique code, type, dates, geography, and target population.",
+      "Assign survey roles such as Survey Owner, Survey Manager, Survey Supervisor, Data Quality Officer, Enumerator, and Analyst.",
+      "Open Governance to define who can see synchronized form data, review records, approve records, edit records, request corrections, upload Excel data, and export survey data.",
+      "Open Forms only after the survey is created, then build or copy forms into the selected survey.",
+      "Open Data upload when existing Excel data must be imported into a survey form. Download the template first, keep the column names unchanged, upload the completed file, then review issues before approval.",
+      "Monitor survey progress, completion, coverage, submissions, data quality, enumerator performance, indicators, and reports from the survey workspace.",
+    ],
+    dataLanguage: [
+      "Survey code",
+      "Survey type",
+      "Survey owner",
+      "Survey team",
+      "Survey governance",
+      "Data upload template",
+      "Target population",
+      "Linked indicators",
+    ],
+    goodPractice: [
+      "Use survey names that match donor and evaluation language, such as Baseline Survey or Farmer Registration Survey.",
+      "Keep survey codes short and stable so exports and reports are easy to identify.",
+      "Create separate surveys for baseline, midline, endline, registration, and routine monitoring so comparisons stay clean.",
+      "Set data visibility and approval rules before field officers start syncing records.",
+      "Use the survey form Excel template when uploading existing data so columns match the collection instrument.",
+    ],
+    avoid: [
+      "Do not create standalone forms without selecting a survey.",
+      "Do not upload spreadsheet data into a survey form without downloading and matching the survey form template first.",
+      "Do not reuse one survey for unrelated activities that have different targets, geographies, or reporting requirements.",
+    ],
+    result:
+      "Project work is organized by survey, and every form, submission, indicator, and report has a clear M&E activity behind it.",
+    nextActions: [
+      { label: "Build survey forms", view: "forms" },
+      { label: "Track indicators", view: "indicators" },
     ],
   },
   {
     id: "forms",
     title: "Build mobile-ready forms",
     purpose:
-      "Forms define what field officers collect on mobile devices. They support surveys, beneficiary registrations, inspections, assessments, complaints, referrals, and operational records.",
+      "Forms define what field officers collect on mobile devices. In Atlas FieldOps, every form must belong to one survey inside one project.",
     audience: "Data managers, M&E teams, and field supervisors",
     view: "forms",
     icon: ClipboardList,
     whenToUse:
-      "Use Forms when creating a new data collection tool, adapting a template, improving validation, or preparing offline mobile collection.",
+      "Use Forms after selecting the project and survey that the form will serve.",
     beforeYouStart: [
-      "Confirm the project, target users, language, and field collection method.",
+      "Confirm the project, survey, target users, language, and field collection method.",
       "List the required questions, evidence types, validation rules, and consent requirements.",
       "Decide which answers are mandatory and which can be optional.",
     ],
     steps: [
-      "Open Templates to start from a recommended form, or open Form builder to create one manually.",
+      "Open Survey Management and confirm the target survey exists.",
+      "Open Form builder, use the Templates tab to copy a recommended form into that survey, or create one manually.",
       "Add sections in the order a field officer should complete them in the field.",
       "Add question labels, helper text, field types, required rules, validation rules, repeat groups, GPS capture, photos, files, signatures, or calculated fields where needed.",
+      "Open Form Controls for that form and configure reference data, permissions, review workflow, data quality checks, governance rules, audit trail requirements, and versioning behavior.",
       "Use mobile preview to confirm the form is clear on smaller screens and usable offline.",
-      "Publish the form only when labels, validation, mobile preview, and program assignment are ready.",
-      "Assign the published form to the right field officers or project teams.",
+      "Open the Form readiness checklist to confirm project, survey, questions, required rules, controls, workflow, quality checks, preview, pilot test, and deployment audience are complete.",
+      "Publish the form only when labels, validation, mobile preview, project assignment, survey assignment, form controls, and readiness checks are ready.",
+      "Use the Deployment center to select the field officer audience, choose the mobile sync mode, publish the correct version, and deploy the form to the Survey App.",
+      "Open the Assignment workspace to confirm the collection team, supervisor, location scope, targets, briefing status, and pilot enumerator for that form.",
+      "Use the Import workspace when existing Excel or CSV records need to be loaded into the form. Download or prepare the matching template first, validate rows, fix mapping issues, then import clean records.",
+      "Use the Data quality workspace to monitor GPS, media, duplicate, missing value, review, and evidence flags before records are used in reports.",
+      "Ask field officers to sync the Survey App and open Assigned forms after the form is deployed.",
+      "Use the Submission review workspace to inspect synced records, add reviewer notes, approve clean submissions, reject invalid records, or return records for correction.",
     ],
     dataLanguage: [
       "Question label",
@@ -262,21 +386,40 @@ const helpTopics: HelpTopic[] = [
       "Validation",
       "Repeat group",
       "Mobile preview",
+      "Survey assignment",
+      "Form Controls",
+      "Reference Data",
+      "Approval workflow",
+      "Audit Trail",
+      "Readiness checklist",
+      "Deployment center",
+      "Assignment workspace",
+      "Import workspace",
+      "Data quality workspace",
+      "Submission review workspace",
+      "Mobile deployment",
+      "Assigned forms",
     ],
     goodPractice: [
       "Use plain question labels that a field officer can read aloud.",
       "Add helper text when a question needs a specific format, evidence type, or explanation.",
       "Keep published versions stable so mobile users do not lose trust in assigned forms.",
+      "Bind official lists such as districts, facilities, schools, communities, enumerators, and donor codes before field officers start submitting records.",
+      "Use form-level permissions so field officers only see assigned forms and supervisors only review the right teams or locations.",
+      "Use readiness and deployment modals instead of relying on memory. They make publishing safer for beginners and faster for experienced managers.",
+      "Import data only through a form-specific template so every uploaded record maps back to the survey, form version, and required questions.",
+      "Resolve quality flags before using form data in indicators, analytics, donor reports, or project dashboards.",
     ],
     avoid: [
       "Do not publish forms with unclear required fields.",
+      "Do not allow free text where an official reference list is required.",
       "Do not change a published form during active field collection unless the team understands the impact.",
     ],
     result:
-      "Field officers receive clear, reliable, offline-ready forms that produce cleaner data.",
+      "Field officers receive clear, reliable, offline-ready survey forms that produce cleaner data.",
     nextActions: [
-      { label: "Browse templates", view: "templates" },
-      { label: "Invite field teams", view: "officers" },
+      { label: "Manage surveys", view: "surveys" },
+      { label: "Open form builder", view: "forms" },
     ],
   },
   {
@@ -390,10 +533,11 @@ const helpTopics: HelpTopic[] = [
     steps: [
       "Open Review queue under Daily work.",
       "Filter or select submissions by project, form, officer, status, risk, or date.",
+      "Follow the issue resolution workflow: select the record, check the evidence, write the decision note, and apply the correct decision.",
       "Open a submission and review required answers, validation messages, GPS evidence, media attachments, duplicates, and beneficiary links.",
       "Approve clean submissions that meet program and data quality requirements.",
-      "Request correction when the officer can fix the record, and write a clear correction reason.",
-      "Reject submissions only when the record should not move forward and the reason is documented.",
+      "Request correction when the officer can fix the record, and write a clear correction reason before sending it back.",
+      "Reject submissions only when the record should not move forward and the rejection reason is documented.",
     ],
     dataLanguage: [
       "Submission ID",
@@ -406,10 +550,12 @@ const helpTopics: HelpTopic[] = [
     goodPractice: [
       "Review high-risk submissions before routine clean records.",
       "Write correction notes that are specific enough for the field officer to act on.",
+      "Use decision notes as part of the audit trail for future quality checks and supervisor reviews.",
       "Use audit history to understand what changed and who changed it.",
     ],
     avoid: [
       "Do not approve a record only because every required field is filled.",
+      "Do not request correction or reject a submission without a practical written reason.",
       "Do not reject without a clear reason that can be reviewed later.",
     ],
     result:
@@ -660,7 +806,7 @@ const helpTopics: HelpTopic[] = [
     view: "governance",
     icon: Boxes,
     whenToUse:
-      "Use Governance, Team & access, and Workforce when managing users, permissions, data quality rules, audit history, trusted devices, retention, and compliance processes.",
+      "Use Governance and Users & Teams when managing users, permissions, data quality rules, audit history, trusted devices, retention, and compliance processes.",
     beforeYouStart: [
       "Know the user role, department, geography, and data scope required.",
       "Confirm which actions should be allowed, reviewed, or blocked.",
@@ -766,15 +912,15 @@ export function ProductHelpCenter() {
               onClick={() => setActiveView("dashboard")}
               type="button"
             >
-              Open Today
+              Open Dashboard
               <BookOpenCheck aria-hidden="true" />
             </Button>
             <Button
               variant="primary"
-              onClick={() => setActiveView("templates")}
+              onClick={() => setActiveView("forms")}
               type="button"
             >
-              Start with templates
+              Open form builder
               <ClipboardList aria-hidden="true" />
             </Button>
           </div>

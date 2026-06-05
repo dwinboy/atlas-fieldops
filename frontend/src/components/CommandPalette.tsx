@@ -1,38 +1,15 @@
 "use client";
 
-import { BarChart3, Boxes, Building2, ClipboardList, Database, Files, Fingerprint, GitPullRequestArrow, HelpCircle, LayoutDashboard, Map, Search, Shield, ShieldCheck, UsersRound, Wifi, X } from "lucide-react";
+import { HelpCircle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { getVisibleNavigationItems } from "@/config/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
-import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
-
-const commands: { label: string; hint: string; view: WorkspaceView; group: string; icon: typeof LayoutDashboard; keywords: string[] }[] = [
-  { label: "Open platform console", hint: "Organizations, tenant status, support sessions, and platform health", view: "platform", group: "Platform", icon: Shield, keywords: ["platform", "super admin", "tenant", "support", "organization"] },
-  { label: "Open home", hint: "See today’s submissions, reviews, and sync status", view: "dashboard", group: "Daily work", icon: LayoutDashboard, keywords: ["today", "home", "dashboard", "tasks"] },
-  { label: "Open ecosystem", hint: "See how projects, people, forms, reviews, and reports connect", view: "ecosystem", group: "Daily work", icon: Boxes, keywords: ["overview", "connections", "platform"] },
-  { label: "Open enterprise operations", hint: "Manage governance, workflows, assets, budgets, and documents", view: "enterprise", group: "Daily work", icon: Building2, keywords: ["operations", "assets", "budget"] },
-  { label: "Open governance", hint: "Audit, retention, validation, lineage, consent, and export controls", view: "governance", group: "Daily work", icon: Fingerprint, keywords: ["audit", "privacy", "policy", "quality"] },
-  { label: "Open workforce governance", hint: "Departments, teams, delegations, access requests, and role simulation", view: "workforce", group: "Admin", icon: UsersRound, keywords: ["staff", "teams", "departments", "permissions"] },
-  { label: "Manage data", hint: "Import, map, clean, edit, export, and sync datasets", view: "data", group: "Data", icon: Database, keywords: ["spreadsheet", "excel", "csv", "migration", "kobo", "odk"] },
-  { label: "Open programs", hint: "Projects, donors, milestones, and coverage", view: "programs", group: "M&E", icon: Building2, keywords: ["project", "program", "donor"] },
-  { label: "Find beneficiaries", hint: "Households, farmers, groups, and visit history", view: "beneficiaries", group: "M&E", icon: UsersRound, keywords: ["people", "households", "farmers", "registry"] },
-  { label: "Track indicators", hint: "Baselines, targets, progress, and SDG mapping", view: "indicators", group: "M&E", icon: BarChart3, keywords: ["kpi", "targets", "results", "logframe"] },
-  { label: "Review submissions", hint: "Approve, reject, or request corrections", view: "submissions", group: "Review", icon: ShieldCheck, keywords: ["review", "approve", "corrections", "responses"] },
-  { label: "Browse templates", hint: "Start from ready-made forms for field operations", view: "templates", group: "Setup", icon: Files, keywords: ["template", "survey", "questionnaire", "start"] },
-  { label: "Build forms", hint: "Add questions, rules, and offline-ready checks", view: "forms", group: "Setup", icon: ClipboardList, keywords: ["form", "survey", "question", "drag", "xlsform"] },
-  { label: "Manage field team", hint: "Invite officers and check sync status", view: "officers", group: "Field work", icon: UsersRound, keywords: ["officers", "enumerators", "collectors", "devices"] },
-  { label: "Open cases", hint: "Complaints, referrals, corrections, and follow-ups", view: "cases", group: "Field work", icon: GitPullRequestArrow, keywords: ["case", "complaint", "referral", "incident"] },
-  { label: "Open map", hint: "Coverage, villages, farm boundaries, and weak areas", view: "map", group: "Map", icon: Map, keywords: ["gps", "geo", "location", "coverage"] },
-  { label: "Manage organization", hint: "Users, roles, and access", view: "organizations", group: "Admin", icon: Building2, keywords: ["admin", "users", "roles", "organization"] },
-  { label: "Open reports", hint: "Donor reports, exports, logframes, and summaries", view: "analytics", group: "Reports", icon: BarChart3, keywords: ["report", "donor", "summary", "analytics"] },
-  { label: "Review approval rules", hint: "Correction paths, review steps, and overdue work", view: "workflows", group: "Approvals", icon: GitPullRequestArrow, keywords: ["approval", "workflow", "rules", "sla"] },
-  { label: "Check connectivity", hint: "Offline sync, retries, SMS, and WhatsApp alerts", view: "connectivity", group: "Offline", icon: Wifi, keywords: ["offline", "sync", "retry", "network"] },
-  { label: "Open help guide", hint: "Learn how to use Atlas FieldOps step by step", view: "help", group: "Support", icon: HelpCircle, keywords: ["help", "guide", "documentation", "how to"] }
-];
+import { useWorkspaceStore } from "@/stores/workspace";
 
 export function CommandPalette({ principal }: { principal?: CurrentPrincipal | null }) {
   const commandOpen = useWorkspaceStore((state) => state.commandOpen);
@@ -54,13 +31,13 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
   }, [setCommandOpen]);
 
   const filtered = useMemo(() => {
-    const visibleCommands = principal?.platform_admin ? commands : commands.filter((command) => command.view !== "platform");
+    const visibleCommands = getVisibleNavigationItems(principal);
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
       return visibleCommands;
     }
-    return visibleCommands.filter((command) => `${command.label} ${command.hint} ${command.group} ${command.keywords.join(" ")}`.toLowerCase().includes(normalized));
-  }, [principal?.platform_admin, query]);
+    return visibleCommands.filter((command) => `${command.label} ${command.hint} ${command.description} ${command.domain} ${(command.keywords ?? []).join(" ")}`.toLowerCase().includes(normalized));
+  }, [principal, query]);
 
   return (
     <Modal
@@ -103,8 +80,8 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
             key={command.label}
             className="flex w-full items-center justify-between gap-4 rounded-md px-3 py-3 text-left transition-colors hover:bg-muted"
             onClick={() => {
-              const result = `${command.label}. ${command.hint}. Use this workspace to continue the related Atlas FieldOps task with the right forms, reviews, data, or controls.`;
-              setActiveView(command.view);
+              const result = `${command.label}. ${command.description}`;
+              setActiveView(command.id);
               setLastActionResult(result);
               setCommandOpen(false);
               pushToast({ title: command.label, description: result, tone: "success" });
@@ -120,7 +97,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
                 <span className="block truncate text-xs text-muted-foreground">{command.hint}</span>
               </span>
             </span>
-            <Badge>{command.group}</Badge>
+            <Badge>{command.domain}</Badge>
           </button>
           );
         }) : (

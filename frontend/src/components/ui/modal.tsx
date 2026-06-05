@@ -9,12 +9,14 @@ import { cn } from "@/lib/utils";
 
 export function Modal({
   children,
+  contentClassName,
   description,
   open,
   onOpenChange,
   title
 }: {
   children: ReactNode;
+  contentClassName?: string;
   description?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,7 +28,8 @@ export function Modal({
         <Dialog.Overlay className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out" />
         <Dialog.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-panel p-0 shadow-elevated"
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-panel p-0 shadow-elevated",
+            contentClassName
           )}
         >
           <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
@@ -46,4 +49,3 @@ export function Modal({
     </Dialog.Root>
   );
 }
-

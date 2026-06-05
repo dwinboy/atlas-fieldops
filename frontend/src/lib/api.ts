@@ -535,6 +535,8 @@ export type FieldOfficerImportResponse = {
 export type SubmissionRead = {
   id: string;
   client_submission_id: string;
+  project_id: string | null;
+  survey_id: string | null;
   form_id: string;
   field_officer_id: string;
   status: string;
@@ -628,6 +630,7 @@ export type ProgramRead = {
 export type IndicatorRead = {
   id: string;
   project_id: string | null;
+  survey_id: string | null;
   code: string;
   name: string;
   description: string | null;
@@ -660,6 +663,7 @@ export type CaseRead = {
 export type DonorReportRead = {
   id: string;
   project_id: string | null;
+  survey_id: string | null;
   name: string;
   donor: string | null;
   report_type: string;
@@ -814,6 +818,8 @@ export type MediaEvidenceRead = {
 };
 
 export type DataFormCreate = {
+  project_id: string;
+  survey_id: string;
   name: string;
   slug: string;
   description?: string | null;
@@ -854,13 +860,112 @@ export type FormCollectionCompatibility = {
   warnings: string[];
 };
 
+export type FormReferenceBinding = {
+  id: string;
+  question_id: string;
+  question_label: string;
+  reference_list_name: string;
+  reference_type: string;
+  source: "new" | "existing" | "imported";
+  enforce_controlled_values: boolean;
+  allow_inactive_values: boolean;
+  parent_reference?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  version: number;
+  updated_by?: string | null;
+  changed_since_publish: boolean;
+};
+
+export type FormPermissionRule = {
+  subject_type: "role" | "user" | "team";
+  subject_name: string;
+  permissions: string[];
+  location_scope: string;
+  can_approve_own_submission: boolean;
+  read_only: boolean;
+};
+
+export type FormWorkflowStage = {
+  id: string;
+  name: string;
+  reviewer_roles: string[];
+  reviewer_location_scope: string;
+  require_comment_on_reject: boolean;
+  require_comment_on_return: boolean;
+  sla_hours: number;
+};
+
+export type FormDataQualityRule = {
+  id: string;
+  label: string;
+  rule_type: string;
+  enabled: boolean;
+  severity: "low" | "medium" | "high" | "critical";
+  blocking: boolean;
+  fields: string[];
+  expression?: string | null;
+};
+
+export type FormGovernancePolicy = {
+  form_status: "draft" | "testing" | "published" | "suspended" | "archived";
+  approval_workflow: "simple" | "standard" | "correction" | "custom";
+  required_review_levels: number;
+  submitted_records_editable: boolean;
+  approved_records_editable: boolean;
+  rejected_records_resubmittable: boolean;
+  duplicate_submissions_allowed: boolean;
+  duplicate_detection_fields: string[];
+  require_gps_capture: boolean;
+  require_timestamp_capture: boolean;
+  require_enumerator_assignment: boolean;
+  require_supervisor_review: boolean;
+  data_retention_days: number;
+  export_restricted: boolean;
+  sensitive_field_masking: boolean;
+  pii_tagging_required: boolean;
+  consent_required: boolean;
+  minimum_quality_score: number;
+  review_sla_hours: number;
+  auto_lock_after_approval: boolean;
+  auto_archive_after_project_closure: boolean;
+};
+
+export type FormAuditSettings = {
+  immutable: boolean;
+  reason_required_events: string[];
+  tracked_events: string[];
+  export_allowed_roles: string[];
+};
+
+export type FormVersioningSettings = {
+  editing_published_creates_draft: boolean;
+  preserve_submission_version_link: boolean;
+  compare_versions_enabled: boolean;
+  reference_lists_version_aware: boolean;
+  archived_versions_viewable: boolean;
+};
+
+export type FormControlsSettings = {
+  reference_bindings: FormReferenceBinding[];
+  permission_rules: FormPermissionRule[];
+  workflow_stages: FormWorkflowStage[];
+  data_quality_rules: FormDataQualityRule[];
+  governance: FormGovernancePolicy;
+  audit: FormAuditSettings;
+  versioning: FormVersioningSettings;
+};
+
 export type DataFormRead = {
   id: string;
+  project_id: string | null;
+  survey_id: string | null;
   name: string;
   slug: string;
   description: string | null;
   status: string;
   current_version: number;
+  controls_json?: FormControlsSettings | Record<string, unknown>;
   is_active: boolean;
 };
 
@@ -894,9 +999,89 @@ export type FormTemplateDetail = FormTemplateRead & {
 };
 
 export type TemplateDuplicateRequest = {
+  project_id: string;
+  survey_id: string;
   name?: string;
   slug?: string;
   publish?: boolean;
+};
+
+export type SurveyStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
+export type SurveyRole =
+  | "survey_owner"
+  | "survey_manager"
+  | "survey_supervisor"
+  | "data_quality_officer"
+  | "enumerator"
+  | "analyst";
+
+export type SurveyGovernanceSettings = {
+  data_visibility_roles: string[];
+  review_roles: string[];
+  approval_roles: string[];
+  edit_roles: string[];
+  correction_roles: string[];
+  upload_roles: string[];
+  export_roles: string[];
+  synced_submission_default_status: "submitted" | "under_review";
+  uploaded_submission_default_status: "submitted" | "under_review";
+  review_required: boolean;
+  allow_reviewer_edit: boolean;
+  require_correction_note: boolean;
+  lock_after_approval: boolean;
+};
+
+export type SurveyCreate = {
+  project_id: string;
+  title: string;
+  code: string;
+  description?: string | null;
+  survey_type: string;
+  status?: SurveyStatus;
+  start_date?: string | null;
+  end_date?: string | null;
+  geographic_scope?: string | null;
+  target_population?: string | null;
+  indicator_ids?: string[];
+  custom_type_label?: string | null;
+  owner_user_id?: string | null;
+  manager_user_id?: string | null;
+};
+
+export type SurveyRead = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  created_by_user_id: string | null;
+  owner_user_id: string | null;
+  manager_user_id: string | null;
+  title: string;
+  code: string;
+  description: string | null;
+  survey_type: string;
+  status: SurveyStatus;
+  start_date: string | null;
+  end_date: string | null;
+  geographic_scope: string | null;
+  target_population: string | null;
+  indicator_ids_json: string[];
+  governance_json?: Partial<SurveyGovernanceSettings>;
+  custom_type_label: string | null;
+  is_active: boolean;
+};
+
+export type SurveyTeamMemberCreate = {
+  user_id: string;
+  survey_role: SurveyRole;
+};
+
+export type SurveyTeamMemberRead = {
+  id: string;
+  survey_id: string;
+  user_id: string;
+  survey_role: SurveyRole;
+  is_active: boolean;
 };
 
 export function resolveApiBaseUrl(candidate: string | undefined): string {
@@ -1366,6 +1551,35 @@ export async function listPrograms(token: string): Promise<ProgramRead[]> {
   return request<ProgramRead[]>("/operations/programs", { token });
 }
 
+export async function listSurveys(token: string, projectId?: string): Promise<SurveyRead[]> {
+  const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  return request<SurveyRead[]>(`/surveys${query}`, { token });
+}
+
+export async function createSurvey(token: string, payload: SurveyCreate): Promise<SurveyRead> {
+  return request<SurveyRead>("/surveys", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateSurveyGovernance(
+  token: string,
+  surveyId: string,
+  payload: SurveyGovernanceSettings
+): Promise<SurveyRead> {
+  return request<SurveyRead>(`/surveys/${surveyId}/governance`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function listSurveyTeam(token: string, surveyId: string): Promise<SurveyTeamMemberRead[]> {
+  return request<SurveyTeamMemberRead[]>(`/surveys/${surveyId}/team`, { token });
+}
+
+export async function addSurveyTeamMember(
+  token: string,
+  surveyId: string,
+  payload: SurveyTeamMemberCreate
+): Promise<SurveyTeamMemberRead> {
+  return request<SurveyTeamMemberRead>(`/surveys/${surveyId}/team`, { method: "POST", token, bodyJson: payload });
+}
+
 export async function listIndicators(token: string): Promise<IndicatorRead[]> {
   return request<IndicatorRead[]>("/operations/indicators", { token });
 }
@@ -1451,6 +1665,18 @@ export async function createForm(token: string, payload: DataFormCreate): Promis
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
 
+export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {
+  return request<FormControlsSettings>(`/forms/${formId}/controls`, { token });
+}
+
+export async function updateFormControls(
+  token: string,
+  formId: string,
+  payload: FormControlsSettings
+): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}/controls`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function exportFormXlsForm(token: string, formId: string): Promise<XlsFormWorkbook> {
   return request<XlsFormWorkbook>(`/forms/${formId}/xlsform`, { token });
 }
@@ -1501,8 +1727,10 @@ export const api = {
   duplicateFormTemplate,
   exportFormXlsForm,
   createForm,
+  getFormControls,
   createGovernancePolicy,
   createImportJob,
+  createSurvey,
   createUser,
   createTeam,
   createWorkforceProfile,
@@ -1548,6 +1776,8 @@ export const api = {
   listOperationalZones,
   listPlatformAuditLogs,
   listPrograms,
+  listSurveyTeam,
+  listSurveys,
   listPlatformUsage,
   listPlatformUsers,
   listReports,
@@ -1562,11 +1792,14 @@ export const api = {
   login,
   previewImport,
   reviewSubmission,
+  addSurveyTeamMember,
   resetUserPassword,
   routeData,
   reviewAccessRequest,
   simulateAccess,
   updateImportRow,
+  updateFormControls,
+  updateSurveyGovernance,
   updateUser,
   uploadImportFile
 };

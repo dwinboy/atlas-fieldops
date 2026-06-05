@@ -2,13 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   addField,
+  addPage,
+  addSection,
+  buildFormReadinessChecklist,
   createDraftVersion,
+  deployFormToMobileApp,
   createField,
+  createPage,
+  createSection,
   duplicateField,
+  moveFieldToSection,
   publishForm,
   removeField,
   reorderFields,
   getCollectionCompatibility,
+  isFormReadyForPublish,
   toMobileSchema,
   toXlsFormWorkbook,
   type DynamicForm
@@ -84,6 +92,19 @@ describe("dynamic form helpers", () => {
     expect(draft.version).toBe(2);
   });
 
+  it("publishes and deploys forms to the mobile app", () => {
+    const form = addField(baseForm, createField("gps", "main"));
+    const deployed = deployFormToMobileApp(form, {
+      assignedAudience: "Survey team only",
+      syncMode: "offline_first",
+    });
+
+    expect(deployed.status).toBe("published");
+    expect(deployed.mobileDeployment?.channel).toBe("survey_app");
+    expect(deployed.mobileDeployment?.assignedAudience).toBe("Survey team only");
+    expect(deployed.mobileDeployment?.syncMode).toBe("offline_first");
+  });
+
   it("exports a mobile-compatible schema", () => {
     const form = addField(baseForm, {
       id: "farm-gps",
@@ -98,10 +119,34 @@ describe("dynamic form helpers", () => {
 
     expect(schema.offline_compatible).toBe(true);
     expect(schema.language).toBe("en");
+    expect(schema.pages[0]?.title).toBe("Page 1");
     expect(schema.sections[0]?.title).toBe("Main");
+    expect(schema.sections[0]?.page_id).toBe("page-1");
     expect(schema.sections[0]?.fields[0]?.label).toBe("Farm GPS");
     expect(schema.sections[0]?.fields[0]?.type).toBe("gps");
     expect(schema.sections[0]?.fields[0]?.validation).toEqual({ accuracyMax: 20 });
+  });
+
+  it("organizes questions by pages and sections", () => {
+    const page = createPage("Household roster");
+    const section = createSection(page.id, "Members");
+    const formWithPage = addSection(addPage(baseForm, page), section);
+    const field = createField("repeat_group", section.id, page.id);
+    const next = addField(formWithPage, field);
+    const schema = toMobileSchema(next);
+
+    expect(schema.pages.find((candidate) => candidate.id === page.id)?.sections).toContain(section.id);
+    expect(schema.sections.find((candidate) => candidate.id === section.id)?.fields[0]?.type).toBe("repeat_group");
+  });
+
+  it("moves fields between sections without losing page context", () => {
+    const page = createPage("Evidence");
+    const section = createSection(page.id, "Media");
+    const form = addField(addSection(addPage(baseForm, page), section), createField("image", "main"));
+    const moved = moveFieldToSection(form, form.fields[0]?.id ?? "", section.id);
+
+    expect(moved.fields[0]?.sectionId).toBe(section.id);
+    expect(moved.fields[0]?.pageId).toBe(page.id);
   });
 
   it("exports an XLSForm workbook with survey, choices, and settings", () => {
@@ -152,7 +197,52 @@ describe("dynamic form helpers", () => {
     expect(compatibility.mediaCount).toBe(1);
   });
 
+  it("supports enterprise survey field types in exports", () => {
+    const form = addField(addField(baseForm, createField("matrix_single", "main")), createField("geofence", "main"));
+    const workbook = toXlsFormWorkbook(form);
+    const compatibility = getCollectionCompatibility(form);
+
+    expect(workbook.survey.map((row) => row.type)).toContain("table-list");
+    expect(workbook.survey.map((row) => row.type)).toContain("geopoint");
+    expect(compatibility.hasGps).toBe(true);
+  });
+
   it("requires at least one field before publishing", () => {
     expect(() => publishForm(baseForm)).toThrow("at least one field");
+  });
+
+  it("builds a manager readiness checklist before publishing", () => {
+    const form = addField(baseForm, createField("gps", "main"));
+    const items = buildFormReadinessChecklist(form, {
+      hasProject: true,
+      hasSurvey: true,
+      controlsConfigured: true,
+      workflowConfigured: true,
+      qualityChecksConfigured: true,
+      mobilePreviewChecked: false,
+      pilotTestCompleted: false,
+      deploymentAudienceSelected: true
+    });
+
+    expect(items.find((item) => item.id === "questions")?.complete).toBe(true);
+    expect(items.find((item) => item.id === "mobile-preview")?.required).toBe(false);
+    expect(isFormReadyForPublish(items)).toBe(true);
+  });
+
+  it("blocks readiness when required governance is missing", () => {
+    const form = addField(baseForm, createField("text", "main"));
+    const items = buildFormReadinessChecklist(form, {
+      hasProject: true,
+      hasSurvey: true,
+      controlsConfigured: false,
+      workflowConfigured: true,
+      qualityChecksConfigured: true,
+      mobilePreviewChecked: true,
+      pilotTestCompleted: true,
+      deploymentAudienceSelected: true
+    });
+
+    expect(items.find((item) => item.id === "controls")?.complete).toBe(false);
+    expect(isFormReadyForPublish(items)).toBe(false);
   });
 });

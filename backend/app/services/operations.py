@@ -1509,6 +1509,7 @@ class OperationsService:
         return IndicatorRead(
             id=indicator.id,
             project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
             code=indicator.code,
             name=indicator.name,
             description=indicator.description,

@@ -471,7 +471,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
           <div>
             <h2 className="text-sm font-semibold">Connected workflow chain</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Each step feeds the next. Forms act as operational transactions, not isolated surveys.
+              Each step feeds the next. Surveys are the M&E activity, and forms are the collection tools inside each survey.
             </p>
           </div>
           <Badge tone="success"><CheckCircle2 aria-hidden="true" size={12} /> Event-driven</Badge>

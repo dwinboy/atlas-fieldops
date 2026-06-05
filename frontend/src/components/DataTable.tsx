@@ -73,7 +73,7 @@ export function DataTable<T>({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="relative min-w-64">
+          <label className="relative w-full sm:min-w-64">
             <span className="sr-only">{searchLabel}</span>
             <Search
               aria-hidden="true"
@@ -96,7 +96,38 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <div className="overflow-x-auto product-scrollbar">
+      <div className="divide-y md:hidden">
+        {filteredRows.map((row, index) => (
+          <article className="space-y-3 px-4 py-4" key={index}>
+            {columns.map((column) => (
+              <div className="grid gap-1" key={column.key}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {column.header}
+                </p>
+                <div className="min-w-0 break-words text-sm text-foreground">
+                  {column.render(row)}
+                </div>
+              </div>
+            ))}
+          </article>
+        ))}
+        {filteredRows.length === 0 ? (
+          <div className="px-4 py-10 text-center text-muted-foreground">
+            <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
+              <p className="font-medium text-foreground">
+                {query ? "No matches found" : emptyLabel}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {query
+                  ? "Try a different search term or clear the search."
+                  : "New records will appear here when they are available."}
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="hidden overflow-x-auto product-scrollbar md:block">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead className="sticky top-0 bg-panel/95 text-muted-foreground shadow-line backdrop-blur">
             <tr>

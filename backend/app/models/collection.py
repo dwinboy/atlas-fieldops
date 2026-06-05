@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -53,6 +53,41 @@ class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Ba
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class Survey(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "surveys"
+    __table_args__ = (UniqueConstraint("organization_id", "code"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    owner_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    manager_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    code: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    survey_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    geographic_scope: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    target_population: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    indicator_ids_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    governance_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, default=dict)
+    custom_type_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SurveyTeamMember(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "survey_team_members"
+    __table_args__ = (UniqueConstraint("organization_id", "survey_id", "user_id", "survey_role"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    survey_id: Mapped[UUID] = mapped_column(ForeignKey("surveys.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    survey_role: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class FormTemplate(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "form_templates"
     __table_args__ = (UniqueConstraint("slug", "version"),)
@@ -95,12 +130,15 @@ class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("organization_id", "slug"),)
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
     created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(140), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
     current_version: Mapped[int] = mapped_column(Integer, default=1)
+    controls_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -121,6 +159,8 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("organization_id", "client_submission_id"),)
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
     form_id: Mapped[UUID] = mapped_column(ForeignKey("data_forms.id"), index=True)
     form_version_id: Mapped[UUID] = mapped_column(ForeignKey("data_form_versions.id"), index=True)
     field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)

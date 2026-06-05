@@ -38,6 +38,12 @@ class Permission(StrEnum):
     PROGRAM_EDIT = "projects.edit"
     PROGRAM_ARCHIVE = "projects.archive"
     PROGRAM_MANAGE = "projects.manage"
+    SURVEY_READ = "surveys.view"
+    SURVEY_CREATE = "surveys.create"
+    SURVEY_MANAGE = "surveys.manage"
+    SURVEY_ASSIGN_ENUMERATORS = "surveys.assign_enumerators"
+    SURVEY_REVIEW_DATA = "surveys.review_data"
+    SURVEY_APPROVE_DATA = "surveys.approve_data"
     INDICATOR_READ = "indicators.view"
     INDICATOR_MANAGE = "indicators.manage"
     CASE_READ = "cases.view"
@@ -79,6 +85,12 @@ PERMISSION_ALIASES: dict[str, Permission] = {
     "beneficiary:manage": Permission.BENEFICIARY_MANAGE,
     "program:read": Permission.PROGRAM_READ,
     "program:manage": Permission.PROGRAM_MANAGE,
+    "survey:read": Permission.SURVEY_READ,
+    "survey:create": Permission.SURVEY_CREATE,
+    "survey:manage": Permission.SURVEY_MANAGE,
+    "survey:assign_enumerators": Permission.SURVEY_ASSIGN_ENUMERATORS,
+    "survey:review_data": Permission.SURVEY_REVIEW_DATA,
+    "survey:approve_data": Permission.SURVEY_APPROVE_DATA,
     "indicator:read": Permission.INDICATOR_READ,
     "indicator:manage": Permission.INDICATOR_MANAGE,
     "case:read": Permission.CASE_READ,
@@ -144,6 +156,7 @@ FULL_PLATFORM_PERMISSIONS = frozenset(Permission)
 READ_ONLY_PERMISSIONS = _p(
     Permission.ORGANIZATION_READ,
     Permission.PROGRAM_READ,
+    Permission.SURVEY_READ,
     Permission.BENEFICIARY_READ,
     Permission.INDICATOR_READ,
     Permission.SUBMISSION_READ,
@@ -162,6 +175,7 @@ OPERATIONS_MENU = frozenset(
         "workforce",
         "data",
         "programs",
+        "surveys",
         "beneficiaries",
         "indicators",
         "submissions",
@@ -233,6 +247,11 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.BENEFICIARY_READ,
             Permission.BENEFICIARY_EDIT,
             Permission.PROGRAM_READ,
+            Permission.SURVEY_READ,
+            Permission.SURVEY_MANAGE,
+            Permission.SURVEY_ASSIGN_ENUMERATORS,
+            Permission.SURVEY_REVIEW_DATA,
+            Permission.SURVEY_APPROVE_DATA,
             Permission.INDICATOR_READ,
             Permission.CASE_READ,
             Permission.CASE_MANAGE,
@@ -265,6 +284,9 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.BENEFICIARY_READ,
             Permission.BENEFICIARY_EDIT,
             Permission.PROGRAM_READ,
+            Permission.SURVEY_READ,
+            Permission.SURVEY_REVIEW_DATA,
+            Permission.SURVEY_APPROVE_DATA,
             Permission.CASE_READ,
             Permission.CASE_MANAGE,
             Permission.FORM_READ,
@@ -283,7 +305,10 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.OWN,
         _p(
             Permission.ORGANIZATION_READ,
+            Permission.PROGRAM_READ,
+            Permission.SURVEY_READ,
             Permission.FORM_READ,
+            Permission.SURVEY_REVIEW_DATA,
             Permission.SUBMISSION_CREATE,
             Permission.SUBMISSION_EDIT,
             Permission.BENEFICIARY_READ,
@@ -292,7 +317,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.GPS_VIEW,
         ),
         _w(WorkflowAction.SUBMIT),
-        frozenset({"dashboard", "forms", "beneficiaries", "cases", "connectivity"}),
+        frozenset({"dashboard", "surveys", "forms", "beneficiaries", "cases", "connectivity"}),
     ),
     "data_analyst": RoleDefinition(
         "data_analyst",
@@ -301,7 +326,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.PROJECT,
         READ_ONLY_PERMISSIONS | _p(Permission.DATA_IMPORT, Permission.DATA_EXPORT, Permission.DATA_BULK_EDIT, Permission.ANALYTICS_EXPORT, Permission.REPORT_EXPORT),
         _w(WorkflowAction.EXPORT),
-        frozenset({"dashboard", "data", "beneficiaries", "indicators", "map", "analytics", "connectivity"}),
+        frozenset({"dashboard", "data", "surveys", "beneficiaries", "indicators", "map", "analytics", "connectivity"}),
     ),
     "me_manager": RoleDefinition(
         "me_manager",
@@ -313,6 +338,10 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.USER_READ,
             Permission.USER_CREATE,
             Permission.ROLE_READ,
+            Permission.SURVEY_CREATE,
+            Permission.SURVEY_MANAGE,
+            Permission.SURVEY_REVIEW_DATA,
+            Permission.SURVEY_APPROVE_DATA,
             Permission.INDICATOR_MANAGE,
             Permission.REPORT_GENERATE,
             Permission.REPORT_EXPORT,
@@ -320,7 +349,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.DATA_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.EXPORT),
-        frozenset({"dashboard", "data", "programs", "beneficiaries", "indicators", "submissions", "map", "analytics", "organizations", "connectivity"}),
+        frozenset({"dashboard", "data", "programs", "surveys", "beneficiaries", "indicators", "submissions", "map", "analytics", "organizations", "connectivity"}),
     ),
     "project_manager": RoleDefinition(
         "project_manager",
@@ -330,6 +359,9 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         READ_ONLY_PERMISSIONS
         | _p(
             Permission.PROGRAM_MANAGE,
+            Permission.SURVEY_CREATE,
+            Permission.SURVEY_MANAGE,
+            Permission.SURVEY_ASSIGN_ENUMERATORS,
             Permission.USER_READ,
             Permission.USER_CREATE,
             Permission.ROLE_READ,
@@ -342,34 +374,34 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.CASE_MANAGE,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION),
-        frozenset({"dashboard", "programs", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
+        frozenset({"dashboard", "programs", "surveys", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
     ),
     "finance_officer": RoleDefinition(
         "finance_officer",
         "Finance Officer",
         "Views project progress and manages budget-linked operational reporting.",
         ScopeType.PROJECT,
-        _p(Permission.ORGANIZATION_READ, Permission.PROGRAM_READ, Permission.REPORT_READ, Permission.REPORT_EXPORT, Permission.ANALYTICS_VIEW, Permission.BUDGET_MANAGE),
+        _p(Permission.ORGANIZATION_READ, Permission.PROGRAM_READ, Permission.SURVEY_READ, Permission.REPORT_READ, Permission.REPORT_EXPORT, Permission.ANALYTICS_VIEW, Permission.BUDGET_MANAGE),
         _w(WorkflowAction.EXPORT),
-        frozenset({"dashboard", "programs", "analytics"}),
+        frozenset({"dashboard", "programs", "surveys", "analytics"}),
     ),
     "compliance_auditor": RoleDefinition(
         "compliance_auditor",
         "Compliance Auditor",
         "Reviews audit logs, workflow decisions, exports, and high-risk records.",
         ScopeType.ORGANIZATION,
-        READ_ONLY_PERMISSIONS | _p(Permission.AUDIT_READ, Permission.REPORT_EXPORT),
+        READ_ONLY_PERMISSIONS | _p(Permission.SURVEY_REVIEW_DATA, Permission.AUDIT_READ, Permission.REPORT_EXPORT),
         _w(WorkflowAction.REVIEW, WorkflowAction.EXPORT),
-        frozenset({"dashboard", "ecosystem", "data", "beneficiaries", "submissions", "cases", "map", "analytics", "workflows"}),
+        frozenset({"dashboard", "ecosystem", "data", "surveys", "beneficiaries", "submissions", "cases", "map", "analytics", "workflows"}),
     ),
     "donor_viewer": RoleDefinition(
         "donor_viewer",
         "Donor / External Viewer",
         "Read-only access to assigned projects, reports, indicators, and dashboards.",
         ScopeType.PROJECT,
-        _p(Permission.PROGRAM_READ, Permission.INDICATOR_READ, Permission.REPORT_READ, Permission.ANALYTICS_VIEW),
+        _p(Permission.PROGRAM_READ, Permission.SURVEY_READ, Permission.INDICATOR_READ, Permission.REPORT_READ, Permission.ANALYTICS_VIEW),
         _w(),
-        frozenset({"dashboard", "programs", "indicators", "analytics"}),
+        frozenset({"dashboard", "programs", "surveys", "indicators", "analytics"}),
     ),
 }
 

@@ -42,6 +42,7 @@ class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -420,6 +421,7 @@ class DonorReport(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(220), nullable=False)
     donor: Mapped[str | None] = mapped_column(String(160), nullable=True)
     report_type: Mapped[str] = mapped_column(String(80), default="indicator")

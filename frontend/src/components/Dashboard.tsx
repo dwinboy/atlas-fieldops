@@ -2,6 +2,8 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
+  BarChart3,
+  BookOpenCheck,
   CheckCircle2,
   ClipboardList,
   Clock,
@@ -14,17 +16,27 @@ import {
   ShieldCheck,
   Target,
   UploadCloud,
+  UserRoundCheck,
   UserPlus,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
-import { getOperationsSummary } from "@/lib/api";
+import {
+  getOperationsSummary,
+  listForms,
+  listSubmissions,
+  type CurrentPrincipal,
+} from "@/lib/api";
+import {
+  getActiveFormPerformance,
+  getFormPerformanceTotals,
+} from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -32,6 +44,7 @@ const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
 
 type DashboardProps = {
   token: string | null;
+  principal?: CurrentPrincipal | null;
 };
 
 type AttentionItem = readonly [
@@ -52,8 +65,318 @@ type ManagementStep = {
   icon: typeof Plus;
 };
 
-export function Dashboard({ token }: DashboardProps) {
+type RoleAction = {
+  label: string;
+  result: string;
+  view: WorkspaceView;
+};
+
+type RoleGuidance = {
+  title: string;
+  badge: string;
+  description: string;
+  focus: string[];
+  icon: typeof Plus;
+  actions: RoleAction[];
+};
+
+type QualityWorkflowStep = {
+  title: string;
+  description: string;
+  view: WorkspaceView;
+  action: string;
+  icon: typeof Plus;
+};
+
+type DashboardHelpId = "dailyFocus" | "formActivity";
+
+function ContextHelp({
+  activeHelp,
+  children,
+  id,
+  setActiveHelp,
+  title,
+}: {
+  activeHelp: DashboardHelpId | null;
+  children: ReactNode;
+  id: DashboardHelpId;
+  setActiveHelp: (id: DashboardHelpId | null) => void;
+  title: string;
+}) {
+  const open = activeHelp === id;
+
+  return (
+    <div className="relative inline-flex">
+      <button
+        aria-expanded={open}
+        aria-label={`Help: ${title}`}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-line transition hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+        onClick={() => setActiveHelp(open ? null : id)}
+        type="button"
+      >
+        <HelpCircle aria-hidden="true" size={15} />
+      </button>
+      {open ? (
+        <div
+          aria-label={title}
+          className="absolute right-0 top-9 z-30 w-72 rounded-xl border bg-panel p-3 text-left shadow-elevated"
+          role="dialog"
+        >
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <div className="mt-1 text-xs leading-5 text-muted-foreground">
+            {children}
+          </div>
+          <button
+            className="mt-3 text-xs font-medium text-primary hover:underline"
+            onClick={() => setActiveHelp(null)}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
+  const roles = new Set(
+    (principal?.roles ?? []).map((role) => role.toLowerCase()),
+  );
+
+  if (principal?.platform_admin && !principal.support_mode) {
+    return {
+      title: "Platform owner",
+      badge: "Super admin",
+      description:
+        "Manage organizations, support tenant setup, review platform readiness, and investigate production issues without acting as a normal tenant user.",
+      focus: [
+        "Check tenant readiness before support calls.",
+        "Use support mode only for real troubleshooting.",
+        "Review audit and runtime health before changing access.",
+      ],
+      icon: ShieldCheck,
+      actions: [
+        {
+          label: "Open platform console",
+          view: "platform",
+          result:
+            "Opening the platform console so you can manage tenants, support sessions, audit logs, and production readiness.",
+        },
+        {
+          label: "Read operator guide",
+          view: "help",
+          result:
+            "Opening the help guide for platform super admin responsibilities and safe support procedures.",
+        },
+      ],
+    };
+  }
+
+  if (principal?.platform_admin && principal.support_mode) {
+    return {
+      title: "Tenant support operator",
+      badge: "Support mode",
+      description:
+        "Troubleshoot this organization with a clear support purpose, keep tenant actions auditable, and return to the platform console when the issue is resolved.",
+      focus: [
+        "Confirm the tenant problem before changing records or settings.",
+        "Use the same menu a tenant user sees to reproduce the issue.",
+        "Document what was checked before leaving support mode.",
+      ],
+      icon: ShieldCheck,
+      actions: [
+        {
+          label: "Check team access",
+          view: "organizations",
+          result:
+            "Opening Team and access so support can confirm whether roles, scopes, and user status explain the tenant issue.",
+        },
+        {
+          label: "Open help guide",
+          view: "help",
+          result:
+            "Opening the help guide so support actions can stay aligned with documented tenant workflows.",
+        },
+      ],
+    };
+  }
+
+  if (
+    roles.has("organization_admin") ||
+    roles.has("organization_owner") ||
+    roles.has("org_admin")
+  ) {
+    return {
+      title: "Organization setup owner",
+      badge: "Admin",
+      description:
+        "Set up the operating structure so every user, project, form, import, and approval path has clear ownership.",
+      focus: [
+        "Invite users with the smallest role that fits their work.",
+        "Complete readiness before large field deployment.",
+        "Keep workflows simple enough for supervisors to follow.",
+      ],
+      icon: UserRoundCheck,
+      actions: [
+        {
+          label: "Manage team access",
+          view: "organizations",
+          result:
+            "Opening Team and access so you can invite users, assign roles, and confirm each person sees the correct workspace.",
+        },
+        {
+          label: "Configure approvals",
+          view: "workflows",
+          result:
+            "Opening approvals so you can define review stages, correction paths, and escalation ownership.",
+        },
+      ],
+    };
+  }
+
+  if (roles.has("regional_manager") || roles.has("district_supervisor")) {
+    return {
+      title: "Regional operations lead",
+      badge: "Supervisor",
+      description:
+        "Monitor field coverage, officer readiness, review queues, corrections, and location evidence for your assigned area.",
+      focus: [
+        "Start with review and sync exceptions.",
+        "Check field officer status before assigning new work.",
+        "Use maps to confirm coverage gaps and GPS quality.",
+      ],
+      icon: Network,
+      actions: [
+        {
+          label: "Review submissions",
+          view: "submissions",
+          result:
+            "Opening the review queue so supervisors can approve clean records and return unclear records with specific correction notes.",
+        },
+        {
+          label: "Check field team",
+          view: "officers",
+          result:
+            "Opening field teams so you can confirm officer assignments, sync health, device status, and deployment coverage.",
+        },
+      ],
+    };
+  }
+
+  if (roles.has("me_manager") || roles.has("project_manager")) {
+    return {
+      title: "M&E management lead",
+      badge: "M&E",
+      description:
+        "Connect programs, indicators, collection forms, reviewed submissions, and reports into a credible monitoring workflow.",
+      focus: [
+        "Define indicators before reporting begins.",
+        "Connect forms to the right project and data source.",
+        "Report from approved data, not raw submissions.",
+      ],
+      icon: Target,
+      actions: [
+        {
+          label: "Manage indicators",
+          view: "indicators",
+          result:
+            "Opening indicators so you can confirm baselines, targets, data sources, formulas, and reporting periods.",
+        },
+        {
+          label: "Open reports",
+          view: "analytics",
+          result:
+            "Opening reports so approved data can be reviewed against indicators and management questions.",
+        },
+      ],
+    };
+  }
+
+  if (roles.has("data_reviewer") || roles.has("data_analyst")) {
+    return {
+      title: "Data quality reviewer",
+      badge: "Data",
+      description:
+        "Protect data quality by checking evidence, resolving import issues, documenting review decisions, and exporting only trusted records.",
+      focus: [
+        "Fix validation and duplicate issues before analysis.",
+        "Write correction notes that field officers can act on.",
+        "Keep exports traceable to approved records.",
+      ],
+      icon: DatabaseZap,
+      actions: [
+        {
+          label: "Open data tools",
+          view: "data",
+          result:
+            "Opening Data tools so you can import, validate, deduplicate, and export governed datasets.",
+        },
+        {
+          label: "Open review queue",
+          view: "submissions",
+          result:
+            "Opening submissions so you can inspect evidence, add reviewer comments, and apply the correct decision.",
+        },
+      ],
+    };
+  }
+
+  if (roles.has("field_officer") || roles.has("collector")) {
+    return {
+      title: "Field collection user",
+      badge: "Field",
+      description:
+        "Use assigned forms, collect complete evidence, save safely offline, and sync work as soon as connectivity is available.",
+      focus: [
+        "Use only forms assigned to your project or area.",
+        "Capture required GPS, photos, signatures, and notes.",
+        "Respond quickly when corrections are requested.",
+      ],
+      icon: ClipboardList,
+      actions: [
+        {
+          label: "Open forms",
+          view: "forms",
+          result:
+            "Opening forms so field users can find assigned collection tools and complete records correctly.",
+        },
+        {
+          label: "Check sync",
+          view: "connectivity",
+          result:
+            "Opening sync health so offline work can be uploaded and retry issues can be resolved.",
+        },
+      ],
+    };
+  }
+
+  return {
+    title: "Workspace user",
+    badge: "Role-based",
+    description:
+      "Use your assigned menu items to complete the next operational task and ask an administrator for access if an expected workspace is missing.",
+    focus: [
+      "Start from Dashboard to understand active form activity and priorities.",
+      "Follow the guided setup or review task shown on screen.",
+      "Use Help when a workflow or status is unclear.",
+    ],
+    icon: BookOpenCheck,
+    actions: [
+      {
+        label: "Open help guide",
+        view: "help",
+        result:
+          "Opening the help guide so you can understand the workflow connected to your account permissions.",
+      },
+    ],
+  };
+}
+
+export function Dashboard({ token, principal }: DashboardProps) {
   const [dashboardResult, setDashboardResult] = useState("");
+  const [activeHelp, setActiveHelp] = useState<DashboardHelpId | null>(null);
+  const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setLastActionResult = useWorkspaceStore(
     (state) => state.setLastActionResult,
@@ -64,6 +387,30 @@ export function Dashboard({ token }: DashboardProps) {
     queryFn: () => getOperationsSummary(token ?? ""),
     enabled: Boolean(token && token !== "preview-token"),
   });
+  const formsQuery = useQuery({
+    queryKey: ["dashboard-forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token"),
+  });
+  const submissionsQuery = useQuery({
+    queryKey: ["dashboard-submissions", token],
+    queryFn: () => listSubmissions(token ?? ""),
+    enabled: Boolean(token && token !== "preview-token"),
+  });
+  const dashboardForms = formsQuery.data ?? [];
+  const draftForms = dashboardForms.filter(
+    (form) => form.is_active && form.status.toLowerCase() !== "published",
+  );
+  const formPerformance = getActiveFormPerformance(
+    dashboardForms,
+    submissionsQuery.data ?? [],
+  );
+  const selectedForm =
+    formPerformance.find((item) => item.form.id === selectedFormId) ??
+    formPerformance[0] ??
+    null;
+  const formPerformanceTotals = getFormPerformanceTotals(formPerformance);
+  const formStatsLoading = formsQuery.isLoading || submissionsQuery.isLoading;
   const summaryMetrics = summaryQuery.data
     ? [
         {
@@ -147,9 +494,18 @@ export function Dashboard({ token }: DashboardProps) {
       icon: Network,
     },
     {
+      title: "Create surveys",
+      description:
+        "Create baseline, registration, monitoring, verification, or evaluation surveys inside each project before building forms.",
+      view: "surveys",
+      action: "Open Surveys",
+      complete: hasOperationalData,
+      icon: ClipboardList,
+    },
+    {
       title: "Add indicators",
       description:
-        "Define baselines, targets, data sources, and reporting periods for M&E tracking.",
+        "Define baselines, targets, survey data sources, and reporting periods for M&E tracking.",
       view: "indicators",
       action: "Open Indicators",
       complete: Boolean(summaryQuery.data?.indicators),
@@ -167,9 +523,9 @@ export function Dashboard({ token }: DashboardProps) {
     {
       title: "Publish first form",
       description:
-        "Start from a template, customize labels and validation, then assign it to field teams.",
-      view: "templates",
-      action: "Open Templates",
+        "Open the form builder, choose a categorized template or blank canvas, customize labels and validation, then assign it to field teams.",
+      view: "forms",
+      action: "Open Form builder",
       complete: hasOperationalData,
       icon: ClipboardList,
     },
@@ -181,6 +537,19 @@ export function Dashboard({ token }: DashboardProps) {
   const nextSetupStep =
     setupSteps.find((step) => !step.complete) ??
     setupSteps[setupSteps.length - 1];
+  const roleGuidance = getRoleGuidance(principal);
+  const RoleGuidanceIcon = roleGuidance.icon;
+  const accountLabel =
+    principal?.full_name?.trim() ||
+    principal?.email?.trim() ||
+    "Current workspace user";
+  const accountScope = principal?.support_mode
+    ? "Platform support session"
+    : principal?.scope_type
+      ? `${principal.scope_type.replaceAll("_", " ")} scope`
+      : principal?.platform_admin
+        ? "Platform access"
+        : "Organization access";
   const dataQualityStatus = summaryQuery.data?.quality_flags
     ? "Needs review"
     : hasOperationalData
@@ -252,8 +621,14 @@ export function Dashboard({ token }: DashboardProps) {
     {
       question: "What will we measure?",
       answer:
-        "Create indicators with targets, baselines, data sources, and reporting periods.",
+        "Create indicators with targets, baselines, survey data sources, and reporting periods.",
       view: "indicators" as WorkspaceView,
+    },
+    {
+      question: "Which survey is this work for?",
+      answer:
+        "Use Survey Management to connect each form, enumerator, submission, indicator, and report to the right M&E activity.",
+      view: "surveys" as WorkspaceView,
     },
     {
       question: "Is the data safe to use?",
@@ -268,6 +643,40 @@ export function Dashboard({ token }: DashboardProps) {
       view: "submissions" as WorkspaceView,
     },
   ];
+  const qualityWorkflow: QualityWorkflowStep[] = [
+    {
+      title: "Prevent bad data",
+      description:
+        "Create the survey first, then use form validation, required evidence, clear labels, and mobile preview before publishing.",
+      view: "surveys",
+      action: "Set survey context",
+      icon: ClipboardList,
+    },
+    {
+      title: "Detect issues early",
+      description:
+        "Watch quality flags, sync gaps, duplicate records, and incomplete imports before managers report figures.",
+      view: "data",
+      action: "Open quality tools",
+      icon: DatabaseZap,
+    },
+    {
+      title: "Correct with evidence",
+      description:
+        "Return records with a precise note when field teams can fix the problem, or reject records that should not move forward.",
+      view: "submissions",
+      action: "Review evidence",
+      icon: ShieldCheck,
+    },
+    {
+      title: "Report only approved data",
+      description:
+        "Use reports after submissions, imports, and indicators have passed the agreed review path.",
+      view: "analytics",
+      action: "Open reports",
+      icon: BarChart3,
+    },
+  ];
   const quickActions: {
     label: string;
     hint: string;
@@ -276,11 +685,11 @@ export function Dashboard({ token }: DashboardProps) {
     icon: typeof Plus;
   }[] = [
     {
-      label: "Create form",
-      hint: "Start from a template or blank form",
+      label: "Create survey",
+      hint: "Set the M&E activity before forms",
       result:
-        "Opening templates. Pick a proven form, then customize labels, rules, and offline behavior before publishing.",
-      view: "templates",
+        "Opening Survey Management. Select the project, create the survey, then build forms and assign enumerators inside that survey.",
+      view: "surveys",
       icon: Plus,
     },
     {
@@ -363,10 +772,10 @@ export function Dashboard({ token }: DashboardProps) {
         [
           "Prepare first collection form",
           "No submissions yet",
-          "Create form",
+          "Create survey",
           "neutral",
-          "templates",
-          "Opening templates so you can create the first mobile-ready collection form.",
+          "surveys",
+          "Opening Survey Management so you can create the first survey before adding mobile-ready forms.",
         ],
       ];
 
@@ -408,24 +817,356 @@ export function Dashboard({ token }: DashboardProps) {
     setActiveView(step.view);
   }
 
+  function openQualityStep(step: QualityWorkflowStep): void {
+    const result = `${step.title}: ${step.description}`;
+    setDashboardResult(result);
+    setLastActionResult(result);
+    pushToast({
+      title: step.action,
+      description: result,
+      tone: "neutral",
+    });
+    setActiveView(step.view);
+  }
+
   return (
     <section aria-labelledby="dashboard-title" className="space-y-6">
+      <section
+        className="surface-premium rounded-2xl p-5 md:p-6"
+        aria-labelledby="form-activity-title"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Data collection
+              </p>
+              <ContextHelp
+                activeHelp={activeHelp}
+                id="formActivity"
+                setActiveHelp={setActiveHelp}
+                title="Active form cards"
+              >
+                <p>
+                  These cards show forms that are live or already receiving
+                  responses. Open a card to see its purpose, responses, sync
+                  count, review status, and edit actions.
+                </p>
+              </ContextHelp>
+            </div>
+            <h1
+              id="form-activity-title"
+              className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl"
+            >
+              Active forms and responses
+            </h1>
+          </div>
+          <div className="grid min-w-full gap-2 sm:grid-cols-4 lg:min-w-[560px]">
+            {[
+              ["Active forms", formPerformance.length.toLocaleString()],
+              ["Responses", formPerformanceTotals.submissions.toLocaleString()],
+              ["Synced", formPerformanceTotals.syncedRecords.toLocaleString()],
+              ["Needs review", formPerformanceTotals.pendingReview.toLocaleString()],
+            ].map(([label, value]) => (
+              <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  {label}
+                </p>
+                <p className="mt-2 text-lg font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {formStatsLoading ? (
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div className="rounded-2xl border bg-background/70 p-4" key={item}>
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="mt-3 h-8 w-1/2" />
+                <Skeleton className="mt-4 h-20 w-full" />
+              </div>
+            ))}
+          </div>
+        ) : formPerformance.length ? (
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+              {formPerformance.map((item) => {
+                const selected = selectedForm?.form.id === item.form.id;
+
+                return (
+                  <article
+                    className={cn(
+                      "rounded-2xl border bg-background/80 p-4 shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated",
+                      selected && "border-primary/45 bg-primary/5 shadow-elevated",
+                    )}
+                    key={item.form.id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={item.statusTone}>{item.statusLabel}</Badge>
+                          <Badge tone={item.totalSubmissions ? "accent" : "neutral"}>
+                            v{item.form.current_version}
+                          </Badge>
+                        </div>
+                        <h2 className="mt-3 truncate text-base font-semibold">
+                          {item.form.name}
+                        </h2>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {item.form.description ??
+                            "Collects survey data for the assigned project."}
+                        </p>
+                      </div>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary">
+                        <ClipboardList aria-hidden="true" size={18} />
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                      {[
+                        ["Responses", item.totalSubmissions.toLocaleString()],
+                        ["Synced", item.syncedRecords.toLocaleString()],
+                        ["Review", item.pendingReview.toLocaleString()],
+                        ["Approved", item.approved.toLocaleString()],
+                      ].map(([label, value]) => (
+                        <div className="rounded-xl border bg-panel/80 p-3" key={label}>
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="mt-1 text-lg font-semibold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Approved</span>
+                        <span className="font-medium">{item.completion}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${item.completion}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <dl className="mt-4 grid gap-2 border-t pt-4 text-xs sm:grid-cols-2">
+                      <div>
+                        <dt className="text-muted-foreground">Last sync</dt>
+                        <dd className="mt-1 font-semibold">{item.lastSyncLabel}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Offline</dt>
+                        <dd className="mt-1 font-semibold">
+                          {item.offlineRecords.toLocaleString()}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => setSelectedFormId(item.form.id)}
+                        size="sm"
+                        type="button"
+                        variant={selected ? "primary" : "secondary"}
+                      >
+                        Open
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          openView({
+                            label: "Edit form",
+                            result: `Opening Form builder so you can edit ${item.form.name}, manage versions, and adjust collection settings.`,
+                            view: "forms",
+                          })
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          openView({
+                            label: "Review data",
+                            result: `Opening review queue for ${item.form.name}. Review synced responses, correction requests, and approvals connected to this form.`,
+                            view: "submissions",
+                          })
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Review
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {selectedForm ? (
+              <aside className="rounded-2xl border bg-panel p-4 shadow-line xl:sticky xl:top-20 xl:self-start">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Badge tone={selectedForm.statusTone}>
+                      {selectedForm.statusLabel}
+                    </Badge>
+                    <h2 className="mt-3 text-lg font-semibold">
+                      {selectedForm.form.name}
+                    </h2>
+                  </div>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-background text-primary">
+                    <FileText aria-hidden="true" size={18} />
+                  </span>
+                </div>
+
+                <div className="mt-4 rounded-xl border bg-background/80 p-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    Use
+                  </p>
+                  <p className="mt-2 text-sm leading-6">
+                    {selectedForm.form.description ??
+                      "Use this form to collect structured survey responses, evidence, and field updates for the assigned project and survey."}
+                  </p>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    ["Responses", selectedForm.totalSubmissions.toLocaleString()],
+                    ["Synced", selectedForm.syncedRecords.toLocaleString()],
+                    ["Review", selectedForm.pendingReview.toLocaleString()],
+                    ["Issues", selectedForm.correctionNeeded.toLocaleString()],
+                  ].map(([label, value]) => (
+                    <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="mt-1 text-lg font-semibold">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <dl className="mt-4 grid gap-2 text-xs">
+                  <div className="flex items-center justify-between gap-3 border-b pb-2">
+                    <dt className="text-muted-foreground">Last response</dt>
+                    <dd className="font-semibold">{selectedForm.lastSubmissionLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b pb-2">
+                    <dt className="text-muted-foreground">Last sync</dt>
+                    <dd className="font-semibold">{selectedForm.lastSyncLabel}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-b pb-2">
+                    <dt className="text-muted-foreground">Enumerators</dt>
+                    <dd className="font-semibold">
+                      {selectedForm.enumerators || "Not assigned"}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-muted-foreground">Project / Survey</dt>
+                    <dd className="font-semibold">
+                      {selectedForm.form.project_id && selectedForm.form.survey_id
+                        ? "Assigned"
+                        : "Needs context"}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    onClick={() =>
+                      openView({
+                        label: "Edit form",
+                        result: `Opening Form builder so you can edit ${selectedForm.form.name}.`,
+                        view: "forms",
+                      })
+                    }
+                    type="button"
+                    variant="primary"
+                  >
+                    Edit form
+                    <ArrowUpRight aria-hidden="true" />
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      openView({
+                        label: "Open responses",
+                        result: `Opening responses for ${selectedForm.form.name}.`,
+                        view: "submissions",
+                      })
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    View responses
+                  </Button>
+                </div>
+              </aside>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed bg-background/80 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary">
+                  <ClipboardList aria-hidden="true" size={20} />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">
+                    No active form activity yet
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {draftForms.length
+                      ? `${draftForms.length} draft form${draftForms.length === 1 ? "" : "s"} exist. Publish one when it is ready for collection.`
+                      : "Create a project survey, build a form, and publish it for field collection."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => setActiveView("surveys")}
+                  type="button"
+                  variant="secondary"
+                >
+                  Create survey
+                </Button>
+                <Button
+                  onClick={() => setActiveView("forms")}
+                  type="button"
+                  variant="primary"
+                >
+                  Open form builder
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
       <div className="surface-premium rounded-2xl p-5 md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Today
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Today
+              </p>
+              <ContextHelp
+                activeHelp={activeHelp}
+                id="dailyFocus"
+                setActiveHelp={setActiveHelp}
+                title="Daily focus"
+              >
+                <p>
+                  Use this section to jump into review, sync, quality, or field
+                  activity when something needs attention today.
+                </p>
+              </ContextHelp>
+            </div>
             <h1
               id="dashboard-title"
               className="mt-2 text-3xl font-semibold tracking-tight"
             >
               What needs attention now
             </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              A simple daily view for pending reviews, offline sync, data
-              quality, and field team activity.
-            </p>
           </div>
           <Button
             variant="primary"
@@ -495,6 +1236,68 @@ export function Dashboard({ token }: DashboardProps) {
           </div>
         </section>
       ) : null}
+
+      <section
+        className="surface-premium rounded-2xl p-5"
+        aria-labelledby="role-focus-title"
+      >
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+              <RoleGuidanceIcon aria-hidden="true" size={20} />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="accent">{roleGuidance.badge}</Badge>
+                <Badge>{accountScope}</Badge>
+              </div>
+              <h2 id="role-focus-title" className="mt-3 text-lg font-semibold">
+                Your role focus: {roleGuidance.title}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                {roleGuidance.description}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Signed in as <span className="font-medium">{accountLabel}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-background/80 p-4">
+            <h3 className="text-sm font-semibold">Recommended next actions</h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {roleGuidance.actions.map((action) => (
+                <Button
+                  key={action.label}
+                  onClick={() => openView(action)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {action.label}
+                  <ArrowUpRight aria-hidden="true" />
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {roleGuidance.focus.map((item) => (
+            <div className="rounded-xl border bg-background/80 p-3" key={item}>
+              <div className="flex gap-2">
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0 text-success"
+                  size={15}
+                />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {item}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section
         className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]"
@@ -679,6 +1482,64 @@ export function Dashboard({ token }: DashboardProps) {
         </div>
       </section>
 
+      <section
+        className="surface-premium rounded-2xl p-5"
+        aria-labelledby="quality-workflow-title"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Data quality path
+            </p>
+            <h2
+              id="quality-workflow-title"
+              className="mt-2 text-lg font-semibold"
+            >
+              Keep data trustworthy from form design to reporting
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Strong organizations do not wait until reporting day to clean
+              data. They prevent errors, detect exceptions, correct records with
+              evidence, and report only approved information.
+            </p>
+          </div>
+          <Badge
+            tone={summaryQuery.data?.quality_flags ? "warning" : "success"}
+          >
+            {summaryQuery.data?.quality_flags
+              ? `${summaryQuery.data.quality_flags} flags`
+              : "No open flags"}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {qualityWorkflow.map((step, index) => {
+            const Icon = step.icon;
+            return (
+              <button
+                className="rounded-xl border bg-background/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
+                key={step.title}
+                onClick={() => openQualityStep(step)}
+                type="button"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary">
+                    <Icon aria-hidden="true" size={16} />
+                  </span>
+                  <Badge>{index + 1}</Badge>
+                </div>
+                <h3 className="mt-4 text-sm font-semibold">{step.title}</h3>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {step.description}
+                </p>
+                <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                  {step.action} <ArrowUpRight aria-hidden="true" size={13} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {summaryMetrics.map((metric, index) => {
           const Icon = icons[index] ?? Activity;
@@ -810,7 +1671,7 @@ export function Dashboard({ token }: DashboardProps) {
                 Import data
               </Button>
               <Button
-                onClick={() => setActiveView("templates")}
+                onClick={() => setActiveView("forms")}
                 type="button"
                 variant="primary"
               >

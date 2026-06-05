@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LifeBuoy, RotateCcw } from "lucide-react";
+import { LifeBuoy, RotateCcw, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -29,11 +29,18 @@ import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
+import { ModuleLandingPage } from "@/components/shared/ModuleLandingPage";
 import { SubmissionReview } from "@/components/SubmissionReview";
+import { SurveyManagement } from "@/components/SurveyManagement";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkflowManagement } from "@/components/WorkflowManagement";
 import { WorkforceGovernanceCenter } from "@/components/WorkforceGovernanceCenter";
+import {
+  getDefaultWorkspaceView,
+  getNavigationItemByView,
+  isWorkspaceViewAllowed,
+} from "@/config/navigation";
 import {
   getCurrentPrincipal,
   getOrganizationContext,
@@ -118,20 +125,8 @@ export function WorkspaceApp() {
     if (!principalQuery.data) {
       return;
     }
-    if (!principalQuery.data.platform_admin && activeView === "platform") {
-      setActiveView("dashboard");
-      return;
-    }
-    if (
-      principalQuery.data.platform_admin &&
-      !principalQuery.data.support_mode &&
-      activeView !== "platform" &&
-      activeView !== "help"
-    ) {
-      setActiveView("platform");
-    }
-    if (principalQuery.data.support_mode && activeView === "platform") {
-      setActiveView("dashboard");
+    if (!isWorkspaceViewAllowed(activeView, principalQuery.data)) {
+      setActiveView(getDefaultWorkspaceView(principalQuery.data));
     }
   }, [activeView, principalQuery.data, setActiveView]);
 
@@ -177,6 +172,8 @@ export function WorkspaceApp() {
   const organizationSlug = isPlatformConsoleMode
     ? "platform-console"
     : organizationQuery.data?.slug;
+  const dataQualityNavigation = getNavigationItemByView("dataQuality");
+  const administrationNavigation = getNavigationItemByView("administration");
 
   const content = {
     platform: (
@@ -189,13 +186,34 @@ export function WorkspaceApp() {
         }}
       />
     ),
-    dashboard: <Dashboard token={token} />,
+    dashboard: <Dashboard token={token} principal={principalQuery.data} />,
     ecosystem: <OperationalEcosystem token={token} />,
     enterprise: <EnterpriseOperationsCenter token={token} />,
     governance: <GovernanceCommandCenter token={token} />,
     workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
+    dataQuality: (
+      <ModuleLandingPage
+        title="Data Quality"
+        description="Investigate duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and quality rules from one focused workspace."
+        icon={ShieldCheck}
+        areas={dataQualityNavigation?.children ?? []}
+        actions={[
+          {
+            label: "Review submissions",
+            description: "Open the submissions queue to inspect records.",
+            onClick: () => setActiveView("submissions"),
+          },
+          {
+            label: "Open mapping",
+            description: "Review spatial data quality and coverage.",
+            onClick: () => setActiveView("map"),
+          },
+        ]}
+      />
+    ),
     programs: <ProgramManagement token={token} />,
+    surveys: <SurveyManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,
     indicators: <IndicatorTracking token={token} />,
     organizations: (
@@ -217,6 +235,36 @@ export function WorkspaceApp() {
     analytics: <ReportingCenter token={token} />,
     workflows: <WorkflowManagement token={token} />,
     connectivity: <ConnectivityCenter token={token} />,
+    administration: principalQuery.data?.platform_admin &&
+      !principalQuery.data.support_mode ? (
+      <PlatformConsole
+        token={token}
+        principal={principalQuery.data}
+        onTokenChanged={(nextToken) => {
+          setToken(nextToken);
+          writeToken(nextToken);
+        }}
+      />
+    ) : (
+      <ModuleLandingPage
+        title="Administration"
+        description="Configure location hierarchy, reference data, notifications, API settings, integrations, system settings, and backup or recovery controls."
+        icon={Settings}
+        areas={administrationNavigation?.children ?? []}
+        actions={[
+          {
+            label: "Open users",
+            description: "Manage accounts and roles from Users & Teams.",
+            onClick: () => setActiveView("organizations"),
+          },
+          {
+            label: "Open governance",
+            description: "Review audit, approval, policy, and compliance controls.",
+            onClick: () => setActiveView("governance"),
+          },
+        ]}
+      />
+    ),
     help: <ProductHelpCenter />,
   } satisfies Record<WorkspaceView, React.ReactNode>;
 

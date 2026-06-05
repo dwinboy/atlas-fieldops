@@ -1,10 +1,11 @@
 import json
 import os
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.v1.dependencies import require_role
 from app.app_db import get_session
@@ -26,7 +27,11 @@ from app.schemas.platform import (
 router = APIRouter()
 
 
-async def count_rows(session: AsyncSession, model: type[object], *conditions: object) -> int:
+async def count_rows(
+    session: AsyncSession,
+    model: type[Any],
+    *conditions: ColumnElement[bool],
+) -> int:
     result = await session.execute(select(func.count()).select_from(model).where(*conditions))
     return int(result.scalar_one())
 

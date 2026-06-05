@@ -11,7 +11,9 @@ export type WorkspaceView =
   | "governance"
   | "workforce"
   | "data"
+  | "dataQuality"
   | "programs"
+  | "surveys"
   | "beneficiaries"
   | "indicators"
   | "cases"
@@ -24,6 +26,7 @@ export type WorkspaceView =
   | "analytics"
   | "workflows"
   | "connectivity"
+  | "administration"
   | "help";
 
 type Toast = {
@@ -45,6 +48,7 @@ type WorkspaceState = {
   setCommandOpen: (open: boolean) => void;
   setLastActionResult: (result: string) => void;
   setPendingTemplateId: (templateId: string | null) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
   toggleTheme: () => void;
   pushToast: (toast: Omit<Toast, "id">) => void;
@@ -63,6 +67,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setCommandOpen: (commandOpen) => set({ commandOpen }),
   setLastActionResult: (lastActionResult) => set({ lastActionResult }),
   setPendingTemplateId: (pendingTemplateId) => set({ pendingTemplateId }),
+  setSidebarCollapsed: (collapsedSidebar) => set({ collapsedSidebar }),
   toggleSidebar: () => set((state) => ({ collapsedSidebar: !state.collapsedSidebar })),
   toggleTheme: () => set((state) => ({ theme: state.theme === "light" ? "dark" : "light" })),
   pushToast: (toast) =>

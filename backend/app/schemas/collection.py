@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
@@ -22,6 +22,162 @@ class SubmissionStatus(StrEnum):
     REJECTED = "rejected"
     CORRECTION_REQUESTED = "correction_requested"
     RESUBMITTED = "resubmitted"
+
+
+class SurveyStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class SurveyRole(StrEnum):
+    OWNER = "survey_owner"
+    MANAGER = "survey_manager"
+    SUPERVISOR = "survey_supervisor"
+    DATA_QUALITY_OFFICER = "data_quality_officer"
+    ENUMERATOR = "enumerator"
+    ANALYST = "analyst"
+
+
+SURVEY_TYPES = {
+    "baseline",
+    "midline",
+    "endline",
+    "registration",
+    "monitoring",
+    "verification",
+    "assessment",
+    "evaluation",
+    "follow_up",
+    "research",
+    "census",
+    "beneficiary_survey",
+    "farmer_survey",
+    "household_survey",
+    "market_survey",
+    "health_survey",
+    "custom",
+}
+
+
+class SurveyCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=220)
+    code: str = Field(min_length=2, max_length=120, pattern=r"^[A-Za-z0-9-]+$")
+    project_id: UUID
+    description: str | None = Field(default=None, max_length=4000)
+    survey_type: str = Field(default="baseline", max_length=80)
+    custom_type_label: str | None = Field(default=None, max_length=120)
+    manager_user_id: UUID | None = None
+    status: SurveyStatus = SurveyStatus.DRAFT
+    start_date: date | None = None
+    end_date: date | None = None
+    geographic_scope: str | None = Field(default=None, max_length=240)
+    target_population: str | None = Field(default=None, max_length=240)
+    indicator_ids: list[UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_survey_type_and_dates(self) -> "SurveyCreate":
+        if self.survey_type not in SURVEY_TYPES:
+            raise ValueError("survey_type must be a supported type or custom")
+        if self.survey_type == "custom" and not self.custom_type_label:
+            raise ValueError("custom_type_label is required for custom survey types")
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date cannot be before start_date")
+        return self
+
+
+class SurveyRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    project_id: UUID
+    created_by_user_id: UUID
+    owner_user_id: UUID
+    manager_user_id: UUID | None
+    title: str
+    code: str
+    description: str | None
+    survey_type: str
+    custom_type_label: str | None
+    status: str
+    start_date: date | None
+    end_date: date | None
+    geographic_scope: str | None
+    target_population: str | None
+    indicator_ids_json: list[str]
+    governance_json: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SurveyTeamMemberCreate(BaseModel):
+    user_id: UUID
+    survey_role: SurveyRole
+
+
+class SurveyTeamMemberRead(BaseModel):
+    id: UUID
+    survey_id: UUID
+    user_id: UUID
+    survey_role: str
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SurveyGovernanceSettings(BaseModel):
+    data_visibility_roles: list[str] = Field(
+        default_factory=lambda: [
+            "survey_owner",
+            "survey_manager",
+            "survey_supervisor",
+            "data_quality_officer",
+            "analyst",
+        ],
+        max_length=20,
+    )
+    review_roles: list[str] = Field(
+        default_factory=lambda: [
+            "survey_owner",
+            "survey_manager",
+            "survey_supervisor",
+            "data_quality_officer",
+        ],
+        max_length=20,
+    )
+    approval_roles: list[str] = Field(
+        default_factory=lambda: ["survey_owner", "survey_manager", "data_quality_officer"],
+        max_length=20,
+    )
+    edit_roles: list[str] = Field(
+        default_factory=lambda: ["survey_owner", "survey_manager", "data_quality_officer"],
+        max_length=20,
+    )
+    correction_roles: list[str] = Field(
+        default_factory=lambda: [
+            "survey_owner",
+            "survey_manager",
+            "survey_supervisor",
+            "data_quality_officer",
+        ],
+        max_length=20,
+    )
+    upload_roles: list[str] = Field(
+        default_factory=lambda: ["survey_owner", "survey_manager", "data_quality_officer"],
+        max_length=20,
+    )
+    export_roles: list[str] = Field(
+        default_factory=lambda: ["survey_owner", "survey_manager", "analyst"],
+        max_length=20,
+    )
+    synced_submission_default_status: str = Field(default="submitted", pattern=r"^(submitted|under_review)$")
+    uploaded_submission_default_status: str = Field(default="under_review", pattern=r"^(submitted|under_review)$")
+    review_required: bool = True
+    allow_reviewer_edit: bool = True
+    require_correction_note: bool = True
+    lock_after_approval: bool = True
 
 
 class LocationCapture(BaseModel):
@@ -72,12 +228,23 @@ class FormSchema(BaseModel):
             "currency",
             "phone",
             "email",
+            "url",
             "password",
             "select",
+            "dropdown",
             "multiselect",
             "radio",
             "checkbox",
+            "ranking",
+            "likert",
+            "matrix_single",
+            "matrix_multi",
+            "nps",
+            "rating",
             "gps",
+            "geolocation",
+            "map",
+            "geofence",
             "photo",
             "image",
             "signature",
@@ -89,6 +256,7 @@ class FormSchema(BaseModel):
             "date",
             "time",
             "datetime",
+            "hidden",
             "repeat_group",
             "repeatable_group",
             "calculated",
@@ -101,9 +269,209 @@ class FormSchema(BaseModel):
         return self
 
 
+FORM_PERMISSION_ACTIONS = {
+    "view_form",
+    "edit_form",
+    "publish_form",
+    "archive_form",
+    "assign_form",
+    "submit_data",
+    "view_submissions",
+    "edit_own_draft_submissions",
+    "edit_returned_submissions",
+    "review_submissions",
+    "approve_submissions",
+    "reject_submissions",
+    "export_data",
+    "delete_submissions",
+    "manage_form_controls",
+}
+
+
+class FormReferenceBinding(BaseModel):
+    id: str = Field(min_length=2, max_length=120)
+    question_id: str = Field(min_length=1, max_length=120)
+    question_label: str = Field(min_length=1, max_length=240)
+    reference_list_name: str = Field(min_length=2, max_length=160)
+    reference_type: str = Field(default="districts", max_length=80)
+    source: str = Field(default="existing", pattern=r"^(new|existing|imported)$")
+    enforce_controlled_values: bool = True
+    allow_inactive_values: bool = False
+    parent_reference: str | None = Field(default=None, max_length=120)
+    effective_from: date | None = None
+    effective_to: date | None = None
+    version: int = Field(default=1, ge=1)
+    updated_by: str | None = Field(default=None, max_length=200)
+    changed_since_publish: bool = False
+
+
+class FormPermissionRule(BaseModel):
+    subject_type: str = Field(default="role", pattern=r"^(role|user|team)$")
+    subject_name: str = Field(min_length=2, max_length=160)
+    permissions: list[str] = Field(default_factory=list, max_length=30)
+    location_scope: str = Field(default="project", max_length=120)
+    can_approve_own_submission: bool = False
+    read_only: bool = False
+
+    @model_validator(mode="after")
+    def validate_permissions(self) -> "FormPermissionRule":
+        invalid = sorted(set(self.permissions) - FORM_PERMISSION_ACTIONS)
+        if invalid:
+            raise ValueError(f"Unsupported permissions: {', '.join(invalid)}")
+        if self.read_only:
+            self.permissions = [permission for permission in self.permissions if permission in {"view_form", "view_submissions"}]
+        return self
+
+
+class FormWorkflowStage(BaseModel):
+    id: str = Field(min_length=2, max_length=120)
+    name: str = Field(min_length=2, max_length=160)
+    reviewer_roles: list[str] = Field(default_factory=list, max_length=12)
+    reviewer_location_scope: str = Field(default="assigned_location", max_length=120)
+    require_comment_on_reject: bool = True
+    require_comment_on_return: bool = True
+    sla_hours: int = Field(default=48, ge=1, le=2160)
+
+
+class FormDataQualityRule(BaseModel):
+    id: str = Field(min_length=2, max_length=120)
+    label: str = Field(min_length=2, max_length=200)
+    rule_type: str = Field(min_length=2, max_length=80)
+    enabled: bool = True
+    severity: str = Field(default="medium", pattern=r"^(low|medium|high|critical)$")
+    blocking: bool = False
+    fields: list[str] = Field(default_factory=list, max_length=20)
+    expression: str | None = Field(default=None, max_length=1000)
+
+
+class FormGovernancePolicy(BaseModel):
+    form_status: str = Field(default="draft", pattern=r"^(draft|testing|published|suspended|archived)$")
+    approval_workflow: str = Field(default="standard", pattern=r"^(simple|standard|correction|custom)$")
+    required_review_levels: int = Field(default=2, ge=0, le=5)
+    submitted_records_editable: bool = False
+    approved_records_editable: bool = False
+    rejected_records_resubmittable: bool = True
+    duplicate_submissions_allowed: bool = False
+    duplicate_detection_fields: list[str] = Field(default_factory=lambda: ["respondent_id", "phone_number"], max_length=20)
+    require_gps_capture: bool = True
+    require_timestamp_capture: bool = True
+    require_enumerator_assignment: bool = True
+    require_supervisor_review: bool = True
+    data_retention_days: int = Field(default=2555, ge=1)
+    export_restricted: bool = True
+    sensitive_field_masking: bool = True
+    pii_tagging_required: bool = True
+    consent_required: bool = True
+    minimum_quality_score: int = Field(default=80, ge=0, le=100)
+    review_sla_hours: int = Field(default=48, ge=1, le=2160)
+    auto_lock_after_approval: bool = True
+    auto_archive_after_project_closure: bool = True
+
+
+class FormAuditSettings(BaseModel):
+    immutable: bool = True
+    reason_required_events: list[str] = Field(
+        default_factory=lambda: [
+            "validation_rule_changed",
+            "permission_changed",
+            "form_published",
+            "submission_rejected",
+            "data_deleted",
+            "export_performed",
+        ],
+        max_length=40,
+    )
+    tracked_events: list[str] = Field(
+        default_factory=lambda: [
+            "form_created",
+            "form_edited",
+            "question_added",
+            "question_removed",
+            "validation_rule_changed",
+            "skip_logic_changed",
+            "reference_list_attached",
+            "permission_changed",
+            "form_published",
+            "form_archived",
+            "submission_created",
+            "submission_reviewed",
+            "submission_approved",
+            "submission_rejected",
+            "export_performed",
+        ],
+        max_length=80,
+    )
+    export_allowed_roles: list[str] = Field(default_factory=lambda: ["system_admin", "me_manager", "data_manager"], max_length=12)
+
+
+class FormVersioningSettings(BaseModel):
+    editing_published_creates_draft: bool = True
+    preserve_submission_version_link: bool = True
+    compare_versions_enabled: bool = True
+    reference_lists_version_aware: bool = True
+    archived_versions_viewable: bool = True
+
+
+class FormControlsSettings(BaseModel):
+    reference_bindings: list[FormReferenceBinding] = Field(default_factory=list, max_length=100)
+    permission_rules: list[FormPermissionRule] = Field(
+        default_factory=lambda: [
+            FormPermissionRule(
+                subject_name="M&E Manager",
+                permissions=[
+                    "view_form",
+                    "edit_form",
+                    "publish_form",
+                    "archive_form",
+                    "assign_form",
+                    "view_submissions",
+                    "review_submissions",
+                    "approve_submissions",
+                    "export_data",
+                    "manage_form_controls",
+                ],
+            ),
+            FormPermissionRule(
+                subject_name="Field Officer",
+                permissions=["view_form", "submit_data", "edit_own_draft_submissions", "edit_returned_submissions"],
+                location_scope="assigned_locations",
+            ),
+            FormPermissionRule(
+                subject_name="Viewer / Donor",
+                permissions=["view_form", "view_submissions"],
+                read_only=True,
+            ),
+        ],
+        max_length=100,
+    )
+    workflow_stages: list[FormWorkflowStage] = Field(
+        default_factory=lambda: [
+            FormWorkflowStage(id="submitted", name="Submitted", reviewer_roles=["survey_supervisor"], sla_hours=24),
+            FormWorkflowStage(id="supervisor_review", name="Supervisor Review", reviewer_roles=["survey_supervisor"], sla_hours=48),
+            FormWorkflowStage(id="data_manager_review", name="Data Manager Review", reviewer_roles=["data_manager", "data_quality_officer"], sla_hours=48),
+            FormWorkflowStage(id="approved", name="Approved", reviewer_roles=["me_manager"], sla_hours=72),
+        ],
+        max_length=20,
+    )
+    data_quality_rules: list[FormDataQualityRule] = Field(
+        default_factory=lambda: [
+            FormDataQualityRule(id="required_fields", label="Required fields", rule_type="required", severity="critical", blocking=True),
+            FormDataQualityRule(id="gps_boundary", label="GPS boundary check", rule_type="gps_boundary", severity="high"),
+            FormDataQualityRule(id="duplicate_detection", label="Duplicate detection", rule_type="duplicate", severity="high"),
+            FormDataQualityRule(id="missing_consent", label="Missing consent flag", rule_type="consent", severity="critical", blocking=True),
+        ],
+        max_length=100,
+    )
+    governance: FormGovernancePolicy = Field(default_factory=FormGovernancePolicy)
+    audit: FormAuditSettings = Field(default_factory=FormAuditSettings)
+    versioning: FormVersioningSettings = Field(default_factory=FormVersioningSettings)
+
+
 class DataFormCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     slug: str = Field(min_length=2, max_length=140, pattern=r"^[a-z0-9-]+$")
+    project_id: UUID
+    survey_id: UUID
     description: str | None = Field(default=None, max_length=2000)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False
@@ -113,11 +481,14 @@ class DataFormCreate(BaseModel):
 
 class DataFormRead(BaseModel):
     id: UUID
+    project_id: UUID | None = None
+    survey_id: UUID | None = None
     name: str
     slug: str
     description: str | None
     status: str
     current_version: int
+    controls_json: dict[str, Any] = Field(default_factory=dict)
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -196,6 +567,8 @@ class FormTemplateDetail(FormTemplateRead):
 
 
 class TemplateDuplicateRequest(BaseModel):
+    project_id: UUID
+    survey_id: UUID
     name: str | None = Field(default=None, min_length=2, max_length=200)
     slug: str | None = Field(default=None, min_length=2, max_length=140, pattern=r"^[a-z0-9-]+$")
     publish: bool = False
@@ -247,6 +620,8 @@ class FieldOfficerImportResponse(BaseModel):
 
 class SubmissionCreate(BaseModel):
     client_submission_id: str = Field(min_length=4, max_length=160)
+    project_id: UUID
+    survey_id: UUID
     form_id: UUID
     form_version: int
     payload: dict[str, Any]
@@ -266,6 +641,8 @@ class SubmissionCreate(BaseModel):
 class SubmissionRead(BaseModel):
     id: UUID
     client_submission_id: str
+    project_id: UUID | None = None
+    survey_id: UUID | None = None
     form_id: UUID
     field_officer_id: UUID
     status: str

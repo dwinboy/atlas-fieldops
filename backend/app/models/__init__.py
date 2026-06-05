@@ -12,6 +12,8 @@ from app.models.collection import (
     Submission,
     SubmissionStatusHistory,
     SubmissionVersion,
+    Survey,
+    SurveyTeamMember,
 )
 from app.models.identity import Membership, Organization, Role, User
 from app.models.operations import (
@@ -100,6 +102,8 @@ __all__ = [
     "Submission",
     "SubmissionStatusHistory",
     "SubmissionVersion",
+    "Survey",
+    "SurveyTeamMember",
     "User",
     "VisitRecord",
     "WorkforceProfile",

@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   BadgeCheck,
+  ClipboardCheck,
   Clock3,
   Copy,
   Filter,
@@ -19,8 +20,15 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { duplicateFormTemplate, listFormTemplates } from "@/lib/api";
+import { Input, Select } from "@/components/ui/input";
+import {
+  duplicateFormTemplate,
+  listFormTemplates,
+  listPrograms,
+  listSurveys,
+  type ProgramRead,
+  type SurveyRead,
+} from "@/lib/api";
 import { formTemplateCategories, formTemplates, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -31,6 +39,54 @@ function categoryCount(category: string) {
   }
   return formTemplates.filter((template) => template.category === category).length;
 }
+
+const previewTemplateProjects: ProgramRead[] = [
+  { id: "preview-agriculture", name: "Agricultural Resilience Program", slug: "agricultural-resilience", region: "North West", is_active: true },
+  { id: "preview-health", name: "Community Health Outreach", slug: "community-health", region: "Central", is_active: true },
+];
+
+const previewTemplateSurveys: SurveyRead[] = [
+  {
+    id: "preview-baseline",
+    organization_id: "preview-org",
+    project_id: "preview-agriculture",
+    created_by_user_id: "preview-user",
+    owner_user_id: "preview-user",
+    manager_user_id: null,
+    title: "Baseline Survey",
+    code: "AGR-BASE-2026",
+    description: "Baseline data collection.",
+    survey_type: "baseline",
+    status: "active",
+    start_date: "2026-06-01",
+    end_date: "2026-06-30",
+    geographic_scope: "North West districts",
+    target_population: "Smallholder farmers",
+    indicator_ids_json: [],
+    custom_type_label: null,
+    is_active: true,
+  },
+  {
+    id: "preview-registration",
+    organization_id: "preview-org",
+    project_id: "preview-agriculture",
+    created_by_user_id: "preview-user",
+    owner_user_id: "preview-user",
+    manager_user_id: null,
+    title: "Farmer Registration Survey",
+    code: "AGR-REG-2026",
+    description: "Registration data collection.",
+    survey_type: "farmer_survey",
+    status: "draft",
+    start_date: null,
+    end_date: null,
+    geographic_scope: "Program communities",
+    target_population: "Farmers",
+    indicator_ids_json: [],
+    custom_type_label: null,
+    is_active: true,
+  },
+];
 
 function TemplateCard({
   active,
@@ -180,18 +236,38 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
   const [activeCategory, setActiveCategory] = useState("Recommended");
   const [query, setQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(formTemplates[0]?.id ?? "");
+  const [selectedProjectId, setSelectedProjectId] = useState(previewTemplateProjects[0]?.id ?? "");
+  const [selectedSurveyId, setSelectedSurveyId] = useState(previewTemplateSurveys[0]?.id ?? "");
   const [templateResult, setTemplateResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const isPreview = !token || token === "preview-token";
+  const projectsQuery = useQuery({
+    queryKey: ["programs", token],
+    queryFn: () => listPrograms(token ?? ""),
+    enabled: Boolean(token && !isPreview)
+  });
+  const surveysQuery = useQuery({
+    queryKey: ["surveys", token],
+    queryFn: () => listSurveys(token ?? ""),
+    enabled: Boolean(token && !isPreview)
+  });
   const backendTemplatesQuery = useQuery({
     queryKey: ["form-templates", token],
     queryFn: () => listFormTemplates(token ?? ""),
-    enabled: Boolean(token && token !== "preview-token")
+    enabled: Boolean(token && !isPreview)
   });
+  const projects = isPreview ? previewTemplateProjects : projectsQuery.data ?? [];
+  const surveys = isPreview ? previewTemplateSurveys : surveysQuery.data ?? [];
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  const projectSurveys = surveys.filter((survey) => survey.project_id === selectedProject?.id);
+  const selectedSurvey = projectSurveys.find((survey) => survey.id === selectedSurveyId) ?? projectSurveys[0];
   const duplicateMutation = useMutation({
     mutationFn: (template: FormTemplateCard) =>
       duplicateFormTemplate(token ?? "", template.id, {
+        project_id: selectedProject?.id ?? "",
+        survey_id: selectedSurvey?.id ?? "",
         name: template.name,
         slug: `${template.id}-${Date.now().toString(36)}`,
         publish: false
@@ -224,13 +300,23 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
     formTemplates.find((template) => template.id === selectedTemplateId) ?? visibleTemplates[0] ?? formTemplates[0];
 
   function handleUseTemplate(template: FormTemplateCard) {
-    if (token && token !== "preview-token") {
-      setTemplateResult(`${template.name} is being copied to your backend draft forms. You will be taken to the form builder after it is ready.`);
+    if (!selectedProject || !selectedSurvey) {
+      setTemplateResult("Select a project and survey before using a template. Templates create forms, and forms must belong to a survey.");
+      pushToast({
+        title: "Survey required",
+        description: "Create or select a survey before copying this template.",
+        tone: "warning"
+      });
+      setActiveView("surveys");
+      return;
+    }
+    if (token && !isPreview) {
+      setTemplateResult(`${template.name} is being copied to ${selectedSurvey.title} as a backend draft form. You will be taken to the form builder after it is ready.`);
       duplicateMutation.mutate(template);
       return;
     }
     setPendingTemplateId(template.id);
-    setTemplateResult(`${template.name} was copied into the form builder. Next: customize questions, preview mobile layout, then publish.`);
+    setTemplateResult(`${template.name} was copied into the form builder for ${selectedSurvey.title}. Next: customize questions, preview mobile layout, then publish.`);
     pushToast({
       title: "Template copied",
       description: `${template.name} is ready for quick edits in the form builder.`,
@@ -282,6 +368,54 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
           </Button>
         </div>
       </div>
+
+      <section className="surface-premium rounded-2xl p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Template destination</p>
+            <h2 className="mt-2 text-lg font-semibold">Choose where this form will belong</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              A template becomes a form draft inside one survey. Select the project and survey first so the form cannot become disconnected from M&E activity.
+            </p>
+          </div>
+          <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Project</span>
+              <Select
+                value={selectedProject?.id ?? ""}
+                onChange={(event) => {
+                  setSelectedProjectId(event.target.value);
+                  const firstSurvey = surveys.find((survey) => survey.project_id === event.target.value);
+                  setSelectedSurveyId(firstSurvey?.id ?? "");
+                }}
+              >
+                {projects.length ? (
+                  projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)
+                ) : (
+                  <option value="">No projects yet</option>
+                )}
+              </Select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-medium">Survey</span>
+              <Select
+                value={selectedSurvey?.id ?? ""}
+                onChange={(event) => setSelectedSurveyId(event.target.value)}
+              >
+                {projectSurveys.length ? (
+                  projectSurveys.map((survey) => <option key={survey.id} value={survey.id}>{survey.title}</option>)
+                ) : (
+                  <option value="">No surveys in project</option>
+                )}
+              </Select>
+            </label>
+            <Button className="md:self-end" onClick={() => setActiveView("surveys")} type="button" variant="secondary">
+              <ClipboardCheck aria-hidden="true" />
+              Manage surveys
+            </Button>
+          </div>
+        </div>
+      </section>
 
       <div className="rounded-lg border bg-panel p-3 shadow-line">
         {backendTemplatesQuery.data?.length ? (

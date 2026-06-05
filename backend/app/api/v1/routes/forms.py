@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
@@ -8,7 +9,16 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.collection import DataFormCreate, DataFormRead, FormCollectionCompatibility, FormTemplateDetail, FormTemplateRead, TemplateDuplicateRequest, XlsFormWorkbook
+from app.schemas.collection import (
+    DataFormCreate,
+    DataFormRead,
+    FormCollectionCompatibility,
+    FormControlsSettings,
+    FormTemplateDetail,
+    FormTemplateRead,
+    TemplateDuplicateRequest,
+    XlsFormWorkbook,
+)
 from app.services.collection import CollectionNotFoundError, FormService
 from app.services.template_library import TemplateLibraryService
 
@@ -71,6 +81,9 @@ async def duplicate_form_template(
     except KeyError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found") from exc
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise
@@ -80,7 +93,7 @@ async def duplicate_form_template(
 async def list_forms(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> list[object]:
+) -> Sequence[object]:
     return await FormService(session).list_forms(UUID(principal.organization_id))
 
 
@@ -98,6 +111,45 @@ async def create_form(
         )
         await session.commit()
         return form
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get("/{form_id}/controls", response_model=FormControlsSettings, summary="Read form governance controls")
+async def get_form_controls(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FormControlsSettings:
+    try:
+        return await FormService(session).get_controls(organization_id=UUID(principal.organization_id), form_id=form_id)
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found") from exc
+
+
+@router.patch("/{form_id}/controls", response_model=DataFormRead, summary="Update form governance controls")
+async def update_form_controls(
+    form_id: UUID,
+    payload: FormControlsSettings,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> object:
+    try:
+        form = await FormService(session).update_controls(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
+            payload=payload,
+        )
+        await session.commit()
+        return form
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found") from exc
     except Exception:
         await session.rollback()
         raise

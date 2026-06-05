@@ -2,43 +2,30 @@
 
 import {
   ArrowRight,
-  BookOpenCheck,
-  BriefcaseBusiness,
+  ChevronRight,
   ChevronLeft,
-  ChartNoAxesCombined,
-  CircleAlert,
-  ClipboardCheck,
-  ClipboardPenLine,
-  CloudUpload,
   Command,
-  DatabaseZap,
-  Fingerprint,
-  FileChartColumn,
-  Gauge,
-  GitBranch,
-  HeartHandshake,
   HelpCircle,
-  KeyRound,
-  Landmark,
-  LayoutDashboard,
-  Library,
   LogOut,
-  MapPinned,
   Menu,
   Moon,
-  Network,
   PanelLeftClose,
   RadioTower,
   Sun,
-  UserRoundCog,
-  UsersRound,
-  Workflow,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  getBreadcrumbsForView,
+  getNavigationItemByView,
+  getVisibleNavigationItems,
+  getVisibleNavigationSections,
+  viewGuidance,
+  type ViewTone,
+} from "@/config/navigation";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -53,30 +40,6 @@ type AppShellProps = {
   organizationLogoUrl?: string | null;
   organizationSlug?: string;
   principal?: CurrentPrincipal | null;
-};
-
-type ViewTone =
-  | "daily"
-  | "collect"
-  | "monitor"
-  | "operate"
-  | "admin"
-  | "support"
-  | "platform"
-  | "governance";
-
-type NavItem = {
-  id: WorkspaceView;
-  label: string;
-  hint: string;
-  icon: typeof LayoutDashboard;
-  tone: ViewTone;
-};
-type ViewGuidance = {
-  step: string;
-  outcome: string;
-  next?: WorkspaceView;
-  nextLabel?: string;
 };
 
 const viewToneStyles: Record<
@@ -156,343 +119,6 @@ const viewToneStyles: Record<
   },
 };
 
-const navGroups: { label: string; items: NavItem[] }[] = [
-  {
-    label: "Platform",
-    items: [
-      {
-        id: "platform",
-        label: "Platform console",
-        hint: "Organizations & support",
-        icon: Landmark,
-        tone: "platform",
-      },
-    ],
-  },
-  {
-    label: "Daily work",
-    items: [
-      {
-        id: "dashboard",
-        label: "Today",
-        hint: "What needs action",
-        icon: Gauge,
-        tone: "daily",
-      },
-      {
-        id: "submissions",
-        label: "Review queue",
-        hint: "Approve data",
-        icon: ClipboardCheck,
-        tone: "daily",
-      },
-      {
-        id: "connectivity",
-        label: "Sync health",
-        hint: "Offline & retry",
-        icon: CloudUpload,
-        tone: "daily",
-      },
-    ],
-  },
-  {
-    label: "Collect data",
-    items: [
-      {
-        id: "templates",
-        label: "Templates",
-        hint: "Start faster",
-        icon: Library,
-        tone: "collect",
-      },
-      {
-        id: "forms",
-        label: "Form builder",
-        hint: "Surveys & logic",
-        icon: ClipboardPenLine,
-        tone: "collect",
-      },
-      {
-        id: "beneficiaries",
-        label: "Beneficiaries",
-        hint: "People & households",
-        icon: HeartHandshake,
-        tone: "collect",
-      },
-      {
-        id: "officers",
-        label: "Field teams",
-        hint: "People & assignments",
-        icon: UserRoundCog,
-        tone: "collect",
-      },
-    ],
-  },
-  {
-    label: "Plan & monitor",
-    items: [
-      {
-        id: "programs",
-        label: "Projects",
-        hint: "Programs & donors",
-        icon: Network,
-        tone: "monitor",
-      },
-      {
-        id: "indicators",
-        label: "Indicators",
-        hint: "Targets & results",
-        icon: ChartNoAxesCombined,
-        tone: "monitor",
-      },
-      {
-        id: "map",
-        label: "Map",
-        hint: "Coverage & GPS",
-        icon: MapPinned,
-        tone: "monitor",
-      },
-      {
-        id: "analytics",
-        label: "Reports",
-        hint: "Exports & donors",
-        icon: FileChartColumn,
-        tone: "monitor",
-      },
-    ],
-  },
-  {
-    label: "Operate",
-    items: [
-      {
-        id: "ecosystem",
-        label: "Ecosystem",
-        hint: "Connected work",
-        icon: GitBranch,
-        tone: "operate",
-      },
-      {
-        id: "enterprise",
-        label: "Operations",
-        hint: "Assets & budgets",
-        icon: BriefcaseBusiness,
-        tone: "operate",
-      },
-      {
-        id: "cases",
-        label: "Cases",
-        hint: "Follow-ups",
-        icon: CircleAlert,
-        tone: "operate",
-      },
-      {
-        id: "data",
-        label: "Data tools",
-        hint: "Import & edit",
-        icon: DatabaseZap,
-        tone: "operate",
-      },
-      {
-        id: "workforce",
-        label: "Workforce",
-        hint: "Teams & access",
-        icon: UsersRound,
-        tone: "admin",
-      },
-      {
-        id: "governance",
-        label: "Governance",
-        hint: "Audit & quality",
-        icon: Fingerprint,
-        tone: "governance",
-      },
-    ],
-  },
-  {
-    label: "Admin",
-    items: [
-      {
-        id: "organizations",
-        label: "Team & access",
-        hint: "Roles & regions",
-        icon: KeyRound,
-        tone: "admin",
-      },
-      {
-        id: "workflows",
-        label: "Approvals",
-        hint: "Rules & escalation",
-        icon: Workflow,
-        tone: "admin",
-      },
-    ],
-  },
-  {
-    label: "Support",
-    items: [
-      {
-        id: "help",
-        label: "Help guide",
-        hint: "How to use Atlas",
-        icon: BookOpenCheck,
-        tone: "support",
-      },
-    ],
-  },
-];
-
-const navItems: NavItem[] = navGroups.flatMap((group) => group.items);
-
-const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
-  platform: {
-    step: "Operate platform",
-    outcome:
-      "Manage organizations, support sessions, tenant status, setup health, and platform-only operator tools.",
-    next: "help",
-    nextLabel: "Read guidance",
-  },
-  dashboard: {
-    step: "Start here",
-    outcome:
-      "Use this daily summary to decide what needs review, sync attention, or team follow-up.",
-    next: "submissions",
-    nextLabel: "Review data",
-  },
-  ecosystem: {
-    step: "Understand the system",
-    outcome:
-      "See how projects, forms, people, submissions, cases, and reports connect before changing workflows.",
-    next: "programs",
-    nextLabel: "Open projects",
-  },
-  enterprise: {
-    step: "Operate at scale",
-    outcome:
-      "Coordinate assets, budgets, documents, and operational accountability across field programs.",
-    next: "governance",
-    nextLabel: "Check governance",
-  },
-  governance: {
-    step: "Protect data",
-    outcome:
-      "Create rules for auditability, retention, validation, consent, exports, and lineage.",
-    next: "data",
-    nextLabel: "Review data tools",
-  },
-  workforce: {
-    step: "Control access",
-    outcome:
-      "Manage teams, departments, delegations, approvals, and workforce access requests.",
-    next: "organizations",
-    nextLabel: "Manage users",
-  },
-  data: {
-    step: "Prepare datasets",
-    outcome:
-      "Import, clean, map, edit, export, and share operational data with fewer manual spreadsheet steps.",
-    next: "forms",
-    nextLabel: "Build forms",
-  },
-  programs: {
-    step: "Plan delivery",
-    outcome:
-      "Set up programs, donors, regions, milestones, and reporting structures for field execution.",
-    next: "indicators",
-    nextLabel: "Track indicators",
-  },
-  beneficiaries: {
-    step: "Manage records",
-    outcome:
-      "Keep beneficiary, household, farmer, group, and visit records organized and traceable.",
-    next: "submissions",
-    nextLabel: "Review submissions",
-  },
-  indicators: {
-    step: "Measure results",
-    outcome:
-      "Track baselines, targets, formulas, progress, and report-ready performance data.",
-    next: "analytics",
-    nextLabel: "Open reports",
-  },
-  cases: {
-    step: "Resolve follow-up",
-    outcome:
-      "Manage complaints, referrals, corrections, incidents, and escalations through closure.",
-    next: "workflows",
-    nextLabel: "Review approvals",
-  },
-  map: {
-    step: "Verify coverage",
-    outcome:
-      "Use GPS evidence and coverage layers to understand where field work is happening.",
-    next: "connectivity",
-    nextLabel: "Check sync health",
-  },
-  organizations: {
-    step: "Administer access",
-    outcome:
-      "Manage users, roles, regions, organization profile, permissions, and assignment routes.",
-    next: "workforce",
-    nextLabel: "Open workforce",
-  },
-  officers: {
-    step: "Enable field teams",
-    outcome:
-      "Invite officers, monitor devices, check sync health, and understand recent field activity.",
-    next: "forms",
-    nextLabel: "Assign forms",
-  },
-  forms: {
-    step: "Design collection",
-    outcome:
-      "Create mobile-ready forms with clear labels, validation, media evidence, and offline behavior.",
-    next: "submissions",
-    nextLabel: "Review collected data",
-  },
-  submissions: {
-    step: "Validate evidence",
-    outcome:
-      "Approve clean submissions, reject poor data, or request corrections with a clear audit trail.",
-    next: "analytics",
-    nextLabel: "Report results",
-  },
-  templates: {
-    step: "Start faster",
-    outcome:
-      "Choose a professional template, customize questions, and publish a form for field teams.",
-    next: "forms",
-    nextLabel: "Customize form",
-  },
-  analytics: {
-    step: "Communicate results",
-    outcome:
-      "Create report-ready views, exports, summaries, and donor-facing operational evidence.",
-    next: "help",
-    nextLabel: "Read guidance",
-  },
-  workflows: {
-    step: "Standardize approvals",
-    outcome:
-      "Define correction paths, review rules, escalation steps, and operational accountability.",
-    next: "submissions",
-    nextLabel: "Open review queue",
-  },
-  connectivity: {
-    step: "Keep offline work safe",
-    outcome:
-      "Monitor sync queues, retries, weak connections, and field-device upload status.",
-    next: "officers",
-    nextLabel: "Check officers",
-  },
-  help: {
-    step: "Learn the platform",
-    outcome:
-      "Use beginner-friendly guidance to understand every major Atlas FieldOps workflow.",
-    next: "templates",
-    nextLabel: "Start with templates",
-  },
-};
-
 function organizationInitials(name: string): string {
   const words = name
     .replace(/[^a-zA-Z0-9\s-]/g, " ")
@@ -547,30 +173,21 @@ export function AppShell({
   const theme = useWorkspaceStore((state) => state.theme);
   const toggleTheme = useWorkspaceStore((state) => state.toggleTheme);
 
-  const allowedViews = principal?.menu_views?.length
-    ? new Set(principal.menu_views)
-    : null;
   const isSupportMode = principal?.support_mode ?? false;
-  const isPlatformAdmin = principal?.platform_admin ?? false;
-  const platformConsoleMode = isPlatformAdmin && !isSupportMode;
-  const visibleNavItems = platformConsoleMode
-    ? navItems.filter((item) => item.id === "platform" || item.id === "help")
-    : allowedViews
-      ? navItems.filter(
-          (item) => item.id === "help" || allowedViews.has(item.id),
-        )
-      : navItems.filter((item) => item.id !== "platform" || isPlatformAdmin);
-  const activeItem =
-    navItems.find((item) => item.id === activeView) ?? navItems[0];
+  const visibleNavSections = getVisibleNavigationSections(principal);
+  const visibleNavItems = getVisibleNavigationItems(principal);
+  const activeItem = (
+    getNavigationItemByView(activeView) ??
+    visibleNavItems.find((item) => !item.hiddenFromSidebar) ??
+    getNavigationItemByView("dashboard")
+  )!;
+  const activeBreadcrumbs = getBreadcrumbsForView(activeItem.id);
   const activeTone = viewToneStyles[activeItem.tone];
   const ActiveIcon = activeItem.icon;
-  const activeGroup = navGroups.find((group) =>
-    group.items.some((item) => item.id === activeView),
-  );
   const guidance = viewGuidance[activeView];
   const nextItem =
     guidance.next && visibleNavItems.some((item) => item.id === guidance.next)
-      ? navItems.find((item) => item.id === guidance.next)
+      ? getNavigationItemByView(guidance.next)
       : null;
   const accountName =
     principal?.full_name?.trim() || principal?.email || "Signed-in user";
@@ -582,11 +199,7 @@ export function AppShell({
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1.5">
-      {navGroups.map((group) => {
-        const groupItems = visibleNavItems.filter((item) =>
-          group.items.some((groupItem) => groupItem.id === item.id),
-        );
-        if (!groupItems.length) return null;
+      {visibleNavSections.map((group) => {
         return (
           <div className="space-y-1.5" key={group.label}>
             <p
@@ -597,7 +210,7 @@ export function AppShell({
             >
               {group.label}
             </p>
-            {groupItems.map((item) => {
+            {group.items.map((item) => {
               const Icon = item.icon;
               const active = activeView === item.id;
               const tone = viewToneStyles[item.tone];
@@ -657,7 +270,7 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "min-h-screen bg-background text-foreground lg:grid",
+        "min-h-screen max-w-full overflow-x-hidden bg-background text-foreground lg:grid",
         collapsedSidebar
           ? "lg:grid-cols-[76px_1fr]"
           : "lg:grid-cols-[264px_1fr]",
@@ -724,7 +337,8 @@ export function AppShell({
             </div>
             <p className="mt-2 text-sm font-semibold">Workspace ready</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Create forms, import data, or invite teams to begin.
+              Navigation follows the M&E architecture: projects, forms,
+              fieldwork, quality, reports, governance, and system controls.
             </p>
           </div>
         </div>
@@ -750,9 +364,9 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-5">
-          <div className="flex items-center gap-3">
+      <div className="min-w-0 max-w-full overflow-x-hidden">
+        <header className="sticky top-0 z-20 flex h-16 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-5">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Button
               aria-label="Toggle navigation"
               size="icon"
@@ -763,7 +377,7 @@ export function AppShell({
             >
               <Menu aria-hidden="true" />
             </Button>
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <div className="lg:hidden">
                 <OrganizationMark
                   logoUrl={organizationLogoUrl}
@@ -786,7 +400,7 @@ export function AppShell({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Badge
               tone={isSupportMode ? "warning" : "success"}
               className="hidden gap-1.5 sm:inline-flex"
@@ -817,6 +431,7 @@ export function AppShell({
             </Button>
             <Button
               aria-label="Help guide"
+              className="hidden sm:inline-flex"
               onClick={() => setActiveView("help")}
               type="button"
               variant="ghost"
@@ -826,6 +441,7 @@ export function AppShell({
             </Button>
             <Button
               aria-label="Toggle theme"
+              className="hidden sm:inline-flex"
               size="icon"
               variant="ghost"
               onClick={toggleTheme}
@@ -865,9 +481,22 @@ export function AppShell({
                   <ActiveIcon aria-hidden="true" size={20} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    {activeGroup?.label ?? "Workspace"} / {activeItem.label}
-                  </p>
+                  <nav
+                    aria-label="Breadcrumb"
+                    className="flex flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+                  >
+                    {activeBreadcrumbs.map((breadcrumb, index) => (
+                      <span
+                        className="inline-flex items-center gap-1"
+                        key={`${breadcrumb.label}-${index}`}
+                      >
+                        {index ? (
+                          <ChevronRight aria-hidden="true" size={12} />
+                        ) : null}
+                        {breadcrumb.label}
+                      </span>
+                    ))}
+                  </nav>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <h1 className="text-xl font-semibold tracking-tight">
                       {activeItem.label}
@@ -914,7 +543,7 @@ export function AppShell({
           </div>
         </section>
 
-        <main className="mx-auto w-full max-w-[1480px] px-3 py-6 sm:px-5 lg:px-7">
+        <main className="mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-6 sm:px-5 lg:px-7">
           {children}
         </main>
       </div>

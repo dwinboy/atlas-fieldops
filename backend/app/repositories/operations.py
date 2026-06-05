@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,18 @@ from app.models.operations import (
 def summary_int(summary: dict[str, object], key: str) -> int:
     value = summary.get(key, 0)
     return int(value) if isinstance(value, int | float | str) else 0
+
+
+EnterpriseRecord = TypeVar(
+    "EnterpriseRecord",
+    OrganizationalUnit,
+    WorkflowDefinition,
+    OperationalTask,
+    InterventionRecord,
+    OperationalAsset,
+    ProjectBudgetLine,
+    KnowledgeDocument,
+)
 
 
 class OperationsRepository:
@@ -181,19 +194,11 @@ class OperationsRepository:
 
     async def create_enterprise_record(
         self,
-        model: type[
-            OrganizationalUnit
-            | WorkflowDefinition
-            | OperationalTask
-            | InterventionRecord
-            | OperationalAsset
-            | ProjectBudgetLine
-            | KnowledgeDocument
-        ],
+        model: type[EnterpriseRecord],
         *,
         organization_id: UUID,
         values: dict[str, object],
-    ) -> OrganizationalUnit | WorkflowDefinition | OperationalTask | InterventionRecord | OperationalAsset | ProjectBudgetLine | KnowledgeDocument:
+    ) -> EnterpriseRecord:
         record = model(organization_id=organization_id, **values)
         self.session.add(record)
         await self.session.flush()

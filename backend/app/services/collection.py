@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.security import hash_password
-from app.models.collection import FieldOfficerProfile, Submission
+from app.models.collection import DataForm, FieldOfficerProfile, Submission
 from app.repositories.audit import AuditRepository
-from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SyncRepository
+from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
 from app.schemas.collection import (
     DataFormCreate,
+    FormControlsSettings,
     FormCollectionCompatibility,
     FieldOfficerInvite,
     FieldOfficerImportIssue,
@@ -23,6 +24,11 @@ from app.schemas.collection import (
     SubmissionRead,
     SubmissionCreate,
     SubmissionReviewAction,
+    SurveyCreate,
+    SurveyGovernanceSettings,
+    SurveyRead,
+    SurveyTeamMemberCreate,
+    SurveyTeamMemberRead,
     SyncBatchCreate,
     SyncBatchRead,
     TemplateDuplicateRequest,
@@ -53,9 +59,9 @@ def xls_name(value: str) -> str:
 
 
 def xls_type(field_type: str, options: list[dict[str, object]], name: str) -> str:
-    if options and field_type in {"select", "radio"}:
+    if options and field_type in {"select", "dropdown", "radio", "likert"}:
         return f"select_one {name}"
-    if options and field_type in {"multiselect", "checkbox"}:
+    if options and field_type in {"multiselect", "checkbox", "ranking"}:
         return f"select_multiple {name}"
     type_map = {
         "text": "text",
@@ -65,12 +71,23 @@ def xls_type(field_type: str, options: list[dict[str, object]], name: str) -> st
         "currency": "decimal",
         "phone": "text",
         "email": "text",
+        "url": "text",
         "password": "text",
         "select": "select_one",
+        "dropdown": "select_one",
         "multiselect": "select_multiple",
         "radio": "select_one",
         "checkbox": "select_multiple",
+        "ranking": "rank",
+        "likert": "select_one likert",
+        "matrix_single": "table-list",
+        "matrix_multi": "table-list",
+        "nps": "integer",
+        "rating": "integer",
         "gps": "geopoint",
+        "geolocation": "geopoint",
+        "map": "geopoint",
+        "geofence": "geopoint",
         "photo": "image",
         "image": "image",
         "signature": "image",
@@ -82,6 +99,7 @@ def xls_type(field_type: str, options: list[dict[str, object]], name: str) -> st
         "date": "date",
         "time": "time",
         "datetime": "dateTime",
+        "hidden": "hidden",
         "calculated": "calculate",
         "repeat_group": "begin_repeat",
         "repeatable_group": "begin_repeat",
@@ -99,7 +117,7 @@ def xls_constraint(field_type: str, validation: dict[str, object]) -> str | None
         constraints.append(f". >= {minimum}")
     if isinstance(maximum, int | float):
         constraints.append(f". <= {maximum}")
-    if field_type == "gps" and isinstance(accuracy, int | float):
+    if field_type in {"gps", "geolocation", "map", "geofence"} and isinstance(accuracy, int | float):
         constraints.append(f'pulldata("@geopoint", ., "accuracy") <= {accuracy}')
     return " and ".join(constraints) if constraints else None
 
@@ -163,7 +181,7 @@ def form_schema_compatibility(*, form_id: UUID, version: int, schema: FormSchema
         xlsform_ready=bool(fields),
         web_form_ready="barcode" not in field_types and "qr" not in field_types,
         mobile_app_ready=True,
-        has_gps="gps" in field_types,
+        has_gps=bool({"gps", "geolocation", "map", "geofence"} & field_types),
         has_repeat_groups=bool({"repeat_group", "repeatable_group"} & field_types),
         media_field_count=media_count,
         warnings=warnings,
@@ -316,11 +334,21 @@ class FieldOfficerService:
 class FormService:
     def __init__(self, session: AsyncSession) -> None:
         self.forms = FormRepository(session)
+        self.surveys = SurveyRepository(session)
         self.audit = AuditRepository(session)
 
     async def create_form(self, *, organization_id: UUID, actor_user_id: UUID, payload: DataFormCreate) -> object:
+        survey = await self.surveys.get_for_project(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
+        )
+        if survey is None:
+            raise CollectionNotFoundError("Survey not found for the selected project")
         form, _version = await self.forms.create(
             organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
             created_by_user_id=actor_user_id,
             name=payload.name,
             slug=payload.slug,
@@ -328,22 +356,79 @@ class FormService:
             schema_json=payload.form_schema.model_dump(mode="json"),
             publish=payload.publish,
         )
+        if not form.controls_json:
+            await self.forms.update_controls(form=form, controls_json=FormControlsSettings().model_dump(mode="json"))
         await self.audit.append(
             organization_id=organization_id,
             actor_user_id=actor_user_id,
             action="form.created",
             resource_type="form",
             resource_id=str(form.id),
-            metadata={"slug": form.slug, "status": form.status, "version": form.current_version},
+            metadata={
+                "project_id": str(payload.project_id),
+                "survey_id": str(payload.survey_id),
+                "slug": form.slug,
+                "status": form.status,
+                "version": form.current_version,
+            },
         )
         await event_publisher.publish(
             settings.kafka_submission_events_topic,
-            {"type": "form.created", "organization_id": str(organization_id), "form_id": str(form.id)},
+            {
+                "type": "form.created",
+                "organization_id": str(organization_id),
+                "project_id": str(payload.project_id),
+                "survey_id": str(payload.survey_id),
+                "form_id": str(form.id),
+            },
         )
         return form
 
-    async def list_forms(self, organization_id: UUID) -> list[object]:
-        return list(await self.forms.list(organization_id))
+    async def list_forms(self, organization_id: UUID) -> list[DataForm]:
+        forms = list(await self.forms.list(organization_id))
+        for form in forms:
+            if not form.controls_json:
+                form.controls_json = FormControlsSettings().model_dump(mode="json")
+        return forms
+
+    async def get_controls(self, *, organization_id: UUID, form_id: UUID) -> FormControlsSettings:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        if not form.controls_json:
+            return FormControlsSettings()
+        return FormControlsSettings.model_validate(form.controls_json)
+
+    async def update_controls(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+        payload: FormControlsSettings,
+    ) -> object:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        old_controls = form.controls_json or {}
+        controls_json = payload.model_dump(mode="json")
+        await self.forms.update_controls(form=form, controls_json=controls_json)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.controls.updated",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={
+                "old_reference_bindings": len(old_controls.get("reference_bindings", [])),
+                "new_reference_bindings": len(payload.reference_bindings),
+                "permission_rules": len(payload.permission_rules),
+                "workflow_stages": len(payload.workflow_stages),
+                "data_quality_rules": len(payload.data_quality_rules),
+                "governance_status": payload.governance.form_status,
+            },
+        )
+        return form
 
     async def export_xlsform(self, *, organization_id: UUID, form_id: UUID) -> XlsFormWorkbook:
         form = await self.forms.get(organization_id=organization_id, form_id=form_id)
@@ -369,11 +454,20 @@ class FormService:
         template_id_or_slug: str,
         payload: TemplateDuplicateRequest,
     ) -> object:
+        survey = await self.surveys.get_for_project(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
+        )
+        if survey is None:
+            raise CollectionNotFoundError("Survey not found for the selected project")
         template = TemplateLibraryService().get_template(template_id_or_slug)
         name = payload.name or template.name
         slug = payload.slug or f"{template.slug}-{str(organization_id)[:8]}"
         form, _version = await self.forms.create(
             organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
             created_by_user_id=actor_user_id,
             name=name,
             slug=slug,
@@ -408,6 +502,119 @@ class FormService:
         return form
 
 
+class SurveyService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.surveys = SurveyRepository(session)
+        self.audit = AuditRepository(session)
+
+    async def create_survey(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: SurveyCreate,
+    ) -> SurveyRead:
+        if not await self.surveys.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise CollectionNotFoundError("Project not found")
+        survey = await self.surveys.create(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            created_by_user_id=actor_user_id,
+            owner_user_id=actor_user_id,
+            manager_user_id=payload.manager_user_id,
+            title=payload.title,
+            code=payload.code,
+            description=payload.description,
+            survey_type=payload.survey_type,
+            custom_type_label=payload.custom_type_label,
+            status=payload.status.value,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            geographic_scope=payload.geographic_scope,
+            target_population=payload.target_population,
+            indicator_ids=[str(indicator_id) for indicator_id in payload.indicator_ids],
+            governance_json=SurveyGovernanceSettings().model_dump(mode="json"),
+        )
+        await self.surveys.add_team_member(
+            organization_id=organization_id,
+            survey_id=survey.id,
+            user_id=actor_user_id,
+            survey_role="survey_owner",
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="survey.created",
+            resource_type="survey",
+            resource_id=str(survey.id),
+            metadata={"project_id": str(payload.project_id), "code": survey.code, "type": survey.survey_type},
+        )
+        return SurveyRead.model_validate(survey)
+
+    async def list_surveys(self, *, organization_id: UUID, project_id: UUID | None = None) -> list[SurveyRead]:
+        surveys = await self.surveys.list(organization_id=organization_id, project_id=project_id)
+        return [SurveyRead.model_validate(survey) for survey in surveys]
+
+    async def update_governance(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        survey_id: UUID,
+        payload: SurveyGovernanceSettings,
+    ) -> SurveyRead:
+        survey = await self.surveys.get(organization_id=organization_id, survey_id=survey_id)
+        if survey is None:
+            raise CollectionNotFoundError("Survey not found")
+        updated = await self.surveys.update_governance(
+            survey=survey,
+            governance_json=payload.model_dump(mode="json"),
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="survey.governance_updated",
+            resource_type="survey",
+            resource_id=str(survey_id),
+            metadata={
+                "review_required": payload.review_required,
+                "uploaded_submission_default_status": payload.uploaded_submission_default_status,
+                "synced_submission_default_status": payload.synced_submission_default_status,
+            },
+        )
+        return SurveyRead.model_validate(updated)
+
+    async def add_team_member(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        survey_id: UUID,
+        payload: SurveyTeamMemberCreate,
+    ) -> SurveyTeamMemberRead:
+        if await self.surveys.get(organization_id=organization_id, survey_id=survey_id) is None:
+            raise CollectionNotFoundError("Survey not found")
+        member = await self.surveys.add_team_member(
+            organization_id=organization_id,
+            survey_id=survey_id,
+            user_id=payload.user_id,
+            survey_role=payload.survey_role.value,
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="survey.team_member_added",
+            resource_type="survey",
+            resource_id=str(survey_id),
+            metadata={"user_id": str(payload.user_id), "survey_role": payload.survey_role.value},
+        )
+        return SurveyTeamMemberRead.model_validate(member)
+
+    async def list_team(self, *, organization_id: UUID, survey_id: UUID) -> list[SurveyTeamMemberRead]:
+        members = await self.surveys.list_team(organization_id=organization_id, survey_id=survey_id)
+        return [SurveyTeamMemberRead.model_validate(member) for member in members]
+
+
 class SubmissionService:
     REVIEW_TRANSITIONS = {
         "start_review": "under_review",
@@ -419,6 +626,7 @@ class SubmissionService:
     def __init__(self, session: AsyncSession) -> None:
         self.forms = FormRepository(session)
         self.officers = FieldOfficerRepository(session)
+        self.surveys = SurveyRepository(session)
         self.submissions = SubmissionRepository(session)
         self.sync = SyncRepository(session)
         self.audit = AuditRepository(session)
@@ -446,8 +654,19 @@ class SubmissionService:
         )
         if form_version is None:
             raise CollectionNotFoundError("Form version not found")
+        form = await self.forms.get(organization_id=organization_id, form_id=payload.form_id)
+        if form is None or form.project_id != payload.project_id or form.survey_id != payload.survey_id:
+            raise CollectionNotFoundError("Form is not assigned to the selected project and survey")
+        if await self.surveys.get_for_project(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
+        ) is None:
+            raise CollectionNotFoundError("Survey not found for the selected project")
         submission = await self.submissions.create(
             organization_id=organization_id,
+            project_id=payload.project_id,
+            survey_id=payload.survey_id,
             form_id=payload.form_id,
             form_version_id=form_version.id,
             field_officer_id=officer.id,
@@ -476,7 +695,12 @@ class SubmissionService:
             action="submission.submitted",
             resource_type="submission",
             resource_id=str(submission.id),
-            metadata={"client_submission_id": payload.client_submission_id, "offline": payload.offline_created},
+            metadata={
+                "client_submission_id": payload.client_submission_id,
+                "project_id": str(payload.project_id),
+                "survey_id": str(payload.survey_id),
+                "offline": payload.offline_created,
+            },
         )
         return submission
 

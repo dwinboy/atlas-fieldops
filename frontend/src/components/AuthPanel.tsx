@@ -63,8 +63,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   }
 
   return (
-    <section className="grid min-h-screen bg-background lg:grid-cols-[1fr_440px]">
-      <div className="relative flex items-center overflow-hidden px-6 py-10">
+    <section className="min-h-screen bg-background lg:grid lg:grid-cols-[1fr_440px]">
+      <div className="relative hidden items-center overflow-hidden px-6 py-10 lg:flex">
         <div className="soft-grid absolute inset-0 opacity-55" />
         <div className="absolute inset-x-8 top-8 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent lg:block" />
         <motion.div
@@ -145,7 +145,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       </div>
 
       <form
-        className="flex items-center border-l bg-panel/95 px-6 py-10 shadow-elevated backdrop-blur"
+        className="flex min-h-screen items-start bg-panel/95 px-5 py-8 shadow-elevated backdrop-blur sm:items-center sm:px-6 sm:py-10 lg:min-h-0 lg:border-l"
         onSubmit={(event) => {
           event.preventDefault();
           mutation.mutate({
