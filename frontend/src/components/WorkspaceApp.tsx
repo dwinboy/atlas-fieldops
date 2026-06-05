@@ -16,10 +16,7 @@ import {
   ConnectivityCenter,
   DataInteroperabilityCenter,
   EnterpriseOperationsCenter,
-  GeospatialIntelligence,
-  IndicatorTracking,
   OperationalEcosystem,
-  ReportingCenter,
 } from "@/components/MEOperations";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { PlatformConsole } from "@/components/PlatformConsole";
@@ -45,10 +42,14 @@ import {
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { AdministrationModule } from "@/modules/administration/AdministrationModule";
+import { DataQualityModule } from "@/modules/data-quality/DataQualityModule";
 import { FieldOperationsModule } from "@/modules/field-operations/FieldOperationsModule";
 import { FormsModule } from "@/modules/forms/FormsModule";
 import { GovernanceModule } from "@/modules/governance/GovernanceModule";
+import { IndicatorsModule } from "@/modules/indicators/IndicatorsModule";
+import { MappingModule } from "@/modules/mapping/MappingModule";
 import { ProjectsModule } from "@/modules/projects/ProjectsModule";
+import { ReportsModule } from "@/modules/reports/ReportsModule";
 import { SubmissionsModule } from "@/modules/submissions/SubmissionsModule";
 import { UsersTeamsModule } from "@/modules/users-teams/UsersTeamsModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -208,32 +209,11 @@ export function WorkspaceApp() {
     governance: <GovernanceModule token={token} principal={principalQuery.data} />,
     workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
-    dataQuality: moduleWorkspace("dataQuality", null, [
-      {
-        label: "Review submissions",
-        description: "Open the submissions queue to inspect records.",
-        onClick: () => setActiveView("submissions"),
-      },
-      {
-        label: "Open mapping",
-        description: "Review spatial data quality and coverage.",
-        onClick: () => setActiveView("map"),
-      },
-    ]),
+    dataQuality: <DataQualityModule token={token} principal={principalQuery.data} />,
     programs: <ProjectsModule token={token} principal={principalQuery.data} />,
     surveys: <SurveyManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,
-    indicators: moduleWorkspace(
-      "indicators",
-      <IndicatorTracking token={token} />,
-      [
-        {
-          label: "Open reports",
-          description: "Use approved indicator data in reports.",
-          onClick: () => setActiveView("analytics"),
-        },
-      ],
-    ),
+    indicators: <IndicatorsModule token={token} principal={principalQuery.data} />,
     organizations: moduleWorkspace(
       "organizations",
       <UsersTeamsModule token={token} principal={principalQuery.data} />,
@@ -255,18 +235,8 @@ export function WorkspaceApp() {
     forms: <FormsModule token={token} principal={principalQuery.data} />,
     submissions: <SubmissionsModule token={token} principal={principalQuery.data} />,
     cases: <CaseManagement token={token} />,
-    map: moduleWorkspace("map", <GeospatialIntelligence token={token} />),
-    analytics: moduleWorkspace(
-      "analytics",
-      <ReportingCenter token={token} />,
-      [
-        {
-          label: "Indicators",
-          description: "Open the indicator library and results framework.",
-          onClick: () => setActiveView("indicators"),
-        },
-      ],
-    ),
+    map: <MappingModule token={token} principal={principalQuery.data} />,
+    analytics: <ReportsModule token={token} principal={principalQuery.data} />,
     workflows: <WorkflowManagement token={token} />,
     connectivity: <ConnectivityCenter token={token} />,
     administration: moduleWorkspace(

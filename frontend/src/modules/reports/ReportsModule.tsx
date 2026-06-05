@@ -1,0 +1,880 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import {
+  Archive,
+  BarChart3,
+  CalendarClock,
+  CheckCircle2,
+  Download,
+  Eye,
+  FileBarChart,
+  FileSpreadsheet,
+  FileText,
+  LayoutDashboard,
+  LineChart,
+  Mail,
+  PieChart,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings2,
+  Share2,
+  ShieldCheck,
+  Table2,
+  type LucideIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+
+import { DataTable, type TableColumn } from "@/components/DataTable";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import type { CurrentPrincipal, DonorReportRead } from "@/lib/api";
+import { listReports } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  previewAuditEvents,
+  previewBuilderSteps,
+  previewDashboards,
+  previewExportJobs,
+  previewKpis,
+  previewReports,
+  previewScheduledReports,
+  reportsSections,
+  type DashboardRecord,
+  type ExportJobRecord,
+  type KpiRecord,
+  type ReportAuditEvent,
+  type ReportRecord,
+  type ReportsSection,
+  type ScheduledReportRecord,
+  type VisualizationType,
+} from "@/modules/reports/data";
+import {
+  canExportReport,
+  computeReportsSummary,
+  exportStatusTone,
+  filterReportsBySection,
+  formatTone,
+  governanceTone,
+  kpiAchievement,
+  kpiTone,
+  reportStatusTone,
+  scheduleTone,
+  summarizeReportQuery,
+  toCsv,
+} from "@/modules/reports/utils";
+import { useWorkspaceStore } from "@/stores/workspace";
+
+type ReportsModuleProps = {
+  principal?: CurrentPrincipal | null;
+  token: string | null;
+};
+
+type ReportDetailTab = "Overview" | "Data Sources" | "Filters" | "Visualizations" | "Schedules" | "Exports" | "History" | "Audit Trail";
+
+const detailTabs: ReportDetailTab[] = ["Overview", "Data Sources", "Filters", "Visualizations", "Schedules", "Exports", "History", "Audit Trail"];
+
+const visualizationIcons: Record<VisualizationType, LucideIcon> = {
+  "Area Chart": LineChart,
+  "Bar Chart": BarChart3,
+  "Donut Chart": PieChart,
+  "Heat Map": LayoutDashboard,
+  "KPI Card": FileBarChart,
+  "Line Chart": LineChart,
+  "Map Link": LayoutDashboard,
+  "Pie Chart": PieChart,
+  Table: Table2,
+};
+
+function isPreview(token: string | null): boolean {
+  return !token || token === "preview-token";
+}
+
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start && !end) return "Current period";
+  if (start && end) return `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}`;
+  return new Date(start ?? end ?? "").toLocaleDateString();
+}
+
+function mapApiReport(row: DonorReportRead): ReportRecord {
+  const rawStatus = titleCase(row.status || "Draft");
+  const normalizedStatus: ReportRecord["status"] = rawStatus.includes("Ready")
+    ? "Ready"
+    : rawStatus.includes("Need")
+      ? "Needs Data"
+      : rawStatus.includes("Fail")
+        ? "Failed"
+        : "Draft";
+  return {
+    category: row.donor ? "Donor Reports" : "Project Reports",
+    dataSources: ["Projects", "Indicators", "Approved submissions"],
+    description: row.summary ?? "Imported report package generated from approved Atlas FieldOps evidence.",
+    donor: row.donor ?? "Internal",
+    filters: [row.project_id ? "Project linked" : "All assigned projects", row.survey_id ? "Survey linked" : "Organization-level", "Approved data default"],
+    formats: row.export_formats.map((format) => titleCase(format) as ReportRecord["formats"][number]).filter((format) => ["Excel", "CSV", "PDF", "JSON"].includes(format)),
+    governance: normalizedStatus === "Ready" ? "Approved" : "Pending approval",
+    id: row.id,
+    kpis: ["Indicator achievement", "Data quality score"],
+    lastGenerated: new Date().toISOString(),
+    owner: "M&E Manager",
+    period: formatDateRange(row.period_start, row.period_end),
+    project: row.project_id ? "Linked project" : "Organization-wide",
+    status: normalizedStatus,
+    title: row.name,
+    views: 0,
+    visualizations: ["Table", "KPI Card"],
+  };
+}
+
+function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
+  const csv = toCsv(rows);
+  if (!csv) return;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function ReportsModule({ token }: ReportsModuleProps) {
+  const [activeSection, setActiveSection] = useState<ReportsSection>("dashboard");
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState<ReportDetailTab>("Overview");
+  const [actionResult, setActionResult] = useState("");
+  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const preview = isPreview(token);
+
+  const reportsQuery = useQuery({
+    queryKey: ["reports-module", token],
+    queryFn: () => listReports(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+
+  const reports = useMemo(
+    () => (preview ? previewReports : (reportsQuery.data ?? []).map(mapApiReport)),
+    [preview, reportsQuery.data],
+  );
+  const summary = useMemo(
+    () =>
+      computeReportsSummary({
+        dashboards: previewDashboards,
+        exports: previewExportJobs,
+        reports,
+        schedules: previewScheduledReports,
+      }),
+    [reports],
+  );
+  const visibleReports = useMemo(() => filterReportsBySection(reports, activeSection), [activeSection, reports]);
+  const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+
+  function openReport(report: ReportRecord, tab: ReportDetailTab = "Overview"): void {
+    setSelectedReportId(report.id);
+    setActiveDetailTab(tab);
+    setActionResult(`${report.title} opened. ${summarizeReportQuery(report)}`);
+  }
+
+  function exportReports(): void {
+    downloadCsv(
+      "atlas-reports.csv",
+      reports.map((report) => ({
+        category: report.category,
+        donor: report.donor,
+        exportReady: canExportReport(report),
+        formats: report.formats.join("; "),
+        governance: report.governance,
+        lastGenerated: report.lastGenerated,
+        owner: report.owner,
+        period: report.period,
+        project: report.project,
+        status: report.status,
+        title: report.title,
+      })),
+    );
+    setActionResult("Report index export prepared. Production exports must pass Governance export controls and audit logging.");
+    pushToast({ title: "Reports exported", description: "The reporting index CSV is ready.", tone: "success" });
+  }
+
+  function runReport(report: ReportRecord): void {
+    const result = canExportReport(report)
+      ? `${report.title} is ready to run with ${report.dataSources.join(", ")} and export formats ${report.formats.join(", ")}.`
+      : `${report.title} needs review before export. Check status, governance approval, and missing data warnings.`;
+    setActionResult(result);
+  }
+
+  return (
+    <section className="space-y-5">
+      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="monitor">ANALYTICS</Badge>
+              <Badge tone={summary.failedReportJobs ? "warning" : "success"}>{summary.failedReportJobs} failed jobs</Badge>
+              <Badge tone="accent">Route /reports</Badge>
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Reports</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Central reporting and analytics hub for standard reports, custom reports, dashboards, schedules, governed exports, donor packages, executive KPIs, and reusable visualizations.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setActiveSection("custom")} type="button" variant="secondary">
+              <Settings2 aria-hidden="true" /> Build custom report
+            </Button>
+            <Button onClick={exportReports} type="button">
+              <Download aria-hidden="true" /> Export index
+            </Button>
+          </div>
+        </div>
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 product-scrollbar">
+          {reportsSections.map((section) => (
+            <button
+              className={cn(
+                "min-w-44 rounded-xl border px-4 py-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
+              )}
+              key={section.id}
+              onClick={() => {
+                setActiveSection(section.id);
+                setSelectedReportId(null);
+              }}
+              type="button"
+            >
+              <span className="text-sm font-semibold">{section.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">{section.route}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {actionResult ? (
+        <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Reports workspace update</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{actionResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {selectedReport ? (
+        <ReportDetail
+          auditEvents={previewAuditEvents.filter((event) => event.reportId === selectedReport.id)}
+          exports={previewExportJobs}
+          onBack={() => setSelectedReportId(null)}
+          report={selectedReport}
+          schedules={previewScheduledReports.filter((schedule) => schedule.reportId === selectedReport.id)}
+          selectedTab={activeDetailTab}
+          setSelectedTab={setActiveDetailTab}
+        />
+      ) : null}
+
+      {!selectedReport && activeSection === "dashboard" ? (
+        <ReportsDashboard
+          dashboards={previewDashboards}
+          exports={previewExportJobs}
+          kpis={previewKpis}
+          onOpenReport={openReport}
+          onOpenSection={setActiveSection}
+          reports={reports}
+          schedules={previewScheduledReports}
+          summary={summary}
+        />
+      ) : null}
+      {!selectedReport && activeSection === "standard" ? <StandardReports onOpenReport={openReport} onRunReport={runReport} reports={visibleReports} syncing={reportsQuery.isFetching} /> : null}
+      {!selectedReport && activeSection === "custom" ? <CustomReportBuilder onOpenReports={() => setActiveSection("standard")} /> : null}
+      {!selectedReport && activeSection === "dashboards" ? <DashboardsSection dashboards={previewDashboards} onOpenReports={() => setActiveSection("standard")} /> : null}
+      {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={previewScheduledReports} /> : null}
+      {!selectedReport && activeSection === "exports" ? <ExportsSection exports={previewExportJobs} /> : null}
+
+      <section className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Module boundaries</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Reports consume approved data from Projects, Forms, Submissions, Indicators, Mapping, Data Quality, and Field Operations. Definitions, reviews, GIS analysis, and issue resolution remain in their owning modules.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setActiveView("indicators")} type="button" variant="secondary">
+              <BarChart3 aria-hidden="true" /> Indicators
+            </Button>
+            <Button onClick={() => setActiveView("submissions")} type="button" variant="secondary">
+              <FileSpreadsheet aria-hidden="true" /> Submissions
+            </Button>
+            <Button onClick={() => setActiveView("governance")} type="button" variant="secondary">
+              <ShieldCheck aria-hidden="true" /> Governance
+            </Button>
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ReportsDashboard({
+  dashboards,
+  exports,
+  kpis,
+  onOpenReport,
+  onOpenSection,
+  reports,
+  schedules,
+  summary,
+}: {
+  dashboards: DashboardRecord[];
+  exports: ExportJobRecord[];
+  kpis: KpiRecord[];
+  onOpenReport: (report: ReportRecord) => void;
+  onOpenSection: (section: ReportsSection) => void;
+  reports: ReportRecord[];
+  schedules: ScheduledReportRecord[];
+  summary: ReturnType<typeof computeReportsSummary>;
+}) {
+  const cards = [
+    { icon: FileText, label: "Total Reports", value: summary.totalReports, tone: "accent" as BadgeProps["tone"] },
+    { icon: CalendarClock, label: "Scheduled Reports", value: summary.scheduledReports, tone: "success" as BadgeProps["tone"] },
+    { icon: RefreshCw, label: "Reports Generated Today", value: summary.reportsGeneratedToday, tone: "success" as BadgeProps["tone"] },
+    { icon: Download, label: "Export Jobs", value: summary.exportJobs, tone: "accent" as BadgeProps["tone"] },
+    { icon: LayoutDashboard, label: "Active Dashboards", value: summary.activeDashboards, tone: "monitor" as BadgeProps["tone"] },
+    { icon: Eye, label: "Most Viewed Reports", value: summary.mostViewedReports, tone: "neutral" as BadgeProps["tone"] },
+    { icon: Mail, label: "Reports Pending Delivery", value: summary.reportsPendingDelivery, tone: summary.reportsPendingDelivery ? "warning" as BadgeProps["tone"] : "success" as BadgeProps["tone"] },
+    { icon: Archive, label: "Failed Report Jobs", value: summary.failedReportJobs, tone: summary.failedReportJobs ? "danger" as BadgeProps["tone"] : "success" as BadgeProps["tone"] },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => (
+          <MetricCard icon={card.icon} key={card.label} label={card.label} tone={card.tone} value={card.value} />
+        ))}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <Panel action={<Button onClick={() => onOpenSection("standard")} size="sm" variant="secondary">View all</Button>} title="Recent Reports">
+          <div className="space-y-3">
+            {reports.slice(0, 4).map((report) => (
+              <button className="w-full rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5" key={report.id} onClick={() => onOpenReport(report)} type="button">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">{report.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{report.category} · {report.period}</p>
+                  </div>
+                  <Badge tone={reportStatusTone(report.status)}>{report.status}</Badge>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Panel>
+        <Panel action={<Button onClick={() => onOpenSection("dashboards")} size="sm" variant="secondary">Open dashboards</Button>} title="Executive KPI Snapshot">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {kpis.slice(0, 6).map((kpi) => (
+              <div className="rounded-xl border bg-background p-3" key={kpi.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{kpi.label}</p>
+                  <Badge tone={kpiTone(kpi)}>{kpiAchievement(kpi)}%</Badge>
+                </div>
+                <p className="mt-2 text-2xl font-semibold">{kpi.value.toLocaleString()}{kpi.unit}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{kpi.periodComparison} · {kpi.drillDown}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+      <div className="grid gap-5 xl:grid-cols-3">
+        <Panel title="Scheduled Report Calendar">
+          <Timeline records={schedules.map((schedule) => ({ badge: schedule.frequency, label: schedule.reportTitle, meta: `${schedule.nextRun} · ${schedule.time} ${schedule.timezone}`, tone: scheduleTone(schedule.status) }))} />
+        </Panel>
+        <Panel title="Export Activity">
+          <Timeline records={exports.map((job) => ({ badge: job.format, label: job.name, meta: `${job.status} · ${job.rows.toLocaleString()} rows`, tone: exportStatusTone(job.status) }))} />
+        </Panel>
+        <Panel title="Report Usage Analytics">
+          <Timeline records={reports.slice().sort((left, right) => right.views - left.views).slice(0, 5).map((report) => ({ badge: `${report.views}`, label: report.title, meta: `${report.category} · ${report.owner}`, tone: report.views >= 100 ? "success" : "neutral" }))} />
+        </Panel>
+      </div>
+      <Panel action={<Button onClick={() => onOpenSection("dashboards")} size="sm" variant="secondary">Manage dashboards</Button>} title="Popular Dashboards">
+        <div className="grid gap-3 lg:grid-cols-3">
+          {dashboards.map((dashboard) => (
+            <DashboardCard dashboard={dashboard} key={dashboard.id} />
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function StandardReports({
+  onOpenReport,
+  onRunReport,
+  reports,
+  syncing,
+}: {
+  onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
+  onRunReport: (report: ReportRecord) => void;
+  reports: ReportRecord[];
+  syncing: boolean;
+}) {
+  const columns: TableColumn<ReportRecord>[] = [
+    {
+      header: "Report",
+      key: "title",
+      render: (report) => (
+        <button className="text-left font-medium text-primary hover:underline" onClick={() => onOpenReport(report)} type="button">
+          {report.title}
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">{report.description}</span>
+        </button>
+      ),
+      value: (report) => `${report.title} ${report.description} ${report.category}`,
+    },
+    { header: "Category", key: "category", render: (report) => report.category, value: (report) => report.category },
+    {
+      header: "Owner",
+      key: "owner",
+      render: (report) => (
+        <div>
+          <p>{report.owner}</p>
+          <p className="text-xs text-muted-foreground">{report.project}</p>
+        </div>
+      ),
+      value: (report) => `${report.owner} ${report.project}`,
+    },
+    { header: "Status", key: "status", render: (report) => <Badge tone={reportStatusTone(report.status)}>{report.status}</Badge>, value: (report) => report.status },
+    {
+      header: "Formats",
+      key: "formats",
+      render: (report) => (
+        <div className="flex flex-wrap gap-1.5">
+          {report.formats.map((format) => <Badge key={format} tone={formatTone(format)}>{format}</Badge>)}
+        </div>
+      ),
+      value: (report) => report.formats.join(" "),
+    },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (report) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button onClick={() => onRunReport(report)} size="sm" variant="secondary"><Play aria-hidden="true" /> Run</Button>
+          <Button onClick={() => onOpenReport(report, "Exports")} size="sm" variant="secondary"><Download aria-hidden="true" /> Export</Button>
+        </div>
+      ),
+      align: "right",
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        action={<Button type="button"><Plus aria-hidden="true" /> New standard report</Button>}
+        description="Prebuilt program, project, submission, indicator, data quality, coverage, field operations, beneficiary, and donor reports with run, export, schedule, and share actions."
+        route="/reports/standard"
+        title="Standard Reports"
+      />
+      <DataTable columns={columns} emptyLabel="No standard reports yet" rows={reports} searchLabel="Search standard reports, categories, owners, projects" title={syncing ? "Standard reports syncing" : "Standard reports"} />
+    </div>
+  );
+}
+
+function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
+  const [dataSource, setDataSource] = useState("Submissions");
+  const [visualization, setVisualization] = useState("KPI Card");
+  const dataSources = ["Projects", "Forms", "Submissions", "Indicators", "Beneficiaries", "Field Operations", "Data Quality"];
+  const fields = ["Project", "Form", "Submission date", "Status", "Location", "Indicator", "Quality score", "Field officer", "Supervisor", "Approved value"];
+  const filters = ["Project", "Country", "Region", "District", "Location", "Form", "Indicator", "Period", "Team", "Status"];
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        action={<Button onClick={onOpenReports} variant="secondary"><FileText aria-hidden="true" /> Browse report library</Button>}
+        description="Build ad hoc analytics by selecting data sources, fields, filters, grouping, visualizations, preview rules, and governed export options."
+        route="/reports/custom"
+        title="Custom Reports"
+      />
+      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <Panel title="Report Builder Steps">
+          <div className="space-y-3">
+            {previewBuilderSteps.map((step, index) => (
+              <div className="rounded-xl border bg-background p-3" key={step.id}>
+                <div className="flex items-center gap-2">
+                  <Badge tone={step.status === "Complete" ? "success" : step.status === "Current" ? "accent" : "neutral"}>{index + 1}</Badge>
+                  <p className="text-sm font-semibold">{step.label}</p>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <div className="space-y-5">
+          <Panel title="Configure Report">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <label className="space-y-1.5 text-sm font-medium">
+                Data source
+                <Select value={dataSource} onChange={(event) => setDataSource(event.target.value)}>
+                  {dataSources.map((source) => <option key={source} value={source}>{source}</option>)}
+                </Select>
+              </label>
+              <label className="space-y-1.5 text-sm font-medium">
+                Visualization
+                <Select value={visualization} onChange={(event) => setVisualization(event.target.value)}>
+                  {(["Table", "Bar Chart", "Line Chart", "Area Chart", "Pie Chart", "Donut Chart", "KPI Card", "Heat Map", "Map Link"] as VisualizationType[]).map((type) => <option key={type} value={type}>{type}</option>)}
+                </Select>
+              </label>
+              <label className="space-y-1.5 text-sm font-medium">
+                Saved filter set
+                <Input placeholder="Q2 approved data" />
+              </label>
+            </div>
+          </Panel>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <BuilderPanel items={fields} title="Choose Fields" />
+            <BuilderPanel items={filters} title="Add Filters" />
+          </div>
+          <Panel title="Preview">
+            <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+              <div className="rounded-xl border bg-background p-4">
+                <div className="flex items-center gap-2">
+                  {renderVisualizationIcon(visualization as VisualizationType, "text-primary")}
+                  <h3 className="text-sm font-semibold">{dataSource} report preview</h3>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {["Count", "Average", "Percentage"].map((metric, index) => (
+                    <div className="rounded-lg border bg-muted/20 p-3" key={metric}>
+                      <p className="text-xs text-muted-foreground">{metric}</p>
+                      <p className="mt-2 text-xl font-semibold">{[52890, 88, 91][index].toLocaleString()}{index ? "%" : ""}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border bg-background p-4">
+                <h3 className="text-sm font-semibold">Save or Export</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">Save as a template, share with a role, schedule delivery, or send restricted exports to Governance for approval.</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary"><Share2 aria-hidden="true" /> Share</Button>
+                  <Button size="sm"><Download aria-hidden="true" /> Export</Button>
+                </div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardsSection({ dashboards, onOpenReports }: { dashboards: DashboardRecord[]; onOpenReports: () => void }) {
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        action={<Button type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
+        description="Interactive analytics dashboards with KPI cards, tables, charts, maps, activity feeds, progress widgets, responsive layouts, and role-based visibility."
+        route="/reports/dashboards"
+        title="Dashboards"
+      />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {dashboards.map((dashboard) => <DashboardCard dashboard={dashboard} key={dashboard.id} />)}
+      </div>
+      <Panel action={<Button onClick={onOpenReports} size="sm" variant="secondary">Open reports</Button>} title="Dashboard builder capabilities">
+        <div className="grid gap-3 md:grid-cols-4">
+          {["Drag and drop layout", "Role-based visibility", "Cross-filtering", "Reusable widgets", "Fullscreen visualizations", "Export image", "Map links", "Responsive dashboards"].map((item) => (
+            <div className="rounded-xl border bg-background p-3 text-sm" key={item}>{item}</div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportRecord[] }) {
+  const columns: TableColumn<ScheduledReportRecord>[] = [
+    { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.id}</p></div>, value: (schedule) => schedule.reportTitle },
+    { header: "Frequency", key: "frequency", render: (schedule) => `${schedule.frequency} · ${schedule.time} ${schedule.timezone}`, value: (schedule) => schedule.frequency },
+    { header: "Recipients", key: "recipients", render: (schedule) => schedule.recipients.join(", "), value: (schedule) => schedule.recipients.join(" ") },
+    { header: "Next Run", key: "nextRun", render: (schedule) => new Date(schedule.nextRun).toLocaleString(), value: (schedule) => schedule.nextRun },
+    { header: "Status", key: "status", render: (schedule) => <Badge tone={scheduleTone(schedule.status)}>{schedule.status}</Badge>, value: (schedule) => schedule.status },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        action={<Button type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
+        description="Automate report generation and delivery by daily, weekly, monthly, quarterly, or custom schedules with delivery tracking and failure logs."
+        route="/reports/scheduled"
+        title="Scheduled Reports"
+      />
+      <DataTable columns={columns} emptyLabel="No scheduled reports yet" rows={schedules} searchLabel="Search schedules, recipients, frequency" title="Scheduled report delivery" />
+      <Panel title="Failure logs and delivery control">
+        <Timeline records={schedules.filter((schedule) => schedule.failureLog).map((schedule) => ({ badge: schedule.status, label: schedule.reportTitle, meta: schedule.failureLog ?? "", tone: scheduleTone(schedule.status) }))} />
+      </Panel>
+    </div>
+  );
+}
+
+function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
+  const columns: TableColumn<ExportJobRecord>[] = [
+    { header: "Export", key: "name", render: (job) => <div><p className="font-medium">{job.name}</p><p className="text-xs text-muted-foreground">{job.id} · {job.source}</p></div>, value: (job) => `${job.name} ${job.source}` },
+    { header: "Requested", key: "requested", render: (job) => <div><p>{job.requestedBy}</p><p className="text-xs text-muted-foreground">{new Date(job.requestedAt).toLocaleString()}</p></div>, value: (job) => `${job.requestedBy} ${job.requestedAt}` },
+    { header: "Format", key: "format", render: (job) => <Badge tone={formatTone(job.format)}>{job.format}</Badge>, value: (job) => job.format },
+    { header: "Rows", key: "rows", render: (job) => job.rows.toLocaleString(), value: (job) => String(job.rows) },
+    { header: "Status", key: "status", render: (job) => <Badge tone={exportStatusTone(job.status)}>{job.status}</Badge>, value: (job) => job.status },
+    { header: "Governance", key: "governance", render: (job) => <Badge tone={governanceTone(job.governance)}>{job.governance}</Badge>, value: (job) => job.governance },
+  ];
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        action={<Button type="button"><Download aria-hidden="true" /> Create Export</Button>}
+        description="Manage Excel, CSV, PDF, and JSON export jobs from reports, indicators, submissions, projects, beneficiaries, and data quality with governance approval checks."
+        route="/reports/exports"
+        title="Exports"
+      />
+      <DataTable columns={columns} emptyLabel="No export jobs yet" rows={exports} searchLabel="Search exports, sources, requester, status" title="Export center" />
+    </div>
+  );
+}
+
+function ReportDetail({
+  auditEvents,
+  exports,
+  onBack,
+  report,
+  schedules,
+  selectedTab,
+  setSelectedTab,
+}: {
+  auditEvents: ReportAuditEvent[];
+  exports: ExportJobRecord[];
+  onBack: () => void;
+  report: ReportRecord;
+  schedules: ScheduledReportRecord[];
+  selectedTab: ReportDetailTab;
+  setSelectedTab: (tab: ReportDetailTab) => void;
+}) {
+  return (
+    <section className="space-y-5 rounded-2xl border bg-panel p-5 shadow-line">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={reportStatusTone(report.status)}>{report.status}</Badge>
+            <Badge tone={governanceTone(report.governance)}>{report.governance}</Badge>
+            <Badge tone="neutral">{report.period}</Badge>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold">{report.title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{report.description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onBack} type="button" variant="secondary">Back to Reports</Button>
+          <Button disabled={!canExportReport(report)} type="button"><Download aria-hidden="true" /> Export</Button>
+        </div>
+      </div>
+      <div className="flex gap-2 overflow-x-auto border-b pb-2 product-scrollbar">
+        {detailTabs.map((tab) => (
+          <button
+            className={cn("rounded-full px-3 py-1.5 text-sm transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
+            key={tab}
+            onClick={() => setSelectedTab(tab)}
+            type="button"
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+      {selectedTab === "Overview" ? <DetailOverview report={report} /> : null}
+      {selectedTab === "Data Sources" ? <ChipGrid items={report.dataSources} title="Data Sources" /> : null}
+      {selectedTab === "Filters" ? <ChipGrid items={report.filters} title="Filters" /> : null}
+      {selectedTab === "Visualizations" ? <VisualizationGrid visualizations={report.visualizations} /> : null}
+      {selectedTab === "Schedules" ? <Timeline records={schedules.map((schedule) => ({ badge: schedule.frequency, label: schedule.reportTitle, meta: `${schedule.nextRun} · ${schedule.status}`, tone: scheduleTone(schedule.status) }))} /> : null}
+      {selectedTab === "Exports" ? <Timeline records={exports.filter((job) => job.name.toLowerCase().includes(report.title.split(" ")[0].toLowerCase()) || job.source === "Reports").map((job) => ({ badge: job.format, label: job.name, meta: `${job.status} · ${job.governance}`, tone: exportStatusTone(job.status) }))} /> : null}
+      {selectedTab === "History" ? <Timeline records={[{ badge: report.status, label: "Report refreshed", meta: `${new Date(report.lastGenerated).toLocaleString()} · ${report.owner}`, tone: reportStatusTone(report.status) }, { badge: "Viewed", label: `${report.views} report views`, meta: "Usage analytics captured for report prioritization.", tone: "neutral" }]} /> : null}
+      {selectedTab === "Audit Trail" ? <Timeline records={auditEvents.map((event) => ({ badge: event.action, label: event.actor, meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} /> : null}
+    </section>
+  );
+}
+
+function DetailOverview({ report }: { report: ReportRecord }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+      <Panel title="Report definition">
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            ["Category", report.category],
+            ["Project", report.project],
+            ["Donor", report.donor],
+            ["Owner", report.owner],
+            ["Period", report.period],
+            ["Governance", report.governance],
+          ].map(([label, value]) => (
+            <div className="rounded-xl border bg-background p-3" key={label}>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+              <p className="mt-2 text-sm font-medium">{value}</p>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Run readiness">
+        <div className="space-y-3">
+          {[
+            ["Approved data available", report.status === "Ready" || report.status === "Scheduled"],
+            ["Governance export allowed", canExportReport(report)],
+            ["Visualizations configured", report.visualizations.length > 0],
+            ["Formats selected", report.formats.length > 0],
+          ].map(([label, passed]) => (
+            <div className="flex items-center justify-between gap-3 rounded-xl border bg-background p-3" key={String(label)}>
+              <span className="text-sm">{label}</span>
+              <Badge tone={passed ? "success" : "warning"}>{passed ? "Passed" : "Review"}</Badge>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
+  return (
+    <article className="rounded-2xl border bg-background p-4 shadow-line">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{dashboard.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{dashboard.type} · {dashboard.visibility}</p>
+        </div>
+        <Badge tone={dashboard.status === "Active" ? "success" : dashboard.status === "Draft" ? "warning" : "neutral"}>{dashboard.status}</Badge>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {dashboard.widgets.slice(0, 4).map((widget) => <Badge key={widget} tone="neutral">{widget}</Badge>)}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Owner: {dashboard.owner} · Last viewed {new Date(dashboard.lastViewed).toLocaleDateString()}</p>
+    </article>
+  );
+}
+
+function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number }) {
+  return (
+    <article className="rounded-2xl border bg-panel p-4 shadow-line">
+      <div className="flex items-center justify-between gap-3">
+        <span className="rounded-xl bg-primary/10 p-2 text-primary">
+          <Icon aria-hidden="true" size={18} />
+        </span>
+        <Badge tone={tone}>Reports</Badge>
+      </div>
+      <p className="mt-4 text-2xl font-semibold">{value.toLocaleString()}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+    </article>
+  );
+}
+
+function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
+  return (
+    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
+  return (
+    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="monitor">ANALYTICS</Badge>
+            <Badge tone="accent">{route}</Badge>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+        {action}
+      </div>
+    </div>
+  );
+}
+
+function Timeline({ records }: { records: { badge: string; label: string; meta: string; tone: BadgeProps["tone"] }[] }) {
+  if (!records.length) {
+    return <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>;
+  }
+  return (
+    <div className="space-y-3">
+      {records.map((record, index) => (
+        <div className="flex gap-3 rounded-xl border bg-background p-3" key={`${record.label}-${index}`}>
+          <Badge tone={record.tone}>{record.badge}</Badge>
+          <div>
+            <p className="text-sm font-medium">{record.label}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">{record.meta}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BuilderPanel({ items, title }: { items: string[]; title: string }) {
+  return (
+    <Panel title={title}>
+      <div className="mb-3 flex items-center gap-2">
+        <Search aria-hidden="true" className="text-muted-foreground" size={15} />
+        <Input placeholder={`Search ${title.toLowerCase()}`} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <button className="rounded-full border bg-background px-3 py-1.5 text-sm transition hover:border-primary/40 hover:bg-primary/5" key={item} type="button">
+            {item}
+          </button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function ChipGrid({ items, title }: { items: string[]; title: string }) {
+  return (
+    <Panel title={title}>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => (
+          <div className="rounded-xl border bg-background p-3 text-sm" key={item}>{item}</div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function VisualizationGrid({ visualizations }: { visualizations: VisualizationType[] }) {
+  return (
+    <Panel title="Visualization Engine">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {visualizations.map((visualization) => (
+          <div className="rounded-xl border bg-background p-4" key={visualization}>
+            <div className="flex items-center gap-2">
+              {renderVisualizationIcon(visualization, "text-primary")}
+              <p className="text-sm font-semibold">{visualization}</p>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">Supports tooltips, drill-down, fullscreen, export image, and reusable dashboard widgets.</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function renderVisualizationIcon(visualization: VisualizationType, className?: string) {
+  const Icon = visualizationIcons[visualization];
+  return <Icon aria-hidden="true" className={className} size={18} />;
+}
