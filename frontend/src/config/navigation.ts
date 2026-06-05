@@ -38,6 +38,7 @@ export type NavigationDomain =
   | "PEOPLE"
   | "GOVERNANCE"
   | "SYSTEM"
+  | "PLATFORM"
   | "SUPPORT";
 
 export type ViewTone =
@@ -458,14 +459,14 @@ const legacyItems: NavigationItem[] = [
   {
     id: "platform",
     label: "Platform Console",
-    hint: "Tenant support",
+    hint: "Global platform control",
     description:
-      "Platform-only organization, support session, and tenant health tools. Canonically managed under Administration.",
-    route: "/administration/system-settings",
-    domain: "SYSTEM",
+      "Super Admin console for organizations, global users, role templates, feature flags, health, audit, security, integrations, backups, and platform settings.",
+    route: "/platform",
+    domain: "PLATFORM",
     icon: Landmark,
     tone: "platform",
-    allowedRoles: ["System Admin"],
+    allowedRoles: ["Super Admin"],
     hiddenFromSidebar: true,
     keywords: ["platform", "super admin", "tenant", "support"],
   },
@@ -628,9 +629,9 @@ export const navigationItems = [
 
 export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
   platform: {
-    step: "Manage platform",
+    step: "Manage platform console",
     outcome:
-      "Use platform-only tools for organizations, tenant support, service health, setup checks, and system operations.",
+      "Use the separate Super Admin console for tenant lifecycle, global identity support, feature flags, system health, audit, security, integrations, backups, and platform settings.",
     next: "administration",
     nextLabel: "Open administration",
   },
@@ -863,7 +864,7 @@ export function getDefaultWorkspaceView(
   principal?: CurrentPrincipal | null,
 ): WorkspaceView {
   if (principal?.platform_admin && !principal.support_mode) {
-    return "administration";
+    return "platform";
   }
 
   const firstVisible = getVisibleNavigationItems(principal).find(

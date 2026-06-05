@@ -69,3 +69,67 @@ class PlatformSettingsRead(BaseModel):
     jwt_secret_configured: bool
     redis_configured: bool
     kafka_configured: bool
+
+
+class PlatformRoleTemplateRead(BaseModel):
+    key: str
+    label: str
+    scope: str
+    protected: bool = False
+    status: str = "active"
+    permissions: list[str] = Field(default_factory=list)
+
+
+class PlatformFeatureFlagRead(BaseModel):
+    key: str
+    label: str
+    description: str
+    global_enabled: bool
+    rollout_percentage: int = 100
+    environment: str
+    organization_overrides: int = 0
+    updated_at: datetime | None = None
+
+
+class PlatformHealthServiceRead(BaseModel):
+    service: str
+    status: str
+    detail: str
+    response_time_ms: int | None = None
+
+
+class PlatformSystemHealthRead(BaseModel):
+    status: str
+    services: list[PlatformHealthServiceRead]
+
+
+class PlatformSecurityEventRead(BaseModel):
+    id: str
+    event_type: str
+    severity: str
+    actor: str
+    organization: str | None = None
+    ip_address: str | None = None
+    device: str | None = None
+    created_at: datetime
+    status: str = "open"
+
+
+class PlatformIntegrationRead(BaseModel):
+    key: str
+    name: str
+    provider_type: str
+    status: str
+    health: str
+    last_sync_at: datetime | None = None
+    secrets_visible: bool = False
+
+
+class PlatformBackupJobRead(BaseModel):
+    id: str
+    backup_type: str
+    status: str
+    size: str
+    created_at: datetime
+    retention: str
+    restore_requires_elevation: bool = True

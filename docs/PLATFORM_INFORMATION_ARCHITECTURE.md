@@ -19,6 +19,55 @@ Organization
 
 Forms are the field data collection instrument. Projects own the program context. Submissions are reviewed evidence. Indicators and reports are generated from approved, governed data.
 
+## Super Admin / Platform Console
+
+The Platform Console is a separate global Super Admin workspace. It is not part of the normal organization M&E app sidebar and must never be treated as an organization Administration screen.
+
+**Warning:** Any platform-wide or tenant-wide feature must be placed under `/platform` and protected by Super Admin permissions. Organization-level administration belongs under `/administration`.
+
+Purpose:
+
+- Manage Atlas FieldOps as a SaaS platform.
+- Manage organizations/tenants, global users, global role templates, feature flags, platform health, platform audit logs, security posture, integrations, backups, and global runtime settings.
+- Support organizations through explicit Support Access Mode with visible banner, time limit readiness, reason, revocation readiness, and immutable audit logging.
+
+Canonical routes:
+
+- `/platform`
+- `/platform/overview`
+- `/platform/organizations`
+- `/platform/users`
+- `/platform/roles`
+- `/platform/feature-flags`
+- `/platform/system-health`
+- `/platform/audit-logs`
+- `/platform/security`
+- `/platform/integrations`
+- `/platform/backups`
+- `/platform/settings`
+
+Role boundaries:
+
+- Super Admin / Platform Owner is global and can access `/platform` plus `/api/v1/platform/*`.
+- System Admin is organization-level and cannot access `/platform` or platform APIs.
+- M&E Manager, Data Manager, Supervisor, Field Officer, and Viewer/Donor cannot access `/platform` or platform APIs.
+- If a Super Admin also belongs to an organization, login must default to `/platform`; organization troubleshooting must happen through Support Access Mode.
+
+Security requirements:
+
+- Backend authorization must require the `super_admin` role for every `/api/v1/platform/*` endpoint.
+- Frontend hiding is not sufficient. Route guards and backend guards are both required.
+- Dangerous actions such as organization suspension, support access, session revocation, backup restore, maintenance mode, security setting changes, and role template changes require confirmation and a reason.
+- Platform audit logs are immutable and must include actor, timestamp, action, resource, organization/tenant if applicable, old/new values when relevant, IP/device where available, and reason for high-risk actions.
+- Secrets must never be displayed or logged.
+
+Future development checklist:
+
+- Check this section before adding platform management features.
+- Do not add platform-wide features under Administration, Governance, Users & Teams, or normal app dashboards.
+- Add redirects from legacy Super Admin routes to the canonical `/platform/*` route.
+- Keep support/impersonation explicit, time-bound, visible, revocable, and audited.
+
 ## Main Sidebar
 
 The sidebar is grouped by business domain. Do not create new top-level sidebar items without updating this document and `frontend/src/config/navigation.ts`.
@@ -41,6 +90,21 @@ The sidebar is grouped by business domain. Do not create new top-level sidebar i
 ## Route Naming Rules
 
 The production route model must use clean domain prefixes. The current web app is a single workspace under `/app`; new route work must migrate toward these canonical paths and preserve redirects from legacy workspace views.
+
+### Platform Console
+
+- `/platform`
+- `/platform/overview`
+- `/platform/organizations`
+- `/platform/users`
+- `/platform/roles`
+- `/platform/feature-flags`
+- `/platform/system-health`
+- `/platform/audit-logs`
+- `/platform/security`
+- `/platform/integrations`
+- `/platform/backups`
+- `/platform/settings`
 
 ### Dashboard
 
@@ -231,7 +295,8 @@ frontend/src/
 | Data quality checks, validation flags, duplicate checks | Analytics | Data Quality |
 | `OrganizationManagement`, `WorkforceGovernanceCenter` | People | Users & Teams |
 | `GovernanceCommandCenter`, `WorkflowManagement`, audit/approval controls | Governance | Governance |
-| `PlatformConsole`, global reference data, integrations, notifications, APIs | System | Administration |
+| `PlatformConsole`, tenant lifecycle, global users, platform feature flags, system health, platform audit/security, backups, platform settings | Platform | Platform Console |
+| Global reference data, organization-level integrations, notifications, APIs | System | Administration |
 | `ProductHelpCenter` | Shared support | Help content linked from shell, not a primary business module |
 
 ## Role Visibility Rules
@@ -240,7 +305,8 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 
 | Role | Visible modules |
 | --- | --- |
-| System Admin | Everything, including Administration and tenant/platform management. |
+| Super Admin / Platform Owner | Platform Console only by default; organization work only through explicit Support Access Mode. |
+| System Admin | Organization-level Dashboard, Projects, Forms, Field Operations, Submissions, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance, and Administration. No `/platform` access. |
 | M&E Manager | Dashboard, Projects, Forms, Field Operations, Submissions, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance. |
 | Data Manager | Forms, Submissions, Mapping, Indicators, Reports, Data Quality. |
 | Supervisor | Dashboard, Field Operations, Submissions, Mapping, Data Quality for assigned teams/locations. |
@@ -253,7 +319,8 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 - Reports contains formal outputs, scheduled reports, donor exports, report builders, and detailed dashboard artifacts.
 - Data Quality contains issue detection, investigation, quality scoring, duplicate/outlier workflows, GPS issues, validation failures, and quality rules.
 - Governance contains policies, audit trails, compliance, approval governance, consent, retention, data stewardship, and export controls.
-- Administration contains system-wide settings, global master data, integrations, APIs, notifications, backup/recovery, and platform configuration.
+- Platform Console contains SaaS platform ownership: organizations/tenants, global users, global role templates, feature flags, platform health, platform audit/security, platform-wide integrations, backups, and global runtime settings.
+- Administration contains organization/system configuration inside the normal app: location hierarchy, reference data, notification settings, API settings, integrations, system settings, backups, and recovery. It must not contain tenant lifecycle or Super Admin support controls.
 - Forms contains question design, form templates, validation, publishing, versioning, reference bindings, form-level permissions, workflow, data quality settings, and form governance.
 - Projects contains project setup, donor/program details, project teams, project locations, project assignments, project submissions, project reports, and project-level settings.
 - Mapping contains GIS visualization, boundaries, layers, GPS validation, coverage monitoring, and spatial analysis.
@@ -291,4 +358,3 @@ Before building or modifying a feature:
 10. Add or update tests for route guards, visibility, and critical workflows.
 11. Update product help content when the workflow changes.
 12. Run linting, type checks, tests, and a browser smoke test before shipping.
-

@@ -1,6 +1,7 @@
 import type { CurrentPrincipal } from "@/lib/api";
 
 export type PlatformRole =
+  | "Super Admin"
   | "System Admin"
   | "M&E Manager"
   | "Data Manager"
@@ -11,10 +12,12 @@ export type PlatformRole =
 const roleAliases: Record<string, PlatformRole> = {
   admin: "System Admin",
   administrator: "System Admin",
-  platform_admin: "System Admin",
-  platformadmin: "System Admin",
-  super_admin: "System Admin",
-  superadmin: "System Admin",
+  platform_admin: "Super Admin",
+  platformadmin: "Super Admin",
+  platform_owner: "Super Admin",
+  platformowner: "Super Admin",
+  super_admin: "Super Admin",
+  superadmin: "Super Admin",
   system_admin: "System Admin",
   systemadmin: "System Admin",
   me_manager: "M&E Manager",
@@ -49,7 +52,11 @@ export function normalizePlatformRoles(
     return [];
   }
 
-  if (principal.platform_admin) {
+  if (principal.platform_admin && !principal.support_mode) {
+    return ["Super Admin"];
+  }
+
+  if (principal.platform_admin && principal.support_mode) {
     return ["System Admin"];
   }
 
@@ -68,8 +75,8 @@ export function hasRoleAccess(
     return true;
   }
 
-  if (principal.platform_admin) {
-    return true;
+  if (principal.platform_admin && !principal.support_mode) {
+    return allowedRoles.includes("Super Admin");
   }
 
   const roles = normalizePlatformRoles(principal);
@@ -95,4 +102,3 @@ export function hasPermissionAccess(
   const permissions = new Set(principal.permissions ?? []);
   return requiredPermissions.every((permission) => permissions.has(permission));
 }
-

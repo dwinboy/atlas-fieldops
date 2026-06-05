@@ -25,9 +25,20 @@ function visibleLabels(principal: CurrentPrincipal): string[] {
 }
 
 describe("platform navigation architecture", () => {
-  it("shows every primary module to system admins and opens administration first", () => {
+  it("keeps Super Admin in the separate platform console by default", () => {
     const principal = makePrincipal({
       platform_admin: true,
+      roles: ["super_admin"],
+    });
+
+    expect(visibleLabels(principal)).toEqual([]);
+    expect(getDefaultWorkspaceView(principal)).toBe("platform");
+    expect(isWorkspaceViewAllowed("platform", principal)).toBe(true);
+    expect(isWorkspaceViewAllowed("administration", principal)).toBe(false);
+  });
+
+  it("shows every primary organization module to system admins and opens dashboard first", () => {
+    const principal = makePrincipal({
       roles: ["system_admin"],
     });
 
@@ -45,7 +56,8 @@ describe("platform navigation architecture", () => {
       "Governance",
       "Administration",
     ]);
-    expect(getDefaultWorkspaceView(principal)).toBe("administration");
+    expect(getDefaultWorkspaceView(principal)).toBe("dashboard");
+    expect(isWorkspaceViewAllowed("platform", principal)).toBe(false);
   });
 
   it("keeps field officers focused on assigned form work and own submissions", () => {
@@ -69,4 +81,3 @@ describe("platform navigation architecture", () => {
     expect(visibleLabels(principal)).toEqual(["Forms", "Administration"]);
   });
 });
-

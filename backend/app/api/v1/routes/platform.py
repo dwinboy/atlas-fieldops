@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -18,9 +19,16 @@ from app.repositories.identity import OrganizationRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.platform import (
     PlatformAuditLogRead,
+    PlatformBackupJobRead,
+    PlatformFeatureFlagRead,
+    PlatformHealthServiceRead,
+    PlatformIntegrationRead,
     PlatformOrganizationUsageRead,
+    PlatformRoleTemplateRead,
+    PlatformSecurityEventRead,
     PlatformSettingsRead,
     PlatformSummaryRead,
+    PlatformSystemHealthRead,
     PlatformUserRead,
 )
 
@@ -104,7 +112,6 @@ async def platform_users(
             Membership.deleted_at.is_(None),
             Role.deleted_at.is_(None),
             Organization.deleted_at.is_(None),
-            Role.name == "super_admin",
         )
         .order_by(User.email)
     )
@@ -123,6 +130,87 @@ async def platform_users(
             updated_at=user.updated_at,
         )
         for user, membership, role, organization in result.all()
+    ]
+
+
+@router.get("/roles", response_model=list[PlatformRoleTemplateRead], summary="List protected platform role templates")
+async def platform_roles(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformRoleTemplateRead]:
+    return [
+        PlatformRoleTemplateRead(key="super_admin", label="Super Admin", scope="global", protected=True, permissions=["platform.*"]),
+        PlatformRoleTemplateRead(key="owner", label="System Admin", scope="organization", protected=False, permissions=["organization.*", "users.*", "administration.*"]),
+        PlatformRoleTemplateRead(key="me_manager", label="M&E Manager", scope="organization", permissions=["projects.*", "forms.*", "field_operations.*", "reports.view"]),
+        PlatformRoleTemplateRead(key="data_manager", label="Data Manager", scope="project", permissions=["submissions.review", "data_quality.*", "reports.*"]),
+        PlatformRoleTemplateRead(key="supervisor", label="Supervisor", scope="location/team", permissions=["assignments.view", "submissions.review_assigned"]),
+        PlatformRoleTemplateRead(key="field_officer", label="Field Officer", scope="own records", permissions=["assignments.view_own", "submissions.create"]),
+        PlatformRoleTemplateRead(key="donor_viewer", label="Viewer/Donor", scope="approved aggregates", permissions=["reports.view_approved"]),
+    ]
+
+
+@router.get("/feature-flags", response_model=list[PlatformFeatureFlagRead], summary="List platform feature flags")
+async def platform_feature_flags(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformFeatureFlagRead]:
+    now = datetime.now(UTC)
+    return [
+        PlatformFeatureFlagRead(key="mapping", label="Mapping", description="GIS maps, boundaries, GPS validation, and spatial analysis.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="indicators", label="Indicators", description="Indicator library, targets, baselines, and results frameworks.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="reports", label="Reports", description="Standard, custom, scheduled, and donor reports.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="data_quality", label="Data Quality", description="Quality scoring, duplicate detection, risk alerts, and investigations.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="mobile_app", label="Mobile App", description="Offline mobile collection and sync workflows.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="ai_features", label="AI Features", description="AI-assisted review, scoring, fraud signals, and recommendations.", global_enabled=False, rollout_percentage=0, environment=settings.app_env, updated_at=now),
+    ]
+
+
+@router.get("/system-health", response_model=PlatformSystemHealthRead, summary="Read platform system health")
+async def platform_system_health(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> PlatformSystemHealthRead:
+    services = [
+        PlatformHealthServiceRead(service="API", status="healthy", detail="FastAPI service is responding.", response_time_ms=42),
+        PlatformHealthServiceRead(service="Database", status="healthy" if settings.database_url.strip() else "critical", detail="Database URL is configured." if settings.database_url.strip() else "Database URL is missing."),
+        PlatformHealthServiceRead(service="Storage", status="warning", detail="Storage provider health check is architecture-ready."),
+        PlatformHealthServiceRead(service="Queue", status="healthy" if settings.kafka_bootstrap_servers.strip() else "warning", detail="Kafka configured." if settings.kafka_bootstrap_servers.strip() else "Queue backend is not configured for this environment."),
+        PlatformHealthServiceRead(service="Email", status="warning", detail="Email provider connection test endpoint is pending."),
+        PlatformHealthServiceRead(service="Backups", status="warning", detail="Automated backup orchestration is architecture-ready."),
+    ]
+    status = "critical" if any(service.status == "critical" for service in services) else "warning" if any(service.status == "warning" for service in services) else "healthy"
+    return PlatformSystemHealthRead(status=status, services=services)
+
+
+@router.get("/security", response_model=list[PlatformSecurityEventRead], summary="List platform security events")
+async def platform_security_events(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformSecurityEventRead]:
+    now = datetime.now(UTC)
+    return [
+        PlatformSecurityEventRead(id="sec-session-policy", event_type="Session policy review", severity="medium", actor="System", organization=None, ip_address=None, device="Policy engine", created_at=now, status="monitoring"),
+        PlatformSecurityEventRead(id="sec-mfa-readiness", event_type="MFA readiness", severity="medium", actor="System", organization=None, ip_address=None, device="Identity service", created_at=now, status="open"),
+    ]
+
+
+@router.get("/integrations", response_model=list[PlatformIntegrationRead], summary="List platform-wide integrations")
+async def platform_integrations(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformIntegrationRead]:
+    return [
+        PlatformIntegrationRead(key="email", name="Email provider", provider_type="Email", status="not_connected", health="warning"),
+        PlatformIntegrationRead(key="sms", name="SMS provider", provider_type="SMS", status="future_ready", health="warning"),
+        PlatformIntegrationRead(key="storage", name="Object storage", provider_type="Storage", status="not_connected", health="warning"),
+        PlatformIntegrationRead(key="maps", name="Map provider", provider_type="GIS", status="configured", health="healthy"),
+        PlatformIntegrationRead(key="monitoring", name="Monitoring provider", provider_type="Observability", status="future_ready", health="warning"),
+    ]
+
+
+@router.get("/backups", response_model=list[PlatformBackupJobRead], summary="List platform backup jobs")
+async def platform_backups(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformBackupJobRead]:
+    now = datetime.now(UTC)
+    return [
+        PlatformBackupJobRead(id="backup-config-daily", backup_type="Configuration Backup", status="scheduled", size="Pending first run", created_at=now, retention="30 days"),
+        PlatformBackupJobRead(id="backup-database-daily", backup_type="Database Backup", status="architecture-ready", size="Provider managed", created_at=now, retention="90 days"),
     ]
 
 

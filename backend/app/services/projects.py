@@ -5,8 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import AuditLog
-from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission, Survey
-from app.models.operations import Beneficiary, DataQualitySignal, DonorReport, MonitoringIndicator, OperationalTeam, ProjectBudgetLine
+from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
+from app.models.operations import Beneficiary, DataQualitySignal, DonorReport, MonitoringIndicator, OperationalTeam
 from app.repositories.audit import AuditRepository
 from app.schemas.projects import (
     ProjectAuditEventRead,
@@ -308,4 +308,3 @@ class ProjectsService:
     @staticmethod
     def _optional_str(value: object) -> str | None:
         return None if value is None else str(value)
-

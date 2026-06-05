@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.administration import AdministrationApiKey, BackupJob, FeatureFlag, Integration, PlatformLocation, PlatformReferenceList, SystemSetting
+from app.models.administration import AdministrationApiKey, BackupJob, FeatureFlag, Integration, PlatformLocation
 from app.models.collection import Project
 from app.models.identity import Organization, User
 from app.repositories.administration import AdministrationRepository

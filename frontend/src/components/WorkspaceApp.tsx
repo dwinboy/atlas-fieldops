@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { LifeBuoy, RotateCcw } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -57,6 +58,7 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 export function WorkspaceApp() {
   const [token, setToken] = useState<string | null>(null);
   const activeView = useWorkspaceStore((state) => state.activeView);
+  const pathname = usePathname();
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const theme = useWorkspaceStore((state) => state.theme);
@@ -125,6 +127,9 @@ export function WorkspaceApp() {
   const isPlatformConsoleMode = Boolean(
     principalQuery.data?.platform_admin && !principalQuery.data.support_mode,
   );
+  const currentPath =
+    typeof window === "undefined" ? (pathname ?? "") : window.location.pathname;
+  const isPlatformRoute = currentPath.startsWith("/platform");
 
   useEffect(() => {
     if (!principalQuery.data) {
@@ -181,6 +186,10 @@ export function WorkspaceApp() {
     <PlatformConsole
       token={token}
       principal={principalQuery.data}
+      onSignOut={() => {
+        clearToken();
+        setToken(null);
+      }}
       onTokenChanged={(nextToken) => {
         setToken(nextToken);
         writeToken(nextToken);
@@ -198,6 +207,69 @@ export function WorkspaceApp() {
       <ModuleWorkspace actions={actions} item={item}>
         {child}
       </ModuleWorkspace>
+    );
+  }
+
+  if (isPlatformConsoleMode) {
+    return (
+      <>
+        {platformConsole}
+        <NotificationCenter />
+      </>
+    );
+  }
+
+  if (isPlatformRoute && (isPreviewToken || principalQuery.data)) {
+    return (
+      <>
+        <section className="flex min-h-screen items-center justify-center bg-background px-6">
+          <div className="max-w-lg rounded-lg border bg-panel p-6 text-center shadow-elevated">
+            <Badge tone="danger">Forbidden</Badge>
+            <h1 className="mt-3 text-xl font-semibold">
+              Platform Console requires Super Admin access
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Organization users, including organization System Admins, cannot
+              open `/platform` or platform-only tools. Use the normal app
+              workspace for organization administration.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {principalQuery.data?.platform_admin &&
+              principalQuery.data?.support_mode ? (
+                <Button
+                  disabled={returnSupportMutation.isPending}
+                  onClick={() => returnSupportMutation.mutate()}
+                  type="button"
+                  variant="primary"
+                >
+                  <RotateCcw aria-hidden="true" />
+                  Return to platform
+                </Button>
+              ) : null}
+              <Button
+                onClick={() => {
+                  window.location.href = "/app";
+                }}
+                type="button"
+                variant="secondary"
+              >
+                Open organization app
+              </Button>
+              <Button
+                onClick={() => {
+                  clearToken();
+                  setToken(null);
+                }}
+                type="button"
+                variant="ghost"
+              >
+                Sign out
+              </Button>
+            </div>
+          </div>
+        </section>
+        <NotificationCenter />
+      </>
     );
   }
 

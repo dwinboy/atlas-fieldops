@@ -124,6 +124,70 @@ export type PlatformSettingsRead = {
   kafka_configured: boolean;
 };
 
+export type PlatformRoleTemplateRead = {
+  key: string;
+  label: string;
+  scope: string;
+  protected: boolean;
+  status: string;
+  permissions: string[];
+};
+
+export type PlatformFeatureFlagRead = {
+  key: string;
+  label: string;
+  description: string;
+  global_enabled: boolean;
+  rollout_percentage: number;
+  environment: string;
+  organization_overrides: number;
+  updated_at?: string | null;
+};
+
+export type PlatformHealthServiceRead = {
+  service: string;
+  status: string;
+  detail: string;
+  response_time_ms?: number | null;
+};
+
+export type PlatformSystemHealthRead = {
+  status: string;
+  services: PlatformHealthServiceRead[];
+};
+
+export type PlatformSecurityEventRead = {
+  id: string;
+  event_type: string;
+  severity: string;
+  actor: string;
+  organization?: string | null;
+  ip_address?: string | null;
+  device?: string | null;
+  created_at: string;
+  status: string;
+};
+
+export type PlatformIntegrationRead = {
+  key: string;
+  name: string;
+  provider_type: string;
+  status: string;
+  health: string;
+  last_sync_at?: string | null;
+  secrets_visible: boolean;
+};
+
+export type PlatformBackupJobRead = {
+  id: string;
+  backup_type: string;
+  status: string;
+  size: string;
+  created_at: string;
+  retention: string;
+  restore_requires_elevation: boolean;
+};
+
 export type AdministrationSummaryRead = {
   organizations: number;
   countries: number;
@@ -1475,6 +1539,30 @@ export async function getPlatformSettings(token: string): Promise<PlatformSettin
   return request<PlatformSettingsRead>("/platform/settings", { token });
 }
 
+export async function listPlatformRoles(token: string): Promise<PlatformRoleTemplateRead[]> {
+  return request<PlatformRoleTemplateRead[]>("/platform/roles", { token });
+}
+
+export async function listPlatformFeatureFlags(token: string): Promise<PlatformFeatureFlagRead[]> {
+  return request<PlatformFeatureFlagRead[]>("/platform/feature-flags", { token });
+}
+
+export async function getPlatformSystemHealth(token: string): Promise<PlatformSystemHealthRead> {
+  return request<PlatformSystemHealthRead>("/platform/system-health", { token });
+}
+
+export async function listPlatformSecurityEvents(token: string): Promise<PlatformSecurityEventRead[]> {
+  return request<PlatformSecurityEventRead[]>("/platform/security", { token });
+}
+
+export async function listPlatformIntegrations(token: string): Promise<PlatformIntegrationRead[]> {
+  return request<PlatformIntegrationRead[]>("/platform/integrations", { token });
+}
+
+export async function listPlatformBackups(token: string): Promise<PlatformBackupJobRead[]> {
+  return request<PlatformBackupJobRead[]>("/platform/backups", { token });
+}
+
 export async function getAdministrationSummary(token: string): Promise<AdministrationSummaryRead> {
   return request<AdministrationSummaryRead>("/administration/summary", { token });
 }
@@ -2215,6 +2303,7 @@ export const api = {
   getHealth,
   getPlatformSettings,
   getPlatformSummary,
+  getPlatformSystemHealth,
   getProjectDetail,
   getProjectsSummary,
   getFormTemplate,
@@ -2262,6 +2351,11 @@ export const api = {
   listMasterDataEntries,
   listOperationalZones,
   listPlatformAuditLogs,
+  listPlatformBackups,
+  listPlatformFeatureFlags,
+  listPlatformIntegrations,
+  listPlatformRoles,
+  listPlatformSecurityEvents,
   listPrograms,
   listProjects,
   listProjectTemplates,

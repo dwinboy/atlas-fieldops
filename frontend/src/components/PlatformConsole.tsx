@@ -4,87 +4,118 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
+  Archive,
   Building2,
   CheckCircle2,
-  ClipboardCheck,
   Database,
   FileClock,
+  Flag,
+  HeartPulse,
   KeyRound,
   LifeBuoy,
   LockKeyhole,
+  LogOut,
+  PlugZap,
   Plus,
-  RadioTower,
+  RotateCcw,
   Search,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
   UserCog,
   UsersRound,
+  type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   createOrganization,
   createOrganizationSupportSession,
-  getHealth,
   getPlatformSettings,
   getPlatformSummary,
-  listPlatformOrganizations,
+  getPlatformSystemHealth,
   listPlatformAuditLogs,
-  listPlatformUsage,
+  listPlatformBackups,
+  listPlatformFeatureFlags,
+  listPlatformIntegrations,
+  listPlatformOrganizations,
+  listPlatformRoles,
+  listPlatformSecurityEvents,
   listPlatformUsers,
   updatePlatformOrganizationStatus,
-  type PlatformAuditLogRead,
-  type PlatformOrganizationUsageRead,
   type CurrentPrincipal,
+  type PlatformAuditLogRead,
+  type PlatformBackupJobRead,
+  type PlatformFeatureFlagRead,
+  type PlatformHealthServiceRead,
+  type PlatformIntegrationRead,
   type PlatformOrganizationRead,
+  type PlatformRoleTemplateRead,
+  type PlatformSecurityEventRead,
   type PlatformUserRead,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type PlatformConsoleProps = {
+  onSignOut?: () => void;
   onTokenChanged?: (token: string) => void;
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
 
 type PlatformSection =
-  | "dashboard"
+  | "overview"
   | "organizations"
-  | "support"
   | "users"
-  | "health"
-  | "audit"
-  | "usage"
-  | "settings"
-  | "onboarding";
+  | "roles"
+  | "feature-flags"
+  | "system-health"
+  | "audit-logs"
+  | "security"
+  | "integrations"
+  | "backups"
+  | "settings";
 
-type ActionLog = {
-  action: string;
-  detail: string;
-  time: string;
-};
-
-const sections: {
+type ConsoleSection = {
+  description: string;
+  icon: LucideIcon;
   id: PlatformSection;
   label: string;
-  icon: typeof Building2;
-}[] = [
-  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "organizations", label: "Organizations", icon: Building2 },
-  { id: "support", label: "Support sessions", icon: LifeBuoy },
-  { id: "users", label: "Platform users", icon: UserCog },
-  { id: "health", label: "System health", icon: RadioTower },
-  { id: "audit", label: "Audit logs", icon: FileClock },
-  { id: "usage", label: "Usage and plans", icon: Activity },
-  { id: "settings", label: "Settings", icon: Settings },
-  { id: "onboarding", label: "Onboarding", icon: ClipboardCheck },
+  route: string;
+};
+
+type DangerousAction =
+  | { kind: "suspend" | "reactivate"; organization: PlatformOrganizationRead }
+  | { kind: "support"; organization: PlatformOrganizationRead }
+  | { kind: "backup" | "maintenance" }
+  | null;
+
+const consoleSections: ConsoleSection[] = [
+  { id: "overview", label: "Platform Overview", route: "/platform/overview", icon: Activity, description: "Tenant health and platform readiness." },
+  { id: "organizations", label: "Organizations", route: "/platform/organizations", icon: Building2, description: "Tenant lifecycle and usage." },
+  { id: "users", label: "Global Users", route: "/platform/users", icon: UsersRound, description: "Cross-organization identity support." },
+  { id: "roles", label: "Global Roles", route: "/platform/roles", icon: UserCog, description: "Protected role templates." },
+  { id: "feature-flags", label: "Feature Flags", route: "/platform/feature-flags", icon: Flag, description: "Global and tenant feature controls." },
+  { id: "system-health", label: "System Health", route: "/platform/system-health", icon: HeartPulse, description: "API, database, jobs, and services." },
+  { id: "audit-logs", label: "Audit Logs", route: "/platform/audit-logs", icon: FileClock, description: "Immutable platform events." },
+  { id: "security", label: "Security", route: "/platform/security", icon: LockKeyhole, description: "Sessions, MFA, and risk events." },
+  { id: "integrations", label: "Integrations", route: "/platform/integrations", icon: PlugZap, description: "Platform-wide providers." },
+  { id: "backups", label: "Backups", route: "/platform/backups", icon: Database, description: "Backup jobs and restore points." },
+  { id: "settings", label: "Platform Settings", route: "/platform/settings", icon: Settings, description: "Safe global runtime settings." },
 ];
+
+function sectionFromPath(): PlatformSection {
+  if (typeof window === "undefined") return "overview";
+  const segment = window.location.pathname.split("/").filter(Boolean)[1];
+  return consoleSections.some((section) => section.id === segment)
+    ? (segment as PlatformSection)
+    : "overview";
+}
 
 function slugify(value: string): string {
   return value
@@ -94,294 +125,166 @@ function slugify(value: string): string {
     .slice(0, 48);
 }
 
-function formatTime(): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date());
+function statusTone(status: string): "success" | "warning" | "danger" | "neutral" | "platform" {
+  const normalized = status.toLowerCase();
+  if (["active", "healthy", "enabled", "configured", "success"].includes(normalized)) return "success";
+  if (["critical", "suspended", "failed", "locked"].includes(normalized)) return "danger";
+  if (["warning", "trial", "scheduled", "not_connected", "open"].includes(normalized)) return "warning";
+  return "neutral";
 }
 
-function SectionShell({
+function formatDate(value?: string | null): string {
+  if (!value) return "Not recorded";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function Panel({
   children,
   description,
   title,
 }: {
   children: React.ReactNode;
-  description: string;
+  description?: string;
   title: string;
 }) {
   return (
-    <section className="surface-premium rounded-2xl p-5">
+    <section className="surface-premium rounded-lg p-5">
       <div className="mb-4">
         <h2 className="text-base font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
+        {description ? (
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        ) : null}
       </div>
       {children}
     </section>
   );
 }
 
-function RequirementCard({
-  description,
-  status,
-  title,
+function StatCard({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  value,
 }: {
-  description: string;
-  status: string;
-  title: string;
+  icon: LucideIcon;
+  label: string;
+  tone?: "neutral" | "success" | "warning" | "danger" | "platform";
+  value: string;
 }) {
   return (
     <article className="rounded-lg border bg-panel p-4 shadow-line">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <Badge tone="warning">{status}</Badge>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+          <p className="mt-2 text-2xl font-semibold">{value}</p>
+        </div>
+        <span className="rounded-lg border bg-muted/40 p-2">
+          <Icon aria-hidden="true" size={18} />
+        </span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {description}
-      </p>
+      <div className="mt-3">
+        <Badge tone={tone}>{tone === "platform" ? "global" : tone}</Badge>
+      </div>
     </article>
   );
 }
 
+function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+      <p className="font-medium">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
 export function PlatformConsole({
+  onSignOut,
   onTokenChanged,
   principal,
   token,
 }: PlatformConsoleProps) {
-  const [activeSection, setActiveSection] =
-    useState<PlatformSection>("dashboard");
+  const [activeSection, setActiveSection] = useState<PlatformSection>("overview");
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizationSlugEdited, setOrganizationSlugEdited] = useState(false);
   const [ownerFullName, setOwnerFullName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("ChangeMe12345!");
-  const [platformResult, setPlatformResult] = useState("");
-  const [actionLog, setActionLog] = useState<ActionLog[]>([]);
+  const [dangerAction, setDangerAction] = useState<DangerousAction>(null);
+  const [dangerReason, setDangerReason] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
 
-  const organizationsQuery = useQuery({
-    queryKey: ["platform-console-organizations", token],
-    queryFn: () => listPlatformOrganizations(token ?? ""),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
+  useEffect(() => {
+    setActiveSection(sectionFromPath());
+  }, []);
 
-  const healthQuery = useQuery({
-    queryKey: ["platform-health"],
-    queryFn: getHealth,
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
+  const enabled = Boolean(token && principal?.platform_admin && !principal.support_mode);
+  const organizationsQuery = useQuery({ queryKey: ["platform-organizations", token], queryFn: () => listPlatformOrganizations(token ?? ""), enabled });
+  const summaryQuery = useQuery({ queryKey: ["platform-summary", token], queryFn: () => getPlatformSummary(token ?? ""), enabled });
+  const usersQuery = useQuery({ queryKey: ["platform-global-users", token], queryFn: () => listPlatformUsers(token ?? ""), enabled });
+  const auditQuery = useQuery({ queryKey: ["platform-audit-logs", token], queryFn: () => listPlatformAuditLogs(token ?? "", 100), enabled });
+  const settingsQuery = useQuery({ queryKey: ["platform-settings", token], queryFn: () => getPlatformSettings(token ?? ""), enabled });
+  const rolesQuery = useQuery({ queryKey: ["platform-roles", token], queryFn: () => listPlatformRoles(token ?? ""), enabled });
+  const flagsQuery = useQuery({ queryKey: ["platform-feature-flags", token], queryFn: () => listPlatformFeatureFlags(token ?? ""), enabled });
+  const healthQuery = useQuery({ queryKey: ["platform-system-health", token], queryFn: () => getPlatformSystemHealth(token ?? ""), enabled });
+  const securityQuery = useQuery({ queryKey: ["platform-security", token], queryFn: () => listPlatformSecurityEvents(token ?? ""), enabled });
+  const integrationsQuery = useQuery({ queryKey: ["platform-integrations", token], queryFn: () => listPlatformIntegrations(token ?? ""), enabled });
+  const backupsQuery = useQuery({ queryKey: ["platform-backups", token], queryFn: () => listPlatformBackups(token ?? ""), enabled });
 
-  const summaryQuery = useQuery({
-    queryKey: ["platform-summary", token],
-    queryFn: () => getPlatformSummary(token ?? ""),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
-
-  const platformUsersQuery = useQuery({
-    queryKey: ["platform-users", token],
-    queryFn: () => listPlatformUsers(token ?? ""),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
-
-  const auditLogsQuery = useQuery({
-    queryKey: ["platform-audit-logs", token],
-    queryFn: () => listPlatformAuditLogs(token ?? "", 50),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
-
-  const usageQuery = useQuery({
-    queryKey: ["platform-usage", token],
-    queryFn: () => listPlatformUsage(token ?? ""),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
-
-  const settingsQuery = useQuery({
-    queryKey: ["platform-settings", token],
-    queryFn: () => getPlatformSettings(token ?? ""),
-    enabled: Boolean(
-      token && principal?.platform_admin && !principal.support_mode,
-    ),
-  });
-
-  const organizations = organizationsQuery.data ?? [];
-  const platformUsers = platformUsersQuery.data ?? [];
-  const auditLogs = auditLogsQuery.data ?? [];
-  const usageRows = usageQuery.data ?? [];
-  const readinessSource = usageRows.length
-    ? usageRows
-    : organizations.map((organization) => ({
-        organization_id: organization.id,
-        organization_name: organization.name,
-        organization_slug: organization.slug,
-        is_active: organization.is_active,
-        user_count: organization.user_count,
-        owner_email: organization.owner_email,
-        form_count: 0,
-        submission_count: 0,
-        beneficiary_count: 0,
-        field_officer_count: 0,
-        import_job_count: 0,
-        export_job_count: 0,
-        audit_event_count: 0,
-      }));
-  const activeOrganizations =
-    summaryQuery.data?.active_organization_count ??
-    organizations.filter((organization) => organization.is_active).length;
-  const suspendedOrganizations =
-    summaryQuery.data?.inactive_organization_count ??
-    organizations.length - activeOrganizations;
-  const totalUsers =
-    summaryQuery.data?.tenant_user_count ??
-    organizations.reduce(
-      (sum, organization) => sum + organization.user_count,
-      0,
-    );
-  const organizationsWithoutOwner =
-    summaryQuery.data?.organizations_without_owner_count ??
-    organizations.filter((organization) => !organization.owner_email).length;
-  const platformAdminCount =
-    summaryQuery.data?.platform_admin_count ?? platformUsers.length;
-  const auditEventCount =
-    summaryQuery.data?.audit_event_count ?? auditLogs.length;
-  const setupAttentionCount =
-    suspendedOrganizations +
-    organizationsWithoutOwner +
-    (healthQuery.isError ? 1 : 0) +
-    (settingsQuery.data?.jwt_secret_configured === false ? 1 : 0);
-  const tenantReadinessRows = readinessSource
-    .map((row) => {
-      const issues = [
-        !row.is_active ? "Workspace inactive" : null,
-        !row.owner_email ? "Missing owner email" : null,
-        row.user_count === 0 ? "No users" : null,
-        row.field_officer_count === 0 ? "No field officers" : null,
-        row.form_count === 0 ? "No forms" : null,
-        row.beneficiary_count === 0 ? "No beneficiary data" : null,
-        row.submission_count === 0 ? "No submissions" : null,
-      ].filter(Boolean) as string[];
-      const readinessScore = Math.max(
-        0,
-        Math.round(((7 - issues.length) / 7) * 100),
-      );
-      return {
-        ...row,
-        issues,
-        readinessScore,
-        readinessStatus:
-          readinessScore >= 80
-            ? "Ready"
-            : readinessScore >= 45
-              ? "In progress"
-              : "Needs onboarding",
-      };
-    })
-    .sort((left, right) => left.readinessScore - right.readinessScore)
-    .slice(0, 5);
-  const currentOrigin =
-    typeof window === "undefined"
-      ? "Production frontend origin"
-      : window.location.origin;
-  const configuredApiUrl =
-    process.env.NEXT_PUBLIC_API_URL ??
-    "https://backend-production-13c9.up.railway.app";
-
-  const addActionLog = (action: string, detail: string) => {
-    setActionLog((rows) =>
-      [{ action, detail, time: formatTime() }, ...rows].slice(0, 8),
-    );
-  };
-
-  const organizationMutation = useMutation({
+  const createOrganizationMutation = useMutation({
     mutationFn: () =>
       createOrganization(token ?? "", {
-        name: organizationName,
-        slug: organizationSlug,
-        owner_email: ownerEmail,
-        owner_full_name: ownerFullName,
-        owner_password: ownerPassword,
+        name: organizationName.trim(),
+        slug: organizationSlug.trim(),
+        owner_email: ownerEmail.trim() || undefined,
+        owner_full_name: ownerFullName.trim() || undefined,
+        owner_password: ownerPassword.trim() || undefined,
       }),
     onSuccess: async (organization) => {
-      const message = `${organization.name} was created. Login slug: ${organization.slug}. Owner: ${organization.owner_email ?? ownerEmail}.`;
-      setPlatformResult(message);
-      addActionLog("Organization created", message);
       setOrganizationName("");
       setOrganizationSlug("");
       setOrganizationSlugEdited(false);
       setOwnerFullName("");
       setOwnerEmail("");
-      setOwnerPassword("ChangeMe12345!");
-      pushToast({
-        title: "Organization created",
-        description: `${organization.name} is ready for owner sign-in.`,
-        tone: "success",
-      });
       await organizationsQuery.refetch();
       await summaryQuery.refetch();
-      await auditLogsQuery.refetch();
-      await usageQuery.refetch();
+      pushToast({
+        title: "Organization created",
+        description: `${organization.name} is ready for first admin setup.`,
+        tone: "success",
+      });
     },
     onError: () => {
-      const message =
-        "Organization was not created. Confirm the slug is unique, owner details are valid, and your platform super admin session is active.";
-      setPlatformResult(message);
-      addActionLog("Organization create failed", message);
       pushToast({
         title: "Organization was not created",
-        description: "Check slug, owner details, and platform permissions.",
+        description: "Check the organization code, owner email, and Super Admin session.",
         tone: "danger",
       });
     },
   });
 
   const statusMutation = useMutation({
-    mutationFn: (payload: {
-      organization: PlatformOrganizationRead;
-      active: boolean;
-    }) =>
-      updatePlatformOrganizationStatus(
-        token ?? "",
-        payload.organization.id,
-        payload.active,
-      ),
+    mutationFn: ({ organization, isActive }: { organization: PlatformOrganizationRead; isActive: boolean }) =>
+      updatePlatformOrganizationStatus(token ?? "", organization.id, isActive),
     onSuccess: async (organization) => {
-      const message = `${organization.name} is now ${organization.is_active ? "active" : "inactive"}.`;
-      setPlatformResult(message);
-      addActionLog("Organization status changed", message);
-      pushToast({
-        title: organization.is_active
-          ? "Organization activated"
-          : "Organization deactivated",
-        description: `${organization.name} status was updated.`,
-        tone: organization.is_active ? "success" : "warning",
-      });
       await organizationsQuery.refetch();
       await summaryQuery.refetch();
-      await auditLogsQuery.refetch();
-      await usageQuery.refetch();
+      setDangerAction(null);
+      setDangerReason("");
+      pushToast({
+        title: organization.is_active ? "Organization reactivated" : "Organization suspended",
+        description: "The tenant lifecycle change was recorded for audit review.",
+        tone: organization.is_active ? "success" : "warning",
+      });
     },
     onError: () => {
-      const message =
-        "Organization status could not be changed. Confirm your platform session and try again.";
-      setPlatformResult(message);
-      addActionLog("Status change failed", message);
       pushToast({
-        title: "Status unchanged",
-        description: "The platform action failed.",
+        title: "Organization status was not changed",
+        description: "Confirm your Super Admin session and try again.",
         tone: "danger",
       });
     },
@@ -390,1095 +293,484 @@ export function PlatformConsole({
   const supportMutation = useMutation({
     mutationFn: (organization: PlatformOrganizationRead) =>
       createOrganizationSupportSession(token ?? "", organization.id),
-    onSuccess: (response, organization) => {
-      const message = `Support session opened for ${organization.name}. You are now viewing tenant data as platform support.`;
-      setPlatformResult(message);
-      addActionLog("Support session opened", message);
-      pushToast({
-        title: "Support session opened",
-        description: `Now viewing ${organization.name}`,
-        tone: "success",
-      });
-      void auditLogsQuery.refetch();
+    onSuccess: (response) => {
+      setDangerAction(null);
+      setDangerReason("");
       onTokenChanged?.(response.access_token);
+      pushToast({
+        title: "Support access started",
+        description: "You are entering tenant support mode with a visible support banner.",
+        tone: "warning",
+      });
     },
     onError: () => {
-      const message =
-        "Support session could not be opened. Confirm the tenant exists and your super admin session is active.";
-      setPlatformResult(message);
-      addActionLog("Support session failed", message);
       pushToast({
-        title: "Support session failed",
-        description: "Could not open this organization.",
+        title: "Support access was blocked",
+        description: "Confirm the organization is active and your Super Admin session is valid.",
         tone: "danger",
       });
     },
   });
 
-  const columns = useMemo<TableColumn<PlatformOrganizationRead>[]>(
+  const activeDefinition = consoleSections.find((section) => section.id === activeSection) ?? consoleSections[0];
+  const organizations = organizationsQuery.data ?? [];
+  const users = usersQuery.data ?? [];
+  const auditLogs = auditQuery.data ?? [];
+  const flags = flagsQuery.data ?? [];
+  const roles = rolesQuery.data ?? [];
+  const services = healthQuery.data?.services ?? [];
+  const securityEvents = securityQuery.data ?? [];
+  const integrations = integrationsQuery.data ?? [];
+  const backups = backupsQuery.data ?? [];
+
+  const platformCards = [
+    { label: "Organizations", value: String(summaryQuery.data?.organization_count ?? organizations.length), icon: Building2, tone: "platform" as const },
+    { label: "Active Organizations", value: String(summaryQuery.data?.active_organization_count ?? organizations.filter((item) => item.is_active).length), icon: CheckCircle2, tone: "success" as const },
+    { label: "Global Users", value: String(summaryQuery.data?.tenant_user_count ?? users.length), icon: UsersRound, tone: "neutral" as const },
+    { label: "Platform Admins", value: String(summaryQuery.data?.platform_admin_count ?? users.filter((user) => user.role_name === "super_admin").length), icon: ShieldCheck, tone: "platform" as const },
+    { label: "Feature Flags", value: String(flags.length), icon: Flag, tone: "neutral" as const },
+    { label: "System Health", value: healthQuery.data?.status ?? "checking", icon: HeartPulse, tone: statusTone(healthQuery.data?.status ?? "warning") },
+    { label: "Backups", value: String(backups.length), icon: Database, tone: "warning" as const },
+    { label: "Audit Events", value: String(summaryQuery.data?.audit_event_count ?? auditLogs.length), icon: FileClock, tone: "neutral" as const },
+  ];
+
+  const organizationColumns = useMemo<TableColumn<PlatformOrganizationRead>[]>(
     () => [
       {
-        key: "organization",
+        key: "name",
         header: "Organization",
-        value: (organization) => `${organization.name} ${organization.slug}`,
-        render: (organization) => (
+        value: (row) => row.name,
+        render: (row) => (
           <div>
-            <p className="font-medium">{organization.name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {organization.slug}
-            </p>
+            <p className="font-medium">{row.name}</p>
+            <p className="text-xs text-muted-foreground">{row.slug.toUpperCase()}</p>
           </div>
         ),
       },
-      {
-        key: "owner",
-        header: "Owner",
-        value: (organization) => organization.owner_email ?? "",
-        render: (organization) =>
-          organization.owner_email ?? (
-            <span className="text-warning">Owner setup needed</span>
-          ),
-      },
-      {
-        key: "users",
-        align: "right",
-        header: "Users",
-        value: (organization) => String(organization.user_count),
-        render: (organization) => organization.user_count.toLocaleString(),
-      },
-      {
-        key: "status",
-        header: "Status",
-        value: (organization) =>
-          organization.is_active ? "active" : "inactive",
-        render: (organization) => (
-          <Badge tone={organization.is_active ? "success" : "warning"}>
-            {organization.is_active ? "Active" : "Inactive"}
-          </Badge>
-        ),
-      },
+      { key: "status", header: "Status", value: (row) => (row.is_active ? "active" : "suspended"), render: (row) => <Badge tone={row.is_active ? "success" : "danger"}>{row.is_active ? "Active" : "Suspended"}</Badge> },
+      { key: "owner", header: "First admin", value: (row) => row.owner_email ?? "", render: (row) => row.owner_email ?? "Not assigned" },
+      { key: "usage", header: "Usage", value: (row) => String(row.user_count), render: (row) => `${row.user_count} users` },
       {
         key: "actions",
         header: "Actions",
-        value: (organization) => organization.id,
-        render: (organization) => (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={supportMutation.isPending}
-              onClick={() => supportMutation.mutate(organization)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <LifeBuoy aria-hidden="true" />
-              Open support
-            </Button>
-            <Button
-              disabled={statusMutation.isPending}
-              onClick={() =>
-                statusMutation.mutate({
-                  organization,
-                  active: !organization.is_active,
-                })
-              }
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {organization.is_active ? "Deactivate" : "Activate"}
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    [statusMutation, supportMutation],
-  );
-
-  const platformUserColumns = useMemo<TableColumn<PlatformUserRead>[]>(
-    () => [
-      {
-        key: "user",
-        header: "Platform user",
-        value: (user) => `${user.full_name} ${user.email}`,
-        render: (user) => (
-          <div>
-            <p className="font-medium">{user.full_name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{user.email}</p>
-          </div>
-        ),
-      },
-      {
-        key: "role",
-        header: "Role",
-        value: (user) => user.role_name,
-        render: (user) => (
-          <Badge tone="accent">{user.role_name.replaceAll("_", " ")}</Badge>
-        ),
-      },
-      {
-        key: "home",
-        header: "Home organization",
-        value: (user) => `${user.organization_name} ${user.organization_slug}`,
-        render: (user) => (
-          <div>
-            <p>{user.organization_name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {user.organization_slug}
-            </p>
-          </div>
-        ),
-      },
-      {
-        key: "status",
-        header: "Status",
-        value: (user) =>
-          user.is_active && user.membership_active ? "active" : "inactive",
-        render: (user) => (
-          <Badge
-            tone={
-              user.is_active && user.membership_active ? "success" : "warning"
-            }
-          >
-            {user.is_active && user.membership_active ? "Active" : "Inactive"}
-          </Badge>
-        ),
-      },
-    ],
-    [],
-  );
-
-  const usageColumns = useMemo<TableColumn<PlatformOrganizationUsageRead>[]>(
-    () => [
-      {
-        key: "organization",
-        header: "Organization",
-        value: (row) => `${row.organization_name} ${row.organization_slug}`,
+        align: "right",
         render: (row) => (
-          <div>
-            <p className="font-medium">{row.organization_name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {row.organization_slug}
-            </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setDangerAction({ kind: "support", organization: row })}>
+              <LifeBuoy aria-hidden="true" />
+              Support
+            </Button>
+            <Button size="sm" variant={row.is_active ? "danger" : "primary"} onClick={() => setDangerAction({ kind: row.is_active ? "suspend" : "reactivate", organization: row })}>
+              {row.is_active ? <Archive aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+              {row.is_active ? "Suspend" : "Reactivate"}
+            </Button>
           </div>
         ),
-      },
-      {
-        key: "users",
-        align: "right",
-        header: "Users",
-        value: (row) => String(row.user_count),
-        render: (row) => row.user_count.toLocaleString(),
-      },
-      {
-        key: "forms",
-        align: "right",
-        header: "Forms",
-        value: (row) => String(row.form_count),
-        render: (row) => row.form_count.toLocaleString(),
-      },
-      {
-        key: "submissions",
-        align: "right",
-        header: "Submissions",
-        value: (row) => String(row.submission_count),
-        render: (row) => row.submission_count.toLocaleString(),
-      },
-      {
-        key: "imports",
-        align: "right",
-        header: "Imports",
-        value: (row) => String(row.import_job_count),
-        render: (row) => row.import_job_count.toLocaleString(),
-      },
-      {
-        key: "audit",
-        align: "right",
-        header: "Audit events",
-        value: (row) => String(row.audit_event_count),
-        render: (row) => row.audit_event_count.toLocaleString(),
       },
     ],
     [],
   );
 
-  const metricCards = [
-    [
-      "Organizations",
-      organizations.length.toLocaleString(),
-      Building2,
-      "All tenant workspaces",
+  const userColumns = useMemo<TableColumn<PlatformUserRead>[]>(
+    () => [
+      { key: "user", header: "User", value: (row) => `${row.full_name} ${row.email}`, render: (row) => <div><p className="font-medium">{row.full_name}</p><p className="text-xs text-muted-foreground">{row.email}</p></div> },
+      { key: "organization", header: "Organization", value: (row) => row.organization_name, render: (row) => row.organization_name },
+      { key: "role", header: "Role", value: (row) => row.role_name, render: (row) => <Badge tone={row.role_name === "super_admin" ? "platform" : "neutral"}>{row.role_name}</Badge> },
+      { key: "status", header: "Status", value: (row) => String(row.is_active && row.membership_active), render: (row) => <Badge tone={row.is_active && row.membership_active ? "success" : "danger"}>{row.is_active && row.membership_active ? "Active" : "Locked"}</Badge> },
+      { key: "updated", header: "Updated", value: (row) => row.updated_at, render: (row) => formatDate(row.updated_at) },
     ],
-    [
-      "Active",
-      activeOrganizations.toLocaleString(),
-      CheckCircle2,
-      "Can sign in",
-    ],
-    [
-      "Suspended",
-      suspendedOrganizations.toLocaleString(),
-      LockKeyhole,
-      "Temporarily disabled",
-    ],
-    [
-      "Tenant users",
-      totalUsers.toLocaleString(),
-      UsersRound,
-      "Across organizations",
-    ],
-    [
-      "Platform admins",
-      platformAdminCount.toLocaleString(),
-      UserCog,
-      "Operator accounts",
-    ],
-    [
-      "Audit events",
-      auditEventCount.toLocaleString(),
-      FileClock,
-      "Recent governance history",
-    ],
-    [
-      "Needs attention",
-      setupAttentionCount.toLocaleString(),
-      Activity,
-      "Owner/status/health",
-    ],
-  ] as const;
+    [],
+  );
 
-  const organizationForm = (
-    <form
-      className="grid gap-3 lg:grid-cols-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        organizationMutation.mutate();
-      }}
-    >
-      <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          Organization name
-        </span>
-        <Input
-          onChange={(event) => {
-            const nextName = event.target.value;
-            setOrganizationName(nextName);
-            if (!organizationSlugEdited) {
-              setOrganizationSlug(slugify(nextName));
-            }
-          }}
-          placeholder="North District Health Program"
-          required
-          value={organizationName}
-        />
-      </label>
-      <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          Login slug
-        </span>
-        <Input
-          onChange={(event) => {
+  const auditColumns = useMemo<TableColumn<PlatformAuditLogRead>[]>(
+    () => [
+      { key: "time", header: "Time", value: (row) => row.created_at, render: (row) => formatDate(row.created_at) },
+      { key: "action", header: "Action", value: (row) => row.action, render: (row) => <span className="font-medium">{row.action}</span> },
+      { key: "actor", header: "Actor", value: (row) => row.actor_email ?? "", render: (row) => row.actor_email ?? "System" },
+      { key: "organization", header: "Organization", value: (row) => row.organization_name ?? "", render: (row) => row.organization_name ?? "Platform" },
+      { key: "resource", header: "Resource", value: (row) => row.resource_type, render: (row) => `${row.resource_type} / ${row.resource_id}` },
+    ],
+    [],
+  );
+
+  const renderOverview = () => (
+    <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {platformCards.map((card) => <StatCard key={card.label} {...card} />)}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel title="Platform health" description="A Super Admin should know immediately whether the platform is configured and operating correctly.">
+          <div className="grid gap-3 md:grid-cols-2">
+            {services.slice(0, 6).map((service) => <ServiceCard key={service.service} service={service} />)}
+          </div>
+        </Panel>
+        <Panel title="Recent configuration changes" description="Immutable audit events from platform and tenant support actions.">
+          <div className="space-y-3">
+            {auditLogs.slice(0, 6).map((log) => (
+              <div className="rounded-lg border bg-panel p-3" key={log.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium">{log.action}</p>
+                  <span className="text-xs text-muted-foreground">{formatDate(log.created_at)}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{log.actor_email ?? "System"} · {log.organization_name ?? "Platform"}</p>
+              </div>
+            ))}
+            {!auditLogs.length ? <EmptyState title="No audit events yet" detail="Platform organization, support, security, and backup actions will appear here." /> : null}
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+
+  const renderOrganizations = () => (
+    <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+      <Panel title="Create organization" description="Provision a tenant shell and first organization admin.">
+        <form className="space-y-3" onSubmit={(event) => {
+          event.preventDefault();
+          createOrganizationMutation.mutate();
+        }}>
+          <Input placeholder="Organization name" value={organizationName} onChange={(event) => {
+            setOrganizationName(event.target.value);
+            if (!organizationSlugEdited) setOrganizationSlug(slugify(event.target.value));
+          }} required />
+          <Input placeholder="Organization code" value={organizationSlug} onChange={(event) => {
             setOrganizationSlugEdited(true);
             setOrganizationSlug(slugify(event.target.value));
-          }}
-          placeholder="north-health"
-          required
-          value={organizationSlug}
-        />
-      </label>
-      <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          Owner full name
-        </span>
-        <Input
-          onChange={(event) => setOwnerFullName(event.target.value)}
-          placeholder="Amina Bello"
-          required
-          value={ownerFullName}
-        />
-      </label>
-      <label className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          Owner email
-        </span>
-        <Input
-          onChange={(event) => setOwnerEmail(event.target.value)}
-          placeholder="owner@example.org"
-          required
-          type="email"
-          value={ownerEmail}
-        />
-      </label>
-      <label className="space-y-1.5 lg:col-span-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          Temporary password
-        </span>
-        <Input
-          minLength={10}
-          onChange={(event) => setOwnerPassword(event.target.value)}
-          required
-          type="text"
-          value={ownerPassword}
-        />
-      </label>
-      <div className="flex flex-wrap gap-2 lg:col-span-2">
-        <Button
-          disabled={organizationMutation.isPending}
-          type="submit"
-          variant="primary"
-        >
-          <Plus aria-hidden="true" />
-          Create organization
-        </Button>
-        <Button
-          onClick={() => {
-            setOrganizationSlugEdited(false);
-            setOrganizationSlug(slugify(organizationName));
-          }}
-          type="button"
-          variant="secondary"
-        >
-          Generate slug
-        </Button>
-      </div>
-    </form>
+          }} required />
+          <Input placeholder="First admin full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} />
+          <Input placeholder="First admin email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} />
+          <Input placeholder="Temporary password" type="password" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} />
+          <Button className="w-full" disabled={createOrganizationMutation.isPending || !organizationName.trim() || !organizationSlug.trim()} type="submit" variant="primary">
+            <Plus aria-hidden="true" />
+            Create organization
+          </Button>
+        </form>
+      </Panel>
+      <DataTable columns={organizationColumns} emptyLabel={organizationsQuery.isFetching ? "Loading organizations..." : "No organizations found"} rows={organizations} searchLabel="Search organizations" title="Organizations" />
+    </div>
   );
 
-  return (
-    <section aria-labelledby="platform-console-title" className="space-y-5">
-      <div className="surface-premium rounded-2xl p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Platform owner
-            </p>
-            <h1
-              id="platform-console-title"
-              className="mt-2 text-2xl font-semibold tracking-tight"
-            >
-              Platform console
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Manage Atlas FieldOps as the platform operator. Create
-              organizations, control tenant status, enter support sessions,
-              review readiness, and keep platform work separate from tenant
-              work.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="accent">{principal?.email ?? "Platform admin"}</Badge>
-            <Badge tone="success">Operator account</Badge>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-        {metricCards.map(([label, value, Icon, detail]) => (
-          <article
-            className="rounded-lg border bg-panel p-4 shadow-line"
-            key={label}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <Icon
-                aria-hidden="true"
-                className="text-muted-foreground"
-                size={17}
-              />
+  const renderRoles = () => (
+    <Panel title="Global role templates" description="Super Admin is a protected global template. System Admin and business roles are organization-level templates.">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {roles.map((role: PlatformRoleTemplateRead) => (
+          <article className="rounded-lg border bg-panel p-4 shadow-line" key={role.key}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{role.label}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{role.scope}</p>
+              </div>
+              <Badge tone={role.protected ? "platform" : "neutral"}>{role.protected ? "Protected" : role.status}</Badge>
             </div>
-            <p className="mt-3 text-2xl font-semibold tracking-tight">
-              {value}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+            <p className="mt-3 text-sm text-muted-foreground">{role.permissions.join(", ")}</p>
           </article>
         ))}
       </div>
+    </Panel>
+  );
 
-      <nav
-        className="flex gap-2 overflow-x-auto rounded-2xl border bg-panel p-2 shadow-line"
-        aria-label="Platform console sections"
-      >
-        {sections.map((section) => {
-          const Icon = section.icon;
-          return (
-            <Button
-              className="justify-start whitespace-nowrap"
-              key={section.id}
-              onClick={() => setActiveSection(section.id)}
-              size="sm"
-              type="button"
-              variant={activeSection === section.id ? "primary" : "ghost"}
-            >
-              <Icon aria-hidden="true" />
-              {section.label}
-            </Button>
-          );
-        })}
-      </nav>
-
-      {platformResult ? (
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <p className="text-sm font-medium text-primary">
-            Latest platform action
-          </p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            {platformResult}
-          </p>
-        </div>
-      ) : null}
-
-      {activeSection === "dashboard" ? (
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <SectionShell
-            title="Operator overview"
-            description="Use this view at the start of a support or onboarding session. It shows tenant count, account status, production health, and the actions that need an operator decision."
-          >
-            <div className="grid gap-3 md:grid-cols-3">
-              {[
-                [
-                  "Account boundary",
-                  "Platform account",
-                  "You are managing Atlas FieldOps, not operating as a tenant user.",
-                ],
-                [
-                  "Production API",
-                  healthQuery.data?.status === "ok"
-                    ? "Online"
-                    : healthQuery.isError
-                      ? "Check required"
-                      : "Checking",
-                  configuredApiUrl,
-                ],
-                [
-                  "JWT secret",
-                  settingsQuery.data?.jwt_secret_configured
-                    ? "Configured"
-                    : settingsQuery.data
-                      ? "Missing"
-                      : "Checking",
-                  "Railway must provide JWT_SECRET with at least 32 characters.",
-                ],
-                [
-                  "Frontend origin",
-                  currentOrigin,
-                  "This origin must be present in backend CORS settings.",
-                ],
-              ].map(([title, value, detail]) => (
-                <article
-                  className="rounded-lg border bg-panel p-4 shadow-line"
-                  key={title}
-                >
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    {title}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold">{value}</p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {detail}
-                  </p>
-                </article>
-              ))}
-            </div>
-            <div className="mt-4 rounded-lg border bg-muted/35 p-4">
-              <h3 className="text-sm font-semibold">Operator priorities</h3>
-              <div className="mt-3 grid gap-2 text-sm text-muted-foreground">
-                {[
-                  "Create tenant organizations only from verified customer or program requests.",
-                  "Use support mode only when investigating a tenant issue, then return to platform console.",
-                  "Deactivate an organization only when access must be paused for security, contract, or operational reasons.",
-                  "Use session audit and usage telemetry requirements to guide the next backend hardening pass.",
-                ].map((item) => (
-                  <div className="flex gap-2" key={item}>
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="mt-0.5 text-success"
-                      size={16}
-                    />
-                    <span>{item}</span>
-                  </div>
-                ))}
+  const renderFlags = () => (
+    <Panel title="Feature flags" description="Use global defaults with future organization overrides. Every change must be audited.">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {flags.map((flag: PlatformFeatureFlagRead) => (
+          <article className="rounded-lg border bg-panel p-4" key={flag.key}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{flag.label}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{flag.description}</p>
               </div>
+              <Badge tone={flag.global_enabled ? "success" : "neutral"}>{flag.global_enabled ? "Enabled" : "Disabled"}</Badge>
             </div>
-          </SectionShell>
-
-          <SectionShell
-            title="Tenant readiness watchlist"
-            description="Identify organizations that need setup support before they can collect, review, and report reliable data."
-          >
-            {tenantReadinessRows.length ? (
-              <div className="space-y-3">
-                {tenantReadinessRows.map((organization) => (
-                  <article
-                    className="rounded-lg border bg-panel p-4 shadow-line"
-                    key={organization.organization_id}
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold">
-                            {organization.organization_name}
-                          </h3>
-                          <Badge
-                            tone={
-                              organization.readinessScore >= 80
-                                ? "success"
-                                : organization.readinessScore >= 45
-                                  ? "warning"
-                                  : "danger"
-                            }
-                          >
-                            {organization.readinessStatus}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {organization.organization_slug} ·{" "}
-                          {organization.readinessScore}% ready
-                        </p>
-                      </div>
-                      <Button
-                        onClick={() => setActiveSection("support")}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        <LifeBuoy aria-hidden="true" />
-                        Support
-                      </Button>
-                    </div>
-                    <div className="mt-3 h-2 rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${organization.readinessScore}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {organization.issues.length ? (
-                        organization.issues.slice(0, 4).map((issue) => (
-                          <Badge key={issue} tone="neutral">
-                            {issue}
-                          </Badge>
-                        ))
-                      ) : (
-                        <Badge tone="success">No blocking setup issues</Badge>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed bg-muted/20 p-5 text-sm leading-6 text-muted-foreground">
-                Usage data will appear here after organizations are created and
-                the backend returns tenant activity. Use Onboarding to create
-                the first tenant.
-              </div>
-            )}
-          </SectionShell>
-
-          <SectionShell
-            title="Current session audit"
-            description="Recent platform actions from this browser session. Persistent audit history needs the platform audit endpoint listed below."
-          >
-            <div className="space-y-3">
-              {actionLog.length ? (
-                actionLog.map((item) => (
-                  <article
-                    className="rounded-lg border bg-panel p-3"
-                    key={`${item.time}-${item.action}-${item.detail}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium">{item.action}</p>
-                      <span className="text-xs text-muted-foreground">
-                        {item.time}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {item.detail}
-                    </p>
-                  </article>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm leading-6 text-muted-foreground">
-                  No platform actions in this browser session yet. Create an
-                  organization, change status, or open support to see immediate
-                  operator history.
-                </p>
-              )}
+            <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              <span>Env: {flag.environment}</span>
+              <span>Rollout: {flag.rollout_percentage}%</span>
+              <span>Overrides: {flag.organization_overrides}</span>
             </div>
-          </SectionShell>
-        </section>
-      ) : null}
-
-      {activeSection === "organizations" ? (
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <DataTable
-            columns={columns}
-            emptyLabel="No organizations yet"
-            rows={organizations}
-            searchLabel="Search organizations"
-            title="Platform organizations"
-          />
-          <SectionShell
-            title="Create organization"
-            description="Create a tenant workspace and its first organization owner. Give the owner the slug, email, and temporary password after creation."
-          >
-            {organizationForm}
-          </SectionShell>
-        </section>
-      ) : null}
-
-      {activeSection === "support" ? (
-        <SectionShell
-          title="Tenant support sessions"
-          description="Open a support session only when a tenant needs help. The platform token changes into support mode, the tenant workspace opens, and a support banner helps you return to platform control."
-        >
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {organizations.map((organization) => (
-              <article
-                className="rounded-lg border bg-panel p-4 shadow-line"
-                key={organization.id}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">
-                      {organization.name}
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {organization.slug}
-                    </p>
-                  </div>
-                  <Badge tone={organization.is_active ? "success" : "warning"}>
-                    {organization.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Owner: {organization.owner_email ?? "Owner not assigned"} ·
-                  Users: {organization.user_count.toLocaleString()}
-                </p>
-                <Button
-                  className="mt-4 w-full"
-                  disabled={supportMutation.isPending}
-                  onClick={() => supportMutation.mutate(organization)}
-                  type="button"
-                >
-                  <LifeBuoy aria-hidden="true" />
-                  Open support mode
-                </Button>
-              </article>
-            ))}
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "users" ? (
-        <SectionShell
-          title="Platform users and admins"
-          description="Platform users are different from tenant users. They manage the Atlas FieldOps platform, enter support sessions, and resolve operational issues across organizations."
-        >
-          <div className="grid gap-4">
-            <DataTable
-              columns={platformUserColumns}
-              emptyLabel={
-                platformUsersQuery.isFetching
-                  ? "Loading platform admins..."
-                  : "No platform admins found"
-              }
-              rows={platformUsers}
-              searchLabel="Search platform admins"
-              title="Platform administrator accounts"
-            />
-            <div className="grid gap-3 lg:grid-cols-2">
-              <article className="rounded-lg border bg-panel p-4 shadow-line">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">
-                      {principal?.full_name ??
-                        principal?.email ??
-                        "Current platform admin"}
-                    </h3>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {principal?.email ?? "Signed-in operator"}
-                    </p>
-                  </div>
-                  <Badge tone="accent">Current session</Badge>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  This account can create organizations, activate or deactivate
-                  tenants, and open support sessions. It should not be used for
-                  routine tenant data entry.
-                </p>
-              </article>
-              <RequirementCard
-                title="Invite and remove platform admins"
-                status="Controlled backend action"
-                description="The console can now list platform admins. The next control should add audited invite, deactivate, role assignment, MFA status, and last sign-in fields before admin creation is exposed."
-              />
-            </div>
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "health" ? (
-        <SectionShell
-          title="System health and diagnostics"
-          description="Confirm whether the frontend, backend API, database connection, and environment setup are ready before investigating tenant issues."
-        >
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {[
-              [
-                "Backend API",
-                healthQuery.data?.status === "ok"
-                  ? "Online"
-                  : healthQuery.isError
-                    ? "Needs review"
-                    : "Checking",
-                healthQuery.data?.status === "ok"
-                  ? "success"
-                  : healthQuery.isError
-                    ? "danger"
-                    : "warning",
-                configuredApiUrl,
-              ],
-              [
-                "Database",
-                healthQuery.data?.status === "ok" ? "Reachable" : "Unknown",
-                healthQuery.data?.status === "ok" ? "success" : "warning",
-                "Health route confirms API readiness. Add deep DB check for stronger diagnostics.",
-              ],
-              [
-                "CORS origin",
-                currentOrigin,
-                "accent",
-                "Railway BACKEND_CORS_ORIGINS must include this origin exactly.",
-              ],
-              [
-                "Kafka events",
-                "Optional",
-                "warning",
-                "Startup warnings are acceptable when Kafka is not provisioned; event publishing is disabled gracefully.",
-              ],
-            ].map(([label, value, tone, detail]) => (
-              <article
-                className="rounded-lg border bg-panel p-4 shadow-line"
-                key={label}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-sm font-semibold">{label}</h3>
-                  <Badge
-                    tone={tone as "success" | "warning" | "danger" | "accent"}
-                  >
-                    {value}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  {detail}
-                </p>
-              </article>
-            ))}
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "audit" ? (
-        <SectionShell
-          title="Platform audit logs"
-          description="Platform audit history should show who created organizations, changed tenant status, opened support, reset access, imported users, and exported data."
-        >
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="space-y-3">
-              {auditLogs.length ? (
-                auditLogs.map((item: PlatformAuditLogRead) => (
-                  <article
-                    className="rounded-lg border bg-panel p-4 shadow-line"
-                    key={item.id}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold">
-                        {item.action.replaceAll("_", " ")}
-                      </p>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(item.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {item.organization_name ?? "Unknown organization"} ·{" "}
-                      {item.actor_email ?? "System action"} ·{" "}
-                      {item.resource_type}
-                    </p>
-                    {Object.keys(item.metadata).length ? (
-                      <p className="mt-2 rounded-md bg-muted/45 px-3 py-2 font-mono text-xs leading-5 text-muted-foreground">
-                        {JSON.stringify(item.metadata)}
-                      </p>
-                    ) : null}
-                  </article>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm leading-6 text-muted-foreground">
-                  {auditLogsQuery.isFetching
-                    ? "Loading platform audit history..."
-                    : "No platform audit events found yet. New organization, status, and support actions will appear here after deployment."}
-                </p>
-              )}
-            </div>
-            <div className="space-y-3">
-              <article className="rounded-lg border bg-panel p-4 shadow-line">
-                <h3 className="text-sm font-semibold">Audit coverage</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  The backend now records platform organization creation, status
-                  changes, support session openings, and support returns. Tenant
-                  workflow audit events also appear here.
-                </p>
-              </article>
-              <RequirementCard
-                title="Advanced audit filters"
-                status="Next control"
-                description="Add date range, action type, organization, actor, and export filters when audit volume grows beyond the recent event feed."
-              />
-            </div>
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "usage" ? (
-        <SectionShell
-          title="Usage, plans, and readiness"
-          description="Review real tenant usage across users, forms, submissions, beneficiaries, field officers, imports, exports, and audit events."
-        >
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {[
-              [
-                "Organizations",
-                organizations.length.toLocaleString(),
-                "Total tenants on the platform",
-              ],
-              [
-                "Active tenants",
-                activeOrganizations.toLocaleString(),
-                "Organizations currently allowed to sign in",
-              ],
-              [
-                "Total users",
-                totalUsers.toLocaleString(),
-                "Tenant users reported by the organization API",
-              ],
-              [
-                "Suspended tenants",
-                suspendedOrganizations.toLocaleString(),
-                "Tenants blocked from normal access",
-              ],
-            ].map(([label, value, detail]) => (
-              <article
-                className="rounded-lg border bg-panel p-4 shadow-line"
-                key={label}
-              >
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="mt-3 text-2xl font-semibold">{value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-              </article>
-            ))}
-          </div>
-          <div className="mt-4">
-            <DataTable
-              columns={usageColumns}
-              emptyLabel={
-                usageQuery.isFetching
-                  ? "Loading usage metrics..."
-                  : "No tenant usage metrics found"
-              }
-              rows={usageRows}
-              searchLabel="Search usage by organization"
-              title="Tenant usage metrics"
-            />
-          </div>
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <RequirementCard
-              title="Plan and quota controls"
-              status="Next control"
-              description="Usage metrics are now live. Add plan fields, quota limits, billing status, storage volume, and payment state before enabling paid-plan enforcement."
-            />
-            <RequirementCard
-              title="Tenant health scoring"
-              status="Next control"
-              description="Score each organization by failed logins, sync failures, stale owners, inactive users, import errors, and unresolved workflow queues."
-            />
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "settings" ? (
-        <SectionShell
-          title="Platform settings"
-          description="Review production configuration that affects all tenants. Global settings should be changed through a dedicated audited backend endpoint before editable controls are enabled."
-        >
-          <div className="grid gap-3 lg:grid-cols-2">
-            {[
-              ["API base URL", configuredApiUrl, Database],
-              [
-                "Backend environment",
-                settingsQuery.data?.app_env ?? "Checking",
-                RadioTower,
-              ],
-              ["Frontend origin", currentOrigin, Search],
-              [
-                "Token policy",
-                `${settingsQuery.data?.access_token_expire_minutes ?? 60} minute access token expiry. JWT secret: ${settingsQuery.data?.jwt_secret_configured ? "configured" : settingsQuery.data ? "missing" : "checking"}.`,
-                KeyRound,
-              ],
-              [
-                "Database",
-                settingsQuery.data?.database_configured
-                  ? "Configured"
-                  : settingsQuery.data
-                    ? "Missing"
-                    : "Checking",
-                Database,
-              ],
-              [
-                "Kafka events",
-                settingsQuery.data?.kafka_configured
-                  ? "Configured"
-                  : "Optional or not configured",
-                Activity,
-              ],
-              [
-                "Redis",
-                settingsQuery.data?.redis_configured
-                  ? "Configured"
-                  : "Optional or not configured",
-                SlidersHorizontal,
-              ],
-              [
-                "CORS policy",
-                "Specific origins only. Do not use wildcard origins with credentials.",
-                ShieldCheck,
-              ],
-            ].map(([title, detail, Icon]) => (
-              <article
-                className="rounded-lg border bg-panel p-4 shadow-line"
-                key={title as string}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon aria-hidden="true" className="text-primary" size={17} />
-                  <h3 className="text-sm font-semibold">{title as string}</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {detail as string}
-                </p>
-              </article>
-            ))}
-          </div>
-          <div className="mt-4 rounded-lg border bg-panel p-4 shadow-line">
-            <h3 className="text-sm font-semibold">Allowed browser origins</h3>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(settingsQuery.data?.cors_origins ?? [currentOrigin]).map(
-                (origin) => (
-                  <Badge
-                    key={origin}
-                    tone={origin === currentOrigin ? "success" : "neutral"}
-                  >
-                    {origin}
-                  </Badge>
-                ),
-              )}
-            </div>
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Preview regex:{" "}
-              {settingsQuery.data?.cors_origin_regex ??
-                "Loading from backend settings"}
-            </p>
-          </div>
-          <div className="mt-4 rounded-lg border border-warning/25 bg-warning/10 p-4">
-            <div className="flex gap-2">
-              <AlertTriangle
-                aria-hidden="true"
-                className="mt-0.5 text-warning"
-                size={17}
-              />
-              <p className="text-sm leading-6 text-muted-foreground">
-                Editable global settings remain locked until the backend
-                provides audited configuration updates. This prevents accidental
-                production-wide changes from the browser only.
-              </p>
-            </div>
-          </div>
-        </SectionShell>
-      ) : null}
-
-      {activeSection === "onboarding" ? (
-        <section className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <SectionShell
-            title="New organization setup"
-            description="Use this form to create the tenant and its first owner. The owner completes workspace setup after sign-in."
-          >
-            {organizationForm}
-          </SectionShell>
-          <SectionShell
-            title="Setup checklist"
-            description="Follow these steps so a new tenant starts cleanly and does not inherit demo data or platform-only configuration."
-          >
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                [
-                  "Create tenant",
-                  "Create organization, slug, owner email, and temporary password from verified onboarding information.",
-                ],
-                [
-                  "Owner signs in",
-                  "Ask the organization owner to sign in, change password, and confirm the organization name.",
-                ],
-                [
-                  "Configure team",
-                  "Create departments, regions, roles, field officers, and reviewer accounts inside the tenant.",
-                ],
-                [
-                  "Import starter data",
-                  "Use tenant data tools to import officers, beneficiaries, geography, indicators, and organization units.",
-                ],
-                [
-                  "Build forms",
-                  "Create or import collection forms, validate them, and publish only when ready for field use.",
-                ],
-                [
-                  "Verify empty state",
-                  "Confirm dashboard, submissions, reports, and work queues show no demo data until real records are entered.",
-                ],
-              ].map(([title, detail], index) => (
-                <article
-                  className="rounded-lg border bg-panel p-4 shadow-line"
-                  key={title}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                      {index + 1}
-                    </span>
-                    <h3 className="text-sm font-semibold">{title}</h3>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {detail}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </SectionShell>
-        </section>
-      ) : null}
-
-      <div className="rounded-lg border bg-panel p-4 shadow-line">
-        <div className="flex items-start gap-3">
-          <SlidersHorizontal
-            aria-hidden="true"
-            className="mt-0.5 text-primary"
-            size={18}
-          />
-          <div>
-            <h2 className="text-sm font-semibold">Production boundary</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Organization creation, status changes, and support sessions are
-              live platform actions. Platform users, persistent audit, usage
-              plans, and editable settings are exposed as operator work areas
-              with clear backend requirements so the UI does not pretend to save
-              data that has no API yet.
-            </p>
-          </div>
-        </div>
+          </article>
+        ))}
       </div>
-    </section>
+    </Panel>
+  );
+
+  const renderHealth = () => (
+    <Panel title="System health" description="Safe health checks for API, database, queue, storage, notifications, jobs, and backups.">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {services.map((service) => <ServiceCard key={service.service} service={service} />)}
+      </div>
+    </Panel>
+  );
+
+  const renderSettings = () => {
+    const settings = settingsQuery.data;
+    return (
+      <Panel title="Platform settings" description="Read-only safe runtime settings. Dangerous settings will require confirmation, reason, and re-authentication before write controls are enabled.">
+        {settings ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["Platform name", settings.app_name],
+              ["Environment", settings.app_env],
+              ["API version", settings.api_version],
+              ["Token timeout", `${settings.access_token_expire_minutes} minutes`],
+              ["Database", settings.database_configured ? "Configured" : "Missing"],
+              ["JWT secret", settings.jwt_secret_configured ? "Configured" : "Weak or missing"],
+              ["Redis", settings.redis_configured ? "Configured" : "Local or missing"],
+              ["Kafka", settings.kafka_configured ? "Configured" : "Local or missing"],
+            ].map(([label, value]) => (
+              <div className="rounded-lg border bg-panel p-4" key={label}>
+                <p className="text-xs uppercase text-muted-foreground">{label}</p>
+                <p className="mt-2 font-medium">{value}</p>
+              </div>
+            ))}
+          </div>
+        ) : <EmptyState title="Settings are loading" detail="Safe runtime settings will appear after the platform API responds." />}
+      </Panel>
+    );
+  };
+
+  const renderTableSection = () => {
+    if (activeSection === "users") return <DataTable columns={userColumns} emptyLabel={usersQuery.isFetching ? "Loading users..." : "No users found"} rows={users} searchLabel="Search global users" title="Global users" />;
+    if (activeSection === "audit-logs") return <DataTable columns={auditColumns} emptyLabel={auditQuery.isFetching ? "Loading audit logs..." : "No audit logs found"} rows={auditLogs} searchLabel="Search audit logs" title="Platform audit logs" />;
+    if (activeSection === "security") return <SecurityEvents events={securityEvents} />;
+    if (activeSection === "integrations") return <Integrations rows={integrations} />;
+    if (activeSection === "backups") return <Backups rows={backups} onTrigger={() => setDangerAction({ kind: "backup" })} />;
+    return null;
+  };
+
+  function confirmDangerousAction() {
+    if (!dangerAction || !dangerReason.trim()) return;
+    if ("organization" in dangerAction) {
+      if (dangerAction.kind === "support") {
+        supportMutation.mutate(dangerAction.organization);
+        return;
+      }
+      statusMutation.mutate({
+        organization: dangerAction.organization,
+        isActive: dangerAction.kind === "reactivate",
+      });
+      return;
+    }
+    pushToast({
+      title: dangerAction.kind === "backup" ? "Backup request recorded" : "Maintenance request recorded",
+      description: "The elevated operation placeholder is ready for backend workflow integration and audit enforcement.",
+      tone: "warning",
+    });
+    setDangerAction(null);
+    setDangerReason("");
+  }
+
+  return (
+    <main className="min-h-screen bg-[hsl(var(--background))] text-foreground">
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <aside className="border-r bg-[#0f1d1a] text-white">
+          <div className="sticky top-0 flex h-screen flex-col">
+            <div className="border-b border-white/10 p-5">
+              <div className="flex items-center gap-3">
+                <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
+                  <KeyRound aria-hidden="true" size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Platform Console</p>
+                  <p className="text-xs text-white/60">Super Admin only</p>
+                </div>
+              </div>
+            </div>
+            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+              {consoleSections.map((section) => {
+                const Icon = section.icon;
+                const active = activeSection === section.id;
+                return (
+                  <button
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition",
+                      active ? "bg-white text-[#0f1d1a] shadow-line" : "text-white/72 hover:bg-white/10 hover:text-white",
+                    )}
+                    key={section.id}
+                    onClick={() => {
+                      setActiveSection(section.id);
+                      window.history.pushState(null, "", section.route);
+                    }}
+                    type="button"
+                  >
+                    <Icon aria-hidden="true" size={16} />
+                    <span>{section.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="border-t border-white/10 p-4">
+              <Button className="w-full justify-center bg-white/10 text-white hover:bg-white/15" onClick={onSignOut} type="button" variant="ghost">
+                <LogOut aria-hidden="true" />
+                Sign out
+              </Button>
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0">
+          <header className="sticky top-0 z-20 border-b bg-background/90 px-5 py-4 backdrop-blur">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="platform">Global</Badge>
+                  <Badge tone="warning">Separate from organization app</Badge>
+                </div>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight">{activeDefinition.label}</h1>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{activeDefinition.description}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="relative min-w-64">
+                  <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                  <Input className="pl-9" placeholder="Search console" />
+                </label>
+                <Button onClick={() => setDangerAction({ kind: "maintenance" })} type="button" variant="secondary">
+                  <AlertTriangle aria-hidden="true" />
+                  Maintenance
+                </Button>
+              </div>
+            </div>
+          </header>
+
+          <div className="space-y-5 p-5">
+            {activeSection === "overview" ? renderOverview() : null}
+            {activeSection === "organizations" ? renderOrganizations() : null}
+            {activeSection === "roles" ? renderRoles() : null}
+            {activeSection === "feature-flags" ? renderFlags() : null}
+            {activeSection === "system-health" ? renderHealth() : null}
+            {activeSection === "settings" ? renderSettings() : null}
+            {["users", "audit-logs", "security", "integrations", "backups"].includes(activeSection) ? renderTableSection() : null}
+          </div>
+        </section>
+      </div>
+
+      <Modal
+        contentClassName="max-w-lg"
+        description="High-risk platform actions require a clear reason so the audit trail explains why the action happened."
+        onOpenChange={(open) => {
+          if (!open) {
+            setDangerAction(null);
+            setDangerReason("");
+          }
+        }}
+        open={Boolean(dangerAction)}
+        title="Confirm platform action"
+      >
+        <div className="space-y-4 p-5">
+          <p className="text-sm leading-6 text-muted-foreground">{dangerAction ? dangerActionDescription(dangerAction) : ""}</p>
+          <label className="grid gap-2 text-sm font-medium">
+            Reason
+            <textarea
+              className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              onChange={(event) => setDangerReason(event.target.value)}
+              placeholder="Describe the support ticket, incident, request, or approved reason."
+              value={dangerReason}
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setDangerAction(null)} type="button" variant="secondary">Cancel</Button>
+            <Button disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending} onClick={confirmDangerousAction} type="button" variant="danger">
+              Confirm action
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </main>
+  );
+}
+
+function dangerActionDescription(action: NonNullable<DangerousAction>): string {
+  if ("organization" in action) {
+    if (action.kind === "support") return `Start Support Access Mode for ${action.organization.name}. This must be temporary, visible, and auditable.`;
+    if (action.kind === "suspend") return `Suspend ${action.organization.name}. Normal users in this organization will be blocked from signing in.`;
+    return `Reactivate ${action.organization.name}. Normal users can sign in again once active.`;
+  }
+  if (action.kind === "backup") return "Trigger a platform backup workflow. Restore operations will require elevated confirmation before they are enabled.";
+  return "Enable maintenance mode controls. This is a dangerous platform-wide setting and must be audited.";
+}
+
+function ServiceCard({ service }: { service: PlatformHealthServiceRead }) {
+  return (
+    <article className="rounded-lg border bg-panel p-4 shadow-line">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">{service.service}</h3>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{service.detail}</p>
+        </div>
+        <Badge tone={statusTone(service.status)}>{service.status}</Badge>
+      </div>
+      {service.response_time_ms ? <p className="mt-3 text-xs text-muted-foreground">{service.response_time_ms}ms response</p> : null}
+    </article>
+  );
+}
+
+function SecurityEvents({ events }: { events: PlatformSecurityEventRead[] }) {
+  if (!events.length) return <EmptyState title="No security events" detail="Failed logins, locked accounts, suspicious sessions, MFA status, and policy events will appear here." />;
+  return (
+    <Panel title="Security center" description="High-risk actions such as lock, unlock, reset password, session revoke, and MFA requirement must require confirmation and reason before mutation endpoints are enabled.">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {events.map((event) => (
+          <article className="rounded-lg border bg-panel p-4" key={event.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{event.event_type}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{event.actor} · {formatDate(event.created_at)}</p>
+              </div>
+              <Badge tone={statusTone(event.severity)}>{event.severity}</Badge>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">{event.device ?? "Device details pending"} · {event.status}</p>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function Integrations({ rows }: { rows: PlatformIntegrationRead[] }) {
+  return (
+    <Panel title="Platform integrations" description="Secrets are never shown in the UI. Connection tests and disable actions are Super Admin-only and audited.">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {rows.map((row) => (
+          <article className="rounded-lg border bg-panel p-4" key={row.key}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{row.name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{row.provider_type}</p>
+              </div>
+              <Badge tone={statusTone(row.health)}>{row.status}</Badge>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" type="button" variant="secondary">Test connection</Button>
+              <Button size="sm" type="button" variant="secondary">Configure</Button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function Backups({ onTrigger, rows }: { onTrigger: () => void; rows: PlatformBackupJobRead[] }) {
+  return (
+    <Panel title="Backup and recovery" description="Backups are visible to Super Admins. Restore operations require re-authentication, reason, confirmation, and immutable audit logging.">
+      <div className="mb-4 flex justify-end">
+        <Button onClick={onTrigger} type="button" variant="primary">
+          <Database aria-hidden="true" />
+          Trigger backup
+        </Button>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {rows.map((row) => (
+          <article className="rounded-lg border bg-panel p-4" key={row.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{row.backup_type}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{row.size} · {row.retention}</p>
+              </div>
+              <Badge tone={statusTone(row.status)}>{row.status}</Badge>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">Created {formatDate(row.created_at)}</p>
+          </article>
+        ))}
+      </div>
+    </Panel>
   );
 }
