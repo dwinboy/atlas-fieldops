@@ -191,6 +191,64 @@ const helpTopics: HelpTopic[] = [
     ],
   },
   {
+    id: "administration",
+    title: "Configure system administration",
+    purpose:
+      "Administration is the platform-wide configuration center. It controls global locations, reusable reference data, notification rules, API access, integrations, system defaults, feature flags, backups, and recovery requests.",
+    audience: "System admins and platform operators",
+    view: "administration",
+    icon: Database,
+    whenToUse:
+      "Use Administration when a setting affects the whole platform or provides reusable master data for projects, forms, field operations, mapping, indicators, and reports.",
+    beforeYouStart: [
+      "Confirm you are signed in as a platform super admin or system admin.",
+      "Decide whether the change is system-wide. If it belongs to one form, project, user group, or policy workflow, use the correct module instead.",
+      "Prepare approved codes, owners, environments, retention periods, and change reasons before updating live configuration.",
+    ],
+    steps: [
+      "Open Administration under System.",
+      "Review the Administration Dashboard first to check platform health, failed jobs, integrations, backups, active feature flags, recent changes, and environment information.",
+      "Use Location Hierarchy to create, import, archive, search, and export countries, regions, districts, communities, villages, and facilities.",
+      "Use Reference Data to create reusable lists such as donors, facility types, intervention types, currencies, languages, beneficiary categories, and official location values.",
+      "Use Notification Settings to configure email, in-app, SMS-ready, and push-ready rules for project, assignment, submission, approval, quality, governance, and system alerts.",
+      "Use API Settings to create, rotate, revoke, and monitor API keys with the correct owner, scope, and rate limit.",
+      "Use Integrations to register external services, test connections, and disconnect tools that are no longer approved.",
+      "Use System Settings to update global defaults, localization, branding, security settings, session behavior, MFA requirements, allowed domains, and feature flags.",
+      "Use Backup & Recovery to request database, file, or configuration backups and to request restores only with a documented reason.",
+      "Review Governance Audit Trail when you need immutable evidence of system setting changes, API key events, integration changes, backups, restores, or feature flag updates.",
+    ],
+    dataLanguage: [
+      "Location hierarchy",
+      "Reference list",
+      "Notification rule",
+      "API key",
+      "Integration",
+      "Feature flag",
+      "Backup job",
+      "Recovery request",
+      "System audit log",
+    ],
+    goodPractice: [
+      "Keep Administration focused on global configuration and reusable platform data.",
+      "Use clear codes and names so imported locations and reference values can be matched reliably.",
+      "Rotate or revoke API keys immediately when ownership, vendor access, or security risk changes.",
+      "Test integrations after configuration changes and before field teams depend on them.",
+      "Treat recovery requests as elevated actions that require a clear operational reason.",
+    ],
+    avoid: [
+      "Do not manage tenant users, roles, or teams here; use Users & Teams.",
+      "Do not put consent, retention policy, compliance, or approval governance here; use Governance unless the setting is truly platform-wide infrastructure.",
+      "Do not configure form-specific reference bindings, review rules, or data quality controls here; use Forms.",
+      "Do not enable feature flags in production without confirming the related module is ready for users.",
+    ],
+    result:
+      "The platform remains healthy, auditable, and consistently configured across organizations, projects, forms, maps, reports, and integrations.",
+    nextActions: [
+      { label: "Open Administration", view: "administration" },
+      { label: "Review audit trail", view: "governance" },
+    ],
+  },
+  {
     id: "daily-work",
     title: "Use the dashboard",
     purpose:

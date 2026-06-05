@@ -5,12 +5,14 @@ import {
   BarChart3,
   BookOpenCheck,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   DatabaseZap,
   FileText,
   Gauge,
   HelpCircle,
+  MapPinned,
   Network,
   Plus,
   ShieldCheck,
@@ -18,6 +20,7 @@ import {
   UploadCloud,
   UserRoundCheck,
   UserPlus,
+  UsersRound,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -35,6 +38,10 @@ import {
 } from "@/lib/api";
 import {
   getActiveFormPerformance,
+  getDashboardApprovalOverview,
+  getDashboardCommandMetrics,
+  getDashboardCoverageOverview,
+  getDashboardQualityScore,
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -89,6 +96,14 @@ type QualityWorkflowStep = {
 };
 
 type DashboardHelpId = "dailyFocus" | "formActivity";
+
+type DashboardAlert = {
+  detail: string;
+  label: string;
+  tone: "danger" | "neutral" | "success" | "warning";
+  value: string;
+  view: WorkspaceView;
+};
 
 function ContextHelp({
   activeHelp,
@@ -398,12 +413,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
     enabled: Boolean(token && token !== "preview-token"),
   });
   const dashboardForms = formsQuery.data ?? [];
+  const dashboardSubmissions = submissionsQuery.data ?? [];
   const draftForms = dashboardForms.filter(
     (form) => form.is_active && form.status.toLowerCase() !== "published",
   );
   const formPerformance = getActiveFormPerformance(
     dashboardForms,
-    submissionsQuery.data ?? [],
+    dashboardSubmissions,
   );
   const selectedForm =
     formPerformance.find((item) => item.form.id === selectedFormId) ??
@@ -411,6 +427,8 @@ export function Dashboard({ token, principal }: DashboardProps) {
     null;
   const formPerformanceTotals = getFormPerformanceTotals(formPerformance);
   const formStatsLoading = formsQuery.isLoading || submissionsQuery.isLoading;
+  const dashboardLoading =
+    summaryQuery.isLoading || formsQuery.isLoading || submissionsQuery.isLoading;
   const summaryMetrics = summaryQuery.data
     ? [
         {
@@ -466,13 +484,17 @@ export function Dashboard({ token, principal }: DashboardProps) {
           tone: "good" as const,
         },
       ];
+  const hasFormActivity = Boolean(
+    formPerformance.length || formPerformanceTotals.submissions,
+  );
   const hasOperationalData = Boolean(
-    summaryQuery.data &&
-    (summaryQuery.data.beneficiaries ||
-      summaryQuery.data.active_programs ||
-      summaryQuery.data.indicators ||
-      summaryQuery.data.open_cases ||
-      summaryQuery.data.quality_flags),
+    hasFormActivity ||
+      (summaryQuery.data &&
+        (summaryQuery.data.beneficiaries ||
+          summaryQuery.data.active_programs ||
+          summaryQuery.data.indicators ||
+          summaryQuery.data.open_cases ||
+          summaryQuery.data.quality_flags)),
   );
   const setupSteps: ManagementStep[] = [
     {
@@ -778,6 +800,123 @@ export function Dashboard({ token, principal }: DashboardProps) {
           "Opening Survey Management so you can create the first survey before adding mobile-ready forms.",
         ],
       ];
+  const activeProjectCount =
+    summaryQuery.data?.active_programs ??
+    new Set(
+      dashboardForms
+        .map((form) => form.project_id)
+        .filter((projectId): projectId is string => Boolean(projectId)),
+    ).size;
+  const fieldOfficerActivity = new Set(
+    dashboardSubmissions
+      .map((submission) => submission.field_officer_id)
+      .filter(Boolean),
+  ).size;
+  const coverageOverview = getDashboardCoverageOverview(dashboardSubmissions);
+  const approvalOverview = getDashboardApprovalOverview(
+    dashboardSubmissions,
+    formPerformanceTotals,
+  );
+  const reviewCompletionPercent = approvalOverview.total
+    ? Math.round(
+        ((approvalOverview.approved +
+          approvalOverview.rejected +
+          approvalOverview.returned) /
+          approvalOverview.total) *
+          100,
+      )
+    : 0;
+  const syncProgressPercent = dashboardSubmissions.length
+    ? Math.round(
+        (formPerformanceTotals.syncedRecords / dashboardSubmissions.length) *
+          100,
+      )
+    : 0;
+  const dashboardQualityScore = getDashboardQualityScore(
+    summaryQuery.data,
+    formPerformanceTotals,
+  );
+  const commandMetrics = getDashboardCommandMetrics({
+    activeForms: formPerformance.length,
+    activeProjects: activeProjectCount,
+    coveragePercent: coverageOverview.coveragePercent,
+    fieldOfficers: fieldOfficerActivity,
+    indicators: summaryQuery.data?.indicators ?? 0,
+    pendingReviews: formPerformanceTotals.pendingReview,
+    qualityScore: dashboardQualityScore,
+    totalSubmissions:
+      dashboardSubmissions.length || formPerformanceTotals.submissions,
+  });
+  const commandMetricViews: WorkspaceView[] = [
+    "programs",
+    "forms",
+    "submissions",
+    "submissions",
+    "dataQuality",
+    "map",
+    "officers",
+    "indicators",
+  ];
+  const commandMetricIcons: (typeof Plus)[] = [
+    Network,
+    ClipboardList,
+    DatabaseZap,
+    ClipboardCheck,
+    ShieldCheck,
+    MapPinned,
+    UsersRound,
+    Target,
+  ];
+  const possibleAlerts: Array<DashboardAlert | null> = [
+    formPerformanceTotals.pendingReview
+      ? {
+          detail: "Review queue has records waiting for a decision.",
+          label: "Pending reviews",
+          tone: "warning" as const,
+          value: formPerformanceTotals.pendingReview.toLocaleString(),
+          view: "submissions" as const,
+        }
+      : null,
+    summaryQuery.data?.quality_flags
+      ? {
+          detail: "Resolve quality flags before reports use this data.",
+          label: "Quality flags",
+          tone: "danger" as const,
+          value: summaryQuery.data.quality_flags.toLocaleString(),
+          view: "dataQuality" as const,
+        }
+      : null,
+    summaryQuery.data?.open_cases
+      ? {
+          detail: "Cases need assignment, follow-up, or closure.",
+          label: "Open cases",
+          tone: "warning" as const,
+          value: summaryQuery.data.open_cases.toLocaleString(),
+          view: "submissions" as const,
+        }
+      : null,
+    formPerformanceTotals.offlineRecords
+      ? {
+          detail: "Some records were collected offline and need sync review.",
+          label: "Offline records",
+          tone: "neutral" as const,
+          value: formPerformanceTotals.offlineRecords.toLocaleString(),
+          view: "officers" as const,
+        }
+      : null,
+    draftForms.length
+      ? {
+          detail: "Draft forms exist and may need testing or publishing.",
+          label: "Draft forms",
+          tone: "neutral" as const,
+          value: draftForms.length.toLocaleString(),
+          view: "forms" as const,
+        }
+      : null,
+  ];
+  const recentAlerts = possibleAlerts.filter(
+    (alert): alert is DashboardAlert => Boolean(alert),
+  );
 
   function openView(action: {
     label: string;
@@ -833,6 +972,280 @@ export function Dashboard({ token, principal }: DashboardProps) {
     <section aria-labelledby="dashboard-title" className="space-y-6">
       <section
         className="surface-premium rounded-2xl p-5 md:p-6"
+        aria-labelledby="dashboard-title"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Command dashboard
+            </p>
+            <h1
+              id="dashboard-title"
+              className="mt-2 text-3xl font-semibold tracking-tight"
+            >
+              Operations, quality, approvals, and coverage
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              The first screen follows the platform architecture: projects,
+              forms, submissions, reviews, data quality, field activity,
+              indicators, alerts, approvals, and map readiness.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() =>
+                handleAttention(
+                  "Review queue",
+                  "submissions",
+                  "Opening the review queue so you can approve clean records, request corrections, or reject poor submissions.",
+                )
+              }
+              type="button"
+              variant="primary"
+            >
+              Review queue
+              <ArrowUpRight aria-hidden="true" />
+            </Button>
+            <Button
+              onClick={() =>
+                openView({
+                  label: "Open map overview",
+                  result:
+                    "Opening Mapping so managers can inspect project, submission, beneficiary, coverage, and quality maps.",
+                  view: "map",
+                })
+              }
+              type="button"
+              variant="secondary"
+            >
+              Map overview
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {dashboardLoading
+            ? Array.from({ length: 8 }).map((_, index) => (
+                <div
+                  className="rounded-2xl border bg-background/80 p-4"
+                  key={index}
+                >
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="mt-3 h-8 w-1/2" />
+                  <Skeleton className="mt-3 h-10 w-full" />
+                </div>
+              ))
+            : commandMetrics.map((metric, index) => {
+                const Icon = commandMetricIcons[index] ?? Gauge;
+                const view = commandMetricViews[index] ?? "dashboard";
+
+                return (
+                  <button
+                    className="group rounded-2xl border bg-background/80 p-4 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    key={metric.label}
+                    onClick={() =>
+                      openView({
+                        label: metric.label,
+                        result: `${metric.label}: ${metric.detail}`,
+                        view,
+                      })
+                    }
+                    type="button"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {metric.label}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                          {metric.value}
+                        </p>
+                      </div>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-panel text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                        <Icon aria-hidden="true" size={18} />
+                      </span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                        {metric.detail}
+                      </p>
+                      <Badge className="shrink-0" tone={metric.tone}>
+                        Open
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px_360px]">
+          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Recent alerts</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Operational exceptions that need management attention.
+                </p>
+              </div>
+              <Badge tone={recentAlerts.length ? "warning" : "success"}>
+                {recentAlerts.length ? `${recentAlerts.length} open` : "Clear"}
+              </Badge>
+            </div>
+            <div className="mt-4 divide-y">
+              {recentAlerts.length ? (
+                recentAlerts.map((alert) => (
+                  <button
+                    className="grid w-full grid-cols-[1fr_auto] gap-3 py-3 text-left transition hover:bg-muted/35"
+                    key={alert.label}
+                    onClick={() =>
+                      handleAttention(alert.label, alert.view, alert.detail)
+                    }
+                    type="button"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{alert.label}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {alert.detail}
+                      </p>
+                    </div>
+                    <Badge tone={alert.tone}>{alert.value}</Badge>
+                  </button>
+                ))
+              ) : (
+                <div className="py-5 text-sm text-muted-foreground">
+                  No active alerts from live project, form, review, quality, or
+                  sync data.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Approval queue</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Submission review status across active forms.
+                </p>
+              </div>
+              <ClipboardCheck
+                aria-hidden="true"
+                className="text-muted-foreground"
+                size={18}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {[
+                ["Pending", approvalOverview.pending],
+                ["Approved", approvalOverview.approved],
+                ["Returned", approvalOverview.returned],
+                ["Rejected", approvalOverview.rejected],
+              ].map(([label, value]) => (
+                <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {Number(value).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Reviewed</span>
+                <span className="font-medium">{reviewCompletionPercent}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${reviewCompletionPercent}%` }}
+                />
+              </div>
+            </div>
+            <Button
+              className="mt-4 w-full"
+              onClick={() =>
+                openView({
+                  label: "Open approval queue",
+                  result:
+                    "Opening Submissions so reviewers can approve, reject, return, or archive collected data.",
+                  view: "submissions",
+                })
+              }
+              type="button"
+              variant="secondary"
+            >
+              Open submissions
+            </Button>
+          </section>
+
+          <section className="rounded-2xl border bg-panel p-4 shadow-line">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Map overview</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  GPS coverage and mapped evidence readiness.
+                </p>
+              </div>
+              <MapPinned
+                aria-hidden="true"
+                className="text-muted-foreground"
+                size={18}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border bg-background/80 p-3">
+                <p className="text-xs text-muted-foreground">Mapped records</p>
+                <p className="mt-1 text-lg font-semibold">
+                  {coverageOverview.locatedSubmissions.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-background/80 p-3">
+                <p className="text-xs text-muted-foreground">Locations</p>
+                <p className="mt-1 text-lg font-semibold">
+                  {coverageOverview.uniqueLocations.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {[
+                ["Coverage", coverageOverview.coveragePercent],
+                ["Sync", syncProgressPercent],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium">{Number(value)}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Number(value)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button
+              className="mt-4 w-full"
+              onClick={() =>
+                openView({
+                  label: "Open mapping",
+                  result:
+                    "Opening Mapping so teams can inspect project maps, submission maps, coverage, boundaries, and GPS quality.",
+                  view: "map",
+                })
+              }
+              type="button"
+              variant="secondary"
+            >
+              Open mapping
+            </Button>
+          </section>
+        </div>
+      </section>
+
+      <section
+        className="surface-premium rounded-2xl p-5 md:p-6"
         aria-labelledby="form-activity-title"
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -854,12 +1267,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 </p>
               </ContextHelp>
             </div>
-            <h1
+            <h2
               id="form-activity-title"
               className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl"
             >
               Active forms and responses
-            </h1>
+            </h2>
           </div>
           <div className="grid min-w-full gap-2 sm:grid-cols-4 lg:min-w-[560px]">
             {[
@@ -1161,12 +1574,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 </p>
               </ContextHelp>
             </div>
-            <h1
-              id="dashboard-title"
+            <h2
+              id="daily-focus-title"
               className="mt-2 text-3xl font-semibold tracking-tight"
             >
               What needs attention now
-            </h1>
+            </h2>
           </div>
           <Button
             variant="primary"

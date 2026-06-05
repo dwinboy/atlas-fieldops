@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LifeBuoy, RotateCcw, Settings, ShieldCheck } from "lucide-react";
+import { LifeBuoy, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -29,7 +29,10 @@ import { NotificationCenter } from "@/components/NotificationCenter";
 import { OrganizationManagement } from "@/components/OrganizationManagement";
 import { PlatformConsole } from "@/components/PlatformConsole";
 import { ProductHelpCenter } from "@/components/ProductHelpCenter";
-import { ModuleLandingPage } from "@/components/shared/ModuleLandingPage";
+import {
+  ModuleWorkspace,
+  type ModuleWorkspaceAction,
+} from "@/components/shared/ModuleWorkspace";
 import { SubmissionReview } from "@/components/SubmissionReview";
 import { SurveyManagement } from "@/components/SurveyManagement";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +50,7 @@ import {
   returnToPlatformSession,
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
+import { AdministrationModule } from "@/modules/administration/AdministrationModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 export function WorkspaceApp() {
@@ -172,98 +176,170 @@ export function WorkspaceApp() {
   const organizationSlug = isPlatformConsoleMode
     ? "platform-console"
     : organizationQuery.data?.slug;
-  const dataQualityNavigation = getNavigationItemByView("dataQuality");
-  const administrationNavigation = getNavigationItemByView("administration");
+  const platformConsole = (
+    <PlatformConsole
+      token={token}
+      principal={principalQuery.data}
+      onTokenChanged={(nextToken) => {
+        setToken(nextToken);
+        writeToken(nextToken);
+      }}
+    />
+  );
+  const organizationManagement = (
+    <OrganizationManagement
+      token={token}
+      principal={principalQuery.data}
+      onTokenChanged={(nextToken) => {
+        setToken(nextToken);
+        writeToken(nextToken);
+      }}
+    />
+  );
+
+  function moduleWorkspace(
+    view: WorkspaceView,
+    child: React.ReactNode,
+    actions: ModuleWorkspaceAction[] = [],
+  ): React.ReactNode {
+    const item = getNavigationItemByView(view);
+    if (!item) return child;
+    return (
+      <ModuleWorkspace actions={actions} item={item}>
+        {child}
+      </ModuleWorkspace>
+    );
+  }
 
   const content = {
-    platform: (
-      <PlatformConsole
-        token={token}
-        principal={principalQuery.data}
-        onTokenChanged={(nextToken) => {
-          setToken(nextToken);
-          writeToken(nextToken);
-        }}
-      />
-    ),
+    platform: platformConsole,
     dashboard: <Dashboard token={token} principal={principalQuery.data} />,
     ecosystem: <OperationalEcosystem token={token} />,
     enterprise: <EnterpriseOperationsCenter token={token} />,
-    governance: <GovernanceCommandCenter token={token} />,
+    governance: moduleWorkspace(
+      "governance",
+      <GovernanceCommandCenter token={token} />,
+      [
+        {
+          label: "Approval queue",
+          description: "Open submissions waiting for governance action.",
+          onClick: () => setActiveView("submissions"),
+        },
+      ],
+    ),
     workforce: <WorkforceGovernanceCenter token={token} />,
     data: <DataInteroperabilityCenter token={token} />,
-    dataQuality: (
-      <ModuleLandingPage
-        title="Data Quality"
-        description="Investigate duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and quality rules from one focused workspace."
-        icon={ShieldCheck}
-        areas={dataQualityNavigation?.children ?? []}
-        actions={[
-          {
-            label: "Review submissions",
-            description: "Open the submissions queue to inspect records.",
-            onClick: () => setActiveView("submissions"),
-          },
-          {
-            label: "Open mapping",
-            description: "Review spatial data quality and coverage.",
-            onClick: () => setActiveView("map"),
-          },
-        ]}
-      />
+    dataQuality: moduleWorkspace("dataQuality", null, [
+      {
+        label: "Review submissions",
+        description: "Open the submissions queue to inspect records.",
+        onClick: () => setActiveView("submissions"),
+      },
+      {
+        label: "Open mapping",
+        description: "Review spatial data quality and coverage.",
+        onClick: () => setActiveView("map"),
+      },
+    ]),
+    programs: moduleWorkspace(
+      "programs",
+      <ProgramManagement token={token} />,
+      [
+        {
+          label: "Create form",
+          description: "Open Forms to build project data collection tools.",
+          onClick: () => setActiveView("forms"),
+        },
+      ],
     ),
-    programs: <ProgramManagement token={token} />,
     surveys: <SurveyManagement token={token} />,
     beneficiaries: <BeneficiaryRegistry token={token} />,
-    indicators: <IndicatorTracking token={token} />,
-    organizations: (
-      <OrganizationManagement
-        token={token}
-        principal={principalQuery.data}
-        onTokenChanged={(nextToken) => {
-          setToken(nextToken);
-          writeToken(nextToken);
-        }}
-      />
+    indicators: moduleWorkspace(
+      "indicators",
+      <IndicatorTracking token={token} />,
+      [
+        {
+          label: "Open reports",
+          description: "Use approved indicator data in reports.",
+          onClick: () => setActiveView("analytics"),
+        },
+      ],
     ),
-    officers: <FieldOfficerOperations token={token} />,
+    organizations: moduleWorkspace("organizations", organizationManagement),
+    officers: moduleWorkspace(
+      "officers",
+      <FieldOfficerOperations token={token} />,
+      [
+        {
+          label: "Review sync",
+          description: "Open field monitoring and submission sync signals.",
+          onClick: () => setActiveView("dataQuality"),
+        },
+      ],
+    ),
     templates: <FormTemplateLibrary token={token} />,
-    forms: <DynamicForms token={token} />,
-    submissions: <SubmissionReview token={token} />,
+    forms: moduleWorkspace(
+      "forms",
+      <DynamicForms token={token} />,
+      [
+        {
+          label: "Review data",
+          description: "Open submissions collected through forms.",
+          onClick: () => setActiveView("submissions"),
+        },
+      ],
+    ),
+    submissions: moduleWorkspace(
+      "submissions",
+      <SubmissionReview token={token} />,
+      [
+        {
+          label: "Quality checks",
+          description: "Open data quality investigation.",
+          onClick: () => setActiveView("dataQuality"),
+        },
+      ],
+    ),
     cases: <CaseManagement token={token} />,
-    map: <GeospatialIntelligence token={token} />,
-    analytics: <ReportingCenter token={token} />,
+    map: moduleWorkspace("map", <GeospatialIntelligence token={token} />),
+    analytics: moduleWorkspace(
+      "analytics",
+      <ReportingCenter token={token} />,
+      [
+        {
+          label: "Indicators",
+          description: "Open the indicator library and results framework.",
+          onClick: () => setActiveView("indicators"),
+        },
+      ],
+    ),
     workflows: <WorkflowManagement token={token} />,
     connectivity: <ConnectivityCenter token={token} />,
-    administration: principalQuery.data?.platform_admin &&
-      !principalQuery.data.support_mode ? (
-      <PlatformConsole
-        token={token}
-        principal={principalQuery.data}
-        onTokenChanged={(nextToken) => {
-          setToken(nextToken);
-          writeToken(nextToken);
-        }}
-      />
-    ) : (
-      <ModuleLandingPage
-        title="Administration"
-        description="Configure location hierarchy, reference data, notifications, API settings, integrations, system settings, and backup or recovery controls."
-        icon={Settings}
-        areas={administrationNavigation?.children ?? []}
-        actions={[
-          {
-            label: "Open users",
-            description: "Manage accounts and roles from Users & Teams.",
-            onClick: () => setActiveView("organizations"),
-          },
-          {
-            label: "Open governance",
-            description: "Review audit, approval, policy, and compliance controls.",
-            onClick: () => setActiveView("governance"),
-          },
-        ]}
-      />
+    administration: moduleWorkspace(
+      "administration",
+      <AdministrationModule token={token} principal={principalQuery.data} />,
+      [
+        ...(principalQuery.data?.platform_admin && !principalQuery.data.support_mode
+          ? [
+              {
+                label: "Platform console",
+                description:
+                  "Open tenant support and organization management tools.",
+                onClick: () => setActiveView("platform"),
+              },
+            ]
+          : []),
+        {
+          label: "Open users",
+          description: "Manage accounts and roles from Users & Teams.",
+          onClick: () => setActiveView("organizations"),
+        },
+        {
+          label: "Open governance",
+          description: "Review audit, approval, policy, and compliance controls.",
+          onClick: () => setActiveView("governance"),
+        },
+      ],
     ),
     help: <ProductHelpCenter />,
   } satisfies Record<WorkspaceView, React.ReactNode>;

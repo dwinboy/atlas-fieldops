@@ -124,6 +124,138 @@ export type PlatformSettingsRead = {
   kafka_configured: boolean;
 };
 
+export type AdministrationSummaryRead = {
+  organizations: number;
+  countries: number;
+  active_users: number;
+  active_projects: number;
+  api_integrations: number;
+  scheduled_backups: number;
+  failed_jobs: number;
+  active_feature_flags: number;
+  system_health: string;
+};
+
+export type AdministrationLocationRead = {
+  id: string;
+  organization_id?: string | null;
+  parent_location_id?: string | null;
+  name: string;
+  code: string;
+  location_type: string;
+  status: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  boundary_reference?: string | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationReferenceValueRead = {
+  id: string;
+  reference_list_id: string;
+  code: string;
+  label: string;
+  description?: string | null;
+  is_active: boolean;
+  sort_order: number;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationReferenceListRead = {
+  id: string;
+  organization_id?: string | null;
+  name: string;
+  slug: string;
+  description?: string | null;
+  category: string;
+  status: string;
+  version: number;
+  values: AdministrationReferenceValueRead[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationNotificationRuleRead = {
+  id: string;
+  event_type: string;
+  channel: string;
+  template: string;
+  frequency: string;
+  status: string;
+  recipients_json: string[];
+  delivery_rules_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationApiKeyRead = {
+  id: string;
+  api_name: string;
+  owner: string;
+  key_prefix: string;
+  status: string;
+  last_used_at?: string | null;
+  rotated_at?: string | null;
+  revoked_at?: string | null;
+  rate_limit: string;
+  scope: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationIntegrationRead = {
+  id: string;
+  name: string;
+  integration_type: string;
+  status: string;
+  environment: string;
+  last_sync_at?: string | null;
+  owner: string;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationFeatureFlagRead = {
+  id: string;
+  flag_key: string;
+  label: string;
+  description?: string | null;
+  enabled: boolean;
+  rollout_percentage: number;
+  environment: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationSystemSettingRead = {
+  id: string;
+  category: string;
+  setting_key: string;
+  setting_value_json: Record<string, unknown>;
+  environment: string;
+  is_sensitive: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdministrationBackupJobRead = {
+  id: string;
+  backup_type: string;
+  status: string;
+  size_bytes?: number | null;
+  retention_days: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type OrganizationContext = {
   organization_id: string;
   name: string;
@@ -1192,6 +1324,151 @@ export async function getPlatformSettings(token: string): Promise<PlatformSettin
   return request<PlatformSettingsRead>("/platform/settings", { token });
 }
 
+export async function getAdministrationSummary(token: string): Promise<AdministrationSummaryRead> {
+  return request<AdministrationSummaryRead>("/administration/summary", { token });
+}
+
+export async function listAdministrationLocations(token: string): Promise<AdministrationLocationRead[]> {
+  return request<AdministrationLocationRead[]>("/administration/locations", { token });
+}
+
+export async function createAdministrationLocation(
+  token: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationLocationRead> {
+  return request<AdministrationLocationRead>("/administration/locations", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateAdministrationLocation(
+  token: string,
+  locationId: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationLocationRead> {
+  return request<AdministrationLocationRead>(`/administration/locations/${locationId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload
+  });
+}
+
+export async function listAdministrationReferenceLists(token: string): Promise<AdministrationReferenceListRead[]> {
+  return request<AdministrationReferenceListRead[]>("/administration/reference-lists", { token });
+}
+
+export async function createAdministrationReferenceList(
+  token: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationReferenceListRead> {
+  return request<AdministrationReferenceListRead>("/administration/reference-lists", { method: "POST", token, bodyJson: payload });
+}
+
+export async function createAdministrationReferenceValue(
+  token: string,
+  referenceListId: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationReferenceValueRead> {
+  return request<AdministrationReferenceValueRead>(`/administration/reference-lists/${referenceListId}/values`, {
+    method: "POST",
+    token,
+    bodyJson: payload
+  });
+}
+
+export async function updateAdministrationReferenceValue(
+  token: string,
+  valueId: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationReferenceValueRead> {
+  return request<AdministrationReferenceValueRead>(`/administration/reference-values/${valueId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload
+  });
+}
+
+export async function listAdministrationNotificationRules(token: string): Promise<AdministrationNotificationRuleRead[]> {
+  return request<AdministrationNotificationRuleRead[]>("/administration/notification-rules", { token });
+}
+
+export async function createAdministrationNotificationRule(
+  token: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationNotificationRuleRead> {
+  return request<AdministrationNotificationRuleRead>("/administration/notification-rules", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateAdministrationNotificationRule(
+  token: string,
+  ruleId: string,
+  payload: Record<string, unknown>
+): Promise<AdministrationNotificationRuleRead> {
+  return request<AdministrationNotificationRuleRead>(`/administration/notification-rules/${ruleId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload
+  });
+}
+
+export async function listAdministrationApiKeys(token: string): Promise<AdministrationApiKeyRead[]> {
+  return request<AdministrationApiKeyRead[]>("/administration/api-keys", { token });
+}
+
+export async function createAdministrationApiKey(token: string, payload: Record<string, unknown>): Promise<AdministrationApiKeyRead> {
+  return request<AdministrationApiKeyRead>("/administration/api-keys", { method: "POST", token, bodyJson: payload });
+}
+
+export async function rotateAdministrationApiKey(token: string, apiKeyId: string): Promise<AdministrationApiKeyRead> {
+  return request<AdministrationApiKeyRead>(`/administration/api-keys/${apiKeyId}/rotate`, { method: "POST", token });
+}
+
+export async function revokeAdministrationApiKey(token: string, apiKeyId: string): Promise<AdministrationApiKeyRead> {
+  return request<AdministrationApiKeyRead>(`/administration/api-keys/${apiKeyId}/revoke`, { method: "POST", token });
+}
+
+export async function listAdministrationIntegrations(token: string): Promise<AdministrationIntegrationRead[]> {
+  return request<AdministrationIntegrationRead[]>("/administration/integrations", { token });
+}
+
+export async function createAdministrationIntegration(token: string, payload: Record<string, unknown>): Promise<AdministrationIntegrationRead> {
+  return request<AdministrationIntegrationRead>("/administration/integrations", { method: "POST", token, bodyJson: payload });
+}
+
+export async function testAdministrationIntegration(token: string, integrationId: string): Promise<AdministrationIntegrationRead> {
+  return request<AdministrationIntegrationRead>(`/administration/integrations/${integrationId}/test`, { method: "POST", token });
+}
+
+export async function disconnectAdministrationIntegration(token: string, integrationId: string): Promise<AdministrationIntegrationRead> {
+  return request<AdministrationIntegrationRead>(`/administration/integrations/${integrationId}/disconnect`, { method: "POST", token });
+}
+
+export async function listAdministrationSystemSettings(token: string): Promise<AdministrationSystemSettingRead[]> {
+  return request<AdministrationSystemSettingRead[]>("/administration/system-settings", { token });
+}
+
+export async function upsertAdministrationSystemSetting(token: string, payload: Record<string, unknown>): Promise<AdministrationSystemSettingRead> {
+  return request<AdministrationSystemSettingRead>("/administration/system-settings", { method: "PUT", token, bodyJson: payload });
+}
+
+export async function listAdministrationFeatureFlags(token: string): Promise<AdministrationFeatureFlagRead[]> {
+  return request<AdministrationFeatureFlagRead[]>("/administration/feature-flags", { token });
+}
+
+export async function upsertAdministrationFeatureFlag(token: string, payload: Record<string, unknown>): Promise<AdministrationFeatureFlagRead> {
+  return request<AdministrationFeatureFlagRead>("/administration/feature-flags", { method: "PUT", token, bodyJson: payload });
+}
+
+export async function listAdministrationBackups(token: string): Promise<AdministrationBackupJobRead[]> {
+  return request<AdministrationBackupJobRead[]>("/administration/backups", { token });
+}
+
+export async function createAdministrationBackup(token: string, payload: Record<string, unknown>): Promise<AdministrationBackupJobRead> {
+  return request<AdministrationBackupJobRead>("/administration/backups", { method: "POST", token, bodyJson: payload });
+}
+
+export async function requestAdministrationRecovery(token: string, payload: Record<string, unknown>): Promise<unknown> {
+  return request<unknown>("/administration/recoveries", { method: "POST", token, bodyJson: payload });
+}
+
 export async function listUsers(token: string): Promise<UserRead[]> {
   return request<UserRead[]>("/users", { token });
 }
@@ -1713,6 +1990,13 @@ export async function duplicateFormTemplate(
 
 export const api = {
   applyImportJob,
+  createAdministrationApiKey,
+  createAdministrationBackup,
+  createAdministrationIntegration,
+  createAdministrationLocation,
+  createAdministrationNotificationRule,
+  createAdministrationReferenceList,
+  createAdministrationReferenceValue,
   createAccessRequest,
   createApprovalMatrix,
   createClearanceLevel,
@@ -1724,6 +2008,7 @@ export const api = {
   createMediaEvidence,
   createPublicCollectionLink,
   createOperationalZone,
+  disconnectAdministrationIntegration,
   duplicateFormTemplate,
   exportFormXlsForm,
   createForm,
@@ -1737,6 +2022,7 @@ export const api = {
   createRetentionPolicy,
   createValidationRule,
   getCurrentPrincipal,
+  getAdministrationSummary,
   getHealth,
   getPlatformSettings,
   getPlatformSummary,
@@ -1755,6 +2041,14 @@ export const api = {
   listBeneficiaries,
   listCases,
   listAccessRequests,
+  listAdministrationApiKeys,
+  listAdministrationBackups,
+  listAdministrationFeatureFlags,
+  listAdministrationIntegrations,
+  listAdministrationLocations,
+  listAdministrationNotificationRules,
+  listAdministrationReferenceLists,
+  listAdministrationSystemSettings,
   listApprovalMatrices,
   listClearanceLevels,
   listDelegations,
@@ -1791,15 +2085,23 @@ export const api = {
   listWorkforceProfiles,
   login,
   previewImport,
+  requestAdministrationRecovery,
   reviewSubmission,
   addSurveyTeamMember,
+  revokeAdministrationApiKey,
+  rotateAdministrationApiKey,
   resetUserPassword,
   routeData,
   reviewAccessRequest,
   simulateAccess,
+  updateAdministrationLocation,
+  updateAdministrationNotificationRule,
+  updateAdministrationReferenceValue,
   updateImportRow,
   updateFormControls,
   updateSurveyGovernance,
+  upsertAdministrationFeatureFlag,
+  upsertAdministrationSystemSetting,
   updateUser,
   uploadImportFile
 };
