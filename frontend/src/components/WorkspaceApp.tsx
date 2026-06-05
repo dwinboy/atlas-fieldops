@@ -28,7 +28,6 @@ import {
   ModuleWorkspace,
   type ModuleWorkspaceAction,
 } from "@/components/shared/ModuleWorkspace";
-import { SubmissionReview } from "@/components/SubmissionReview";
 import { SurveyManagement } from "@/components/SurveyManagement";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +49,7 @@ import { FieldOperationsModule } from "@/modules/field-operations/FieldOperation
 import { FormsModule } from "@/modules/forms/FormsModule";
 import { GovernanceModule } from "@/modules/governance/GovernanceModule";
 import { ProjectsModule } from "@/modules/projects/ProjectsModule";
+import { SubmissionsModule } from "@/modules/submissions/SubmissionsModule";
 import { UsersTeamsModule } from "@/modules/users-teams/UsersTeamsModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -253,17 +253,7 @@ export function WorkspaceApp() {
     officers: <FieldOperationsModule token={token} principal={principalQuery.data} />,
     templates: <FormTemplateLibrary token={token} />,
     forms: <FormsModule token={token} principal={principalQuery.data} />,
-    submissions: moduleWorkspace(
-      "submissions",
-      <SubmissionReview token={token} />,
-      [
-        {
-          label: "Quality checks",
-          description: "Open data quality investigation.",
-          onClick: () => setActiveView("dataQuality"),
-        },
-      ],
-    ),
+    submissions: <SubmissionsModule token={token} principal={principalQuery.data} />,
     cases: <CaseManagement token={token} />,
     map: moduleWorkspace("map", <GeospatialIntelligence token={token} />),
     analytics: moduleWorkspace(

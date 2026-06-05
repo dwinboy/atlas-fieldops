@@ -59,6 +59,7 @@ export type FormSetupDraft = {
 
 type FormCreationWorkspaceProps = {
   existingForms: FormListItem[];
+  initialForm?: FormListItem | null;
   onBack: () => void;
   token: string | null;
 };
@@ -152,6 +153,100 @@ function attachStarterField(section: FormSection, type: FieldType, label: string
     label,
     required,
     variableName: variableNameFromLabel(label, field.id),
+  };
+}
+
+function builderStatusFromListStatus(status: string): DynamicForm["status"] {
+  if (status === "published" || status === "archived") {
+    return status;
+  }
+  return "draft";
+}
+
+export function createEditableDraftFromListItem(form: FormListItem): DynamicForm {
+  const createdAt = form.updated_at || new Date().toISOString();
+  const page = createPage("Page 1");
+  const sectionCount = Math.max(1, form.sections || 1);
+  const questionCount = Math.max(1, form.questions || 1);
+  const sectionTitles = [
+    "Consent and respondent profile",
+    "Household and beneficiary details",
+    "Location and coverage",
+    "Program participation",
+    "Evidence and data quality",
+    "Enumerator review",
+    "Supervisor checks",
+    "Additional context",
+  ];
+  const sections = Array.from({ length: sectionCount }, (_, index) => ({
+    ...createSection(page.id, sectionTitles[index] ?? `Section ${index + 1}`),
+    description:
+      index === 0
+        ? (form.description ?? `Editable builder draft for ${form.name}.`)
+        : `Operational section ${index + 1} for ${form.survey_name}.`,
+  }));
+  const questionTypes: FieldType[] = [
+    "text",
+    "number",
+    "radio",
+    "select",
+    "gps",
+    "photo",
+    "date",
+    "textarea",
+    "checkbox",
+    "decimal",
+  ];
+  const fields = Array.from({ length: questionCount }, (_, index) => {
+    const section = sections[index % sections.length] ?? sections[0];
+    const type = index === Math.min(5, questionCount - 1) ? "repeat_group" : questionTypes[index % questionTypes.length] ?? "text";
+    const label =
+      index === 0
+        ? "Consent confirmed"
+        : type === "repeat_group"
+          ? "Household members"
+          : `${section.title} question ${Math.floor(index / sections.length) + 1}`;
+    const field = attachStarterField(section, type, label, index < 3 || type === "gps");
+    return {
+      ...field,
+      options:
+        type === "radio" || type === "select" || type === "checkbox"
+          ? ["Yes", "No", "Not applicable"]
+          : field.options,
+      repeat: type === "repeat_group" ? { min: 1, max: 12, allowNested: false } : field.repeat,
+      validation:
+        type === "gps"
+          ? { accuracyMax: 15 }
+          : type === "number" || type === "decimal"
+            ? { min: 0 }
+            : field.validation,
+      variableName: variableNameFromLabel(label, `question_${index + 1}`),
+    };
+  });
+
+  return {
+    activeVersion: form.status === "published" ? form.version : 0,
+    fields,
+    history: [
+      {
+        createdAt,
+        status: builderStatusFromListStatus(form.status),
+        summary: `Opened from ${form.name} summary for builder editing`,
+        version: form.version,
+      },
+    ],
+    id: form.id,
+    name: form.name,
+    pages: [
+      {
+        ...page,
+        description: `${form.form_type} for ${form.project_name} / ${form.survey_name}.`,
+      },
+    ],
+    sections,
+    status: builderStatusFromListStatus(form.status),
+    updatedAt: createdAt,
+    version: form.version,
   };
 }
 
@@ -333,11 +428,25 @@ export function validateFormForPublish(form: DynamicForm | null | undefined, set
   ];
 }
 
-export function FormCreationWorkspace({ existingForms, onBack, token }: FormCreationWorkspaceProps) {
-  const [stage, setStage] = useState<CreationStage>("setup");
-  const [setup, setSetup] = useState<FormSetupDraft>(setupDefaults);
+export function FormCreationWorkspace({ existingForms, initialForm, onBack, token }: FormCreationWorkspaceProps) {
+  const initialDraft = useMemo(() => (initialForm ? createEditableDraftFromListItem(initialForm) : null), [initialForm]);
+  const [stage, setStage] = useState<CreationStage>(initialDraft ? "builder" : "setup");
+  const [setup, setSetup] = useState<FormSetupDraft>(() =>
+    initialForm
+      ? {
+          collectionMethod: "web_mobile",
+          description: initialForm.description ?? "",
+          durationMinutes: 25,
+          formName: initialForm.name,
+          formType: initialForm.form_type,
+          language: "English",
+          owner: initialForm.owner,
+          projectName: initialForm.project_name,
+        }
+      : setupDefaults,
+  );
   const [startMethod, setStartMethod] = useState<StartMethod>("blank");
-  const [draftForm, setDraftForm] = useState<DynamicForm | null>(null);
+  const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
   const checklist = useMemo(() => validateFormForPublish(draftForm, setup), [draftForm, setup]);
   const criticalFailures = checklist.filter((item) => item.required && !item.complete);

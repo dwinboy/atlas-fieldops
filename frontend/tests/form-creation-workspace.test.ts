@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createEditableDraftFromListItem,
   createEnterpriseDraftForm,
   validateFormForPublish,
   type FormSetupDraft,
@@ -46,5 +47,39 @@ describe("enterprise form creation workspace", () => {
     const checklist = validateFormForPublish(duplicate, setup);
 
     expect(checklist.find((item) => item.id === "variables")?.complete).toBe(false);
+  });
+
+  it("opens an existing form summary as an editable builder draft", () => {
+    const draft = createEditableDraftFromListItem({
+      active_assignments: 12,
+      created_by: "Survey owner",
+      form_type: "Registration",
+      has_quality_issues: false,
+      id: "preview-farmer-registration",
+      name: "Farmer Registration Survey Form",
+      owner: "M&E Manager",
+      pending_approval: false,
+      project_id: "preview-agriculture",
+      project_name: "Agricultural Resilience Program",
+      quality_score: 91,
+      questions: 42,
+      recently_updated: true,
+      sections: 6,
+      slug: "farmer-registration-survey-form",
+      status: "published",
+      survey_name: "Farmer Registration Survey",
+      total_submissions: 1840,
+      updated_at: "2026-06-05T00:00:00.000Z",
+      version: 3,
+    });
+
+    expect(draft.id).toBe("preview-farmer-registration");
+    expect(draft.name).toBe("Farmer Registration Survey Form");
+    expect(draft.status).toBe("published");
+    expect(draft.version).toBe(3);
+    expect(draft.sections).toHaveLength(6);
+    expect(draft.fields).toHaveLength(42);
+    expect(draft.fields.some((field) => field.type === "repeat_group")).toBe(true);
+    expect(draft.fields.some((field) => field.type === "gps" && field.validation?.accuracyMax)).toBe(true);
   });
 });

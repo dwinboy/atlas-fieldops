@@ -74,6 +74,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
+  const [builderFormId, setBuilderFormId] = useState<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
@@ -130,7 +131,18 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   ];
 
   if (creationOpen) {
-    return <FormCreationWorkspace existingForms={forms} onBack={() => setCreationOpen(false)} token={token} />;
+    const builderForm = builderFormId ? forms.find((form) => form.id === builderFormId) : null;
+    return (
+      <FormCreationWorkspace
+        existingForms={forms}
+        initialForm={builderForm}
+        onBack={() => {
+          setCreationOpen(false);
+          setBuilderFormId(null);
+        }}
+        token={token}
+      />
+    );
   }
 
   return (
@@ -150,7 +162,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManageForms} onClick={() => setCreationOpen(true)} variant="primary">
+            <Button disabled={!canManageForms} onClick={() => {
+              setBuilderFormId(null);
+              setCreationOpen(true);
+            }} variant="primary">
               <Plus aria-hidden="true" />
               Create form
             </Button>
@@ -181,7 +196,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         <FormDetailWorkspace
           form={selectedForm}
           onClose={() => setSelectedFormId(null)}
-          onOpenBuilder={() => setCreationOpen(true)}
+          onOpenBuilder={() => {
+            setBuilderFormId(selectedForm.id);
+            setCreationOpen(true);
+          }}
           onOpenDataQuality={() => setActiveView("dataQuality")}
           onOpenMapping={() => setActiveView("map")}
           onOpenSubmissions={() => setActiveView("submissions")}
@@ -197,7 +215,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       {!selectedForm && ["all", "draft", "published", "archived"].includes(activeSection) ? (
         <section className="space-y-4">
           <SectionHeader
-            action={<Button disabled={!canManageForms} onClick={() => setCreationOpen(true)} variant="primary"><Plus aria-hidden="true" /> Create form</Button>}
+            action={<Button disabled={!canManageForms} onClick={() => {
+              setBuilderFormId(null);
+              setCreationOpen(true);
+            }} variant="primary"><Plus aria-hidden="true" /> Create form</Button>}
             description={formsSections.find((section) => section.id === activeSection)?.description ?? "Manage forms"}
             title={formsSections.find((section) => section.id === activeSection)?.label ?? "Forms"}
           />
@@ -207,11 +228,17 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       ) : null}
 
       {!selectedForm && activeSection === "templates" ? (
-        <TemplatesSection onOpenBuilder={() => setCreationOpen(true)} templates={templates} />
+        <TemplatesSection onOpenBuilder={() => {
+          setBuilderFormId(null);
+          setCreationOpen(true);
+        }} templates={templates} />
       ) : null}
 
       {!selectedForm && activeSection === "reference-data" ? (
-        <ReferenceDataSection onOpenBuilder={() => setCreationOpen(true)} />
+        <ReferenceDataSection onOpenBuilder={() => {
+          setBuilderFormId(null);
+          setCreationOpen(true);
+        }} />
       ) : null}
     </section>
   );
