@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import type { CurrentPrincipal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -127,8 +128,8 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -136,10 +137,12 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
               <Badge tone={scoreTone(summary.overallScore)}>{summary.overallScore}/100 · {qualityCategory(summary.overallScore)}</Badge>
               <Badge tone={summary.criticalIssues ? "danger" : "success"}>{summary.criticalIssues} critical</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Data Quality</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Monitor trust, detect duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and manage quality rules before records power indicators, reports, and program decisions.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Data Quality</h1>
+              <HelpHint label="About Data Quality" title="Data Quality">
+                Monitor trust, detect duplicates, outliers, GPS issues, missing data, validation failures, risk alerts, and manage quality rules before records power indicators, reports, and program decisions.
+              </HelpHint>
+            </div>
             <p className="mt-2 text-xs text-muted-foreground">Access context: {roleLabel}</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -151,11 +154,11 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
           {dataQualitySections.map((section) => (
             <button
               className={cn(
-                "min-w-44 rounded-xl border px-4 py-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
                 activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
               )}
               key={section.id}
@@ -165,8 +168,8 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
               }}
               type="button"
             >
-              <span className="text-sm font-semibold">{section.label}</span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">{section.route}</span>
+              <span className="text-xs font-semibold">{section.label}</span>
+              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
           ))}
         </div>
@@ -212,7 +215,7 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
       {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={previewRiskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={previewQualityRules} /> : null}
 
-      <section className="rounded-2xl border bg-panel p-5 shadow-line">
+      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Module boundaries</h2>
@@ -259,7 +262,7 @@ function QualityLanding({
   ] satisfies { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number | string }[];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => <MetricCard icon={card.icon} key={card.label} label={card.label} tone={card.tone} value={card.value} />)}
       </div>
@@ -293,7 +296,7 @@ function QualityLanding({
 
 function QualityDashboard({ onOpenIssue }: { onOpenIssue: (issue: QualityIssue) => void }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button type="button"><Download aria-hidden="true" /> Export dashboard</Button>}
         description="Executive quality overview with KPI cards, trend charts, severity breakdowns, heatmaps, ranking tables, and resolution progress."
@@ -353,7 +356,7 @@ function DuplicatesSection({ groups, issues, onOpenIssue }: { groups: DuplicateG
     { header: "Status", key: "status", render: (group) => <Badge tone={statusTone(group.status)}>{group.status}</Badge>, value: (group) => group.status },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader description="Detect and manage exact, fuzzy, and rule-based duplicate records across beneficiary IDs, household IDs, phone numbers, national IDs, GPS, and custom fields." route="/data-quality/duplicates" title="Duplicates" />
       <DataTable columns={columns} emptyLabel="No duplicate groups yet" rows={groups} searchLabel="Search duplicate groups, fields, records" title="Duplicate groups" />
       <IssueTable description="Duplicate issue workflow for compare, merge, mark valid, or flag for investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/duplicates" title="Duplicate Investigations" />
@@ -370,7 +373,7 @@ function OutliersSection({ issues, onOpenIssue, outliers }: { issues: QualityIss
     { header: "Severity", key: "severity", render: (row) => <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>, value: (row) => row.severity },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader description="Identify statistical, business-rule, location, and behavioral outliers such as impossible ages, extreme income, and unusually fast surveys." route="/data-quality/outliers" title="Outliers" />
       <DataTable columns={columns} emptyLabel="No outliers yet" rows={outliers} searchLabel="Search outliers, fields, submissions" title="Outlier records" />
       <IssueTable description="Review outliers, mark valid, flag for correction, or assign investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/outliers" title="Outlier Investigations" />
@@ -387,7 +390,7 @@ function GPSIssuesSection({ gpsIssues, issues, onOpenIssue, onOpenMapping }: { g
     { header: "Severity", key: "severity", render: (row) => <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>, value: (row) => row.severity },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenMapping} variant="secondary"><MapPinned aria-hidden="true" /> Open Mapping</Button>} description="Monitor missing GPS, outside-boundary points, duplicate coordinates, low accuracy, suspicious locations, and invalid coordinates. GIS visualization remains in Mapping." route="/data-quality/gps-issues" title="GPS Issues" />
       <DataTable columns={columns} emptyLabel="No GPS issues yet" rows={gpsIssues} searchLabel="Search GPS issues, submission, boundary" title="GPS issue records" />
       <IssueTable description="Assign investigation, open map, resolve issue, or return affected submission for correction." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/gps-issues" title="GPS Investigations" />
@@ -404,7 +407,7 @@ function ValidationFailuresSection({ failures, issues, onOpenIssue }: { failures
     { header: "Status", key: "status", render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge>, value: (row) => row.status },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader description="Track range, logic, cross-field, conditional logic, and reference data rule failures generated by forms and workflows." route="/data-quality/validation-failures" title="Validation Failures" />
       <DataTable columns={columns} emptyLabel="No validation failures yet" rows={failures} searchLabel="Search validation failures, rules, fields" title="Validation failure records" />
       <IssueTable description="Review failed rule, inspect submission, override with reason, or resolve the issue." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/validation-failures" title="Validation Investigations" />
@@ -421,7 +424,7 @@ function RiskAlertsSection({ alerts, issues, onOpenGovernance, onOpenIssue }: { 
     { header: "Action", key: "action", render: (alert) => alert.recommendedAction, value: (alert) => alert.recommendedAction },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenGovernance} variant="secondary"><ShieldCheck aria-hidden="true" /> Governance review</Button>} description="Investigate data fraud, enumerator fraud, submission manipulation, location fraud, mass duplicates, and abnormal activity." route="/data-quality/risk-alerts" title="Risk Alerts" />
       <DataTable columns={columns} emptyLabel="No risk alerts yet" rows={alerts} searchLabel="Search risk alerts, owners, patterns" title="Risk alert center" />
       <IssueTable description="Escalate, assign reviewer, resolve, or send suspicious high-risk records to Governance Review." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/risk-alerts" title="High-Risk Investigations" />
@@ -438,7 +441,7 @@ function QualityRulesSection({ rules }: { rules: QualityRuleRecord[] }) {
     { header: "Status", key: "active", render: (rule) => <Badge tone={rule.active ? "success" : "neutral"}>{rule.active ? "Active" : "Archived"}</Badge>, value: (rule) => String(rule.active) },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader action={<Button type="button"><Plus aria-hidden="true" /> Create Rule</Button>} description="Manage platform-wide completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules with project, form, indicator, or organization scope." route="/data-quality/rules" title="Quality Rules" />
       <DataTable columns={columns} emptyLabel="No quality rules yet" rows={rules} searchLabel="Search rules, type, scope, project" title="Quality rules management" />
       <Panel title="Rule testing and background processing">
@@ -471,7 +474,7 @@ function IssueTable({ description, issues, onOpenIssue, route, title }: { descri
     { header: "Owner", key: "owner", render: (issue) => <div><p>{issue.assignedTo}</p><p className="text-xs text-muted-foreground">{issue.enumerator}</p></div>, value: (issue) => `${issue.assignedTo} ${issue.enumerator}` },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader description={description} route={route} title={title} />
       <DataTable columns={columns} emptyLabel={`No ${title.toLowerCase()} yet`} rows={issues} searchLabel={`Search ${title.toLowerCase()}, project, form, owner`} title={title} />
     </div>
@@ -496,7 +499,7 @@ function IssueDetail({
   setSelectedTab: (tab: IssueDetailTab) => void;
 }) {
   return (
-    <section className="space-y-5 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -518,7 +521,7 @@ function IssueDetail({
       <div className="flex gap-2 overflow-x-auto border-b pb-2 product-scrollbar">
         {issueTabs.map((tab) => (
           <button
-            className={cn("rounded-full px-3 py-1.5 text-sm transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
+            className={cn("rounded-full px-2.5 py-1 text-xs transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
             key={tab}
             onClick={() => setSelectedTab(tab)}
             type="button"
@@ -599,7 +602,7 @@ function IssueCards({ issues, onOpenIssue }: { issues: QualityIssue[]; onOpenIss
 
 function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number | string }) {
   return (
-    <article className="rounded-2xl border bg-panel p-4 shadow-line">
+    <article className="rounded-xl border bg-panel p-3 shadow-line">
       <div className="flex items-center justify-between gap-3">
         <span className="rounded-xl bg-primary/10 p-2 text-primary">
           <Icon aria-hidden="true" size={18} />
@@ -614,7 +617,7 @@ function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; labe
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}
@@ -626,15 +629,17 @@ function Panel({ action, children, title }: { action?: ReactNode; children: Reac
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="governance">ANALYTICS</Badge>
             <Badge tone="accent">{route}</Badge>
           </div>
-          <h2 className="mt-3 text-xl font-semibold">{title}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+          </div>
         </div>
         {action}
       </div>

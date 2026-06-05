@@ -24,6 +24,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import {
   getGovernanceSummary,
   listConsentRecords,
@@ -144,12 +145,12 @@ function SectionPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {children}
     </section>
@@ -366,15 +367,17 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
 
   if (workbenchOpen) {
     return (
-      <section className="space-y-5">
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+      <section className="space-y-3">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <Badge tone="governance">Governance workbench</Badge>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight">Policy and control operations</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Use this focused workbench for creating policies, retention controls, validation rules, export governance, and master data controls.
-              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">Policy and control operations</h1>
+                <HelpHint label="About policy and control operations" title="Policy and control operations">
+                  Use this focused workbench for creating policies, retention controls, validation rules, export governance, and master data controls.
+                </HelpHint>
+              </div>
             </div>
             <Button onClick={() => setWorkbenchOpen(false)} variant="secondary">
               <Eye aria-hidden="true" />
@@ -388,8 +391,8 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -399,10 +402,12 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
               </Badge>
               {preview ? <Badge tone="neutral">Preview data</Badge> : null}
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Governance</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Centralize auditability, policies, approvals, retention, consent, compliance, data stewardship, risk, and export controls without mixing them into project or form operations.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Governance</h1>
+              <HelpHint label="About Governance" title="Governance">
+                Centralize auditability, policies, approvals, retention, consent, compliance, data stewardship, risk, and export controls without mixing them into project or form operations.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setWorkbenchOpen(true)} variant="primary">
@@ -427,11 +432,11 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
           {governanceSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={section.id}
@@ -576,16 +581,18 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border bg-panel p-5 shadow-line">
+      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <Stamp aria-hidden="true" className="text-primary" size={17} />
               <h2 className="text-sm font-semibold">Governance boundaries</h2>
             </div>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Governance owns audit, policies, compliance, retention, consent, stewardship, risk, and export controls. User accounts stay in Users & Teams, system configuration stays in Administration, and form-specific controls stay in Forms.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="About governance boundaries" title="Governance boundaries">
+                Governance owns audit, policies, compliance, retention, consent, stewardship, risk, and export controls. User accounts stay in Users & Teams, system configuration stays in Administration, and form-specific controls stay in Forms.
+              </HelpHint>
+            </div>
           </div>
           <Badge tone="governance">{governanceSections.find((section) => section.id === activeSection)?.route}</Badge>
         </div>

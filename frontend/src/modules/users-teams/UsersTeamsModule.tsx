@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -386,8 +387,8 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   ];
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -396,10 +397,12 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
                 {summary.permission_alerts ? `${summary.permission_alerts} access alert(s)` : "Access healthy"}
               </Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Users & Teams</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Manage identities, roles, operational teams, organization structure, access boundaries, and user activity from one controlled workspace.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Users & Teams</h1>
+              <HelpHint label="About Users & Teams" title="Users & Teams">
+                Manage identities, roles, operational teams, organization structure, access boundaries, and user activity from one controlled workspace.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("user")} variant="primary">
@@ -416,11 +419,11 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
           {usersTeamsSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={section.id}
@@ -606,10 +609,10 @@ function DashboardSection({
     { icon: Activity, label: "Active Sessions", value: summary.active_sessions || activeSessions, tone: "daily" as const },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((card) => (
-          <button className="rounded-2xl border bg-panel p-4 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Teams" ? "teams" : card.label === "Roles" ? "roles" : "users")} type="button">
+          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:shadow-elevated" key={card.label} onClick={() => onOpenSection(card.label === "Teams" ? "teams" : card.label === "Roles" ? "roles" : "users")} type="button">
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
@@ -617,7 +620,7 @@ function DashboardSection({
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">Access health</h2>
@@ -625,7 +628,7 @@ function DashboardSection({
             </div>
             <Badge tone={summary.access_health_score >= 80 ? "success" : "warning"}>{summary.access_health_score}% ready</Badge>
           </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
             <Signal label="Role coverage" value={`${roles.length} roles`} />
             <Signal label="Team structure" value={`${teams.length} teams`} />
             <Signal label="User activity" value={`${users.filter((user) => user.is_active).length} active`} />
@@ -634,7 +637,7 @@ function DashboardSection({
             <div className="h-full rounded-full bg-primary" style={{ width: `${summary.access_health_score}%` }} />
           </div>
         </div>
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="text-base font-semibold">Permission alerts</h2>
           <div className="mt-4 space-y-3">
             <AlertRow label="Pending access requests" value={organizationSummary.pending_access_requests} />
@@ -657,10 +660,12 @@ function DashboardSection({
 
 function SectionHeader({ action, description, title }: { action?: React.ReactNode; description: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
       <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -688,7 +693,7 @@ function AlertRow({ label, value }: { label: string; value: number | string }) {
 
 function InsightCard({ icon: Icon, items, title }: { icon: typeof UsersRound; items: string[]; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex items-center gap-2">
         <Icon aria-hidden="true" className="text-primary" size={18} />
         <h3 className="font-semibold">{title}</h3>
@@ -704,7 +709,7 @@ function InsightCard({ icon: Icon, items, title }: { icon: typeof UsersRound; it
 
 function PermissionMatrix({ groups, roles }: { groups: ReturnType<typeof groupPermissions>; roles: RoleRead[] }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">Permission Matrix</h3>
@@ -742,17 +747,17 @@ function OrganizationsSection({ organizationName, summary, units }: { organizati
     <section className="space-y-4">
       <SectionHeader description="Manage the tenant organization structure and keep identity assignments aligned to offices, regions, and locations." title="Organization Structure" />
       <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <Building2 aria-hidden="true" className="text-primary" size={22} />
           <h3 className="mt-4 text-lg font-semibold">{organizationName}</h3>
           <p className="mt-1 text-sm text-muted-foreground">Single-tenant organization workspace with multi-organization readiness.</p>
-          <div className="mt-5 grid gap-3">
+          <div className="mt-3 grid gap-3">
             <Signal label="Users" value={`${summary.total_users}`} />
             <Signal label="Teams" value={`${summary.teams}`} />
             <Signal label="Roles" value={`${summary.roles}`} />
           </div>
         </div>
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h3 className="font-semibold">Hierarchy</h3>
           <div className="mt-4 space-y-2">
             {units.map((unit) => (
@@ -913,7 +918,7 @@ function CreateRoleModal({ canSubmit, draft, groups, onChange, onOpenChange, onS
             {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
           </Select>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
           {groups.map((group) => (
             <div className="rounded-xl border p-3" key={group.group}>
               <p className="text-sm font-semibold capitalize">{group.group}</p>

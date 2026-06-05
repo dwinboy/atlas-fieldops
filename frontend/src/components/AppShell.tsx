@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  CheckCircle2,
   ChevronRight,
   ChevronLeft,
   Command,
@@ -13,10 +14,12 @@ import {
   Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import {
   getBreadcrumbsForView,
   getNavigationItemByView,
@@ -54,66 +57,66 @@ const viewToneStyles: Record<
 > = {
   daily: {
     badge: "daily",
-    header: "border-section-daily/20 bg-section-daily/10",
-    icon: "border border-section-daily/20 bg-section-daily/10 text-section-daily",
-    navActive: "bg-section-daily/10 text-section-daily shadow-line",
-    navIcon: "bg-section-daily/10 text-section-daily",
+    header: "border-section-daily/20 bg-section-daily/12",
+    icon: "border border-section-daily/20 bg-section-daily/12 text-section-daily",
+    navActive: "bg-section-daily/12 text-section-daily shadow-line",
+    navIcon: "bg-section-daily/12 text-section-daily",
     navRail: "bg-section-daily",
   },
   collect: {
     badge: "collect",
-    header: "border-section-collect/20 bg-section-collect/10",
-    icon: "border border-section-collect/20 bg-section-collect/10 text-section-collect",
-    navActive: "bg-section-collect/10 text-section-collect shadow-line",
-    navIcon: "bg-section-collect/10 text-section-collect",
+    header: "border-section-collect/20 bg-section-collect/12",
+    icon: "border border-section-collect/20 bg-section-collect/12 text-section-collect",
+    navActive: "bg-section-collect/12 text-section-collect shadow-line",
+    navIcon: "bg-section-collect/12 text-section-collect",
     navRail: "bg-section-collect",
   },
   monitor: {
     badge: "monitor",
-    header: "border-section-monitor/20 bg-section-monitor/10",
-    icon: "border border-section-monitor/20 bg-section-monitor/10 text-section-monitor",
-    navActive: "bg-section-monitor/10 text-section-monitor shadow-line",
-    navIcon: "bg-section-monitor/10 text-section-monitor",
+    header: "border-section-monitor/20 bg-section-monitor/12",
+    icon: "border border-section-monitor/20 bg-section-monitor/12 text-section-monitor",
+    navActive: "bg-section-monitor/12 text-section-monitor shadow-line",
+    navIcon: "bg-section-monitor/12 text-section-monitor",
     navRail: "bg-section-monitor",
   },
   operate: {
     badge: "operate",
-    header: "border-section-operate/20 bg-section-operate/10",
-    icon: "border border-section-operate/20 bg-section-operate/10 text-section-operate",
-    navActive: "bg-section-operate/10 text-section-operate shadow-line",
-    navIcon: "bg-section-operate/10 text-section-operate",
+    header: "border-section-operate/20 bg-section-operate/12",
+    icon: "border border-section-operate/20 bg-section-operate/12 text-section-operate",
+    navActive: "bg-section-operate/12 text-section-operate shadow-line",
+    navIcon: "bg-section-operate/12 text-section-operate",
     navRail: "bg-section-operate",
   },
   admin: {
     badge: "admin",
-    header: "border-section-admin/20 bg-section-admin/10",
-    icon: "border border-section-admin/20 bg-section-admin/10 text-section-admin",
-    navActive: "bg-section-admin/10 text-section-admin shadow-line",
-    navIcon: "bg-section-admin/10 text-section-admin",
+    header: "border-section-admin/20 bg-section-admin/12",
+    icon: "border border-section-admin/20 bg-section-admin/12 text-section-admin",
+    navActive: "bg-section-admin/12 text-section-admin shadow-line",
+    navIcon: "bg-section-admin/12 text-section-admin",
     navRail: "bg-section-admin",
   },
   support: {
     badge: "support",
-    header: "border-section-support/20 bg-section-support/10",
-    icon: "border border-section-support/20 bg-section-support/10 text-section-support",
-    navActive: "bg-section-support/10 text-section-support shadow-line",
-    navIcon: "bg-section-support/10 text-section-support",
+    header: "border-section-support/20 bg-section-support/12",
+    icon: "border border-section-support/20 bg-section-support/12 text-section-support",
+    navActive: "bg-section-support/12 text-section-support shadow-line",
+    navIcon: "bg-section-support/12 text-section-support",
     navRail: "bg-section-support",
   },
   platform: {
     badge: "platform",
-    header: "border-section-platform/20 bg-section-platform/10",
-    icon: "border border-section-platform/20 bg-section-platform/10 text-section-platform",
-    navActive: "bg-section-platform/10 text-section-platform shadow-line",
-    navIcon: "bg-section-platform/10 text-section-platform",
+    header: "border-section-platform/20 bg-section-platform/12",
+    icon: "border border-section-platform/20 bg-section-platform/12 text-section-platform",
+    navActive: "bg-section-platform/12 text-section-platform shadow-line",
+    navIcon: "bg-section-platform/12 text-section-platform",
     navRail: "bg-section-platform",
   },
   governance: {
     badge: "governance",
-    header: "border-section-governance/20 bg-section-governance/10",
-    icon: "border border-section-governance/20 bg-section-governance/10 text-section-governance",
-    navActive: "bg-section-governance/10 text-section-governance shadow-line",
-    navIcon: "bg-section-governance/10 text-section-governance",
+    header: "border-section-governance/20 bg-section-governance/12",
+    icon: "border border-section-governance/20 bg-section-governance/12 text-section-governance",
+    navActive: "bg-section-governance/12 text-section-governance shadow-line",
+    navIcon: "bg-section-governance/12 text-section-governance",
     navRail: "bg-section-governance",
   },
 };
@@ -163,6 +166,7 @@ export function AppShell({
   principal,
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const router = useRouter();
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const collapsedSidebar = useWorkspaceStore((state) => state.collapsedSidebar);
@@ -189,6 +193,7 @@ export function AppShell({
       ? getNavigationItemByView(guidance.next)
       : null;
   const nextActionItem = nextItem?.id === activeView ? null : nextItem;
+  const headerQuickLinks = (activeItem.children ?? []).slice(0, 4);
   const accountName =
     principal?.full_name?.trim() || principal?.email || "Signed-in user";
   const accountRole =
@@ -198,13 +203,13 @@ export function AppShell({
     : "Workspace access";
 
   const navigation = (
-    <nav aria-label="Primary navigation" className="space-y-1.5">
+    <nav aria-label="Primary navigation" className="space-y-1">
       {visibleNavSections.map((group) => {
         return (
-          <div className="space-y-1.5" key={group.label}>
+          <div className="space-y-1" key={group.label}>
             <p
               className={cn(
-                "px-2.5 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
+                "px-2 pt-2.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
                 collapsedSidebar && "sr-only",
               )}
             >
@@ -218,7 +223,7 @@ export function AppShell({
                 <button
                   key={item.id}
                   className={cn(
-                    "group relative flex h-11 w-full items-center gap-3 rounded-lg px-2.5 text-left text-sm font-medium transition-all duration-200 ease-product",
+                    "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] font-medium transition-all duration-200 ease-product",
                     active
                       ? tone.navActive
                       : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -226,6 +231,7 @@ export function AppShell({
                   )}
                   onClick={() => {
                     setActiveView(item.id);
+                    router.push(item.route);
                     setMobileNavOpen(false);
                   }}
                   type="button"
@@ -234,7 +240,7 @@ export function AppShell({
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "absolute left-0 top-2 h-7 w-1 rounded-r-full",
+                        "absolute left-0 top-2 h-5 w-1 rounded-r-full",
                         tone.navRail,
                         collapsedSidebar && "left-1",
                       )}
@@ -242,20 +248,22 @@ export function AppShell({
                   ) : null}
                   <span
                     className={cn(
-                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
                       active
                         ? tone.navIcon
                         : "bg-muted/50 text-muted-foreground group-hover:bg-background group-hover:text-foreground",
                     )}
                   >
-                    <Icon aria-hidden="true" size={17} />
+                    <Icon aria-hidden="true" size={15} />
                   </span>
                   <span
                     className={cn("min-w-0", collapsedSidebar && "sr-only")}
                   >
-                    <span className="block truncate">{item.label}</span>
-                    <span className="block truncate text-[11px] font-normal text-muted-foreground group-hover:text-muted-foreground">
-                      {item.hint}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="block truncate">{item.label}</span>
+                      <HelpHint label={`About ${item.label}`} title={item.label}>
+                        {item.hint}
+                      </HelpHint>
                     </span>
                   </span>
                 </button>
@@ -272,15 +280,15 @@ export function AppShell({
       className={cn(
         "min-h-screen max-w-full overflow-x-hidden bg-background text-foreground lg:grid",
         collapsedSidebar
-          ? "lg:grid-cols-[76px_1fr]"
-          : "lg:grid-cols-[264px_1fr]",
+          ? "lg:grid-cols-[68px_1fr]"
+          : "lg:grid-cols-[248px_1fr]",
       )}
     >
-      <aside className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-3 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col">
+      <aside className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col">
         <div className="shrink-0">
           <div
             className={cn(
-              "mb-5 flex items-center gap-3 px-1",
+              "mb-4 flex items-center gap-2.5 px-1",
               collapsedSidebar && "justify-center",
             )}
           >
@@ -289,17 +297,17 @@ export function AppShell({
               name={organizationLabel}
             />
             <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
-              <p className="truncate text-sm font-semibold">
+              <p className="truncate text-[13px] font-semibold">
                 {organizationLabel}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-[11px] text-muted-foreground">
                 {organizationSlug ?? "Atlas FieldOps"}
               </p>
             </div>
           </div>
           <button
             className={cn(
-              "mb-4 flex h-10 w-full items-center gap-2 rounded-xl border bg-background/80 px-2.5 text-left text-xs text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
+              "mb-3 flex h-8 w-full items-center gap-2 rounded-lg border bg-background/80 px-2 text-left text-[11px] text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
               collapsedSidebar && "justify-center px-0",
             )}
             onClick={() => setCommandOpen(true)}
@@ -325,20 +333,44 @@ export function AppShell({
           </button>
           <div
             className={cn(
-              "mb-4 rounded-xl border bg-background/80 p-3 shadow-sm",
+              "mb-3 rounded-lg border bg-background/80 p-2.5 shadow-sm",
               collapsedSidebar && "hidden",
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Today
               </span>
               <StatusDot tone="online" />
             </div>
-            <p className="mt-2 text-sm font-semibold">Workspace ready</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Navigation follows the M&E architecture: projects, forms,
-              fieldwork, quality, reports, governance, and system controls.
+            <p className="mt-1.5 text-[13px] font-semibold">Workspace ready</p>
+            <div className="mt-1">
+              <HelpHint label="About workspace navigation" title="Workspace ready">
+                Navigation follows the M&E architecture: projects, forms, fieldwork, quality, reports, governance, and system controls.
+              </HelpHint>
+            </div>
+          </div>
+          <div
+            className={cn(
+              "mb-3 rounded-lg border bg-background/80 p-2.5 shadow-sm",
+              collapsedSidebar && "hidden",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
+                {organizationInitials(accountName)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Signed in as
+                </p>
+                <p className="truncate text-[13px] font-semibold text-foreground">
+                  {accountName}
+                </p>
+              </div>
+            </div>
+            <p className="mt-1.5 truncate text-[11px] capitalize text-muted-foreground">
+              {accountRole} · {accountScope}
             </p>
           </div>
         </div>
@@ -348,7 +380,7 @@ export function AppShell({
         <div className="mt-3 shrink-0 border-t pt-3">
           <button
             className={cn(
-              "flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
+              "flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
               collapsedSidebar && "justify-center px-0",
             )}
             onClick={toggleSidebar}
@@ -365,7 +397,7 @@ export function AppShell({
       </aside>
 
       <div className="min-w-0 max-w-full overflow-x-hidden">
-        <header className="sticky top-0 z-20 flex h-16 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-5">
+        <header className="sticky top-0 z-20 flex h-14 max-w-full items-center justify-between gap-2 overflow-hidden border-b bg-panel/88 px-3 shadow-sm backdrop-blur-xl lg:px-4">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Button
               aria-label="Toggle navigation"
@@ -385,18 +417,20 @@ export function AppShell({
                 />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-normal">
+                <p className="truncate text-[13px] font-semibold tracking-normal">
                   {organizationLabel}
                 </p>
                 <p className="truncate text-xs text-muted-foreground md:hidden">
-                  {accountName} · {accountRole}
+                  Signed in as {accountName}
                 </p>
-                <p className="hidden text-xs text-muted-foreground md:block">
-                  {organizationSlug ? `${organizationSlug} · ` : ""}
-                  {principal?.scope_type
-                    ? `${principal.scope_type.replace("_", " ")} scoped access`
-                    : "Forms, teams, reviews, and reports"}
-                </p>
+                <div className="hidden items-center gap-1.5 md:flex">
+                  {organizationSlug ? <span className="truncate text-xs text-muted-foreground">{organizationSlug}</span> : null}
+                  <HelpHint label="About workspace scope" title="Workspace scope">
+                    {principal?.scope_type
+                      ? `${principal.scope_type.replace("_", " ")} scoped access`
+                      : "Forms, teams, reviews, and reports"}
+                  </HelpHint>
+                </div>
               </div>
             </div>
           </div>
@@ -408,12 +442,15 @@ export function AppShell({
               <RadioTower aria-hidden="true" size={13} />
               {isSupportMode ? "Support mode" : accountRole}
             </Badge>
-            <div className="hidden min-w-0 max-w-[240px] items-center gap-2 rounded-lg border bg-background/80 px-2.5 py-1.5 shadow-line md:flex">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+            <div className="hidden min-w-0 max-w-[260px] items-center gap-2 rounded-lg border bg-background/80 px-2 py-1 shadow-line md:flex">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
                 {organizationInitials(accountName)}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-foreground">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Signed in as
+                </p>
+                <p className="truncate text-[13px] font-semibold text-foreground">
                   {accountName}
                 </p>
                 <p className="truncate text-[11px] text-muted-foreground">
@@ -474,45 +511,52 @@ export function AppShell({
 
         <section
           className={cn(
-            "border-b px-3 py-5 sm:px-5 lg:px-7",
+            "sticky top-14 z-10 border-b px-3 py-2 shadow-sm backdrop-blur-xl sm:px-4 lg:px-5",
             activeTone.header,
           )}
         >
-          <div className="mx-auto w-full max-w-[1480px] space-y-3">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex min-w-0 gap-3">
-                <span className={cn("section-icon", activeTone.icon)}>
-                  <ActiveIcon aria-hidden="true" size={20} />
+          <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-2">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className={cn("section-icon h-8 w-8", activeTone.icon)}>
+                  <ActiveIcon aria-hidden="true" size={16} />
                 </span>
-                <div className="min-w-0">
-                  <nav
-                    aria-label="Breadcrumb"
-                    className="flex flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-                  >
-                    {activeBreadcrumbs.map((breadcrumb, index) => (
-                      <span
-                        className="inline-flex items-center gap-1"
-                        key={`${breadcrumb.label}-${index}`}
-                      >
-                        {index ? (
-                          <ChevronRight aria-hidden="true" size={12} />
-                        ) : null}
-                        {breadcrumb.label}
-                      </span>
-                    ))}
-                  </nav>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <h1 className="text-xl font-semibold tracking-tight">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <nav
+                      aria-label="Breadcrumb"
+                      className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+                    >
+                      {activeBreadcrumbs.map((breadcrumb, index) => (
+                        <span
+                          className="inline-flex items-center gap-1"
+                          key={`${breadcrumb.label}-${index}`}
+                        >
+                          {index ? (
+                            <ChevronRight aria-hidden="true" size={12} />
+                          ) : null}
+                          {breadcrumb.label}
+                        </span>
+                      ))}
+                    </nav>
+                    <Badge tone={activeTone.badge}>{activeItem.route}</Badge>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <h1 className="text-lg font-semibold tracking-tight">
                       {activeItem.label}
                     </h1>
+                    <HelpHint label={`About ${activeItem.label}`} title={activeItem.label}>
+                      {guidance.outcome}
+                    </HelpHint>
                     <Badge tone={activeTone.badge}>{guidance.step}</Badge>
                   </div>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    {guidance.outcome}
-                  </p>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-line">
+                  <CheckCircle2 aria-hidden="true" className="text-success" size={13} />
+                  Workspace healthy
+                </span>
                 <Button
                   onClick={() => setCommandOpen(true)}
                   type="button"
@@ -523,7 +567,10 @@ export function AppShell({
                 </Button>
                 {nextActionItem ? (
                   <Button
-                    onClick={() => setActiveView(nextActionItem.id)}
+                    onClick={() => {
+                      setActiveView(nextActionItem.id);
+                      router.push(nextActionItem.route);
+                    }}
                     type="button"
                     variant="primary"
                   >
@@ -533,21 +580,46 @@ export function AppShell({
                 ) : null}
               </div>
             </div>
+            {headerQuickLinks.length ? (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 product-scrollbar">
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Quick links
+                </span>
+                {headerQuickLinks.map((child) => (
+                  <span
+                    className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/70 px-2 text-[11px] font-medium text-muted-foreground shadow-line"
+                    key={child.route}
+                  >
+                    <a
+                      className="transition hover:text-primary"
+                      href={child.route}
+                    >
+                      {child.label}
+                    </a>
+                    <HelpHint label={`About ${child.label}`} title={child.label}>
+                      {child.description}
+                    </HelpHint>
+                  </span>
+                ))}
+              </div>
+            ) : null}
             {lastActionResult ? (
               <section
-                className="rounded-xl border border-success/30 bg-success/10 p-3"
+                className="rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5"
                 aria-live="polite"
               >
-                <p className="text-sm font-semibold">Last action</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  {lastActionResult}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold">Last action</p>
+                  <HelpHint label="About last action" title="Last action">
+                    {lastActionResult}
+                  </HelpHint>
+                </div>
               </section>
             ) : null}
           </div>
         </section>
 
-        <main className="mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-6 sm:px-5 lg:px-7">
+        <main className="mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
           {children}
         </main>
       </div>

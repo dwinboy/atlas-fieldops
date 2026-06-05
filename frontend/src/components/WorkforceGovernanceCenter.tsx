@@ -684,15 +684,15 @@ export function WorkforceGovernanceCenter({ token }: WorkforceGovernanceCenterPr
         <div className="grid gap-2 md:grid-cols-4">
           {sections.map((section) => (
             <button
-              className={`rounded-xl px-4 py-3 text-left transition ${
+              className={`rounded-lg px-2.5 py-2 text-left transition ${
                 activeSection === section.id ? "bg-primary/10 text-primary shadow-line" : "hover:bg-muted/60"
               }`}
               key={section.id}
               onClick={() => setActiveSection(section.id)}
               type="button"
             >
-              <span className="block text-sm font-semibold">{section.label}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">{section.hint}</span>
+              <span className="block text-xs font-semibold">{section.label}</span>
+              <span className="mt-0.5 block text-[11px] text-muted-foreground">{section.hint}</span>
             </button>
           ))}
         </div>

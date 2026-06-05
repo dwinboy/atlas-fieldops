@@ -17,6 +17,7 @@ from app.schemas.identity import (
     OrganizationRead,
     OrganizationStatusUpdate,
     PlatformOrganizationRead,
+    SupportSessionCreate,
 )
 from app.services.identity import IdentityConflictError, OrganizationService
 
@@ -154,7 +155,7 @@ async def update_organization_status(
         action="platform.organization_status_updated",
         resource_type="organization",
         resource_id=str(organization.id),
-        metadata={"slug": organization.slug, "is_active": organization.is_active},
+        metadata={"slug": organization.slug, "is_active": organization.is_active, "reason": payload.reason or ""},
     )
     await session.commit()
     return PlatformOrganizationRead(
@@ -176,6 +177,7 @@ async def create_support_session(
     organization_id: UUID,
     principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
+    payload: SupportSessionCreate | None = None,
 ) -> TokenResponse:
     repository = OrganizationRepository(session)
     organization = await repository.get(organization_id)
@@ -187,7 +189,7 @@ async def create_support_session(
         action="platform.support_session_opened",
         resource_type="organization",
         resource_id=str(organization.id),
-        metadata={"slug": organization.slug, "name": organization.name},
+        metadata={"slug": organization.slug, "name": organization.name, "reason": payload.reason if payload else ""},
     )
     await session.commit()
     token = create_access_token(

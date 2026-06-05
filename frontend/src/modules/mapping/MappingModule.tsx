@@ -26,6 +26,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -142,8 +143,8 @@ export function MappingModule({ principal }: MappingModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -155,10 +156,12 @@ export function MappingModule({ principal }: MappingModuleProps) {
                 {restricted ? "Aggregated coordinates" : "Internal map access"}
               </Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Mapping</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Visualize project scope, submission GPS evidence, beneficiaries, facilities, coverage, indicators, spatial data quality, reusable layers, and boundaries from one GIS workspace.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Mapping</h1>
+              <HelpHint label="About Mapping" title="Mapping">
+                Visualize project scope, submission GPS evidence, beneficiaries, facilities, coverage, indicators, spatial data quality, reusable layers, and boundaries from one GIS workspace.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setActiveSection("layers")} variant="primary">
@@ -171,11 +174,11 @@ export function MappingModule({ principal }: MappingModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar" aria-label="Mapping sections">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Mapping sections">
           {mappingSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
                   : "bg-panel hover:bg-muted",
@@ -253,7 +256,7 @@ function MappingDashboard({
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
-        <article className="rounded-2xl border bg-panel p-4 shadow-line" key={card.label}>
+        <article className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
           <div className="flex items-center justify-between gap-3">
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             {card.tone ? <Badge tone={card.tone}>Spatial</Badge> : null}
@@ -297,7 +300,7 @@ function EnterpriseMapViewer({
   const activeInfo = mappingSections.find((section) => section.id === activeSection) ?? mappingSections[0];
   return (
     <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-      <aside className="rounded-2xl border bg-panel p-4 shadow-line">
+      <aside className="rounded-xl border bg-panel p-3 shadow-line">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">Layer control</h2>
@@ -323,8 +326,10 @@ function EnterpriseMapViewer({
       <div className="overflow-hidden rounded-2xl border bg-panel shadow-line">
         <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-sm font-semibold">Map Overview</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{activeInfo.description}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Map Overview</h2>
+              <HelpHint label="About this map" title={activeInfo.label}>{activeInfo.description}</HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="relative min-w-48">
@@ -377,7 +382,7 @@ function EnterpriseMapViewer({
         </div>
       </div>
 
-      <aside className="rounded-2xl border bg-panel p-4 shadow-line">
+      <aside className="rounded-xl border bg-panel p-3 shadow-line">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">Results summary</h2>
@@ -550,7 +555,7 @@ function IndicatorWorkspace() {
   return (
     <section className="grid gap-4 xl:grid-cols-3">
       {previewIndicatorGeography.map((item) => (
-        <article className="rounded-2xl border bg-panel p-4 shadow-line" key={item.id}>
+        <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
           <Badge tone={coverageTone(item.achievementPercent)}>Achievement {item.achievementPercent}%</Badge>
           <h2 className="mt-3 text-sm font-semibold">{item.indicator}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{item.project} · {item.location}</p>
@@ -590,14 +595,16 @@ function SpatialQualityWorkspace() {
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-4 shadow-line xl:flex-row xl:items-center xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3 shadow-line xl:flex-row xl:items-center xl:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="monitor">{route}</Badge>
           <Badge tone="accent">Architecture route</Badge>
         </div>
-        <h2 className="mt-3 text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="flex shrink-0 flex-wrap gap-2">{action}</div> : null}
     </div>
@@ -606,7 +613,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-4 shadow-line">
+    <section className="rounded-xl border bg-panel p-3 shadow-line">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}

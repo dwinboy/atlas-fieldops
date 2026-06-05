@@ -2,8 +2,9 @@ import json
 import os
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -14,21 +15,29 @@ from app.core.config import settings
 from app.models.audit import AuditLog
 from app.models.collection import DataForm, FieldOfficerProfile, Submission
 from app.models.identity import Membership, Organization, Role, User
+from app.models.marketing import MarketingLead
 from app.models.operations import Beneficiary, DataExportJob, DataImportJob
+from app.repositories.audit import AuditRepository
 from app.repositories.identity import OrganizationRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.platform import (
+    PlatformActionResult,
     PlatformAuditLogRead,
     PlatformBackupJobRead,
+    PlatformFeatureFlagUpdate,
     PlatformFeatureFlagRead,
     PlatformHealthServiceRead,
     PlatformIntegrationRead,
+    PlatformLeadRead,
+    PlatformOrganizationPlanRead,
     PlatformOrganizationUsageRead,
     PlatformRoleTemplateRead,
     PlatformSecurityEventRead,
     PlatformSettingsRead,
     PlatformSummaryRead,
+    PlatformSupportSessionRead,
     PlatformSystemHealthRead,
+    PlatformUserSecurityAction,
     PlatformUserRead,
 )
 
@@ -50,6 +59,28 @@ def parse_metadata(value: str) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def principal_user_uuid(principal: CurrentPrincipal) -> UUID | None:
+    try:
+        return UUID(principal.user_id)
+    except ValueError:
+        return None
+
+
+def principal_platform_organization_uuid(principal: CurrentPrincipal) -> UUID:
+    return UUID(principal.platform_organization_id or principal.organization_id)
+
+
+def feature_flag_catalog(now: datetime) -> list[PlatformFeatureFlagRead]:
+    return [
+        PlatformFeatureFlagRead(key="mapping", label="Mapping", description="GIS maps, boundaries, GPS validation, and spatial analysis.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="indicators", label="Indicators", description="Indicator library, targets, baselines, and results frameworks.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="reports", label="Reports", description="Standard, custom, scheduled, and donor reports.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="data_quality", label="Data Quality", description="Quality scoring, duplicate detection, risk alerts, and investigations.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="mobile_app", label="Mobile App", description="Offline mobile collection and sync workflows.", global_enabled=True, environment=settings.app_env, updated_at=now),
+        PlatformFeatureFlagRead(key="ai_features", label="AI Features", description="AI-assisted review, scoring, fraud signals, and recommendations.", global_enabled=False, rollout_percentage=0, environment=settings.app_env, updated_at=now),
+    ]
 
 
 @router.get("/summary", response_model=PlatformSummaryRead, summary="Platform operations summary")
@@ -152,15 +183,41 @@ async def platform_roles(
 async def platform_feature_flags(
     _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
 ) -> list[PlatformFeatureFlagRead]:
-    now = datetime.now(UTC)
-    return [
-        PlatformFeatureFlagRead(key="mapping", label="Mapping", description="GIS maps, boundaries, GPS validation, and spatial analysis.", global_enabled=True, environment=settings.app_env, updated_at=now),
-        PlatformFeatureFlagRead(key="indicators", label="Indicators", description="Indicator library, targets, baselines, and results frameworks.", global_enabled=True, environment=settings.app_env, updated_at=now),
-        PlatformFeatureFlagRead(key="reports", label="Reports", description="Standard, custom, scheduled, and donor reports.", global_enabled=True, environment=settings.app_env, updated_at=now),
-        PlatformFeatureFlagRead(key="data_quality", label="Data Quality", description="Quality scoring, duplicate detection, risk alerts, and investigations.", global_enabled=True, environment=settings.app_env, updated_at=now),
-        PlatformFeatureFlagRead(key="mobile_app", label="Mobile App", description="Offline mobile collection and sync workflows.", global_enabled=True, environment=settings.app_env, updated_at=now),
-        PlatformFeatureFlagRead(key="ai_features", label="AI Features", description="AI-assisted review, scoring, fraud signals, and recommendations.", global_enabled=False, rollout_percentage=0, environment=settings.app_env, updated_at=now),
-    ]
+    return feature_flag_catalog(datetime.now(UTC))
+
+
+@router.patch("/feature-flags/{flag_key}", response_model=PlatformFeatureFlagRead, summary="Audit a platform feature flag change")
+async def update_platform_feature_flag(
+    flag_key: str,
+    payload: PlatformFeatureFlagUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformFeatureFlagRead:
+    flags = {flag.key: flag for flag in feature_flag_catalog(datetime.now(UTC))}
+    flag = flags.get(flag_key)
+    if flag is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feature flag not found")
+    old_state = flag.model_dump(mode="json")
+    if payload.global_enabled is not None:
+        flag.global_enabled = payload.global_enabled
+    if payload.rollout_percentage is not None:
+        flag.rollout_percentage = payload.rollout_percentage
+    flag.updated_at = datetime.now(UTC)
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=principal_user_uuid(principal),
+        action="platform.feature_flag_changed",
+        resource_type="feature_flag",
+        resource_id=flag.key,
+        metadata={
+            "reason": payload.reason,
+            "old_value": old_state,
+            "new_value": flag.model_dump(mode="json"),
+            "environment": settings.app_env,
+        },
+    )
+    await session.commit()
+    return flag
 
 
 @router.get("/system-health", response_model=PlatformSystemHealthRead, summary="Read platform system health")
@@ -190,6 +247,61 @@ async def platform_security_events(
     ]
 
 
+@router.post("/users/{user_id}/security-action", response_model=PlatformActionResult, summary="Run a Super Admin user security action")
+async def platform_user_security_action(
+    user_id: UUID,
+    payload: PlatformUserSecurityAction,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformActionResult:
+    if payload.action == "lock" and user_id == principal_user_uuid(principal):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Super Admins cannot lock their own account")
+    result = await session.execute(
+        select(User, Membership, Organization)
+        .join(Membership, Membership.user_id == User.id)
+        .join(Organization, Organization.id == Membership.organization_id)
+        .where(
+            User.id == user_id,
+            User.deleted_at.is_(None),
+            Membership.deleted_at.is_(None),
+            Organization.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user, _membership, organization = row
+    old_active = user.is_active
+    if payload.action == "lock":
+        user.is_active = False
+    elif payload.action == "unlock":
+        user.is_active = True
+    await AuditRepository(session).append(
+        organization_id=organization.id,
+        actor_user_id=principal_user_uuid(principal),
+        action=f"platform.user_{payload.action}",
+        resource_type="user",
+        resource_id=str(user.id),
+        metadata={
+            "reason": payload.reason,
+            "email": user.email,
+            "organization_slug": organization.slug,
+            "old_active": old_active,
+            "new_active": user.is_active,
+        },
+    )
+    await session.commit()
+    messages = {
+        "lock": "User account locked.",
+        "unlock": "User account unlocked.",
+        "force_password_reset": "Password reset requirement recorded for identity provider integration.",
+        "revoke_sessions": "Session revocation recorded for session store integration.",
+        "require_mfa": "MFA requirement recorded for authentication provider integration.",
+    }
+    return PlatformActionResult(message=messages[payload.action])
+
+
 @router.get("/integrations", response_model=list[PlatformIntegrationRead], summary="List platform-wide integrations")
 async def platform_integrations(
     _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
@@ -212,6 +324,106 @@ async def platform_backups(
         PlatformBackupJobRead(id="backup-config-daily", backup_type="Configuration Backup", status="scheduled", size="Pending first run", created_at=now, retention="30 days"),
         PlatformBackupJobRead(id="backup-database-daily", backup_type="Database Backup", status="architecture-ready", size="Provider managed", created_at=now, retention="90 days"),
     ]
+
+
+@router.get("/leads", response_model=list[PlatformLeadRead], summary="List public website leads for Super Admin review")
+async def platform_leads(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> list[PlatformLeadRead]:
+    result = await session.execute(
+        select(MarketingLead)
+        .where(MarketingLead.deleted_at.is_(None))
+        .order_by(MarketingLead.created_at.desc())
+        .limit(limit)
+    )
+    return [
+        PlatformLeadRead(
+            id=lead.id,
+            name=lead.name,
+            organization=lead.organization,
+            country=lead.country,
+            email=lead.email,
+            phone=lead.phone,
+            organization_size=lead.organization_size,
+            interest_area=lead.interest_area,
+            source=lead.source,
+            message=lead.message,
+            status=lead.status,
+            created_at=lead.created_at,
+        )
+        for lead in result.scalars().all()
+    ]
+
+
+@router.get("/organization-plans", response_model=list[PlatformOrganizationPlanRead], summary="List tenant plans and platform limits")
+async def platform_organization_plans(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[PlatformOrganizationPlanRead]:
+    repository = OrganizationRepository(session)
+    organizations = await repository.list_all()
+    rows: list[PlatformOrganizationPlanRead] = []
+    enabled_modules = ["projects", "forms", "field_operations", "submissions", "mapping", "indicators", "reports", "data_quality"]
+    for organization in organizations:
+        user_count = await repository.count_users(organization.id)
+        submission_count = await count_rows(session, Submission, Submission.organization_id == organization.id, Submission.deleted_at.is_(None))
+        plan = "Enterprise" if user_count > 25 or submission_count > 10000 else "Professional"
+        user_limit = 250 if plan == "Enterprise" else 50
+        submission_limit = 1_000_000 if plan == "Enterprise" else 100_000
+        usage_percent = max(
+            int((user_count / user_limit) * 100),
+            int((submission_count / submission_limit) * 100),
+        )
+        rows.append(
+            PlatformOrganizationPlanRead(
+                organization_id=organization.id,
+                organization_name=organization.name,
+                organization_slug=organization.slug,
+                plan=plan,
+                status="Active" if organization.is_active else "Suspended",
+                user_limit=user_limit,
+                submission_limit=submission_limit,
+                storage_limit_gb=500 if plan == "Enterprise" else 100,
+                enabled_modules=enabled_modules,
+                usage_percent=min(usage_percent, 100),
+            )
+        )
+    return rows
+
+
+@router.get("/support-sessions", response_model=list[PlatformSupportSessionRead], summary="List recent support access sessions")
+async def platform_support_sessions(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[PlatformSupportSessionRead]:
+    result = await session.execute(
+        select(AuditLog, Organization, User)
+        .join(Organization, Organization.id == AuditLog.organization_id, isouter=True)
+        .join(User, User.id == AuditLog.actor_user_id, isouter=True)
+        .where(AuditLog.action == "platform.support_session_opened")
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
+    sessions: list[PlatformSupportSessionRead] = []
+    for log, organization, user in result.all():
+        metadata = parse_metadata(log.metadata_json)
+        sessions.append(
+            PlatformSupportSessionRead(
+                id=log.id,
+                organization_id=log.organization_id,
+                organization_name=organization.name if organization else None,
+                organization_slug=organization.slug if organization else None,
+                actor_email=user.email if user else None,
+                status="started",
+                reason=str(metadata.get("reason") or metadata.get("name") or ""),
+                started_at=log.created_at,
+                expires_at=None,
+            )
+        )
+    return sessions
 
 
 @router.get("/audit-logs", response_model=list[PlatformAuditLogRead], summary="List recent platform-visible audit logs")

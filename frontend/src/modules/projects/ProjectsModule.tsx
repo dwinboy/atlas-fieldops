@@ -24,6 +24,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -179,18 +180,20 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   ];
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="monitor">OPERATIONS</Badge>
               <Badge tone={summary.attention_projects ? "warning" : "success"}>{summary.attention_projects ? `${summary.attention_projects} need attention` : "Projects healthy"}</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Projects</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Plan, monitor, govern, and connect project workspaces to forms, teams, locations, indicators, assignments, submissions, reports, and audit trails.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+              <HelpHint label="About Projects" title="Projects">
+                Plan, monitor, govern, and connect project workspaces to forms, teams, locations, indicators, assignments, submissions, reports, and audit trails.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManageProjects} onClick={() => setWizardOpen(true)} variant="primary">
@@ -203,10 +206,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
           {projectSections.map((section) => (
             <button
-              className={cn("shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
+              className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
               key={section.id}
               onClick={() => setActiveSection(section.id)}
               type="button"
@@ -281,10 +284,10 @@ function ProjectsDashboard({ onOpenProject, projects, summary }: { onOpenProject
   ];
   const rankedProjects = [...projects].sort((left, right) => right.health_score - left.health_score).slice(0, 4);
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div className="rounded-2xl border bg-panel p-4 shadow-line" key={card.label}>
+          <div className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
@@ -292,7 +295,7 @@ function ProjectsDashboard({ onOpenProject, projects, summary }: { onOpenProject
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="font-semibold">Project Health Overview</h2>
           <div className="mt-4 space-y-3">
             {rankedProjects.map((project) => (
@@ -311,7 +314,7 @@ function ProjectsDashboard({ onOpenProject, projects, summary }: { onOpenProject
             ))}
           </div>
         </div>
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="font-semibold">Upcoming Deadlines & Risk Alerts</h2>
           <div className="mt-4 space-y-3">
             <Signal label="Completion rate" value={`${summary.project_completion_rate}%`} />
@@ -344,7 +347,7 @@ function ProjectDetailWorkspace({ detail, onClose, onOpenForms, onOpenIndicators
   tab: ProjectTab;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -358,7 +361,7 @@ function ProjectDetailWorkspace({ detail, onClose, onOpenForms, onOpenIndicators
       </div>
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {projectTabs.map((item) => (
-          <button className={cn("shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
+          <button className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
             {item}
           </button>
         ))}
@@ -411,8 +414,10 @@ function RelatedTab({ actionLabel, description, onAction, records, title }: { ac
     <div className="rounded-2xl border bg-background/50 p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="font-semibold">{title}</h3>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold">{title}</h3>
+            <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+          </div>
         </div>
         {actionLabel && onAction ? <Button onClick={onAction} variant="secondary">{actionLabel}</Button> : null}
       </div>
@@ -472,7 +477,7 @@ function TemplatesSection({ onUseTemplate, templates }: { onUseTemplate: (templa
       <SectionHeader description="Reusable project structures for baseline, endline, monitoring, evaluation, registration, and multi-country programs." title="Project Templates" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
-          <div className="rounded-2xl border bg-panel p-5 shadow-line" key={template.id}>
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={template.id}>
             <Badge tone="monitor">{template.template_type}</Badge>
             <h3 className="mt-3 font-semibold">{template.name}</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{template.description}</p>
@@ -583,7 +588,7 @@ function WizardPlanningStep({ step }: { step: number }) {
 
 function ProjectFilters() {
   return (
-    <div className="grid gap-3 rounded-2xl border bg-panel p-4 shadow-line md:grid-cols-5">
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-5">
       <Input placeholder="Status" />
       <Input placeholder="Country" />
       <Input placeholder="Region" />
@@ -595,10 +600,12 @@ function ProjectFilters() {
 
 function SectionHeader({ action, description, title }: { action?: React.ReactNode; description: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
       <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -616,7 +623,7 @@ function Signal({ label, tone = "neutral", value }: { label: string; tone?: "suc
 
 function InsightCard({ icon: Icon, lines, title }: { icon: typeof Globe2; lines: string[]; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex items-center gap-2">
         <Icon aria-hidden="true" className="text-primary" size={18} />
         <h3 className="font-semibold">{title}</h3>
@@ -627,4 +634,3 @@ function InsightCard({ icon: Icon, lines, title }: { icon: typeof Globe2; lines:
     </div>
   );
 }
-

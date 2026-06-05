@@ -55,8 +55,26 @@ import { SubmissionsModule } from "@/modules/submissions/SubmissionsModule";
 import { UsersTeamsModule } from "@/modules/users-teams/UsersTeamsModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
+function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/app") return null;
+  if (path === "/dashboard") return "dashboard";
+  if (path.startsWith("/projects")) return "programs";
+  if (path.startsWith("/forms")) return "forms";
+  if (path.startsWith("/field-operations")) return "officers";
+  if (path.startsWith("/submissions")) return "submissions";
+  if (path.startsWith("/mapping")) return "map";
+  if (path.startsWith("/indicators")) return "indicators";
+  if (path.startsWith("/reports")) return "analytics";
+  if (path.startsWith("/data-quality")) return "dataQuality";
+  if (path.startsWith("/users-teams")) return "organizations";
+  if (path.startsWith("/governance")) return "governance";
+  if (path.startsWith("/administration")) return "administration";
+  return null;
+}
+
 export function WorkspaceApp() {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null | undefined>(undefined);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const pathname = usePathname();
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -65,10 +83,7 @@ export function WorkspaceApp() {
   const isPreviewToken = token === "preview-token";
 
   useEffect(() => {
-    const storedToken = readToken();
-    if (storedToken) {
-      setToken(storedToken);
-    }
+    setToken(readToken());
   }, []);
 
   useEffect(() => {
@@ -130,6 +145,26 @@ export function WorkspaceApp() {
   const currentPath =
     typeof window === "undefined" ? (pathname ?? "") : window.location.pathname;
   const isPlatformRoute = currentPath.startsWith("/platform");
+  const routeView = viewFromWorkspacePath(currentPath);
+
+  useEffect(() => {
+    if (
+      !principalQuery.data?.platform_admin ||
+      principalQuery.data.support_mode ||
+      isPlatformRoute ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    window.history.replaceState(null, "", "/platform/overview");
+  }, [isPlatformRoute, principalQuery.data]);
+
+  useEffect(() => {
+    if (!routeView) {
+      return;
+    }
+    setActiveView(routeView);
+  }, [routeView, setActiveView]);
 
   useEffect(() => {
     if (!principalQuery.data) {
@@ -140,7 +175,23 @@ export function WorkspaceApp() {
     }
   }, [activeView, principalQuery.data, setActiveView]);
 
-  if (!token) {
+  if (token === undefined) {
+    return (
+      <>
+        <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
+          <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
+            <p className="text-sm font-semibold">Opening workspace</p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Atlas is restoring your secure session and loading the selected module.
+            </p>
+          </div>
+        </section>
+        <NotificationCenter />
+      </>
+    );
+  }
+
+  if (token === null) {
     return (
       <>
         <AuthPanel

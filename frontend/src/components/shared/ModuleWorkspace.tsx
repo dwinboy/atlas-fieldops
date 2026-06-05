@@ -5,6 +5,7 @@ import { ArrowRight, Route, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import type { NavigationItem } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 
@@ -35,24 +36,26 @@ export function ModuleWorkspace({
   const areas = item.children ?? [];
 
   return (
-    <section className={cn("space-y-5", className)}>
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
-              <Icon aria-hidden="true" size={22} />
+    <section className={cn("space-y-3", className)}>
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <Icon aria-hidden="true" size={18} />
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={item.tone}>{item.domain}</Badge>
                 <Badge tone="success">{status}</Badge>
               </div>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-                {item.label}
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                {item.description}
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <h1 className="text-lg font-semibold tracking-tight">
+                  {item.label}
+                </h1>
+                <HelpHint label={`About ${item.label}`} title={item.label}>
+                  {item.description}
+                </HelpHint>
+              </div>
             </div>
           </div>
 
@@ -78,34 +81,38 @@ export function ModuleWorkspace({
       {showSections && areas.length ? (
         <section
           aria-label={`${item.label} sections`}
-          className="rounded-2xl border bg-panel/80 p-4 shadow-line"
+          className="rounded-xl border bg-panel/80 p-3 shadow-line"
         >
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">Workspace sections</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                These are the approved sections from the platform architecture.
-              </p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[13px] font-semibold">Workspace sections</h2>
+                <HelpHint label="About workspace sections" title="Workspace sections">
+                  These are the approved sections from the platform architecture.
+                </HelpHint>
+              </div>
             </div>
             <Badge tone="neutral">{areas.length} sections</Badge>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          <div className="mt-3 grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
             {areas.map((area) => (
               <article
-                className="rounded-xl border bg-background/80 p-4 shadow-sm"
+                className="rounded-lg border bg-background/80 p-3 shadow-sm"
                 key={area.route}
               >
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary">
-                    <Sparkles aria-hidden="true" size={15} />
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary">
+                    <Sparkles aria-hidden="true" size={13} />
                   </span>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold">{area.label}</h3>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {area.description}
-                    </p>
-                    <p className="mt-3 inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[13px] font-semibold">{area.label}</h3>
+                      <HelpHint label={`About ${area.label}`} title={area.label}>
+                        {area.description}
+                      </HelpHint>
+                    </div>
+                    <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                       <Route aria-hidden="true" size={12} />
                       <span className="truncate">{area.route}</span>
                     </p>

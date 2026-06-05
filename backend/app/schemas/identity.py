@@ -36,6 +36,11 @@ class PlatformOrganizationRead(BaseModel):
 
 class OrganizationStatusUpdate(BaseModel):
     is_active: bool
+    reason: str | None = Field(default=None, min_length=3, max_length=1000)
+
+
+class SupportSessionCreate(BaseModel):
+    reason: str | None = Field(default=None, min_length=3, max_length=1000)
 
 
 class OrganizationContextRead(BaseModel):

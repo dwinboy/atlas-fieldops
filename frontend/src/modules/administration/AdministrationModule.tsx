@@ -28,6 +28,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -411,7 +412,7 @@ function SectionHeader({
   const Icon = activePage.icon;
 
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
@@ -427,12 +428,14 @@ function SectionHeader({
                 {activePage.route}
               </span>
             </div>
-            <h2 className="mt-3 text-xl font-semibold tracking-tight">
-              {activePage.title}
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {activePage.description}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold tracking-tight">
+                {activePage.title}
+              </h2>
+              <HelpHint label={`About ${activePage.title}`} title={activePage.title}>
+                {activePage.description}
+              </HelpHint>
+            </div>
           </div>
         </div>
         <Button
@@ -459,7 +462,7 @@ function AdministrationModuleSelector({
   return (
     <section
       aria-label="Administration settings"
-      className="rounded-2xl border bg-panel p-4 shadow-line"
+      className="rounded-xl border bg-panel p-3 shadow-line"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -527,7 +530,7 @@ function FilterBar({
   status: string;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border bg-panel p-4 shadow-line md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
       <label className="relative">
         <span className="sr-only">Search administration records</span>
         <Search
@@ -592,7 +595,7 @@ function ConfigPanel({
   tone?: "accent" | "danger" | "neutral" | "success" | "warning";
 }) {
   return (
-    <section className="rounded-2xl border bg-panel p-4 shadow-line">
+    <section className="rounded-xl border bg-panel p-3 shadow-line">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         <span
@@ -1933,7 +1936,7 @@ export function AdministrationModule({
   ];
 
   return (
-    <section className="space-y-5" aria-labelledby="administration-title">
+    <section className="space-y-3" aria-labelledby="administration-title">
       <SectionHeader
         activePage={activePage}
         canManage={canManage}
@@ -2181,11 +2184,11 @@ function AdministrationDashboard({
   const enabledFlags = featureFlags.filter((flag) => flag.enabled).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {metrics.map((metric) => (
           <article
-            className="rounded-2xl border bg-panel p-4 shadow-line"
+            className="rounded-xl border bg-panel p-3 shadow-line"
             key={metric.label}
           >
             <div className="flex items-start justify-between gap-3">
@@ -2625,7 +2628,7 @@ function SystemSettingsView({
   systemSettings: SystemSettings;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-4 xl:grid-cols-2">
         <ConfigPanel icon={Settings} title="General Settings" tone="neutral">
           <div className="grid gap-3 md:grid-cols-2">

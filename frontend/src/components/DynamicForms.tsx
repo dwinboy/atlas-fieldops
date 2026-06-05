@@ -71,6 +71,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -3220,16 +3221,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
             Forms
           </p>
-          <h1
-            id="forms-title"
-            className={cn("mt-2 font-semibold tracking-tight", formBuilderFocused ? "text-xl" : "text-2xl")}
-          >
-            Survey form builder
-          </h1>
-          <p className={cn("mt-1 max-w-3xl text-sm leading-6 text-muted-foreground", formBuilderFocused && "sr-only")}>
-            Select the project and survey first, then build clear, offline-ready
-            forms your field team can use confidently on mobile devices.
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h1
+              id="forms-title"
+              className={cn("font-semibold tracking-tight", formBuilderFocused ? "text-xl" : "text-2xl")}
+            >
+              Survey form builder
+            </h1>
+            <HelpHint label="About survey form builder" title="Survey form builder">
+              Select the project and survey first, then build clear, offline-ready forms your field team can use confidently on mobile devices.
+            </HelpHint>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -3393,11 +3395,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <h2 className="mt-2 text-lg font-semibold">
               Project, Survey, Form, Publish, Deploy
             </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Forms are now collection tools inside surveys. This keeps every
-              submission connected to the correct project, M&E activity,
-              indicator set, team, and report.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="About required creation flow" title="Required creation flow">
+                Forms are now collection tools inside surveys. This keeps every submission connected to the correct project, M&E activity, indicator set, team, and report.
+              </HelpHint>
+            </div>
           </div>
           <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
             <label className="text-sm">
@@ -3541,9 +3543,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
           <div className="mt-4">
             <p className="text-sm font-medium">3. Distribution channel</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Choose the main way this form will be shared with enumerators or respondents.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="About distribution channel" title="Distribution channel">
+                Choose the main way this form will be shared with enumerators or respondents.
+              </HelpHint>
+            </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {([
                 ["survey_app", Smartphone, "Survey App", "Best for trained field teams collecting data on mobile."],
@@ -3564,7 +3568,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <Icon aria-hidden="true" className="text-primary" size={16} />
                     {label}
                   </span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">{helper}</span>
+                  <span className="mt-2 inline-flex">
+                    <HelpHint label={`About ${label}`} title={label}>{helper}</HelpHint>
+                  </span>
                 </button>
               ))}
             </div>
@@ -3572,9 +3578,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
           <div className="mt-4">
             <p className="text-sm font-medium">4. Recommended starting blocks</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Atlas will add these sections first. You can remove, edit, or add more later.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="About recommended starting blocks" title="Recommended starting blocks">
+                Atlas will add these sections first. You can remove, edit, or add more later.
+              </HelpHint>
+            </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {sectionTemplates.map((template) => {
                 const checked = newFormBlocks.includes(template.id);
@@ -3598,8 +3606,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       <span className="text-sm font-semibold">{template.title}</span>
                       {checked ? <Check aria-hidden="true" className="text-primary" size={16} /> : null}
                     </span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                      {template.description} · {template.fields.length} fields
+                    <span className="mt-2 inline-flex">
+                      <HelpHint label={`About ${template.title}`} title={template.title}>
+                        {template.description} · {template.fields.length} fields
+                      </HelpHint>
                     </span>
                   </button>
                 );
@@ -3609,9 +3619,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
           <div className="mt-5 rounded-lg border bg-background p-3">
             <p className="text-sm font-semibold">What happens next</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Atlas creates the starter form, opens the simplified canvas, and shows one next action: add a question, add a section, preview, or check readiness.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="What happens next" title="What happens next">
+                Atlas creates the starter form, opens the simplified canvas, and shows one next action: add a question, add a section, preview, or check readiness.
+              </HelpHint>
+            </div>
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end">
@@ -3684,12 +3696,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold">{item.label}</p>
+                      <HelpHint label={`About ${item.label}`} title={item.label}>{item.description}</HelpHint>
                       <Badge tone={item.required ? "warning" : "neutral"}>
                         {item.required ? "Required" : "Recommended"}
                       </Badge>
                       {item.complete ? <Badge tone="success">Complete</Badge> : null}
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -3884,8 +3896,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onClick={() => setMobileDeploymentSyncMode(mode)}
                   type="button"
                 >
-                  <span className="text-sm font-semibold">{label}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">{helper}</span>
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    {label}
+                    <HelpHint label={`About ${label}`} title={label}>{helper}</HelpHint>
+                  </span>
                 </button>
               ))}
             </div>
@@ -3904,11 +3918,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <p className="text-sm font-semibold">
                   {readinessReadyForPublish ? "Ready for field rollout" : "Readiness items need attention"}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {readinessReadyForPublish
-                    ? "Publish and deploy this version, then ask field officers to sync the Survey App and open Assigned forms."
-                    : "Complete required checks before this form is sent to field teams."}
-                </p>
+                <div className="mt-1">
+                  <HelpHint
+                    label="About rollout readiness"
+                    title={readinessReadyForPublish ? "Ready for field rollout" : "Readiness items need attention"}
+                  >
+                    {readinessReadyForPublish
+                      ? "Publish and deploy this version, then ask field officers to sync the Survey App and open Assigned forms."
+                      : "Complete required checks before this form is sent to field teams."}
+                  </HelpHint>
+                </div>
               </div>
               <Button onClick={openReadinessChecklist} size="sm" type="button" variant="secondary">
                 View checklist
@@ -4444,10 +4463,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <div className="flex h-full min-h-72 items-center justify-center rounded-lg border bg-panel p-6 text-center">
                 <div>
                   <Eye aria-hidden="true" className="mx-auto text-muted-foreground" size={28} />
-                  <p className="mt-3 text-sm font-semibold">No record selected</p>
-                  <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                    Select a synced submission from the queue to inspect values, add a reviewer note, approve clean data, or return records that need correction.
-                  </p>
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <p className="text-sm font-semibold">No record selected</p>
+                    <HelpHint label="About selecting a record" title="No record selected">
+                      Select a synced submission from the queue to inspect values, add a reviewer note, approve clean data, or return records that need correction.
+                    </HelpHint>
+                  </div>
                 </div>
               </div>
             )}
@@ -4619,10 +4640,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   ) : (
                     <div className="rounded-lg border border-dashed bg-panel p-5 text-center">
                       <Database aria-hidden="true" className="mx-auto text-primary" />
-                      <p className="mt-3 text-sm font-semibold">No reference lists attached yet</p>
-                      <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-                        Select a district, community, school, facility, beneficiary, or donor-code question, then bind it to an official list.
-                      </p>
+                      <div className="mt-3 flex items-center justify-center gap-2">
+                        <p className="text-sm font-semibold">No reference lists attached yet</p>
+                        <HelpHint label="About reference lists" title="No reference lists attached yet">
+                          Select a district, community, school, facility, beneficiary, or donor-code question, then bind it to an official list.
+                        </HelpHint>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5089,11 +5112,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               >
                 Choose a ready-made form template
               </h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Templates open directly inside the builder, so teams can
-                preview, copy, edit, and publish without leaving the form
-                workflow.
-              </p>
+              <div className="mt-1">
+                <HelpHint label="About form templates" title="Choose a ready-made form template">
+                  Templates open directly inside the builder, so teams can preview, copy, edit, and publish without leaving the form workflow.
+                </HelpHint>
+              </div>
             </div>
             <Button
               onClick={() => setBuilderMode("builder")}
@@ -5138,10 +5161,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   </button>
                 ))}
               </div>
-              <p className="mt-2 rounded-lg border bg-panel px-3 py-2 text-xs leading-5 text-muted-foreground">
-                {templateCategoryDescriptions[templateCategory] ??
-                  "Choose templates by the operational workflow your survey needs to support."}
-              </p>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium">
+                {templateCategory}
+                <HelpHint label={`About ${templateCategory}`} title={templateCategory}>
+                  {templateCategoryDescriptions[templateCategory] ?? "Choose templates by the operational workflow your survey needs to support."}
+                </HelpHint>
+              </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {visibleTemplates.map((template) => (
                   <button
@@ -5164,10 +5189,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         <Badge tone="neutral">{template.category}</Badge>
                       )}
                     </div>
-                    <h3 className="text-sm font-semibold">{template.name}</h3>
-                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
-                      {template.description}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold">{template.name}</h3>
+                      <HelpHint label={`About ${template.name}`} title={template.name}>{template.description}</HelpHint>
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span>{template.fields} fields</span>
                       <span>{template.minutes} min setup</span>
@@ -5185,9 +5210,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <h3 className="mt-2 text-lg font-semibold">
                   {selectedTemplate.name}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {selectedTemplate.description}
-                </p>
+                <div className="mt-2">
+                  <HelpHint label={`About ${selectedTemplate.name}`} title={selectedTemplate.name}>
+                    {selectedTemplate.description}
+                  </HelpHint>
+                </div>
                 <div className="mt-4 rounded-[28px] border bg-panel p-3 shadow-line">
                   <div className="mx-auto mb-3 h-1.5 w-16 rounded-full bg-muted" />
                   {templateToForm(selectedTemplate)
@@ -5232,11 +5259,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <h2 className="mt-4 text-lg font-semibold">
             Create your first operational form
           </h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            This organization has no saved forms yet. Start from a proven
-            template, create a blank form, or import an existing XLSForm/CSV
-            workflow through Data tools.
-          </p>
+          <div className="mt-2 flex justify-center">
+            <HelpHint label="About creating the first form" title="Create your first operational form">
+              This organization has no saved forms yet. Start from a proven template, create a blank form, or import an existing XLSForm/CSV workflow through Data tools.
+            </HelpHint>
+          </div>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
               onClick={() => setBuilderMode("templates")}
@@ -6451,10 +6478,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <div className="flex items-center gap-2">
                   <Settings2 aria-hidden="true" size={17} />
                   <div>
-                    <h2 className="text-sm font-semibold">Field settings</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Configure one selected question at a time.
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-semibold">Field settings</h2>
+                      <HelpHint label="About field settings" title="Field settings">
+                        Configure one selected question at a time.
+                      </HelpHint>
+                    </div>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-1 rounded-md border bg-background p-1">

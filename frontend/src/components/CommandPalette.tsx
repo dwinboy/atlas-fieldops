@@ -1,6 +1,7 @@
 "use client";
 
 import { HelpCircle, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { getVisibleNavigationItems } from "@/config/navigation";
@@ -12,6 +13,7 @@ import type { CurrentPrincipal } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 export function CommandPalette({ principal }: { principal?: CurrentPrincipal | null }) {
+  const router = useRouter();
   const commandOpen = useWorkspaceStore((state) => state.commandOpen);
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -82,6 +84,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
             onClick={() => {
               const result = `${command.label}. ${command.description}`;
               setActiveView(command.id);
+              router.push(command.route);
               setLastActionResult(result);
               setCommandOpen(false);
               pushToast({ title: command.label, description: result, tone: "success" });
@@ -115,6 +118,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
               onClick={() => {
                 const result = "Opening the help guide. Start with the beginner workflow that matches your task, then follow the steps and next actions.";
                 setActiveView("help");
+                router.push("/app");
                 setLastActionResult(result);
                 setCommandOpen(false);
                 setQuery("");

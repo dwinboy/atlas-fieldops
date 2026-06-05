@@ -105,7 +105,7 @@ export function ActivityTimeline() {
           <button
             key={option.value}
             className={cn(
-              "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+              "rounded-full border px-2.5 py-1 text-xs font-medium transition",
               filter === option.value ? "border-primary/30 bg-primary/10 text-primary" : "bg-background text-muted-foreground hover:bg-muted"
             )}
             onClick={() => setFilter(option.value)}

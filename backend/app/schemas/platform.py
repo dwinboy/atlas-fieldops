@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -133,3 +134,59 @@ class PlatformBackupJobRead(BaseModel):
     created_at: datetime
     retention: str
     restore_requires_elevation: bool = True
+
+
+class PlatformLeadRead(BaseModel):
+    id: UUID
+    name: str
+    organization: str
+    country: str
+    email: EmailStr
+    phone: str
+    organization_size: str
+    interest_area: str
+    source: str
+    message: str
+    status: str
+    created_at: datetime
+
+
+class PlatformOrganizationPlanRead(BaseModel):
+    organization_id: UUID
+    organization_name: str
+    organization_slug: str
+    plan: str
+    status: str
+    user_limit: int
+    submission_limit: int
+    storage_limit_gb: int
+    enabled_modules: list[str] = Field(default_factory=list)
+    usage_percent: int = 0
+
+
+class PlatformActionResult(BaseModel):
+    status: str = "accepted"
+    message: str
+
+
+class PlatformFeatureFlagUpdate(BaseModel):
+    global_enabled: bool | None = None
+    rollout_percentage: int | None = Field(default=None, ge=0, le=100)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformUserSecurityAction(BaseModel):
+    action: Literal["lock", "unlock", "force_password_reset", "revoke_sessions", "require_mfa"]
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformSupportSessionRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    organization_name: str | None = None
+    organization_slug: str | None = None
+    actor_email: EmailStr | None = None
+    status: str = "started"
+    reason: str = ""
+    started_at: datetime
+    expires_at: datetime | None = None

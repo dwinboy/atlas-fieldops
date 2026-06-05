@@ -23,6 +23,7 @@ import { useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -196,12 +197,12 @@ function SectionPanel({
   title: string;
 }) {
   return (
-    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="mb-4">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {children}
     </section>
@@ -348,8 +349,8 @@ export function FieldOperationsModule({ principal, token }: FieldOperationsModul
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -359,10 +360,12 @@ export function FieldOperationsModule({ principal, token }: FieldOperationsModul
               </Badge>
               {preview ? <Badge tone="neutral">Preview data</Badge> : null}
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Field Operations</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Coordinate assignments, field officers, supervisors, work plans, targets, and live monitoring so managers know what is happening in the field today.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Field Operations</h1>
+              <HelpHint label="About Field Operations" title="Field Operations">
+                Coordinate assignments, field officers, supervisors, work plans, targets, and live monitoring so managers know what is happening in the field today.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManageFieldOperations} onClick={() => setModalMode("assignment")} variant="primary">
@@ -392,11 +395,11 @@ export function FieldOperationsModule({ principal, token }: FieldOperationsModul
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
           {fieldOperationsSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={section.id}
@@ -541,7 +544,7 @@ export function FieldOperationsModule({ principal, token }: FieldOperationsModul
         </div>
       ) : null}
 
-      <section className="rounded-2xl border bg-panel p-5 shadow-line">
+      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Field Operations boundaries</h2>

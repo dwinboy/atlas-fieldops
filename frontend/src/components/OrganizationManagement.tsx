@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import {
   createOrganization,
@@ -942,17 +943,19 @@ export function OrganizationManagement({
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Admin
             </p>
-            <h1
-              id="organization-title"
-              className="mt-2 text-2xl font-semibold tracking-tight"
-            >
-              Team and access
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Invite teammates, choose a practical role, narrow their scope, and
-              route work to the right people without exposing another
-              organization’s data.
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h1
+                id="organization-title"
+                className="text-2xl font-semibold tracking-tight"
+              >
+                Team and access
+              </h1>
+              <HelpHint label="About team and access" title="Team and access">
+                Invite teammates, choose a practical role, narrow their scope, and
+                route work to the right people without exposing another
+                organization’s data.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="accent">
@@ -984,9 +987,11 @@ export function OrganizationManagement({
                 </span>
                 <p className="text-sm font-medium">{title}</p>
               </div>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {text}
-              </p>
+              <div className="mt-2">
+                <HelpHint label={`About ${title}`} title={title}>
+                  {text}
+                </HelpHint>
+              </div>
             </div>
           ))}
         </div>
@@ -1038,13 +1043,15 @@ export function OrganizationManagement({
                   Platform organization management
                 </h2>
               </div>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                This area is for the developer/platform super admin account. Use
-                it to create tenants, open a support session inside an
-                organization, reactivate suspended workspaces, or troubleshoot
-                configuration problems without being treated as a normal
-                organization user.
-              </p>
+              <div className="mt-2">
+                <HelpHint label="About platform organization management" title="Platform organization management">
+                  This area is for the developer/platform super admin account. Use
+                  it to create tenants, open a support session inside an
+                  organization, reactivate suspended workspaces, or troubleshoot
+                  configuration problems without being treated as a normal
+                  organization user.
+                </HelpHint>
+              </div>
               {principal?.support_mode ? (
                 <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
                   <p className="text-xs leading-5 text-warning">

@@ -31,6 +31,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
 import { listSubmissions, reviewSubmission } from "@/lib/api";
@@ -212,8 +213,8 @@ export function SubmissionsModule({ principal, token }: SubmissionsModuleProps) 
   ];
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -223,10 +224,12 @@ export function SubmissionsModule({ principal, token }: SubmissionsModuleProps) 
               </Badge>
               <Badge tone={summary.pending_review ? "warning" : "neutral"}>{summary.pending_review} pending review</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Submissions</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Review collected records, manage approval workflows, return corrections, inspect quality flags, track SLA bottlenecks, and preserve submission audit history.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Submissions</h1>
+              <HelpHint label="About Submissions" title="Submissions">
+                Review collected records, manage approval workflows, return corrections, inspect quality flags, track SLA bottlenecks, and preserve submission audit history.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setActiveSection("pending-review")} variant="primary">
@@ -256,10 +259,10 @@ export function SubmissionsModule({ principal, token }: SubmissionsModuleProps) 
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar" aria-label="Submissions sections">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Submissions sections">
           {submissionSections.map((section) => (
             <button
-              className={cn("shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
+              className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
               key={section.id}
               onClick={() => {
                 setSelectedSubmissionId(null);
@@ -348,10 +351,10 @@ function SubmissionsDashboard({ onOpenQuality, onOpenSubmission, onOpenWorkflow,
   const recentActions = submissions.flatMap((submission) => submission.history.map((item) => ({ item, submission }))).sort((left, right) => new Date(right.item.created_at).getTime() - new Date(left.item.created_at).getTime()).slice(0, 5);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <article className="rounded-2xl border bg-panel p-4 shadow-line" key={card.label}>
+          <article className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
             <div className="flex items-center justify-between gap-3">
               <card.icon aria-hidden="true" className="text-primary" size={18} />
               {card.tone ? <Badge tone={card.tone}>Live</Badge> : null}
@@ -434,7 +437,7 @@ function SubmissionDetailWorkspace({ canReview, onApplyReviewAction, onClose, re
   tab: SubmissionDetailTab;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -450,7 +453,7 @@ function SubmissionDetailWorkspace({ canReview, onApplyReviewAction, onClose, re
 
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {submissionDetailTabs.map((item) => (
-          <button className={cn("shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
+          <button className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
             {item}
           </button>
         ))}
@@ -688,7 +691,7 @@ function SubmissionFilters({ submissions }: { submissions: SubmissionRecord[] })
   const forms = Array.from(new Set(submissions.map((submission) => submission.form_name)));
   const reviewers = Array.from(new Set(submissions.map((submission) => submission.reviewer)));
   return (
-    <div className="grid gap-3 rounded-2xl border bg-panel p-4 shadow-line md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-2 xl:grid-cols-5">
       <Select><option value="">All projects</option>{projects.map((project) => <option key={project} value={project}>{project}</option>)}</Select>
       <Select><option value="">All forms</option>{forms.map((form) => <option key={form} value={form}>{form}</option>)}</Select>
       <Select><option value="">All statuses</option><option value="under_review">Pending Review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="correction_requested">Returned</option></Select>
@@ -700,11 +703,13 @@ function SubmissionFilters({ submissions }: { submissions: SubmissionRecord[] })
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-5 shadow-line xl:flex-row xl:items-start xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line xl:flex-row xl:items-start xl:justify-between">
       <div>
         <Badge tone="neutral">{route}</Badge>
-        <h2 className="mt-3 text-xl font-semibold">{title}</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -713,7 +718,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="font-semibold">{title}</h2>
         {action}

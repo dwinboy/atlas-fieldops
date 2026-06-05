@@ -29,6 +29,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Input, Select } from "@/components/ui/input";
 import {
@@ -113,8 +114,10 @@ function PageHeader({
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action}
     </div>
@@ -140,8 +143,10 @@ function ConnectedPanel({
 }) {
   return (
     <section className="rounded-lg border bg-panel p-4 shadow-line">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+      </div>
       <div className="mt-4 space-y-3">{children}</div>
     </section>
   );
@@ -161,8 +166,10 @@ function SetupEmptyState({
       <div className="flex items-start gap-3">
         <CheckCircle2 aria-hidden="true" className="mt-0.5 text-primary" size={18} />
         <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">{title}</h2>
+            <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+          </div>
         </div>
       </div>
       {steps?.length ? (

@@ -281,8 +281,13 @@ async def test_organization_governance_simulates_permission_and_scope() -> None:
 
 
 class FakeUserRepository:
-    def __init__(self, identity: tuple[object, object, object, object, list[object]] | None) -> None:
+    def __init__(
+        self,
+        identity: tuple[object, object, object, object, list[object]] | None,
+        platform_identity: tuple[object, object, object, object, list[object]] | None = None,
+    ) -> None:
         self.identity = identity
+        self.platform_identity = platform_identity
 
     async def find_for_login(
         self,
@@ -291,10 +296,19 @@ class FakeUserRepository:
     ) -> tuple[object, object, object, object, list[object]] | None:
         return self.identity
 
+    async def find_platform_admin_for_user(
+        self,
+        user_id: object,
+    ) -> tuple[object, object, object, object, list[object]] | None:
+        return self.platform_identity
+
 
 def build_identity(
     *,
     password_hash: str,
+    user_id: object | None = None,
+    organization_name: str = "Acme Relief",
+    organization_slug: str = "acme",
     user_active: bool = True,
     organization_active: bool = True,
     membership_active: bool = True,
@@ -302,13 +316,13 @@ def build_identity(
     grants: list[object] | None = None,
 ) -> tuple[object, object, object, object, list[object]]:
     user = SimpleNamespace(
-        id=uuid4(),
+        id=user_id or uuid4(),
         email="user@example.com",
         full_name="Amina Manager",
         password_hash=password_hash,
         is_active=user_active,
     )
-    organization = SimpleNamespace(id=uuid4(), name="Acme Relief", slug="acme", is_active=organization_active)
+    organization = SimpleNamespace(id=uuid4(), name=organization_name, slug=organization_slug, is_active=organization_active)
     membership = SimpleNamespace(is_active=membership_active)
     role = SimpleNamespace(name=role_name)
     return user, organization, membership, role, grants or []
@@ -336,6 +350,48 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     assert payload["scope_type"] == "country"
     assert payload["sub"]
     assert payload["organization_id"]
+
+
+async def test_auth_service_prefers_platform_identity_for_super_admin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    user_id = uuid4()
+    tenant_identity = build_identity(
+        password_hash=password_hash,
+        user_id=user_id,
+        organization_name="Tenant Program",
+        organization_slug="tenant-program",
+        role_name="owner",
+    )
+    platform_identity = build_identity(
+        password_hash=password_hash,
+        user_id=user_id,
+        organization_name="Atlas FieldOps Platform",
+        organization_slug="atlas-platform",
+        role_name="super_admin",
+    )
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(tenant_identity, platform_identity=platform_identity),
+    )
+
+    token_response = await service.login(
+        email="user@example.com",
+        password="correct horse battery staple",
+        organization_slug="tenant-program",
+    )
+
+    payload = decode_access_token(token_response.access_token)
+    assert payload["roles"] == ["super_admin"]
+    assert payload["platform_admin"] is True
+    assert payload["support_mode"] is False
+    assert payload["organization_slug"] == "atlas-platform"
+    assert payload["organization_name"] == "Atlas FieldOps Platform"
+    assert payload["platform_organization_slug"] == "atlas-platform"
+    assert payload["scope_type"] == "global"
 
 
 async def test_auth_service_includes_persisted_access_grants(monkeypatch: pytest.MonkeyPatch) -> None:

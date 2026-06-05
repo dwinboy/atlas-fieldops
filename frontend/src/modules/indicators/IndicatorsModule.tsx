@@ -27,6 +27,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal, IndicatorRead } from "@/lib/api";
 import { listIndicators } from "@/lib/api";
@@ -185,8 +186,8 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -194,10 +195,12 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
               <Badge tone={summary.behindTarget ? "warning" : "success"}>{summary.behindTarget} behind target</Badge>
               <Badge tone={summary.withoutDataSource ? "danger" : "accent"}>{summary.withoutDataSource} without data source</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Indicators</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Manage the M&E measurement framework: indicator library, results frameworks, logframes, baselines, targets, calculations, form links, disaggregation, and progress tracking.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Indicators</h1>
+              <HelpHint label="About Indicators" title="Indicators">
+                Manage the M&E measurement framework: indicator library, results frameworks, logframes, baselines, targets, calculations, form links, disaggregation, and progress tracking.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setActiveSection("library")} variant="primary">
@@ -210,11 +213,11 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar" aria-label="Indicator sections">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Indicator sections">
           {indicatorSections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
                   : "bg-panel hover:bg-muted",
@@ -300,10 +303,10 @@ function IndicatorsDashboard({
   const attention = indicators.filter((indicator) => indicator.status !== "On Track").slice(0, 4);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <article className="rounded-2xl border bg-panel p-4 shadow-line" key={card.label}>
+          <article className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
             <div className="flex items-center justify-between gap-3">
               <card.icon aria-hidden="true" className="text-primary" size={18} />
               {card.tone ? <Badge tone={card.tone}>RBM</Badge> : null}
@@ -513,7 +516,7 @@ function IndicatorReports({ onOpenReports }: { onOpenReports: () => void }) {
 
 function IndicatorDetailWorkspace({ indicator, onClose, setTab, tab }: { indicator: IndicatorRecord; onClose: () => void; setTab: (tab: IndicatorDetailTab) => void; tab: IndicatorDetailTab }) {
   return (
-    <section className="space-y-4 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -528,7 +531,7 @@ function IndicatorDetailWorkspace({ indicator, onClose, setTab, tab }: { indicat
       </div>
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {detailTabs.map((item) => (
-          <button className={cn("shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
+          <button className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
             {item}
           </button>
         ))}
@@ -679,14 +682,16 @@ function AuditRows({ indicator }: { indicator: IndicatorRecord }) {
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-4 shadow-line xl:flex-row xl:items-center xl:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3 shadow-line xl:flex-row xl:items-center xl:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="monitor">{route}</Badge>
           <Badge tone="accent">Architecture route</Badge>
         </div>
-        <h2 className="mt-3 text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="flex shrink-0 flex-wrap gap-2">{action}</div> : null}
     </div>
@@ -695,7 +700,7 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-4 shadow-line">
+    <section className="rounded-xl border bg-panel p-3 shadow-line">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}

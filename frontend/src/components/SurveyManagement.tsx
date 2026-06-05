@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import {
   createSurvey,
@@ -686,10 +687,12 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Survey management</p>
-          <h1 id="surveys-title" className="mt-2 text-2xl font-semibold tracking-tight">Survey-centered M&E workspace</h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Organize monitoring and evaluation work as Project, Survey, Form, Submission, Indicators, and Reports. Forms are collection tools inside surveys.
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <h1 id="surveys-title" className="text-2xl font-semibold tracking-tight">Survey-centered M&E workspace</h1>
+            <HelpHint label="About survey-centered workspace" title="Survey-centered M&E workspace">
+              Organize monitoring and evaluation work as Project, Survey, Form, Submission, Indicators, and Reports. Forms are collection tools inside surveys.
+            </HelpHint>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setCreatingSurvey((current) => !current)} type="button">
@@ -718,8 +721,12 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
         <section className="rounded-2xl border bg-panel p-4 shadow-line">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Project survey dashboard</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">Select a project to see its surveys, forms, progress, and reporting readiness.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold">Project survey dashboard</h2>
+                <HelpHint label="About project survey dashboard" title="Project survey dashboard">
+                  Select a project to see its surveys, forms, progress, and reporting readiness.
+                </HelpHint>
+              </div>
             </div>
             <label className="min-w-[260px] text-sm">
               <span className="mb-1 block font-medium">Project</span>
@@ -771,7 +778,11 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                         <Badge tone={statusTone(survey.status)}>{titleCase(survey.status)}</Badge>
                         <Badge tone="neutral">{titleCase(survey.survey_type)}</Badge>
                       </div>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{survey.description || "No description yet."}</p>
+                      <div className="mt-1">
+                        <HelpHint label={`About ${survey.title}`} title={survey.title}>
+                          {survey.description || "No description yet."}
+                        </HelpHint>
+                      </div>
                       <p className="mt-2 text-xs text-muted-foreground">
                         {survey.code} | {survey.geographic_scope || "Geography not set"} | {survey.target_population || "Target population not set"}
                       </p>
@@ -793,15 +804,23 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
               <div className="rounded-lg border border-dashed bg-background p-6 text-center">
                 <FolderKanban aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
                 <h3 className="mt-3 font-semibold">No surveys in this project yet</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">Create the first baseline, registration, monitoring, or evaluation survey before building forms.</p>
+                <div className="mt-2">
+                  <HelpHint label="About creating the first survey" title="No surveys yet">
+                    Create the first baseline, registration, monitoring, or evaluation survey before building forms.
+                  </HelpHint>
+                </div>
               </div>
             )}
           </div>
         </section>
 
         {creatingSurvey ? <section className="rounded-2xl border bg-panel p-4 shadow-line">
-          <h2 className="text-lg font-semibold">Create survey</h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">A survey is the managed M&E activity. Every form, submission, indicator, and report should flow through it.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">Create survey</h2>
+            <HelpHint label="About creating surveys" title="Create survey">
+              A survey is the managed M&E activity. Every form, submission, indicator, and report should flow through it.
+            </HelpHint>
+          </div>
           <div className="mt-4 grid gap-3">
             <label className="text-sm">
               <span className="mb-1 block font-medium">Survey title</span>
@@ -860,7 +879,7 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
           {surveyTabs.map((tab) => (
             <button
-              className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
+              className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition ${
                 activeTab === tab.id
                   ? "border-primary bg-primary/10 text-primary"
                   : "bg-background text-muted-foreground hover:text-foreground"

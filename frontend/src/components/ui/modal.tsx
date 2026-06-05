@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { cn } from "@/lib/utils";
 
 export function Modal({
@@ -34,8 +35,11 @@ export function Modal({
         >
           <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
             <div>
-              <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-              {description ? <Dialog.Description className="mt-1 text-sm text-muted-foreground">{description}</Dialog.Description> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
+                {description ? <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint> : null}
+              </div>
+              {description ? <Dialog.Description className="sr-only">{description}</Dialog.Description> : null}
             </div>
             <Dialog.Close asChild>
               <Button aria-label="Close modal" size="icon" variant="ghost">

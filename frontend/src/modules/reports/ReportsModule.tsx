@@ -31,6 +31,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal, DonorReportRead } from "@/lib/api";
 import { listReports } from "@/lib/api";
@@ -218,8 +219,8 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -227,10 +228,12 @@ export function ReportsModule({ token }: ReportsModuleProps) {
               <Badge tone={summary.failedReportJobs ? "warning" : "success"}>{summary.failedReportJobs} failed jobs</Badge>
               <Badge tone="accent">Route /reports</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Reports</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Central reporting and analytics hub for standard reports, custom reports, dashboards, schedules, governed exports, donor packages, executive KPIs, and reusable visualizations.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+              <HelpHint label="About Reports" title="Reports">
+                Central reporting and analytics hub for standard reports, custom reports, dashboards, schedules, governed exports, donor packages, executive KPIs, and reusable visualizations.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => setActiveSection("custom")} type="button" variant="secondary">
@@ -241,11 +244,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto pb-1 product-scrollbar">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
           {reportsSections.map((section) => (
             <button
               className={cn(
-                "min-w-44 rounded-xl border px-4 py-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
                 activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
               )}
               key={section.id}
@@ -255,8 +258,8 @@ export function ReportsModule({ token }: ReportsModuleProps) {
               }}
               type="button"
             >
-              <span className="text-sm font-semibold">{section.label}</span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">{section.route}</span>
+              <span className="text-xs font-semibold">{section.label}</span>
+              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
           ))}
         </div>
@@ -304,7 +307,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={previewScheduledReports} /> : null}
       {!selectedReport && activeSection === "exports" ? <ExportsSection exports={previewExportJobs} /> : null}
 
-      <section className="rounded-2xl border bg-panel p-5 shadow-line">
+      <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Module boundaries</h2>
@@ -360,7 +363,7 @@ function ReportsDashboard({
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <MetricCard icon={card.icon} key={card.label} label={card.label} tone={card.tone} value={card.value} />
@@ -479,7 +482,7 @@ function StandardReports({
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button type="button"><Plus aria-hidden="true" /> New standard report</Button>}
         description="Prebuilt program, project, submission, indicator, data quality, coverage, field operations, beneficiary, and donor reports with run, export, schedule, and share actions."
@@ -499,7 +502,7 @@ function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
   const filters = ["Project", "Country", "Region", "District", "Location", "Form", "Indicator", "Period", "Team", "Status"];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button onClick={onOpenReports} variant="secondary"><FileText aria-hidden="true" /> Browse report library</Button>}
         description="Build ad hoc analytics by selecting data sources, fields, filters, grouping, visualizations, preview rules, and governed export options."
@@ -520,7 +523,7 @@ function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
             ))}
           </div>
         </Panel>
-        <div className="space-y-5">
+        <div className="space-y-3">
           <Panel title="Configure Report">
             <div className="grid gap-4 lg:grid-cols-3">
               <label className="space-y-1.5 text-sm font-medium">
@@ -579,7 +582,7 @@ function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
 
 function DashboardsSection({ dashboards, onOpenReports }: { dashboards: DashboardRecord[]; onOpenReports: () => void }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
         description="Interactive analytics dashboards with KPI cards, tables, charts, maps, activity feeds, progress widgets, responsive layouts, and role-based visibility."
@@ -610,7 +613,7 @@ function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportReco
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
         description="Automate report generation and delivery by daily, weekly, monthly, quarterly, or custom schedules with delivery tracking and failure logs."
@@ -635,7 +638,7 @@ function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
     { header: "Governance", key: "governance", render: (job) => <Badge tone={governanceTone(job.governance)}>{job.governance}</Badge>, value: (job) => job.governance },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <SectionHeader
         action={<Button type="button"><Download aria-hidden="true" /> Create Export</Button>}
         description="Manage Excel, CSV, PDF, and JSON export jobs from reports, indicators, submissions, projects, beneficiaries, and data quality with governance approval checks."
@@ -665,7 +668,7 @@ function ReportDetail({
   setSelectedTab: (tab: ReportDetailTab) => void;
 }) {
   return (
-    <section className="space-y-5 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -684,7 +687,7 @@ function ReportDetail({
       <div className="flex gap-2 overflow-x-auto border-b pb-2 product-scrollbar">
         {detailTabs.map((tab) => (
           <button
-            className={cn("rounded-full px-3 py-1.5 text-sm transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
+            className={cn("rounded-full px-2.5 py-1 text-xs transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
             key={tab}
             onClick={() => setSelectedTab(tab)}
             type="button"
@@ -764,7 +767,7 @@ function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
 
 function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number }) {
   return (
-    <article className="rounded-2xl border bg-panel p-4 shadow-line">
+    <article className="rounded-xl border bg-panel p-3 shadow-line">
       <div className="flex items-center justify-between gap-3">
         <span className="rounded-xl bg-primary/10 p-2 text-primary">
           <Icon aria-hidden="true" size={18} />
@@ -779,7 +782,7 @@ function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; labe
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {
   return (
-    <section className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="mb-4 flex items-start justify-between gap-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}
@@ -791,15 +794,17 @@ function Panel({ action, children, title }: { action?: ReactNode; children: Reac
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="monitor">ANALYTICS</Badge>
             <Badge tone="accent">{route}</Badge>
           </div>
-          <h2 className="mt-3 text-xl font-semibold">{title}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+          </div>
         </div>
         {action}
       </div>
@@ -835,7 +840,7 @@ function BuilderPanel({ items, title }: { items: string[]; title: string }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {items.map((item) => (
-          <button className="rounded-full border bg-background px-3 py-1.5 text-sm transition hover:border-primary/40 hover:bg-primary/5" key={item} type="button">
+          <button className="rounded-full border bg-background px-2.5 py-1 text-xs transition hover:border-primary/40 hover:bg-primary/5" key={item} type="button">
             {item}
           </button>
         ))}

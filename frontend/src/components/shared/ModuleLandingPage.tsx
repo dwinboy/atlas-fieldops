@@ -5,6 +5,7 @@ import { ArrowRight, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { cn } from "@/lib/utils";
 
 type ModuleAction = {
@@ -39,23 +40,23 @@ export function ModuleLandingPage({
   className,
 }: ModuleLandingPageProps) {
   return (
-    <section className={cn("space-y-5", className)}>
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
-              <Icon aria-hidden="true" size={22} />
+    <section className={cn("space-y-3", className)}>
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <Icon aria-hidden="true" size={18} />
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold tracking-tight">
+                <h2 className="text-base font-semibold tracking-tight">
                   {title}
                 </h2>
+                <HelpHint label={`About ${title}`} title={title}>
+                  {description}
+                </HelpHint>
                 <Badge tone="success">{status}</Badge>
               </div>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                {description}
-              </p>
             </div>
           </div>
           {actions.length ? (
@@ -77,22 +78,24 @@ export function ModuleLandingPage({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {areas.map((area) => (
           <article
             key={area.route}
-            className="rounded-xl border bg-panel p-4 shadow-sm"
+            className="rounded-lg border bg-panel p-3 shadow-sm"
           >
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <Sparkles aria-hidden="true" size={15} />
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Sparkles aria-hidden="true" size={13} />
               </span>
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold">{area.label}</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {area.description}
-                </p>
-                <p className="mt-3 truncate rounded-md bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[13px] font-semibold">{area.label}</h3>
+                  <HelpHint label={`About ${area.label}`} title={area.label}>
+                    {area.description}
+                  </HelpHint>
+                </div>
+                <p className="mt-2 truncate rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                   {area.route}
                 </p>
               </div>
@@ -103,4 +106,3 @@ export function ModuleLandingPage({
     </section>
   );
 }
-

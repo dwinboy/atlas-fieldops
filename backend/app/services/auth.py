@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import canonical_role
 from app.core.permissions import default_scope_for_roles
 from app.core.security import create_access_token, verify_password
 from app.repositories.users import UserRepository
@@ -19,12 +20,25 @@ class AuthService:
         if identity is None:
             raise AuthenticationError("Invalid credentials")
         user, organization, membership, role, grants = identity
-        if not user.is_active or not organization.is_active or not membership.is_active:
+        if not user.is_active or not membership.is_active:
             raise AuthenticationError("Inactive account")
         if not verify_password(password, user.password_hash):
             raise AuthenticationError("Invalid credentials")
+        platform_identity = await self.users.find_platform_admin_for_user(user.id)
+        if platform_identity is not None:
+            platform_user, platform_organization, platform_membership, platform_role, platform_grants = platform_identity
+            if not platform_organization.is_active or not platform_membership.is_active:
+                raise AuthenticationError("Inactive platform account")
+            user = platform_user
+            organization = platform_organization
+            membership = platform_membership
+            role = platform_role
+            grants = platform_grants
+        if not organization.is_active:
+            raise AuthenticationError("Inactive account")
         primary_grant = grants[0] if grants else None
         scope_type = primary_grant.scope_type if primary_grant is not None else default_scope_for_roles([role.name]).value
+        is_platform_admin = canonical_role(role.name) == "super_admin"
         token = create_access_token(
             subject=str(user.id),
             organization_id=str(organization.id),
@@ -33,7 +47,9 @@ class AuthService:
             full_name=user.full_name,
             organization_slug=organization.slug,
             organization_name=organization.name,
-            platform_admin=role.name == "super_admin",
+            platform_admin=is_platform_admin,
+            platform_organization_id=str(organization.id) if is_platform_admin else None,
+            platform_organization_slug=organization.slug if is_platform_admin else None,
             scope_type=scope_type,
             geography_ids=[grant.geography_id for grant in grants if grant.geography_id],
             project_ids=[grant.project_id for grant in grants if grant.project_id],

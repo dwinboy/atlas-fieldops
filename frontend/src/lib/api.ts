@@ -188,6 +188,62 @@ export type PlatformBackupJobRead = {
   restore_requires_elevation: boolean;
 };
 
+export type PlatformLeadRead = {
+  id: string;
+  name: string;
+  organization: string;
+  country: string;
+  email: string;
+  phone: string;
+  organization_size: string;
+  interest_area: string;
+  source: string;
+  message: string;
+  status: string;
+  created_at: string;
+};
+
+export type PlatformOrganizationPlanRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  plan: string;
+  status: string;
+  user_limit: number;
+  submission_limit: number;
+  storage_limit_gb: number;
+  enabled_modules: string[];
+  usage_percent: number;
+};
+
+export type PlatformActionResult = {
+  status: string;
+  message: string;
+};
+
+export type PlatformSupportSessionRead = {
+  id: string;
+  organization_id: string;
+  organization_name?: string | null;
+  organization_slug?: string | null;
+  actor_email?: string | null;
+  status: string;
+  reason: string;
+  started_at: string;
+  expires_at?: string | null;
+};
+
+export type PlatformFeatureFlagUpdate = {
+  global_enabled?: boolean;
+  rollout_percentage?: number;
+  reason: string;
+};
+
+export type PlatformUserSecurityAction = {
+  action: "lock" | "unlock" | "force_password_reset" | "revoke_sessions" | "require_mfa";
+  reason: string;
+};
+
 export type PublicLeadCreate = {
   name: string;
   organization?: string;
@@ -1522,16 +1578,16 @@ export async function listPlatformOrganizations(token: string): Promise<Platform
   return request<PlatformOrganizationRead[]>("/organizations/platform", { token });
 }
 
-export async function updatePlatformOrganizationStatus(token: string, organizationId: string, isActive: boolean): Promise<PlatformOrganizationRead> {
+export async function updatePlatformOrganizationStatus(token: string, organizationId: string, isActive: boolean, reason?: string): Promise<PlatformOrganizationRead> {
   return request<PlatformOrganizationRead>(`/organizations/platform/${organizationId}`, {
     method: "PATCH",
     token,
-    bodyJson: { is_active: isActive }
+    bodyJson: { is_active: isActive, reason }
   });
 }
 
-export async function createOrganizationSupportSession(token: string, organizationId: string): Promise<TokenResponse> {
-  return request<TokenResponse>(`/organizations/platform/${organizationId}/support-session`, { method: "POST", token });
+export async function createOrganizationSupportSession(token: string, organizationId: string, reason?: string): Promise<TokenResponse> {
+  return request<TokenResponse>(`/organizations/platform/${organizationId}/support-session`, { method: "POST", token, bodyJson: { reason } });
 }
 
 export async function returnToPlatformSession(token: string): Promise<TokenResponse> {
@@ -1546,12 +1602,28 @@ export async function listPlatformUsers(token: string): Promise<PlatformUserRead
   return request<PlatformUserRead[]>("/platform/users", { token });
 }
 
+export async function runPlatformUserSecurityAction(token: string, userId: string, payload: PlatformUserSecurityAction): Promise<PlatformActionResult> {
+  return request<PlatformActionResult>(`/platform/users/${userId}/security-action`, { method: "POST", token, bodyJson: payload });
+}
+
 export async function listPlatformAuditLogs(token: string, limit = 50): Promise<PlatformAuditLogRead[]> {
   return request<PlatformAuditLogRead[]>(`/platform/audit-logs?limit=${limit}`, { token });
 }
 
 export async function listPlatformUsage(token: string): Promise<PlatformOrganizationUsageRead[]> {
   return request<PlatformOrganizationUsageRead[]>("/platform/usage", { token });
+}
+
+export async function listPlatformLeads(token: string): Promise<PlatformLeadRead[]> {
+  return request<PlatformLeadRead[]>("/platform/leads", { token });
+}
+
+export async function listPlatformOrganizationPlans(token: string): Promise<PlatformOrganizationPlanRead[]> {
+  return request<PlatformOrganizationPlanRead[]>("/platform/organization-plans", { token });
+}
+
+export async function listPlatformSupportSessions(token: string): Promise<PlatformSupportSessionRead[]> {
+  return request<PlatformSupportSessionRead[]>("/platform/support-sessions", { token });
 }
 
 export async function getPlatformSettings(token: string): Promise<PlatformSettingsRead> {
@@ -1564,6 +1636,10 @@ export async function listPlatformRoles(token: string): Promise<PlatformRoleTemp
 
 export async function listPlatformFeatureFlags(token: string): Promise<PlatformFeatureFlagRead[]> {
   return request<PlatformFeatureFlagRead[]>("/platform/feature-flags", { token });
+}
+
+export async function updatePlatformFeatureFlag(token: string, flagKey: string, payload: PlatformFeatureFlagUpdate): Promise<PlatformFeatureFlagRead> {
+  return request<PlatformFeatureFlagRead>(`/platform/feature-flags/${flagKey}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function getPlatformSystemHealth(token: string): Promise<PlatformSystemHealthRead> {
@@ -2378,8 +2454,11 @@ export const api = {
   listPlatformBackups,
   listPlatformFeatureFlags,
   listPlatformIntegrations,
+  listPlatformLeads,
+  listPlatformOrganizationPlans,
   listPlatformRoles,
   listPlatformSecurityEvents,
+  listPlatformSupportSessions,
   listPrograms,
   listProjects,
   listProjectTemplates,
@@ -2404,6 +2483,7 @@ export const api = {
   addSurveyTeamMember,
   revokeAdministrationApiKey,
   rotateAdministrationApiKey,
+  runPlatformUserSecurityAction,
   resetUserPassword,
   routeData,
   reviewAccessRequest,
@@ -2411,6 +2491,7 @@ export const api = {
   updateAdministrationLocation,
   updateAdministrationNotificationRule,
   updateAdministrationReferenceValue,
+  updatePlatformFeatureFlag,
   updateImportRow,
   updateFormControls,
   updateSurveyGovernance,

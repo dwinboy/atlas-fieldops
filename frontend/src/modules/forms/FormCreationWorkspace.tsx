@@ -27,6 +27,7 @@ import { useMemo, useState } from "react";
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import {
   createField,
@@ -485,8 +486,8 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
   const status = publishedForm?.status ?? draftForm?.status ?? "draft";
 
   return (
-    <section className="space-y-4">
-      <div className="rounded-2xl border bg-panel p-4 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -495,10 +496,12 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               <Badge tone="neutral">{currentRoute}</Badge>
               <span className="text-xs text-muted-foreground">Autosave: Saved</span>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Create Form</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Create the draft shell first, then build questions, configure controls, test the form, review readiness, and publish a governed version for field operations.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Create Form</h1>
+              <HelpHint label="About create form" title="Create Form">
+                Create the draft shell first, then build questions, configure controls, test the form, review readiness, and publish a governed version for field operations.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onBack} variant="secondary">
@@ -513,7 +516,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
             ) : null}
           </div>
         </div>
-        <div className="mt-5 grid gap-2 md:grid-cols-5">
+        <div className="mt-3 grid gap-2 md:grid-cols-5">
           {flowSteps.map((step) => {
             const Icon = step.icon;
             const active = step.id === stage;
@@ -543,12 +546,12 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
 
       {stage === "setup" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
-          <section className="rounded-2xl border bg-panel p-5 shadow-line">
+          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
             <div>
               <Badge tone="accent">Step 1</Badge>
               <h2 className="mt-3 text-lg font-semibold">Basic Information</h2>
             </div>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Form Name</span>
                 <Input onChange={(event) => updateSetup({ formName: event.target.value })} placeholder="Baseline household survey" value={setup.formName} />
@@ -602,13 +605,13 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
                 ))}
               </div>
             </div>
-            <div className="mt-5 flex justify-end">
+            <div className="mt-3 flex justify-end">
               <Button disabled={!setup.formName.trim()} onClick={() => setStage("start")} variant="primary">
                 Continue
               </Button>
             </div>
           </section>
-          <aside className="rounded-2xl border bg-panel p-5 shadow-line">
+          <aside className="rounded-xl border bg-panel p-3.5 shadow-line">
             <h3 className="font-semibold">Draft shell will contain</h3>
             <div className="mt-4 space-y-3">
               <Signal label="Initial Status" value="Draft" />
@@ -621,10 +624,10 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ) : null}
 
       {stage === "start" ? (
-        <section className="rounded-2xl border bg-panel p-5 shadow-line">
+        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
           <Badge tone="accent">Step 2</Badge>
           <h2 className="mt-3 text-lg font-semibold">Start Method</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {startMethods.map((method) => {
               const Icon = method.icon;
               return (
@@ -635,13 +638,15 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
                   type="button"
                 >
                   <Icon aria-hidden="true" className="text-primary" size={20} />
-                  <span className="mt-3 block font-semibold">{method.label}</span>
-                  <span className="mt-2 block text-sm leading-6 text-muted-foreground">{method.description}</span>
+                  <span className="mt-3 flex items-center gap-2 font-semibold">
+                    {method.label}
+                    <HelpHint label={`About ${method.label}`} title={method.label}>{method.description}</HelpHint>
+                  </span>
                 </button>
               );
             })}
           </div>
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button onClick={() => setStage("setup")} variant="ghost">Back</Button>
             <Button onClick={() => createDraftAndOpenBuilder()} variant="primary">
               <Play aria-hidden="true" />
@@ -652,7 +657,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ) : null}
 
       {stage === "builder" && draftForm ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <StagePanel
             action={<Button onClick={() => setStage("controls")} variant="primary">Continue to controls</Button>}
             icon={Layers3}
@@ -668,7 +673,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ) : null}
 
       {stage === "controls" ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <StagePanel
             action={<Button onClick={() => setStage("preview")} variant="primary">Preview and test</Button>}
             icon={ShieldCheck}
@@ -688,10 +693,12 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               ["Mapping Settings", "GPS required, accuracy threshold, boundary validation, coordinate masking.", MonitorSmartphone],
               ["Audit Trail", "Form created, question changes, rules, publish, archive, export, and preview events.", GitBranch],
             ] satisfies [string, string, LucideIcon][]).map(([title, description, Icon]) => (
-              <div className="rounded-2xl border bg-panel p-5 shadow-line" key={String(title)}>
+              <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={String(title)}>
                 <Icon aria-hidden="true" className="text-primary" size={19} />
-                <h3 className="mt-3 font-semibold">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <h3 className="font-semibold">{title}</h3>
+                  <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+                </div>
                 <Badge className="mt-4" tone="success">Default reviewed</Badge>
               </div>
             ))}
@@ -700,7 +707,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ) : null}
 
       {stage === "preview" ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <StagePanel
             action={<Button onClick={() => setStage("review")} variant="primary">Review readiness</Button>}
             icon={MonitorSmartphone}
@@ -717,14 +724,17 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               ["Tablet Preview", TabletSmartphone, "Supervisor-friendly operational layout."],
               ["Mobile Preview", Smartphone, "Enumerator mode for offline collection."],
             ] satisfies [string, LucideIcon, string][]).map(([title, Icon, description]) => (
-              <div className="rounded-2xl border bg-panel p-5 shadow-line" key={String(title)}>
+              <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={String(title)}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">{title}</h3>
                   <Icon aria-hidden="true" className="text-primary" size={19} />
                 </div>
                 <div className="mt-4 rounded-xl border bg-background/70 p-4">
                   <p className="text-sm font-semibold">{draftForm?.name ?? setup.formName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    Preview mode
+                    <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+                  </div>
                   <div className="mt-4 space-y-2">
                     {(draftForm?.fields ?? []).slice(0, 4).map((field) => (
                       <div className="rounded-lg border bg-panel px-3 py-2" key={field.id}>
@@ -744,7 +754,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ) : null}
 
       {stage === "review" ? (
-        <section className="space-y-4">
+        <section className="space-y-3">
           <StagePanel
             icon={ListChecks}
             route="/forms/:formId/review"
@@ -759,15 +769,17 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               const passed = item.complete;
               const tone = passed ? "success" : item.required ? "danger" : "warning";
               return (
-                <div className="rounded-2xl border bg-panel p-4 shadow-line" key={item.id}>
+                <div className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <Badge tone={tone}>{passed ? "Passed" : item.required ? "Failed" : "Warning"}</Badge>
-                      <h3 className="mt-3 font-semibold">{item.label}</h3>
+                      <div className="mt-3 flex items-center gap-2">
+                        <h3 className="font-semibold">{item.label}</h3>
+                        <HelpHint label={`About ${item.label}`} title={item.label}>{item.description}</HelpHint>
+                      </div>
                     </div>
                     {passed ? <CheckCircle2 aria-hidden="true" className="text-success" /> : <XCircle aria-hidden="true" className="text-danger" />}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
                 </div>
               );
             })}
@@ -777,8 +789,12 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               <div className="flex items-start gap-3">
                 <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" />
                 <div>
-                  <h3 className="font-semibold">Published version created</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{publishedForm.name} is now Published as v{publishedForm.activeVersion}. Field Operations can assign it to collectors.</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">Published version created</h3>
+                    <HelpHint label="About published version" title="Published version created">
+                      {publishedForm.name} is now Published as v{publishedForm.activeVersion}. Field Operations can assign it to collectors.
+                    </HelpHint>
+                  </div>
                 </div>
               </div>
             </div>
@@ -791,7 +807,7 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
 
 function StagePanel({ action, icon: Icon, lines, route, title }: { action?: ReactNode; icon: LucideIcon; lines: string[]; route: string; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-primary/10 text-primary">
@@ -801,9 +817,9 @@ function StagePanel({ action, icon: Icon, lines, route, title }: { action?: Reac
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-semibold">{title}</h2>
               <Badge tone="neutral">{route}</Badge>
-            </div>
-            <div className="mt-2 space-y-1 text-sm leading-6 text-muted-foreground">
-              {lines.map((line) => <p key={line}>{line}</p>)}
+              <HelpHint label={`About ${title}`} title={title}>
+                {lines.join(" ")}
+              </HelpHint>
             </div>
           </div>
         </div>

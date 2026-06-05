@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -42,10 +43,16 @@ import {
   listPlatformBackups,
   listPlatformFeatureFlags,
   listPlatformIntegrations,
+  listPlatformLeads,
   listPlatformOrganizations,
+  listPlatformOrganizationPlans,
   listPlatformRoles,
   listPlatformSecurityEvents,
+  listPlatformSupportSessions,
+  listPlatformUsage,
   listPlatformUsers,
+  runPlatformUserSecurityAction,
+  updatePlatformFeatureFlag,
   updatePlatformOrganizationStatus,
   type CurrentPrincipal,
   type PlatformAuditLogRead,
@@ -53,9 +60,13 @@ import {
   type PlatformFeatureFlagRead,
   type PlatformHealthServiceRead,
   type PlatformIntegrationRead,
+  type PlatformLeadRead,
   type PlatformOrganizationRead,
+  type PlatformOrganizationPlanRead,
+  type PlatformOrganizationUsageRead,
   type PlatformRoleTemplateRead,
   type PlatformSecurityEventRead,
+  type PlatformSupportSessionRead,
   type PlatformUserRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -92,6 +103,8 @@ type ConsoleSection = {
 type DangerousAction =
   | { kind: "suspend" | "reactivate"; organization: PlatformOrganizationRead }
   | { kind: "support"; organization: PlatformOrganizationRead }
+  | { kind: "feature-enable" | "feature-disable"; flag: PlatformFeatureFlagRead }
+  | { kind: "user-lock" | "user-unlock" | "user-reset" | "user-revoke" | "user-mfa"; user: PlatformUserRead }
   | { kind: "backup" | "maintenance" }
   | null;
 
@@ -153,10 +166,10 @@ function Panel({
   return (
     <section className="surface-premium rounded-lg p-5">
       <div className="mb-4">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {description ? (
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold">{title}</h2>
+          {description ? <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint> : null}
+        </div>
       </div>
       {children}
     </section>
@@ -217,6 +230,10 @@ export function PlatformConsole({
   const [dangerAction, setDangerAction] = useState<DangerousAction>(null);
   const [dangerReason, setDangerReason] = useState("");
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const operatorName =
+    principal?.full_name?.trim() || principal?.email || "Platform operator";
+  const operatorRole =
+    principal?.roles?.[0]?.replaceAll("_", " ") ?? "Super Admin";
 
   useEffect(() => {
     setActiveSection(sectionFromPath());
@@ -234,6 +251,10 @@ export function PlatformConsole({
   const securityQuery = useQuery({ queryKey: ["platform-security", token], queryFn: () => listPlatformSecurityEvents(token ?? ""), enabled });
   const integrationsQuery = useQuery({ queryKey: ["platform-integrations", token], queryFn: () => listPlatformIntegrations(token ?? ""), enabled });
   const backupsQuery = useQuery({ queryKey: ["platform-backups", token], queryFn: () => listPlatformBackups(token ?? ""), enabled });
+  const usageQuery = useQuery({ queryKey: ["platform-usage", token], queryFn: () => listPlatformUsage(token ?? ""), enabled });
+  const leadsQuery = useQuery({ queryKey: ["platform-leads", token], queryFn: () => listPlatformLeads(token ?? ""), enabled });
+  const plansQuery = useQuery({ queryKey: ["platform-organization-plans", token], queryFn: () => listPlatformOrganizationPlans(token ?? ""), enabled });
+  const supportSessionsQuery = useQuery({ queryKey: ["platform-support-sessions", token], queryFn: () => listPlatformSupportSessions(token ?? ""), enabled });
 
   const createOrganizationMutation = useMutation({
     mutationFn: () =>
@@ -269,10 +290,11 @@ export function PlatformConsole({
 
   const statusMutation = useMutation({
     mutationFn: ({ organization, isActive }: { organization: PlatformOrganizationRead; isActive: boolean }) =>
-      updatePlatformOrganizationStatus(token ?? "", organization.id, isActive),
+      updatePlatformOrganizationStatus(token ?? "", organization.id, isActive, dangerReason.trim()),
     onSuccess: async (organization) => {
       await organizationsQuery.refetch();
       await summaryQuery.refetch();
+      await auditQuery.refetch();
       setDangerAction(null);
       setDangerReason("");
       pushToast({
@@ -292,7 +314,7 @@ export function PlatformConsole({
 
   const supportMutation = useMutation({
     mutationFn: (organization: PlatformOrganizationRead) =>
-      createOrganizationSupportSession(token ?? "", organization.id),
+      createOrganizationSupportSession(token ?? "", organization.id, dangerReason.trim()),
     onSuccess: (response) => {
       setDangerAction(null);
       setDangerReason("");
@@ -312,6 +334,53 @@ export function PlatformConsole({
     },
   });
 
+  const userSecurityMutation = useMutation({
+    mutationFn: ({ user, action }: { user: PlatformUserRead; action: "lock" | "unlock" | "force_password_reset" | "revoke_sessions" | "require_mfa" }) =>
+      runPlatformUserSecurityAction(token ?? "", user.user_id, { action, reason: dangerReason.trim() }),
+    onSuccess: async (result) => {
+      await usersQuery.refetch();
+      await auditQuery.refetch();
+      await securityQuery.refetch();
+      setDangerAction(null);
+      setDangerReason("");
+      pushToast({
+        title: "Security action recorded",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Security action was blocked",
+        description: "Confirm the target account, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const featureFlagMutation = useMutation({
+    mutationFn: ({ flag, enabled: nextEnabled }: { flag: PlatformFeatureFlagRead; enabled: boolean }) =>
+      updatePlatformFeatureFlag(token ?? "", flag.key, { global_enabled: nextEnabled, reason: dangerReason.trim() }),
+    onSuccess: async (flag) => {
+      await flagsQuery.refetch();
+      await auditQuery.refetch();
+      setDangerAction(null);
+      setDangerReason("");
+      pushToast({
+        title: `${flag.label} flag updated`,
+        description: "The requested global feature flag change was captured in the platform audit trail.",
+        tone: flag.global_enabled ? "success" : "warning",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Feature flag was not changed",
+        description: "Confirm the flag key and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
   const activeDefinition = consoleSections.find((section) => section.id === activeSection) ?? consoleSections[0];
   const organizations = organizationsQuery.data ?? [];
   const users = usersQuery.data ?? [];
@@ -322,6 +391,10 @@ export function PlatformConsole({
   const securityEvents = securityQuery.data ?? [];
   const integrations = integrationsQuery.data ?? [];
   const backups = backupsQuery.data ?? [];
+  const usageRows = usageQuery.data ?? [];
+  const leads = leadsQuery.data ?? [];
+  const organizationPlans = plansQuery.data ?? [];
+  const supportSessions = supportSessionsQuery.data ?? [];
 
   const platformCards = [
     { label: "Organizations", value: String(summaryQuery.data?.organization_count ?? organizations.length), icon: Building2, tone: "platform" as const },
@@ -378,6 +451,24 @@ export function PlatformConsole({
       { key: "role", header: "Role", value: (row) => row.role_name, render: (row) => <Badge tone={row.role_name === "super_admin" ? "platform" : "neutral"}>{row.role_name}</Badge> },
       { key: "status", header: "Status", value: (row) => String(row.is_active && row.membership_active), render: (row) => <Badge tone={row.is_active && row.membership_active ? "success" : "danger"}>{row.is_active && row.membership_active ? "Active" : "Locked"}</Badge> },
       { key: "updated", header: "Updated", value: (row) => row.updated_at, render: (row) => formatDate(row.updated_at) },
+      {
+        key: "actions",
+        header: "Actions",
+        align: "right",
+        render: (row) => (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button size="sm" type="button" variant="secondary" onClick={() => setDangerAction({ kind: row.is_active ? "user-lock" : "user-unlock", user: row })}>
+              {row.is_active ? "Lock" : "Unlock"}
+            </Button>
+            <Button size="sm" type="button" variant="secondary" onClick={() => setDangerAction({ kind: "user-reset", user: row })}>
+              Reset
+            </Button>
+            <Button size="sm" type="button" variant="secondary" onClick={() => setDangerAction({ kind: "user-revoke", user: row })}>
+              Revoke sessions
+            </Button>
+          </div>
+        ),
+      },
     ],
     [],
   );
@@ -397,6 +488,10 @@ export function PlatformConsole({
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {platformCards.map((card) => <StatCard key={card.label} {...card} />)}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <TenantUsageSnapshot rows={usageRows} />
+        <LeadPipeline leads={leads} />
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Panel title="Platform health" description="A Super Admin should know immediately whether the platform is configured and operating correctly.">
@@ -423,30 +518,33 @@ export function PlatformConsole({
   );
 
   const renderOrganizations = () => (
-    <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-      <Panel title="Create organization" description="Provision a tenant shell and first organization admin.">
-        <form className="space-y-3" onSubmit={(event) => {
-          event.preventDefault();
-          createOrganizationMutation.mutate();
-        }}>
-          <Input placeholder="Organization name" value={organizationName} onChange={(event) => {
-            setOrganizationName(event.target.value);
-            if (!organizationSlugEdited) setOrganizationSlug(slugify(event.target.value));
-          }} required />
-          <Input placeholder="Organization code" value={organizationSlug} onChange={(event) => {
-            setOrganizationSlugEdited(true);
-            setOrganizationSlug(slugify(event.target.value));
-          }} required />
-          <Input placeholder="First admin full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} />
-          <Input placeholder="First admin email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} />
-          <Input placeholder="Temporary password" type="password" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} />
-          <Button className="w-full" disabled={createOrganizationMutation.isPending || !organizationName.trim() || !organizationSlug.trim()} type="submit" variant="primary">
-            <Plus aria-hidden="true" />
-            Create organization
-          </Button>
-        </form>
-      </Panel>
-      <DataTable columns={organizationColumns} emptyLabel={organizationsQuery.isFetching ? "Loading organizations..." : "No organizations found"} rows={organizations} searchLabel="Search organizations" title="Organizations" />
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <Panel title="Create organization" description="Provision a tenant shell and first organization admin.">
+          <form className="space-y-3" onSubmit={(event) => {
+            event.preventDefault();
+            createOrganizationMutation.mutate();
+          }}>
+            <Input placeholder="Organization name" value={organizationName} onChange={(event) => {
+              setOrganizationName(event.target.value);
+              if (!organizationSlugEdited) setOrganizationSlug(slugify(event.target.value));
+            }} required />
+            <Input placeholder="Organization code" value={organizationSlug} onChange={(event) => {
+              setOrganizationSlugEdited(true);
+              setOrganizationSlug(slugify(event.target.value));
+            }} required />
+            <Input placeholder="First admin full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} />
+            <Input placeholder="First admin email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} />
+            <Input placeholder="Temporary password" type="password" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} />
+            <Button className="w-full" disabled={createOrganizationMutation.isPending || !organizationName.trim() || !organizationSlug.trim()} type="submit" variant="primary">
+              <Plus aria-hidden="true" />
+              Create organization
+            </Button>
+          </form>
+        </Panel>
+        <DataTable columns={organizationColumns} emptyLabel={organizationsQuery.isFetching ? "Loading organizations..." : "No organizations found"} rows={organizations} searchLabel="Search organizations" title="Organizations" />
+      </div>
+      <OrganizationPlanGrid plans={organizationPlans} />
     </div>
   );
 
@@ -485,6 +583,16 @@ export function PlatformConsole({
               <span>Env: {flag.environment}</span>
               <span>Rollout: {flag.rollout_percentage}%</span>
               <span>Overrides: {flag.organization_overrides}</span>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button
+                size="sm"
+                type="button"
+                variant={flag.global_enabled ? "secondary" : "primary"}
+                onClick={() => setDangerAction({ kind: flag.global_enabled ? "feature-disable" : "feature-enable", flag })}
+              >
+                {flag.global_enabled ? "Disable" : "Enable"}
+              </Button>
             </div>
           </article>
         ))}
@@ -530,7 +638,7 @@ export function PlatformConsole({
   const renderTableSection = () => {
     if (activeSection === "users") return <DataTable columns={userColumns} emptyLabel={usersQuery.isFetching ? "Loading users..." : "No users found"} rows={users} searchLabel="Search global users" title="Global users" />;
     if (activeSection === "audit-logs") return <DataTable columns={auditColumns} emptyLabel={auditQuery.isFetching ? "Loading audit logs..." : "No audit logs found"} rows={auditLogs} searchLabel="Search audit logs" title="Platform audit logs" />;
-    if (activeSection === "security") return <SecurityEvents events={securityEvents} />;
+    if (activeSection === "security") return <SecurityEvents events={securityEvents} supportSessions={supportSessions} />;
     if (activeSection === "integrations") return <Integrations rows={integrations} />;
     if (activeSection === "backups") return <Backups rows={backups} onTrigger={() => setDangerAction({ kind: "backup" })} />;
     return null;
@@ -547,6 +655,21 @@ export function PlatformConsole({
         organization: dangerAction.organization,
         isActive: dangerAction.kind === "reactivate",
       });
+      return;
+    }
+    if ("user" in dangerAction) {
+      const actionMap = {
+        "user-lock": "lock",
+        "user-unlock": "unlock",
+        "user-reset": "force_password_reset",
+        "user-revoke": "revoke_sessions",
+        "user-mfa": "require_mfa",
+      } as const;
+      userSecurityMutation.mutate({ user: dangerAction.user, action: actionMap[dangerAction.kind] });
+      return;
+    }
+    if ("flag" in dangerAction) {
+      featureFlagMutation.mutate({ flag: dangerAction.flag, enabled: dangerAction.kind === "feature-enable" });
       return;
     }
     pushToast({
@@ -573,6 +696,17 @@ export function PlatformConsole({
                   <p className="text-xs text-white/60">Super Admin only</p>
                 </div>
               </div>
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.06] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
+                  Signed in as
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">
+                  {operatorName}
+                </p>
+                <p className="mt-1 truncate text-xs capitalize text-white/60">
+                  {operatorRole} · Global platform access
+                </p>
+              </div>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
               {consoleSections.map((section) => {
@@ -581,7 +715,7 @@ export function PlatformConsole({
                 return (
                   <button
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition",
+                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition",
                       active ? "bg-white text-[#0f1d1a] shadow-line" : "text-white/72 hover:bg-white/10 hover:text-white",
                     )}
                     key={section.id}
@@ -614,10 +748,18 @@ export function PlatformConsole({
                   <Badge tone="platform">Global</Badge>
                   <Badge tone="warning">Separate from organization app</Badge>
                 </div>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight">{activeDefinition.label}</h1>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{activeDefinition.description}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold tracking-tight">{activeDefinition.label}</h1>
+                  <HelpHint label={`About ${activeDefinition.label}`} title={activeDefinition.label}>{activeDefinition.description}</HelpHint>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <div className="rounded-lg border bg-panel/80 px-3 py-2 shadow-line">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Signed in as
+                  </p>
+                  <p className="truncate text-sm font-semibold">{operatorName}</p>
+                </div>
                 <label className="relative min-w-64">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
                   <Input className="pl-9" placeholder="Search console" />
@@ -667,7 +809,12 @@ export function PlatformConsole({
           </label>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDangerAction(null)} type="button" variant="secondary">Cancel</Button>
-            <Button disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending} onClick={confirmDangerousAction} type="button" variant="danger">
+            <Button
+              disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending || userSecurityMutation.isPending || featureFlagMutation.isPending}
+              onClick={confirmDangerousAction}
+              type="button"
+              variant="danger"
+            >
               Confirm action
             </Button>
           </div>
@@ -683,8 +830,102 @@ function dangerActionDescription(action: NonNullable<DangerousAction>): string {
     if (action.kind === "suspend") return `Suspend ${action.organization.name}. Normal users in this organization will be blocked from signing in.`;
     return `Reactivate ${action.organization.name}. Normal users can sign in again once active.`;
   }
+  if ("user" in action) {
+    if (action.kind === "user-lock") return `Lock ${action.user.email}. The user will be blocked from signing in until unlocked.`;
+    if (action.kind === "user-unlock") return `Unlock ${action.user.email}. The user can sign in again if their organization is active.`;
+    if (action.kind === "user-reset") return `Require a password reset for ${action.user.email}. This is recorded for identity-provider enforcement.`;
+    if (action.kind === "user-revoke") return `Revoke active sessions for ${action.user.email}. This is recorded for session-store enforcement.`;
+    return `Require MFA for ${action.user.email}. This is recorded for authentication-provider enforcement.`;
+  }
+  if ("flag" in action) {
+    return `${action.kind === "feature-enable" ? "Enable" : "Disable"} the ${action.flag.label} feature flag globally for ${action.flag.environment}.`;
+  }
   if (action.kind === "backup") return "Trigger a platform backup workflow. Restore operations will require elevated confirmation before they are enabled.";
   return "Enable maintenance mode controls. This is a dangerous platform-wide setting and must be audited.";
+}
+
+function TenantUsageSnapshot({ rows }: { rows: PlatformOrganizationUsageRead[] }) {
+  const topRows = rows.slice(0, 5);
+  return (
+    <Panel title="Tenant usage snapshot" description="Consumption across organizations, useful for plan review, support prioritization, and capacity planning.">
+      {topRows.length ? (
+        <div className="space-y-3">
+          {topRows.map((row) => (
+            <div className="rounded-lg border bg-panel p-3" key={row.organization_id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{row.organization_name}</p>
+                  <p className="text-xs text-muted-foreground">{row.user_count} users · {row.form_count} forms · {row.submission_count} submissions</p>
+                </div>
+                <Badge tone={row.is_active ? "success" : "danger"}>{row.is_active ? "Active" : "Suspended"}</Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No usage yet" detail="Tenant usage will appear after organizations start creating forms, users, imports, exports, and submissions." />
+      )}
+    </Panel>
+  );
+}
+
+function LeadPipeline({ leads }: { leads: PlatformLeadRead[] }) {
+  const topLeads = leads.slice(0, 5);
+  return (
+    <Panel title="Lead pipeline" description="Recent public website leads for sales follow-up and tenant onboarding.">
+      {topLeads.length ? (
+        <div className="space-y-3">
+          {topLeads.map((lead) => (
+            <div className="rounded-lg border bg-panel p-3" key={lead.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{lead.organization || lead.name}</p>
+                  <p className="text-xs text-muted-foreground">{lead.email} · {lead.country || "Country not set"}</p>
+                </div>
+                <Badge tone={statusTone(lead.status)}>{lead.status}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{lead.interest_area || lead.source} · {formatDate(lead.created_at)}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No leads captured yet" detail="Book-demo, contact, resource, and newsletter leads will appear here after public website submissions." />
+      )}
+    </Panel>
+  );
+}
+
+function OrganizationPlanGrid({ plans }: { plans: PlatformOrganizationPlanRead[] }) {
+  return (
+    <Panel title="Plans and platform limits" description="Plan readiness and derived limits for tenant operations. Persistent billing integration can attach here later.">
+      {plans.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {plans.map((plan) => (
+            <article className="rounded-lg border bg-panel p-4" key={plan.organization_id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{plan.organization_name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{plan.organization_slug} · {plan.plan}</p>
+                </div>
+                <Badge tone={statusTone(plan.status)}>{plan.status}</Badge>
+              </div>
+              <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+                <span>{plan.user_limit.toLocaleString()} users</span>
+                <span>{plan.submission_limit.toLocaleString()} submissions</span>
+                <span>{plan.storage_limit_gb}GB storage</span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full bg-primary" style={{ width: `${Math.min(plan.usage_percent, 100)}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{plan.usage_percent}% of current derived limit</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No plans available" detail="Tenant plan rows appear after organizations are available to the Platform Console." />
+      )}
+    </Panel>
+  );
 }
 
 function ServiceCard({ service }: { service: PlatformHealthServiceRead }) {
@@ -702,25 +943,45 @@ function ServiceCard({ service }: { service: PlatformHealthServiceRead }) {
   );
 }
 
-function SecurityEvents({ events }: { events: PlatformSecurityEventRead[] }) {
-  if (!events.length) return <EmptyState title="No security events" detail="Failed logins, locked accounts, suspicious sessions, MFA status, and policy events will appear here." />;
+function SecurityEvents({ events, supportSessions }: { events: PlatformSecurityEventRead[]; supportSessions: PlatformSupportSessionRead[] }) {
+  if (!events.length && !supportSessions.length) return <EmptyState title="No security events" detail="Failed logins, locked accounts, suspicious sessions, support access, MFA status, and policy events will appear here." />;
   return (
-    <Panel title="Security center" description="High-risk actions such as lock, unlock, reset password, session revoke, and MFA requirement must require confirmation and reason before mutation endpoints are enabled.">
-      <div className="grid gap-3 lg:grid-cols-2">
-        {events.map((event) => (
-          <article className="rounded-lg border bg-panel p-4" key={event.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{event.event_type}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{event.actor} · {formatDate(event.created_at)}</p>
+    <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+      <Panel title="Security center" description="High-risk actions such as lock, unlock, reset password, session revoke, and MFA requirement require confirmation and reason.">
+        <div className="grid gap-3">
+          {events.map((event) => (
+            <article className="rounded-lg border bg-panel p-4" key={event.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{event.event_type}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{event.actor} · {formatDate(event.created_at)}</p>
+                </div>
+                <Badge tone={statusTone(event.severity)}>{event.severity}</Badge>
               </div>
-              <Badge tone={statusTone(event.severity)}>{event.severity}</Badge>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">{event.device ?? "Device details pending"} · {event.status}</p>
-          </article>
-        ))}
-      </div>
-    </Panel>
+              <p className="mt-3 text-sm text-muted-foreground">{event.device ?? "Device details pending"} · {event.status}</p>
+            </article>
+          ))}
+          {!events.length ? <EmptyState title="No security events" detail="Security alerts and policy events will appear here." /> : null}
+        </div>
+      </Panel>
+      <Panel title="Support access sessions" description="Recent organization support-mode entries. Support access must remain explicit, visible, and auditable.">
+        <div className="space-y-3">
+          {supportSessions.map((session) => (
+            <article className="rounded-lg border bg-panel p-4" key={session.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{session.organization_name ?? "Organization"}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{session.actor_email ?? "Super Admin"} · {formatDate(session.started_at)}</p>
+                </div>
+                <Badge tone="warning">{session.status}</Badge>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">{session.reason || "No reason recorded"}</p>
+            </article>
+          ))}
+          {!supportSessions.length ? <EmptyState title="No support sessions" detail="Support access sessions will appear after Super Admin enters tenant support mode." /> : null}
+        </div>
+      </Panel>
+    </div>
   );
 }
 

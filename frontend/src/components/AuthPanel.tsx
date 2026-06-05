@@ -64,28 +64,33 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
   return (
     <section className="min-h-screen bg-background lg:grid lg:grid-cols-[1fr_440px]">
-      <div className="relative hidden items-center overflow-hidden px-6 py-10 lg:flex">
-        <div className="soft-grid absolute inset-0 opacity-55" />
-        <div className="absolute inset-x-8 top-8 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent lg:block" />
+      <div className="relative hidden items-center overflow-hidden bg-[#022f32] px-6 py-10 lg:flex">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: 'url("/login-field-monitoring.webp")' }}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(1,22,24,0.88)_0%,rgba(2,47,50,0.72)_42%,rgba(2,47,50,0.4)_100%)]" />
+        <div className="absolute inset-x-8 top-8 hidden h-px bg-gradient-to-r from-transparent via-white/20 to-transparent lg:block" />
         <motion.div
-          className="mx-auto grid w-full max-w-4xl gap-10 xl:grid-cols-[1fr_320px] xl:items-end"
+          className="relative z-10 mx-auto grid w-full max-w-4xl gap-10 xl:grid-cols-[1fr_320px] xl:items-end"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24 }}
         >
           <div>
-            <Badge tone="accent" className="mb-8 gap-2">
+            <Badge tone="accent" className="mb-8 gap-2 border-white/15 bg-white/12 !text-white shadow-line">
               <ShieldCheck aria-hidden="true" size={14} />
               Atlas FieldOps
             </Badge>
-            <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+            <h1 className="text-balance text-4xl font-semibold tracking-tight !text-white md:text-5xl">
               Field data your team can trust.
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
+            <p className="mt-5 max-w-2xl text-base leading-7 !text-white">
               Build forms, guide field officers, review submissions, and keep
               work moving even when connectivity is unreliable.
             </p>
-            <div className="mt-10 grid max-w-2xl grid-cols-3 border-y py-5 text-sm">
+            <div className="mt-10 grid max-w-2xl grid-cols-3 border-y border-white/18 py-5 text-sm text-white">
               {[
                 ["128.4k", "saved today"],
                 ["96.8%", "clean submissions"],
@@ -93,23 +98,23 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               ].map(([value, label]) => (
                 <div
                   key={label}
-                  className="border-r px-4 first:pl-0 last:border-r-0"
+                  className="border-r border-white/16 px-4 first:pl-0 last:border-r-0"
                 >
                   <p className="text-xl font-semibold tracking-tight">
                     {value}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-xs text-white/62">{label}</p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="surface-premium hidden rounded-2xl p-5 xl:block">
+          <div className="hidden rounded-2xl border border-white/14 bg-white/10 p-5 text-white shadow-elevated backdrop-blur-xl xl:block">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/62">
                 Today’s status
               </p>
-              <Badge tone="success" className="gap-1.5">
+              <Badge tone="success" className="gap-1.5 border-white/15 bg-white/12 text-white">
                 <RadioTower aria-hidden="true" size={13} />
                 Online
               </Badge>
@@ -122,21 +127,21 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
               ].map(([label, status, value]) => (
                 <div
                   key={label}
-                  className="grid grid-cols-[1fr_auto] gap-3 border-t pt-4 first:border-t-0 first:pt-0"
+                  className="grid grid-cols-[1fr_auto] gap-3 border-t border-white/12 pt-4 first:border-t-0 first:pt-0"
                 >
                   <div>
                     <p className="text-sm font-medium">{label}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-white/62">
                       {status}
                     </p>
                   </div>
-                  <p className="font-mono text-xs text-muted-foreground">
+                  <p className="font-mono text-xs text-white/62">
                     {value}
                   </p>
                 </div>
               ))}
             </div>
-            <div className="mt-5 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            <div className="mt-5 flex items-center gap-2 rounded-md border border-white/12 bg-white/10 px-3 py-2 text-xs text-white/72">
               <Activity aria-hidden="true" size={14} />
               Access rules and review history are active
             </div>

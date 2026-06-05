@@ -63,9 +63,9 @@ export function DataTable<T>({
       className="surface-premium overflow-hidden rounded-2xl"
       aria-labelledby={`${title}-title`}
     >
-      <div className="flex flex-col gap-3 border-b bg-muted/20 px-5 py-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-2.5 border-b bg-muted/25 px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 id={`${title}-title`} className="text-sm font-semibold">
+          <h2 id={`${title}-title`} className="text-[13px] font-semibold">
             {title}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -128,16 +128,16 @@ export function DataTable<T>({
       </div>
 
       <div className="hidden overflow-x-auto product-scrollbar md:block">
-        <table className="w-full min-w-[680px] text-left text-sm">
-          <thead className="sticky top-0 bg-panel/95 text-muted-foreground shadow-line backdrop-blur">
+        <table className="w-full min-w-[680px] text-left text-[13px]">
+          <thead className="sticky top-0 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className="px-4 py-2.5 font-medium">
+                <th key={column.key} className="px-3.5 py-2 font-medium">
                   {column.value ? (
                     <button
                       className={
                         column.align === "right"
-                          ? "ml-auto flex justify-end gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-muted hover:text-foreground"
+                        ? "ml-auto flex justify-end gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-muted hover:text-foreground"
                           : "flex items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-muted hover:text-foreground"
                       }
                       onClick={() => {
@@ -172,14 +172,14 @@ export function DataTable<T>({
           </thead>
           <tbody className="divide-y">
             {filteredRows.map((row, index) => (
-              <tr key={index} className="transition-colors hover:bg-primary/5">
+              <tr key={index} className="transition-colors hover:bg-muted/35">
                 {columns.map((column) => (
                   <td
                     key={column.key}
                     className={
                       column.align === "right"
-                        ? "px-4 py-3.5 text-right"
-                        : "px-4 py-3.5"
+                        ? "px-3.5 py-2.5 text-right"
+                        : "px-3.5 py-2.5"
                     }
                   >
                     {column.render(row)}

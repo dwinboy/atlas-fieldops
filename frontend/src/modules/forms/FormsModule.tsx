@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Input } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
 import { listForms, listFormTemplates } from "@/lib/api";
@@ -146,8 +147,8 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   }
 
   return (
-    <section className="space-y-5">
-      <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
@@ -156,10 +157,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
                 {summary.forms_with_quality_issues ? `${summary.forms_with_quality_issues} quality alerts` : "Forms healthy"}
               </Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Forms</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Design, publish, version, govern, and manage survey/data collection forms with reference data, workflow, quality, mapping, permissions, and audit controls.
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Forms</h1>
+              <HelpHint label="About Forms" title="Forms">
+                Design, publish, version, govern, and manage survey/data collection forms with reference data, workflow, quality, mapping, permissions, and audit controls.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManageForms} onClick={() => {
@@ -175,10 +178,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-5 flex gap-2 overflow-x-auto product-scrollbar" aria-label="Forms sections">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Forms sections">
           {formsSections.map((section) => (
             <button
-              className={cn("shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
+              className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition", activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted")}
               key={section.id}
               onClick={() => {
                 setSelectedFormId(null);
@@ -258,10 +261,10 @@ function FormsDashboard({ forms, onOpenForm, summary }: { forms: FormListItem[];
   const recentlyPublished = forms.filter((form) => form.status === "published").slice(0, 4);
   const mostUsed = [...forms].sort((left, right) => right.total_submissions - left.total_submissions).slice(0, 4);
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div className="rounded-2xl border bg-panel p-4 shadow-line" key={card.label}>
+          <div className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
@@ -269,7 +272,7 @@ function FormsDashboard({ forms, onOpenForm, summary }: { forms: FormListItem[];
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="font-semibold">Most Used Forms</h2>
           <div className="mt-4 space-y-3">
             {mostUsed.map((form) => (
@@ -290,15 +293,18 @@ function FormsDashboard({ forms, onOpenForm, summary }: { forms: FormListItem[];
             ))}
           </div>
         </div>
-        <div className="rounded-2xl border bg-panel p-5 shadow-line">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="font-semibold">Governance Alerts</h2>
           <div className="mt-4 space-y-3">
             <Signal label="Forms pending approval" value={`${summary.pending_approval_forms}`} tone={summary.pending_approval_forms ? "warning" : "success"} />
             <Signal label="Forms with quality issues" value={`${summary.forms_with_quality_issues}`} tone={summary.forms_with_quality_issues ? "warning" : "success"} />
             <Signal label="Active collection forms" value={`${summary.active_collection_forms}`} />
           </div>
-          <div className="mt-4 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
-            Form governance remains form-level: permissions, workflow, data quality, mapping settings, versions, and audit trail belong here.
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-muted/40 p-3 text-sm font-medium">
+            Form governance
+            <HelpHint label="About form governance" title="Form governance">
+              Form governance remains form-level: permissions, workflow, data quality, mapping settings, versions, and audit trail belong here.
+            </HelpHint>
           </div>
         </div>
       </div>
@@ -322,7 +328,7 @@ function FormDetailWorkspace({ form, onClose, onOpenBuilder, onOpenDataQuality, 
   tab: FormDetailTab;
 }) {
   return (
-    <section className="space-y-4 rounded-2xl border bg-panel p-5 shadow-line">
+    <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -337,7 +343,7 @@ function FormDetailWorkspace({ form, onClose, onOpenBuilder, onOpenDataQuality, 
       </div>
       <div className="flex gap-2 overflow-x-auto product-scrollbar">
         {formDetailTabs.map((item) => (
-          <button className={cn("shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
+          <button className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
             {item}
           </button>
         ))}
@@ -363,8 +369,10 @@ function FormOverview({ form }: { form: FormListItem }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
       <div className="rounded-2xl border bg-background/50 p-5">
-        <h3 className="font-semibold">Form Overview</h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{form.description ?? "No description has been added yet."}</p>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Form Overview</h3>
+          <HelpHint label="About this form" title="Form Overview">{form.description ?? "No description has been added yet."}</HelpHint>
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <Signal label="Project" value={form.project_name} />
           <Signal label="Owner" value={form.owner} />
@@ -393,10 +401,12 @@ function TemplatesSection({ onOpenBuilder, templates }: { onOpenBuilder: () => v
       <SectionHeader action={<Button onClick={onOpenBuilder} variant="primary"><Plus aria-hidden="true" /> Create from template</Button>} description="Reusable baseline, endline, monitoring, assessment, registration, case management, training, and feedback forms." title="Form Templates" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
-          <div className="rounded-2xl border bg-panel p-5 shadow-line" key={template.id}>
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={template.id}>
             <Badge tone={template.is_featured ? "accent" : "neutral"}>{template.category}</Badge>
-            <h3 className="mt-3 font-semibold">{template.name}</h3>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{template.description}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <h3 className="font-semibold">{template.name}</h3>
+              <HelpHint label={`About ${template.name}`} title={template.name}>{template.description}</HelpHint>
+            </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
               <Signal label="Fields" value={`${template.summary.field_count}`} />
               <Signal label="GPS" value={template.summary.has_gps ? "Yes" : "No"} />
@@ -425,11 +435,13 @@ function ReferenceDataSection({ onOpenBuilder }: { onOpenBuilder: () => void }) 
       <SectionHeader action={<Button onClick={onOpenBuilder} variant="primary"><Database aria-hidden="true" /> Bind to questions</Button>} description="Manage form-level controlled reference lists and attach them to questions. System-wide master data stays in Administration." title="Form Reference Data" />
       <div className="grid gap-4 md:grid-cols-2">
         {lists.map(([name, description, status]) => (
-          <div className="rounded-2xl border bg-panel p-5 shadow-line" key={name}>
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={name}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{name}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+                <div className="mt-2">
+                  <HelpHint label={`About ${name}`} title={name}>{description}</HelpHint>
+                </div>
               </div>
               <Badge tone={status === "Draft" ? "warning" : "success"}>{status}</Badge>
             </div>
@@ -449,9 +461,9 @@ function FormTabCard({ actionLabel, icon: Icon, lines, onAction, title }: { acti
             <Icon aria-hidden="true" size={18} />
           </span>
           <div>
-            <h3 className="font-semibold">{title}</h3>
-            <div className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-              {lines.map((line) => <p key={line}>{line}</p>)}
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-semibold">{title}</h3>
+              <HelpHint label={`About ${title}`} title={title}>{lines.join(" ")}</HelpHint>
             </div>
           </div>
         </div>
@@ -463,7 +475,7 @@ function FormTabCard({ actionLabel, icon: Icon, lines, onAction, title }: { acti
 
 function FormFilters() {
   return (
-    <div className="grid gap-3 rounded-2xl border bg-panel p-4 shadow-line md:grid-cols-5">
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-5">
       <Input placeholder="Project" />
       <Input placeholder="Status" />
       <Input placeholder="Owner" />
@@ -475,10 +487,12 @@ function FormFilters() {
 
 function SectionHeader({ action, description, title }: { action?: ReactNode; description: string; title: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border bg-panel p-5 shadow-line md:flex-row md:items-start md:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
       <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+        </div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -496,7 +510,7 @@ function Signal({ label, tone = "neutral", value }: { label: string; tone?: "suc
 
 function InsightCard({ icon: Icon, lines, title }: { icon: LucideIcon; lines: string[]; title: string }) {
   return (
-    <div className="rounded-2xl border bg-panel p-5 shadow-line">
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex items-center gap-2">
         <Icon aria-hidden="true" className="text-primary" size={18} />
         <h3 className="font-semibold">{title}</h3>

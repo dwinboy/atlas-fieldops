@@ -28,6 +28,7 @@ import { useState, type ReactNode } from "react";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpHint } from "@/components/ui/help-hint";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
@@ -979,17 +980,19 @@ export function Dashboard({ token, principal }: DashboardProps) {
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Command dashboard
             </p>
-            <h1
-              id="dashboard-title"
-              className="mt-2 text-3xl font-semibold tracking-tight"
-            >
-              Operations, quality, approvals, and coverage
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              The first screen follows the platform architecture: projects,
-              forms, submissions, reviews, data quality, field activity,
-              indicators, alerts, approvals, and map readiness.
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h1
+                id="dashboard-title"
+                className="text-3xl font-semibold tracking-tight"
+              >
+                Operations, quality, approvals, and coverage
+              </h1>
+              <HelpHint label="About the command dashboard" title="Command dashboard">
+                The first screen follows the platform architecture: projects,
+                forms, submissions, reviews, data quality, field activity,
+                indicators, alerts, approvals, and map readiness.
+              </HelpHint>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -1664,12 +1667,14 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <Badge tone="accent">{roleGuidance.badge}</Badge>
                 <Badge>{accountScope}</Badge>
               </div>
-              <h2 id="role-focus-title" className="mt-3 text-lg font-semibold">
-                Your role focus: {roleGuidance.title}
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                {roleGuidance.description}
-              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <h2 id="role-focus-title" className="text-lg font-semibold">
+                  Your role focus: {roleGuidance.title}
+                </h2>
+                <HelpHint label="About your role focus" title={roleGuidance.title}>
+                  {roleGuidance.description}
+                </HelpHint>
+              </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 Signed in as <span className="font-medium">{accountLabel}</span>
               </p>
@@ -1722,14 +1727,16 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Guided setup
               </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">
-                Organization readiness plan
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                Follow these steps so managers, reviewers, and field officers
-                can start with clean structure, useful indicators, and safe
-                data.
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-semibold tracking-tight">
+                  Organization readiness plan
+                </h2>
+                <HelpHint label="About organization readiness" title="Organization readiness plan">
+                  Follow these steps so managers, reviewers, and field officers
+                  can start with clean structure, useful indicators, and safe
+                  data.
+                </HelpHint>
+              </div>
             </div>
             <div className="min-w-[160px] rounded-xl border bg-background/80 p-3 text-sm">
               <div className="flex items-center justify-between">
@@ -1793,8 +1800,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                           {step.complete ? "Done" : isNext ? "Next" : "Pending"}
                         </Badge>
                       </span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        {step.description}
+                      <span className="mt-2 inline-flex">
+                        <HelpHint label={`About ${step.title}`} title={step.title}>
+                          {step.description}
+                        </HelpHint>
                       </span>
                       <span className="mt-3 inline-flex text-xs font-medium text-primary">
                         {step.action}
@@ -1833,9 +1842,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{item.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {item.detail}
-                    </p>
+                    <div className="mt-1">
+                      <HelpHint label={`About ${item.label}`} title={item.label}>
+                        {item.detail}
+                      </HelpHint>
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold">{item.value}</p>
@@ -1884,9 +1895,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
               type="button"
             >
               <p className="text-sm font-semibold">{item.question}</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {item.answer}
-              </p>
+              <div className="mt-2">
+                <HelpHint label={`Answer: ${item.question}`} title={item.question}>
+                  {item.answer}
+                </HelpHint>
+              </div>
               <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
                 Open workspace <ArrowUpRight aria-hidden="true" size={13} />
               </span>
@@ -1910,11 +1923,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
             >
               Keep data trustworthy from form design to reporting
             </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Strong organizations do not wait until reporting day to clean
-              data. They prevent errors, detect exceptions, correct records with
-              evidence, and report only approved information.
-            </p>
+            <div className="mt-1">
+              <HelpHint label="About the data quality path" title="Data quality path">
+                Strong organizations do not wait until reporting day to clean
+                data. They prevent errors, detect exceptions, correct records with
+                evidence, and report only approved information.
+              </HelpHint>
+            </div>
           </div>
           <Badge
             tone={summaryQuery.data?.quality_flags ? "warning" : "success"}
@@ -1941,9 +1956,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <Badge>{index + 1}</Badge>
                 </div>
                 <h3 className="mt-4 text-sm font-semibold">{step.title}</h3>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {step.description}
-                </p>
+                <div className="mt-2">
+                  <HelpHint label={`About ${step.title}`} title={step.title}>
+                    {step.description}
+                  </HelpHint>
+                </div>
                 <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
                   {step.action} <ArrowUpRight aria-hidden="true" size={13} />
                 </span>
@@ -2062,11 +2079,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <h2 className="text-sm font-semibold">
                 This organization is ready for setup
               </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                No live operational records have been created yet. Start by
-                inviting users, importing existing data, or creating the first
-                mobile-ready form.
-              </p>
+              <div className="mt-1">
+                <HelpHint label="About setup readiness" title="Setup readiness">
+                  No live operational records have been created yet. Start by
+                  inviting users, importing existing data, or creating the first
+                  mobile-ready form.
+                </HelpHint>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
