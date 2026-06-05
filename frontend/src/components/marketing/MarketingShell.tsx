@@ -34,10 +34,10 @@ export function MarketingShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="hidden items-center gap-2 lg:flex">
             <Button asChild variant="ghost">
-              <Link href="/app">Sign in</Link>
+              <Link href="/login">Sign in</Link>
             </Button>
             <Button asChild variant="primary">
-              <Link href="/contact">Request demo</Link>
+              <Link href="/book-demo">Book demo</Link>
             </Button>
           </div>
           <button
@@ -58,7 +58,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
               </button>
             </div>
             <nav className="mt-8 grid gap-2 text-base font-medium" aria-label="Mobile navigation">
-              {[...navItems, { label: "Blog", href: "/blog" }, { label: "Case Studies", href: "/case-studies" }, { label: "About", href: "/about" }].map((item) => (
+              {[...navItems, { label: "Blog", href: "/blog" }, { label: "Case Studies", href: "/case-studies" }, { label: "Security", href: "/security" }, { label: "About", href: "/about" }].map((item) => (
                 <Link className="rounded-md px-3 py-3 hover:bg-black/5" href={item.href} key={item.href} onClick={() => setOpen(false)}>
                   {item.label}
                 </Link>
@@ -66,10 +66,10 @@ export function MarketingShell({ children }: { children: ReactNode }) {
             </nav>
             <div className="mt-auto grid gap-2">
               <Button asChild>
-                <Link href="/app">Sign in</Link>
+                <Link href="/login">Sign in</Link>
               </Button>
               <Button asChild variant="primary">
-                <Link href="/contact">Request demo</Link>
+                <Link href="/book-demo">Book demo</Link>
               </Button>
             </div>
           </div>
@@ -89,11 +89,12 @@ export function MarketingShell({ children }: { children: ReactNode }) {
               Monitoring, evaluation, offline data collection, and operational intelligence for teams doing mission-critical field work.
             </p>
           </div>
-          <div className="grid gap-8 sm:grid-cols-3">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Product", ["Features", "Solutions", "Pricing", "Case Studies"]],
-              ["Company", ["About", "Services", "Resources", "Blog"]],
-              ["Action", ["Request demo", "Contact", "Sign in", "Documentation"]]
+              ["Company", ["About", "Security", "Careers", "Status"]],
+              ["Resources", ["Resources", "Blog", "Case Studies", "Documentation"]],
+              ["Action", ["Book demo", "Contact", "Sign in", "Privacy", "Terms"]]
             ].map(([title, links]) => (
               <div key={title as string}>
                 <h2 className="text-sm font-semibold">{title as string}</h2>
@@ -102,7 +103,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
                     <li key={link}>
                       <Link
                         className="hover:text-white"
-                        href={link === "Sign in" ? "/app" : link === "Request demo" ? "/contact" : link === "Documentation" ? "/resources" : `/${link.toLowerCase().replaceAll(" ", "-")}`}
+                        href={link === "Sign in" ? "/login" : `/${link.toLowerCase().replaceAll(" ", "-")}`}
                       >
                         {link}
                       </Link>

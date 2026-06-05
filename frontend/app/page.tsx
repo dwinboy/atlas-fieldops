@@ -4,12 +4,14 @@ import Link from "next/link";
 
 import { CTASection, FeatureGrid, HeroMockup, IndustryGrid, SectionIntro, TrustedBy, TrustBand, WorkflowShowcase } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
-import { site } from "@/lib/marketing/content";
+import { platformModules, site } from "@/lib/marketing/content";
+import { breadcrumbSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
-  title: "Monitoring, Evaluation & Field Data Collection Platform",
-  description: site.description
-};
+export const metadata: Metadata = marketingMetadata({
+  title: "Monitoring and Evaluation Software for Field Data Collection",
+  description: site.description,
+  path: "/",
+});
 
 export default function HomePage() {
   const jsonLd = {
@@ -24,7 +26,8 @@ export default function HomePage() {
 
   return (
     <MarketingShell>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <JsonLd data={jsonLd} />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", url: site.url }])} />
       <main>
         <section className="relative overflow-hidden px-4 pb-4 pt-8 sm:px-6 lg:px-8">
           <Image
@@ -47,8 +50,11 @@ export default function HomePage() {
               Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage beneficiaries, monitor indicators, approve submissions, map coverage, and report impact.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/contact">
-                Request demo
+              <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/book-demo">
+                Book demo
+              </Link>
+              <Link className="inline-flex h-11 items-center rounded-md border border-[#0f766e]/25 bg-[#0f766e]/10 px-5 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/15" href="/book-demo?trial=true">
+                Start free trial
               </Link>
               <Link className="inline-flex h-11 items-center rounded-md border border-black/10 bg-white px-5 text-sm font-semibold text-[#10201c] transition hover:bg-black/[0.03]" href="/features">
                 Explore platform
@@ -65,6 +71,21 @@ export default function HomePage() {
             text="Replace disconnected spreadsheets, survey tools, approval queues, and reporting files with one workflow-aware operating system."
           />
           <FeatureGrid />
+        </section>
+        <section className="bg-white py-20">
+          <SectionIntro
+            eyebrow="Modules"
+            title="A complete M&E platform, from projects to reports"
+            text="The public website and secure workspace stay separate, but the product story is simple: projects contain forms, forms collect submissions, approved data feeds indicators, maps, reports, and decisions."
+          />
+          <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-5 lg:px-8">
+            {platformModules.map(([title, text]) => (
+              <article className="rounded-xl border border-black/10 bg-[#f7faf8] p-5 shadow-sm" key={title}>
+                <h3 className="text-base font-semibold">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#52615d]">{text}</p>
+              </article>
+            ))}
+          </div>
         </section>
         <WorkflowShowcase />
         <section className="bg-white py-20">

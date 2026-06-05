@@ -250,7 +250,7 @@ export function CTASection() {
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">
             <Button asChild variant="primary">
-              <Link href="/contact">Request demo</Link>
+              <Link href="/book-demo">Book demo</Link>
             </Button>
             <Button asChild>
               <Link href="/features">Explore features</Link>

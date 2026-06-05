@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { resourceCards } from "@/lib/marketing/content";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Resources",
-  description: "Guides, checklists, templates, and implementation resources for M&E and field operations teams."
-};
+  description: "Guides, templates, whitepapers, best practices, videos, and downloads for monitoring and evaluation, data collection, GIS mapping, data quality, and reporting teams.",
+  path: "/resources",
+});
 
 export default function ResourcesPage() {
   return (
@@ -24,6 +26,7 @@ export default function ResourcesPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">{resource.type}</p>
               <h2 className="mt-3 text-xl font-semibold">{resource.title}</h2>
               <p className="mt-2 text-sm leading-6 text-[#52615d]">{resource.text}</p>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#52615d]">{resource.category}</p>
             </article>
           ))}
         </section>

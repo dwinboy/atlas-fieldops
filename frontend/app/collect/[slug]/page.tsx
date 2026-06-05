@@ -16,7 +16,11 @@ export function generateMetadata({ params }: CollectPageProps): Metadata {
     .join(" ");
   return {
     title: `${title || "Public Collection"} | Atlas FieldOps`,
-    description: "Submit a field data response through a controlled Atlas FieldOps public collection link."
+    description: "Submit a field data response through a controlled Atlas FieldOps public collection link.",
+    robots: {
+      index: false,
+      follow: false,
+    },
   };
 }
 

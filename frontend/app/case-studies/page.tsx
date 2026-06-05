@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { caseStudies } from "@/lib/marketing/content";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Case Studies",
-  description: "Implementation stories and operational impact examples for NGO, agriculture, health, humanitarian, and government programs."
-};
+  description: "Case studies showing how organizations use Atlas FieldOps for monitoring, evaluation, offline data collection, GIS mapping, beneficiary tracking, and donor reporting.",
+  path: "/case-studies",
+});
 
 export default function CaseStudiesPage() {
   return (
@@ -24,6 +26,13 @@ export default function CaseStudiesPage() {
               <p className="text-3xl font-semibold text-[#0f766e]">{study.result}</p>
               <h2 className="mt-5 text-xl font-semibold">{study.title}</h2>
               <p className="mt-2 text-sm leading-6 text-[#52615d]">{study.text}</p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#52615d]">
+                <span>{study.sector}</span>
+                <span>·</span>
+                <span>{study.country}</span>
+                <span>·</span>
+                <span>{study.organizationType}</span>
+              </div>
             </article>
           ))}
         </section>

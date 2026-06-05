@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { CTASection, IndustryGrid, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { solutionPages } from "@/lib/marketing/content";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
-  title: "Solutions for NGOs, Governments, Agriculture, Health & Humanitarian Teams",
-  description: "Industry solutions for agriculture monitoring, health outreach, NGO programs, government delivery, humanitarian response, and education programs."
-};
-
-const solutions = [
-  ["Agriculture", "Farmer registration, farm mapping, crop monitoring, input distribution, yield assessment, and extension visits."],
-  ["Health", "Patient registration, vaccination tracking, nutrition screening, facility inspection, and community outreach."],
-  ["NGOs", "Beneficiary management, program monitoring, donor reports, field officer performance, and case follow-ups."],
-  ["Governments", "Public service monitoring, regional delivery, citizen feedback, infrastructure inspection, and executive dashboards."],
-  ["Humanitarian organizations", "Needs assessments, food distribution, cash transfers, protection cases, and complaint workflows."],
-  ["Education programs", "School inspections, attendance tracking, feeding monitoring, teacher evaluation, and infrastructure checks."]
-];
+export const metadata: Metadata = marketingMetadata({
+  title: "Solutions for NGOs, Governments, Donors, Research, Health, and Education",
+  description: "Industry-specific monitoring and evaluation software for NGOs, governments, donors, research teams, health programs, and education programs.",
+  path: "/solutions",
+});
 
 export default function SolutionsPage() {
   return (
@@ -30,11 +25,11 @@ export default function SolutionsPage() {
         <section className="py-20">
           <SectionIntro eyebrow="Industries" title="Operational value by sector" text="Every solution connects field activity to program decisions and reporting." />
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">
-            {solutions.map(([title, text]) => (
-              <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={title}>
-                <h2 className="text-lg font-semibold">{title}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#52615d]">{text}</p>
-              </article>
+            {solutionPages.map((solution) => (
+              <Link className="rounded-xl border border-black/10 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg" href={`/solutions/${solution.slug}`} key={solution.slug}>
+                <h2 className="text-lg font-semibold">{solution.audience}</h2>
+                <p className="mt-2 text-sm leading-6 text-[#52615d]">{solution.description}</p>
+              </Link>
             ))}
           </div>
         </section>

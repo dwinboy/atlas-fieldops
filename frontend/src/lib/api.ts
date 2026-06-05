@@ -188,6 +188,25 @@ export type PlatformBackupJobRead = {
   restore_requires_elevation: boolean;
 };
 
+export type PublicLeadCreate = {
+  name: string;
+  organization?: string;
+  country?: string;
+  email: string;
+  phone?: string;
+  organization_size?: string;
+  interest_area?: string;
+  source?: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type PublicLeadRead = Required<Omit<PublicLeadCreate, "metadata">> & {
+  id: string;
+  status: string;
+  created_at: string;
+};
+
 export type AdministrationSummaryRead = {
   organizations: number;
   countries: number;
@@ -1563,6 +1582,10 @@ export async function listPlatformBackups(token: string): Promise<PlatformBackup
   return request<PlatformBackupJobRead[]>("/platform/backups", { token });
 }
 
+export async function createPublicLead(payload: PublicLeadCreate): Promise<PublicLeadRead> {
+  return request<PublicLeadRead>("/public/leads", { method: "POST", bodyJson: payload });
+}
+
 export async function getAdministrationSummary(token: string): Promise<AdministrationSummaryRead> {
   return request<AdministrationSummaryRead>("/administration/summary", { token });
 }
@@ -2279,6 +2302,7 @@ export const api = {
   createDepartment,
   createDevice,
   createOrganization,
+  createPublicLead,
   createExportJob,
   createProject,
   createRole,

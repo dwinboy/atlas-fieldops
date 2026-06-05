@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 
 import { CTASection, SimplePageHero, TrustBand } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "About",
-  description: "Learn about the mission behind Atlas FieldOps and its Africa-focused approach to field operations, M&E, and operational intelligence."
-};
+  description: "Learn about the mission, vision, values, and story behind Atlas FieldOps, an enterprise field operations and monitoring platform.",
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (

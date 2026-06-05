@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 
 import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Implementation Services",
-  description: "Enterprise implementation, onboarding, workflow customization, integrations, training, analytics consulting, and operational support."
-};
+  description: "Enterprise implementation, onboarding, workflow customization, integrations, training, analytics consulting, security review, and operational support for Atlas FieldOps.",
+  path: "/services",
+});
 
 const services = [
   "Implementation support",

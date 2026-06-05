@@ -24,6 +24,7 @@ from app.models.governance import (
     ValidationRule,
 )
 from app.models.identity import Membership, Organization, Role, User
+from app.models.marketing import MarketingLead
 from app.models.operations import (
     AccessDelegation,
     AccessRequest,
@@ -60,6 +61,7 @@ _TENANT_AWARE_MODELS = (
     LineageEvent,
     MasterDataEntry,
     Membership,
+    MarketingLead,
     OperationalTeam,
     OperationalZone,
     Organization,

@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { ContactRequestForm } from "@/components/marketing/ContactRequestForm";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
-  title: "Contact & Demo Request",
-  description: "Request a demo, speak with sales, or ask about implementation support for Atlas FieldOps."
-};
+export const metadata: Metadata = marketingMetadata({
+  title: "Contact Atlas FieldOps",
+  description: "Contact Atlas FieldOps for monitoring and evaluation software, offline data collection, survey management, GIS mapping, implementation support, and enterprise deployment questions.",
+  path: "/contact",
+});
 
 export default function ContactPage() {
   return (
@@ -19,7 +21,7 @@ export default function ContactPage() {
           text="Tell us about your programs, regions, field teams, reporting requirements, and connectivity realities."
         />
         <section className="mx-auto grid max-w-6xl gap-8 px-4 pb-20 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:px-8">
-          <ContactRequestForm />
+          <ContactRequestForm source="contact" title="Contact sales" />
           <aside className="rounded-2xl border border-black/10 bg-[#10201c] p-6 text-white">
             <h2 className="text-xl font-semibold">Enterprise inquiry</h2>
             <p className="mt-3 text-sm leading-6 text-white/70">

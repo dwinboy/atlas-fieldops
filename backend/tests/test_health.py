@@ -33,6 +33,7 @@ def test_openapi_is_versioned_under_api_v1() -> None:
     assert "/api/v1/platform/backups" in response.json()["paths"]
     assert "/api/v1/platform/usage" in response.json()["paths"]
     assert "/api/v1/platform/settings" in response.json()["paths"]
+    assert "/api/v1/public/leads" in response.json()["paths"]
     assert "/api/v1/organizations/platform" in response.json()["paths"]
     assert "/api/v1/organizations/me" in response.json()["paths"]
 

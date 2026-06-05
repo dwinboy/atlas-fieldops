@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { blogPosts } from "@/lib/marketing/content";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Blog",
-  description: "Articles about monitoring and evaluation, field data collection, NGO technology, agriculture monitoring, and operational intelligence."
-};
+  description: "Articles about monitoring and evaluation software, field data collection, GIS mapping, indicators, data quality, reporting, NGO management, government programs, and research methods.",
+  path: "/blog",
+});
 
 export default function BlogPage() {
   return (
@@ -24,6 +26,9 @@ export default function BlogPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">{post.category}</p>
               <h2 className="mt-3 text-xl font-semibold">{post.title}</h2>
               <p className="mt-2 text-sm leading-6 text-[#52615d]">{post.excerpt}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {post.tags.map((tag) => <span className="rounded-full bg-[#0f766e]/10 px-2.5 py-1 text-xs font-semibold text-[#0f766e]" key={tag}>{tag}</span>)}
+              </div>
             </article>
           ))}
         </section>

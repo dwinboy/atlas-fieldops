@@ -3,11 +3,13 @@ import type { Metadata } from "next";
 import { CTASection, FeatureGrid, SectionIntro, SimplePageHero, WorkflowShowcase } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { pageFeatureIcons, platformFeatures } from "@/lib/marketing/content";
+import { marketingMetadata } from "@/lib/marketing/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Features",
-  description: "Explore offline data collection, form builder, beneficiary management, analytics, geospatial intelligence, workflow automation, approvals, reporting, and AI validation."
-};
+  description: "Explore project management, form builder, offline data collection, field operations, submissions, GIS mapping, indicators, reports, data quality, governance, and administration.",
+  path: "/features",
+});
 
 export default function FeaturesPage() {
   return (

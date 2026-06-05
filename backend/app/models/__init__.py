@@ -31,6 +31,7 @@ from app.models.collection import (
     SurveyTeamMember,
 )
 from app.models.identity import Membership, Organization, Role, User
+from app.models.marketing import MarketingLead
 from app.models.operations import (
     Beneficiary,
     CaseRecord,
@@ -104,6 +105,7 @@ __all__ = [
     "NotificationTemplate",
     "KnowledgeDocument",
     "MediaEvidence",
+    "MarketingLead",
     "OfflineSyncPolicy",
     "OperationalAsset",
     "OperationalEvent",

@@ -19,6 +19,83 @@ Organization
 
 Forms are the field data collection instrument. Projects own the program context. Submissions are reviewed evidence. Indicators and reports are generated from approved, governed data.
 
+## Public Website & SEO Architecture
+
+Atlas FieldOps has a dual-platform architecture:
+
+- Public Website: search-engine friendly, publicly accessible, marketing focused, lead generation focused, and educational.
+- Secure Application Workspace: authenticated operational workspace for projects, forms, field operations, submissions, mapping, indicators, reports, data quality, users, governance, and administration.
+- Platform Console: authenticated Super Admin workspace under `/platform`.
+
+**Rule:** Any page intended for search engines, marketing, education, or lead generation must be placed under the Public Website architecture. Operational application pages must remain outside public indexing.
+
+Public website routes:
+
+- `/`
+- `/features`
+- `/solutions`
+- `/solutions/ngos`
+- `/solutions/government`
+- `/solutions/donors`
+- `/solutions/research`
+- `/solutions/health`
+- `/solutions/education`
+- `/use-cases`
+- `/use-cases/:slug`
+- `/pricing`
+- `/about`
+- `/contact`
+- `/book-demo`
+- `/resources`
+- `/blog`
+- `/case-studies`
+- `/security`
+- `/privacy`
+- `/terms`
+- `/help`
+- `/documentation`
+- `/status`
+- `/careers`
+
+Secure routes must be noindexed and excluded from `sitemap.xml`:
+
+- `/login`
+- `/app`
+- `/dashboard`
+- `/projects`
+- `/forms`
+- `/field-operations`
+- `/submissions`
+- `/mapping`
+- `/indicators`
+- `/reports`
+- `/data-quality`
+- `/users-teams`
+- `/governance`
+- `/administration`
+- `/platform`
+- `/api`
+
+SEO rules:
+
+- Public pages must define a meta title, meta description, canonical URL, Open Graph tags, and Twitter card metadata.
+- Public routes belong in `sitemap.xml`; secure routes must not.
+- `robots.txt` must allow public pages and disallow secure application, platform console, and API routes.
+- Use structured data where useful: SoftwareApplication on homepage, Breadcrumb schema on landing pages, and FAQ schema on help/solution/use-case pages.
+- Primary keyword groups include monitoring and evaluation software, M&E platform, data collection software, offline data collection app, survey management platform, field data collection software, GIS mapping software, indicator tracking software, program management software, donor reporting software, NGO monitoring platform, government monitoring platform, impact measurement platform, results framework software, data quality management platform, and beneficiary management platform.
+
+Content architecture:
+
+- CMS-ready content types include blog posts, case studies, documentation articles, resources/downloads, landing pages, authors, categories, and tags.
+- Public content source files live under `frontend/src/lib/marketing/` until a headless CMS is connected.
+- Public layouts use `MarketingShell`; application layouts use the authenticated workspace shell; platform console uses the dedicated Super Admin console shell.
+
+Lead generation architecture:
+
+- Lead sources include contact form, book demo, resource downloads, newsletter, and careers.
+- Leads are stored through `/api/v1/public/leads` with name, organization, country, email, phone, organization size, interest area, source, message, and metadata.
+- Future CRM integration should consume the dedicated marketing lead model and must not mix with tenant user accounts or application submissions.
+
 ## Super Admin / Platform Console
 
 The Platform Console is a separate global Super Admin workspace. It is not part of the normal organization M&E app sidebar and must never be treated as an organization Administration screen.
