@@ -397,6 +397,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const setLastActionResult = useWorkspaceStore(
     (state) => state.setLastActionResult,
   );
+  const localAssignments = useWorkspaceStore((state) => state.localAssignments);
+  const localForms = useWorkspaceStore((state) => state.localForms);
+  const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
@@ -429,7 +432,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const formPerformanceTotals = getFormPerformanceTotals(formPerformance);
   const formStatsLoading = formsQuery.isLoading || submissionsQuery.isLoading;
   const dashboardLoading =
-    summaryQuery.isLoading || formsQuery.isLoading || submissionsQuery.isLoading;
+    summaryQuery.isLoading ||
+    formsQuery.isLoading ||
+    submissionsQuery.isLoading;
   const summaryMetrics = summaryQuery.data
     ? [
         {
@@ -486,16 +491,20 @@ export function Dashboard({ token, principal }: DashboardProps) {
         },
       ];
   const hasFormActivity = Boolean(
-    formPerformance.length || formPerformanceTotals.submissions,
+    formPerformance.length ||
+    formPerformanceTotals.submissions ||
+    localForms.length ||
+    localAssignments.length,
   );
   const hasOperationalData = Boolean(
     hasFormActivity ||
-      (summaryQuery.data &&
-        (summaryQuery.data.beneficiaries ||
-          summaryQuery.data.active_programs ||
-          summaryQuery.data.indicators ||
-          summaryQuery.data.open_cases ||
-          summaryQuery.data.quality_flags)),
+    localProjects.length ||
+    (summaryQuery.data &&
+      (summaryQuery.data.beneficiaries ||
+        summaryQuery.data.active_programs ||
+        summaryQuery.data.indicators ||
+        summaryQuery.data.open_cases ||
+        summaryQuery.data.quality_flags)),
   );
   const setupSteps: ManagementStep[] = [
     {
@@ -513,7 +522,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
         "Add projects, donors, regions, milestones, and reporting ownership.",
       view: "programs",
       action: "Open Projects",
-      complete: Boolean(summaryQuery.data?.active_programs),
+      complete: Boolean(
+        summaryQuery.data?.active_programs || localProjects.length,
+      ),
       icon: Network,
     },
     {
@@ -802,17 +813,27 @@ export function Dashboard({ token, principal }: DashboardProps) {
         ],
       ];
   const activeProjectCount =
-    summaryQuery.data?.active_programs ??
+    (summaryQuery.data?.active_programs ??
+      new Set(
+        dashboardForms
+          .map((form) => form.project_id)
+          .filter((projectId): projectId is string => Boolean(projectId)),
+      ).size) +
     new Set(
-      dashboardForms
-        .map((form) => form.project_id)
-        .filter((projectId): projectId is string => Boolean(projectId)),
+      [
+        ...localProjects.map((project) => project.name),
+        ...localForms.map((form) => form.project_name),
+        ...localAssignments.map((assignment) => assignment.project),
+      ].filter(Boolean),
     ).size;
-  const fieldOfficerActivity = new Set(
-    dashboardSubmissions
-      .map((submission) => submission.field_officer_id)
-      .filter(Boolean),
-  ).size;
+  const fieldOfficerActivity =
+    new Set(
+      dashboardSubmissions
+        .map((submission) => submission.field_officer_id)
+        .filter(Boolean),
+    ).size +
+    new Set(localAssignments.flatMap((assignment) => assignment.fieldOfficers))
+      .size;
   const coverageOverview = getDashboardCoverageOverview(dashboardSubmissions);
   const approvalOverview = getDashboardApprovalOverview(
     dashboardSubmissions,
@@ -838,7 +859,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
     formPerformanceTotals,
   );
   const commandMetrics = getDashboardCommandMetrics({
-    activeForms: formPerformance.length,
+    activeForms:
+      formPerformance.length +
+      localForms.filter(
+        (form) => form.status === "published" || form.active_assignments > 0,
+      ).length,
     activeProjects: activeProjectCount,
     coveragePercent: coverageOverview.coveragePercent,
     fieldOfficers: fieldOfficerActivity,
@@ -915,8 +940,8 @@ export function Dashboard({ token, principal }: DashboardProps) {
         }
       : null,
   ];
-  const recentAlerts = possibleAlerts.filter(
-    (alert): alert is DashboardAlert => Boolean(alert),
+  const recentAlerts = possibleAlerts.filter((alert): alert is DashboardAlert =>
+    Boolean(alert),
   );
 
   function openView(action: {
@@ -987,7 +1012,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
               >
                 Operations, quality, approvals, and coverage
               </h1>
-              <HelpHint label="About the command dashboard" title="Command dashboard">
+              <HelpHint
+                label="About the command dashboard"
+                title="Command dashboard"
+              >
                 The first screen follows the platform architecture: projects,
                 forms, submissions, reviews, data quality, field activity,
                 indicators, alerts, approvals, and map readiness.
@@ -1144,7 +1172,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 ["Returned", approvalOverview.returned],
                 ["Rejected", approvalOverview.rejected],
               ].map(([label, value]) => (
-                <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                <div
+                  className="rounded-xl border bg-background/80 p-3"
+                  key={label}
+                >
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-1 text-lg font-semibold">
                     {Number(value).toLocaleString()}
@@ -1282,9 +1313,15 @@ export function Dashboard({ token, principal }: DashboardProps) {
               ["Active forms", formPerformance.length.toLocaleString()],
               ["Responses", formPerformanceTotals.submissions.toLocaleString()],
               ["Synced", formPerformanceTotals.syncedRecords.toLocaleString()],
-              ["Needs review", formPerformanceTotals.pendingReview.toLocaleString()],
+              [
+                "Needs review",
+                formPerformanceTotals.pendingReview.toLocaleString(),
+              ],
             ].map(([label, value]) => (
-              <div className="rounded-xl border bg-background/80 p-3" key={label}>
+              <div
+                className="rounded-xl border bg-background/80 p-3"
+                key={label}
+              >
                 <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {label}
                 </p>
@@ -1297,7 +1334,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
         {formStatsLoading ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-3">
             {[0, 1, 2].map((item) => (
-              <div className="rounded-2xl border bg-background/70 p-4" key={item}>
+              <div
+                className="rounded-2xl border bg-background/70 p-4"
+                key={item}
+              >
                 <Skeleton className="h-4 w-2/3" />
                 <Skeleton className="mt-3 h-8 w-1/2" />
                 <Skeleton className="mt-4 h-20 w-full" />
@@ -1314,15 +1354,20 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <article
                     className={cn(
                       "rounded-2xl border bg-background/80 p-4 shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated",
-                      selected && "border-primary/45 bg-primary/5 shadow-elevated",
+                      selected &&
+                        "border-primary/45 bg-primary/5 shadow-elevated",
                     )}
                     key={item.form.id}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={item.statusTone}>{item.statusLabel}</Badge>
-                          <Badge tone={item.totalSubmissions ? "accent" : "neutral"}>
+                          <Badge tone={item.statusTone}>
+                            {item.statusLabel}
+                          </Badge>
+                          <Badge
+                            tone={item.totalSubmissions ? "accent" : "neutral"}
+                          >
                             v{item.form.current_version}
                           </Badge>
                         </div>
@@ -1346,8 +1391,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
                         ["Review", item.pendingReview.toLocaleString()],
                         ["Approved", item.approved.toLocaleString()],
                       ].map(([label, value]) => (
-                        <div className="rounded-xl border bg-panel/80 p-3" key={label}>
-                          <p className="text-xs text-muted-foreground">{label}</p>
+                        <div
+                          className="rounded-xl border bg-panel/80 p-3"
+                          key={label}
+                        >
+                          <p className="text-xs text-muted-foreground">
+                            {label}
+                          </p>
                           <p className="mt-1 text-lg font-semibold">{value}</p>
                         </div>
                       ))}
@@ -1369,7 +1419,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
                     <dl className="mt-4 grid gap-2 border-t pt-4 text-xs sm:grid-cols-2">
                       <div>
                         <dt className="text-muted-foreground">Last sync</dt>
-                        <dd className="mt-1 font-semibold">{item.lastSyncLabel}</dd>
+                        <dd className="mt-1 font-semibold">
+                          {item.lastSyncLabel}
+                        </dd>
                       </div>
                       <div>
                         <dt className="text-muted-foreground">Offline</dt>
@@ -1450,12 +1502,18 @@ export function Dashboard({ token, principal }: DashboardProps) {
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {[
-                    ["Responses", selectedForm.totalSubmissions.toLocaleString()],
+                    [
+                      "Responses",
+                      selectedForm.totalSubmissions.toLocaleString(),
+                    ],
                     ["Synced", selectedForm.syncedRecords.toLocaleString()],
                     ["Review", selectedForm.pendingReview.toLocaleString()],
                     ["Issues", selectedForm.correctionNeeded.toLocaleString()],
                   ].map(([label, value]) => (
-                    <div className="rounded-xl border bg-background/80 p-3" key={label}>
+                    <div
+                      className="rounded-xl border bg-background/80 p-3"
+                      key={label}
+                    >
                       <p className="text-xs text-muted-foreground">{label}</p>
                       <p className="mt-1 text-lg font-semibold">{value}</p>
                     </div>
@@ -1465,11 +1523,15 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <dl className="mt-4 grid gap-2 text-xs">
                   <div className="flex items-center justify-between gap-3 border-b pb-2">
                     <dt className="text-muted-foreground">Last response</dt>
-                    <dd className="font-semibold">{selectedForm.lastSubmissionLabel}</dd>
+                    <dd className="font-semibold">
+                      {selectedForm.lastSubmissionLabel}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b pb-2">
                     <dt className="text-muted-foreground">Last sync</dt>
-                    <dd className="font-semibold">{selectedForm.lastSyncLabel}</dd>
+                    <dd className="font-semibold">
+                      {selectedForm.lastSyncLabel}
+                    </dd>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-b pb-2">
                     <dt className="text-muted-foreground">Enumerators</dt>
@@ -1480,7 +1542,8 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-muted-foreground">Project / Survey</dt>
                     <dd className="font-semibold">
-                      {selectedForm.form.project_id && selectedForm.form.survey_id
+                      {selectedForm.form.project_id &&
+                      selectedForm.form.survey_id
                         ? "Assigned"
                         : "Needs context"}
                     </dd>
@@ -1671,7 +1734,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <h2 id="role-focus-title" className="text-lg font-semibold">
                   Your role focus: {roleGuidance.title}
                 </h2>
-                <HelpHint label="About your role focus" title={roleGuidance.title}>
+                <HelpHint
+                  label="About your role focus"
+                  title={roleGuidance.title}
+                >
                   {roleGuidance.description}
                 </HelpHint>
               </div>
@@ -1731,7 +1797,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <h2 className="text-xl font-semibold tracking-tight">
                   Organization readiness plan
                 </h2>
-                <HelpHint label="About organization readiness" title="Organization readiness plan">
+                <HelpHint
+                  label="About organization readiness"
+                  title="Organization readiness plan"
+                >
                   Follow these steps so managers, reviewers, and field officers
                   can start with clean structure, useful indicators, and safe
                   data.
@@ -1801,7 +1870,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                         </Badge>
                       </span>
                       <span className="mt-2 inline-flex">
-                        <HelpHint label={`About ${step.title}`} title={step.title}>
+                        <HelpHint
+                          label={`About ${step.title}`}
+                          title={step.title}
+                        >
                           {step.description}
                         </HelpHint>
                       </span>
@@ -1843,7 +1915,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   <div>
                     <p className="text-sm font-medium">{item.label}</p>
                     <div className="mt-1">
-                      <HelpHint label={`About ${item.label}`} title={item.label}>
+                      <HelpHint
+                        label={`About ${item.label}`}
+                        title={item.label}
+                      >
                         {item.detail}
                       </HelpHint>
                     </div>
@@ -1896,7 +1971,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
             >
               <p className="text-sm font-semibold">{item.question}</p>
               <div className="mt-2">
-                <HelpHint label={`Answer: ${item.question}`} title={item.question}>
+                <HelpHint
+                  label={`Answer: ${item.question}`}
+                  title={item.question}
+                >
                   {item.answer}
                 </HelpHint>
               </div>
@@ -1924,10 +2002,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
               Keep data trustworthy from form design to reporting
             </h2>
             <div className="mt-1">
-              <HelpHint label="About the data quality path" title="Data quality path">
+              <HelpHint
+                label="About the data quality path"
+                title="Data quality path"
+              >
                 Strong organizations do not wait until reporting day to clean
-                data. They prevent errors, detect exceptions, correct records with
-                evidence, and report only approved information.
+                data. They prevent errors, detect exceptions, correct records
+                with evidence, and report only approved information.
               </HelpHint>
             </div>
           </div>

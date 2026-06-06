@@ -330,16 +330,38 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
 }
 
 type DynamicFormsProps = {
+  contextProjectName?: string;
   initialDraft?: DynamicForm;
+  onFormChange?: (form: DynamicForm) => void;
   token: string | null;
 };
 
-type PreviewMode = "desktop" | "tablet" | "mobile" | "enumerator" | "respondent";
+type PreviewMode =
+  | "desktop"
+  | "tablet"
+  | "mobile"
+  | "enumerator"
+  | "respondent";
 type LeftPanelTab = "structure" | "bank" | "templates" | "logic" | "variables";
-type RightPanelTab = "field" | "validation" | "logic" | "calculation" | "appearance" | "advanced";
-type BuilderAssistantMode = "question" | "section" | "preview" | "readiness" | "logic";
+type RightPanelTab =
+  | "field"
+  | "validation"
+  | "logic"
+  | "calculation"
+  | "appearance"
+  | "advanced";
+type BuilderAssistantMode =
+  | "question"
+  | "section"
+  | "preview"
+  | "readiness"
+  | "logic";
 type BuilderFocusPanel = "build" | "structure" | "preview";
-type DistributionChannel = "survey_app" | "web_link" | "public_link" | "xlsform";
+type DistributionChannel =
+  | "survey_app"
+  | "web_link"
+  | "public_link"
+  | "xlsform";
 type FieldPreset = {
   id: string;
   label: string;
@@ -357,8 +379,20 @@ type SectionTemplate = {
 };
 
 const previewFormProjects: ProgramRead[] = [
-  { id: "preview-agriculture", name: "Agricultural Resilience Program", slug: "agricultural-resilience", region: "North West", is_active: true },
-  { id: "preview-health", name: "Community Health Outreach", slug: "community-health", region: "Central", is_active: true },
+  {
+    id: "preview-agriculture",
+    name: "Agricultural Resilience Program",
+    slug: "agricultural-resilience",
+    region: "North West",
+    is_active: true,
+  },
+  {
+    id: "preview-health",
+    name: "Community Health Outreach",
+    slug: "community-health",
+    region: "Central",
+    is_active: true,
+  },
 ];
 
 const previewFormSurveys: SurveyRead[] = [
@@ -405,14 +439,61 @@ const previewFormSurveys: SurveyRead[] = [
 ];
 
 const quickFieldPresets: FieldPreset[] = [
-  { id: "person-name", label: "Person name", type: "text", hint: "Full name of respondent or beneficiary.", required: true },
-  { id: "phone-number", label: "Phone number", type: "phone", hint: "Primary contact number.", required: true },
-  { id: "age", label: "Age", type: "number", hint: "Age in completed years.", validation: { min: 0, max: 120 } },
-  { id: "gender", label: "Gender", type: "radio", hint: "Gender identity for demographic reporting.", options: ["Female", "Male", "Prefer not to say"] },
-  { id: "yes-no", label: "Yes / No question", type: "radio", hint: "Simple eligibility or confirmation question.", options: ["Yes", "No"] },
-  { id: "gps-location", label: "GPS location", type: "gps", hint: "Capture accurate field location.", required: true, validation: { accuracyMax: 25 } },
-  { id: "photo-evidence", label: "Photo evidence", type: "image", hint: "Capture or upload proof from the field." },
-  { id: "consent-signature", label: "Consent signature", type: "signature", hint: "Respondent consent or acknowledgement." },
+  {
+    id: "person-name",
+    label: "Person name",
+    type: "text",
+    hint: "Full name of respondent or beneficiary.",
+    required: true,
+  },
+  {
+    id: "phone-number",
+    label: "Phone number",
+    type: "phone",
+    hint: "Primary contact number.",
+    required: true,
+  },
+  {
+    id: "age",
+    label: "Age",
+    type: "number",
+    hint: "Age in completed years.",
+    validation: { min: 0, max: 120 },
+  },
+  {
+    id: "gender",
+    label: "Gender",
+    type: "radio",
+    hint: "Gender identity for demographic reporting.",
+    options: ["Female", "Male", "Prefer not to say"],
+  },
+  {
+    id: "yes-no",
+    label: "Yes / No question",
+    type: "radio",
+    hint: "Simple eligibility or confirmation question.",
+    options: ["Yes", "No"],
+  },
+  {
+    id: "gps-location",
+    label: "GPS location",
+    type: "gps",
+    hint: "Capture accurate field location.",
+    required: true,
+    validation: { accuracyMax: 25 },
+  },
+  {
+    id: "photo-evidence",
+    label: "Photo evidence",
+    type: "image",
+    hint: "Capture or upload proof from the field.",
+  },
+  {
+    id: "consent-signature",
+    label: "Consent signature",
+    type: "signature",
+    hint: "Respondent consent or acknowledgement.",
+  },
 ];
 
 const sectionTemplates: SectionTemplate[] = [
@@ -434,7 +515,12 @@ const sectionTemplates: SectionTemplate[] = [
     fields: [
       quickFieldPresets[5],
       quickFieldPresets[6],
-      { id: "field-notes", label: "Field notes", type: "textarea", hint: "Important context from the enumerator." },
+      {
+        id: "field-notes",
+        label: "Field notes",
+        type: "textarea",
+        hint: "Important context from the enumerator.",
+      },
     ].filter(Boolean) as FieldPreset[],
   },
   {
@@ -442,8 +528,19 @@ const sectionTemplates: SectionTemplate[] = [
     title: "Household roster",
     description: "Repeatable household member collection.",
     fields: [
-      { id: "household-size", label: "Household size", type: "number", hint: "Total people living in the household.", validation: { min: 1, max: 50 } },
-      { id: "household-members", label: "Household members", type: "repeat_group", hint: "Add each member as a repeat record." },
+      {
+        id: "household-size",
+        label: "Household size",
+        type: "number",
+        hint: "Total people living in the household.",
+        validation: { min: 1, max: 50 },
+      },
+      {
+        id: "household-members",
+        label: "Household members",
+        type: "repeat_group",
+        hint: "Add each member as a repeat record.",
+      },
     ],
   },
   {
@@ -451,26 +548,55 @@ const sectionTemplates: SectionTemplate[] = [
     title: "Supervisor review",
     description: "Quality checks before data approval.",
     fields: [
-      { id: "quality-score", label: "Data quality score", type: "rating", hint: "Supervisor quality rating.", validation: { min: 1, max: 5 } },
-      { id: "review-status", label: "Review status", type: "dropdown", hint: "Supervisor decision.", options: ["Approved", "Needs correction", "Rejected"] },
-      { id: "review-notes", label: "Review notes", type: "textarea", hint: "Explain the review decision." },
+      {
+        id: "quality-score",
+        label: "Data quality score",
+        type: "rating",
+        hint: "Supervisor quality rating.",
+        validation: { min: 1, max: 5 },
+      },
+      {
+        id: "review-status",
+        label: "Review status",
+        type: "dropdown",
+        hint: "Supervisor decision.",
+        options: ["Approved", "Needs correction", "Rejected"],
+      },
+      {
+        id: "review-notes",
+        label: "Review notes",
+        type: "textarea",
+        hint: "Explain the review decision.",
+      },
     ],
   },
 ];
 
 const templateCategoryDescriptions: Record<string, string> = {
-  Recommended: "Best starting points for common survey and field operation workflows.",
-  Agriculture: "Farmer registration, crop monitoring, yield checks, market access, and extension visits.",
-  Health: "Facility, outreach, vaccination, household health, and community follow-up forms.",
-  Education: "School monitoring, learner attendance, classroom checks, and education program reviews.",
-  "NGO Operations": "Program delivery, staff operations, field visits, and partner implementation tracking.",
-  "Humanitarian & NGO": "Rapid assessment, response monitoring, distribution, referrals, and protection workflows.",
-  "Monitoring & Evaluation": "Baseline, midline, endline, indicator tracking, verification, and evaluation tools.",
-  "Government & Community": "Community records, public services, civic outreach, and local administration surveys.",
-  "Business & Operations": "Operational inspections, asset checks, customer visits, and service delivery reviews.",
-  Surveys: "General-purpose questionnaires for research, feedback, assessments, and interviews.",
-  "Registration Workflows": "Beneficiary, household, farmer, group, facility, and participant onboarding.",
-  "Case Management": "Complaints, referrals, incident follow-up, corrections, and resolution tracking.",
+  Recommended:
+    "Best starting points for common survey and field operation workflows.",
+  Agriculture:
+    "Farmer registration, crop monitoring, yield checks, market access, and extension visits.",
+  Health:
+    "Facility, outreach, vaccination, household health, and community follow-up forms.",
+  Education:
+    "School monitoring, learner attendance, classroom checks, and education program reviews.",
+  "NGO Operations":
+    "Program delivery, staff operations, field visits, and partner implementation tracking.",
+  "Humanitarian & NGO":
+    "Rapid assessment, response monitoring, distribution, referrals, and protection workflows.",
+  "Monitoring & Evaluation":
+    "Baseline, midline, endline, indicator tracking, verification, and evaluation tools.",
+  "Government & Community":
+    "Community records, public services, civic outreach, and local administration surveys.",
+  "Business & Operations":
+    "Operational inspections, asset checks, customer visits, and service delivery reviews.",
+  Surveys:
+    "General-purpose questionnaires for research, feedback, assessments, and interviews.",
+  "Registration Workflows":
+    "Beneficiary, household, farmer, group, facility, and participant onboarding.",
+  "Case Management":
+    "Complaints, referrals, incident follow-up, corrections, and resolution tracking.",
 };
 
 const sectionToneStyles = [
@@ -632,7 +758,11 @@ type FormQualityFlag = {
   recommendation: string;
 };
 
-type ReviewAction = "approve" | "reject" | "request_correction" | "start_review";
+type ReviewAction =
+  | "approve"
+  | "reject"
+  | "request_correction"
+  | "start_review";
 
 const formControlsTabs = [
   ["overview", ShieldCheck, "Overview"],
@@ -676,20 +806,27 @@ function getReviewStatusTone(status: string): BadgeProps["tone"] {
   return formReviewStatusTone[status] ?? "neutral";
 }
 
-function getImportStatusTone(status: FormImportRun["status"]): BadgeProps["tone"] {
+function getImportStatusTone(
+  status: FormImportRun["status"],
+): BadgeProps["tone"] {
   if (status === "imported") return "success";
   if (status === "validated") return "accent";
   return "warning";
 }
 
-function getQualitySeverityTone(severity: FormQualityFlag["severity"]): BadgeProps["tone"] {
+function getQualitySeverityTone(
+  severity: FormQualityFlag["severity"],
+): BadgeProps["tone"] {
   if (severity === "Critical") return "danger";
   if (severity === "High") return "warning";
   if (severity === "Medium") return "accent";
   return "neutral";
 }
 
-const workflowPresets: Record<"simple" | "standard" | "correction", FormWorkflowStage[]> = {
+const workflowPresets: Record<
+  "simple" | "standard" | "correction",
+  FormWorkflowStage[]
+> = {
   simple: [
     {
       id: "submitted",
@@ -789,13 +926,25 @@ const workflowPresets: Record<"simple" | "standard" | "correction", FormWorkflow
 };
 
 function formatReviewStatus(status: string) {
-  return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
   const now = Date.now();
   const primaryField = form.fields[0];
-  const evidenceField = form.fields.find((field) => ["gps", "geolocation", "map", "geofence", "photo", "image", "file"].includes(field.type));
+  const evidenceField = form.fields.find((field) =>
+    [
+      "gps",
+      "geolocation",
+      "map",
+      "geofence",
+      "photo",
+      "image",
+      "file",
+    ].includes(field.type),
+  );
   return [
     {
       id: `${form.id}-review-001`,
@@ -814,8 +963,10 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       longitude: 10.1591,
       accuracy: 8.4,
       payload_json: {
-        [primaryField?.variableName ?? primaryField?.id ?? "respondent"]: "Sample respondent",
-        [evidenceField?.variableName ?? evidenceField?.id ?? "evidence"]: evidenceField ? "Captured" : "Not required",
+        [primaryField?.variableName ?? primaryField?.id ?? "respondent"]:
+          "Sample respondent",
+        [evidenceField?.variableName ?? evidenceField?.id ?? "evidence"]:
+          evidenceField ? "Captured" : "Not required",
         quality_score: 86,
       },
     },
@@ -836,7 +987,8 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       longitude: 9.7679,
       accuracy: 18.2,
       payload_json: {
-        [primaryField?.variableName ?? primaryField?.id ?? "respondent"]: "Needs correction",
+        [primaryField?.variableName ?? primaryField?.id ?? "respondent"]:
+          "Needs correction",
         issue: "Photo evidence or reference value needs confirmation",
         quality_score: 62,
       },
@@ -859,10 +1011,23 @@ function createPreviewImportRuns(form: DynamicForm): FormImportRun[] {
   ];
 }
 
-function createPreviewQualityFlags(form: DynamicForm, submissions: SubmissionRead[]): FormQualityFlag[] {
-  const mediaCount = form.fields.filter((field) => ["photo", "image", "audio", "video", "file", "signature"].includes(field.type)).length;
-  const gpsCount = form.fields.filter((field) => ["gps", "geolocation", "map", "geofence"].includes(field.type)).length;
-  const reviewCount = submissions.filter((submission) => ["submitted", "under_review", "correction_requested"].includes(submission.status)).length;
+function createPreviewQualityFlags(
+  form: DynamicForm,
+  submissions: SubmissionRead[],
+): FormQualityFlag[] {
+  const mediaCount = form.fields.filter((field) =>
+    ["photo", "image", "audio", "video", "file", "signature"].includes(
+      field.type,
+    ),
+  ).length;
+  const gpsCount = form.fields.filter((field) =>
+    ["gps", "geolocation", "map", "geofence"].includes(field.type),
+  ).length;
+  const reviewCount = submissions.filter((submission) =>
+    ["submitted", "under_review", "correction_requested"].includes(
+      submission.status,
+    ),
+  ).length;
   return [
     {
       id: `${form.id}-quality-gps`,
@@ -882,7 +1047,8 @@ function createPreviewQualityFlags(form: DynamicForm, submissions: SubmissionRea
       affectedRecords: reviewCount,
       owner: "Data manager",
       status: reviewCount ? "open" : "resolved",
-      recommendation: "Use the submission review workspace to approve clean records or return records for correction.",
+      recommendation:
+        "Use the submission review workspace to approve clean records or return records for correction.",
     },
     {
       id: `${form.id}-quality-media`,
@@ -928,7 +1094,12 @@ function createDefaultFormControls(form?: DynamicForm): FormControlsSettings {
       {
         subject_type: "role",
         subject_name: "Field Officer",
-        permissions: ["view_form", "submit_data", "edit_own_draft_submissions", "edit_returned_submissions"],
+        permissions: [
+          "view_form",
+          "submit_data",
+          "edit_own_draft_submissions",
+          "edit_returned_submissions",
+        ],
         location_scope: "assigned_locations",
         can_approve_own_submission: false,
         read_only: false,
@@ -993,7 +1164,9 @@ function createDefaultFormControls(form?: DynamicForm): FormControlsSettings {
       approved_records_editable: false,
       rejected_records_resubmittable: true,
       duplicate_submissions_allowed: false,
-      duplicate_detection_fields: duplicateFields.length ? duplicateFields : ["respondent_id", "phone_number"],
+      duplicate_detection_fields: duplicateFields.length
+        ? duplicateFields
+        : ["respondent_id", "phone_number"],
       require_gps_capture: true,
       require_timestamp_capture: true,
       require_enumerator_assignment: true,
@@ -1047,7 +1220,10 @@ function createDefaultFormControls(form?: DynamicForm): FormControlsSettings {
   };
 }
 
-function normalizeFormControls(value: unknown, form?: DynamicForm): FormControlsSettings {
+function normalizeFormControls(
+  value: unknown,
+  form?: DynamicForm,
+): FormControlsSettings {
   const defaults = createDefaultFormControls(form);
   if (!value || typeof value !== "object") {
     return defaults;
@@ -1078,7 +1254,10 @@ function FieldInputPreview({ field }: { field: FormField }) {
     return (
       <div className="mt-2 flex flex-wrap gap-1.5">
         {field.options.slice(0, 6).map((option) => (
-          <span className="rounded-md border bg-panel px-3 py-1.5 text-xs text-muted-foreground" key={option}>
+          <span
+            className="rounded-md border bg-panel px-3 py-1.5 text-xs text-muted-foreground"
+            key={option}
+          >
             {option}
           </span>
         ))}
@@ -1091,16 +1270,29 @@ function FieldInputPreview({ field }: { field: FormField }) {
       <div className="mt-2 overflow-hidden rounded-md border bg-panel">
         <div className="grid grid-cols-4 border-b text-[11px] text-muted-foreground">
           <span className="p-2">Row</span>
-          {(field.matrix?.columns ?? ["Option 1", "Option 2", "Option 3"]).slice(0, 3).map((column) => (
-            <span className="border-l p-2" key={column}>{column}</span>
-          ))}
+          {(field.matrix?.columns ?? ["Option 1", "Option 2", "Option 3"])
+            .slice(0, 3)
+            .map((column) => (
+              <span className="border-l p-2" key={column}>
+                {column}
+              </span>
+            ))}
         </div>
         {(field.matrix?.rows ?? ["Row 1", "Row 2"]).slice(0, 2).map((row) => (
-          <div className="grid grid-cols-4 border-b last:border-b-0 text-xs" key={row}>
+          <div
+            className="grid grid-cols-4 border-b last:border-b-0 text-xs"
+            key={row}
+          >
             <span className="p-2 text-muted-foreground">{row}</span>
-            <span className="border-l p-2 text-center text-muted-foreground">○</span>
-            <span className="border-l p-2 text-center text-muted-foreground">○</span>
-            <span className="border-l p-2 text-center text-muted-foreground">○</span>
+            <span className="border-l p-2 text-center text-muted-foreground">
+              ○
+            </span>
+            <span className="border-l p-2 text-center text-muted-foreground">
+              ○
+            </span>
+            <span className="border-l p-2 text-center text-muted-foreground">
+              ○
+            </span>
           </div>
         ))}
       </div>
@@ -1110,7 +1302,8 @@ function FieldInputPreview({ field }: { field: FormField }) {
   if (field.type === "repeat_group") {
     return (
       <div className="mt-2 rounded-md border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
-        Add item · remove item · duplicate item · repeat limit {field.repeat?.max ?? "not set"}
+        Add item · remove item · duplicate item · repeat limit{" "}
+        {field.repeat?.max ?? "not set"}
       </div>
     );
   }
@@ -1119,13 +1312,22 @@ function FieldInputPreview({ field }: { field: FormField }) {
     return (
       <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
         {["Latitude", "Longitude", "Accuracy", "Timestamp"].map((label) => (
-          <span className="rounded-md border bg-panel px-3 py-2 text-muted-foreground" key={label}>{label}</span>
+          <span
+            className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
+            key={label}
+          >
+            {label}
+          </span>
         ))}
       </div>
     );
   }
 
-  if (["photo", "image", "video", "audio", "file", "signature"].includes(field.type)) {
+  if (
+    ["photo", "image", "video", "audio", "file", "signature"].includes(
+      field.type,
+    )
+  ) {
     return (
       <div className="mt-2 rounded-md border border-dashed bg-panel px-3 py-2.5 text-center text-xs text-muted-foreground">
         Capture or upload {field.type.replace("_", " ")}
@@ -1195,7 +1397,8 @@ function SortableField({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "group border-b bg-panel px-3 py-2.5 transition last:border-b-0 hover:bg-muted/30",
-        field.type === "repeat_group" && "border-l-4 border-l-primary/70 bg-primary/5",
+        field.type === "repeat_group" &&
+          "border-l-4 border-l-primary/70 bg-primary/5",
         selected && "bg-primary/10 ring-1 ring-inset ring-primary/25",
         isDragging && "relative z-10 shadow-elevated",
       )}
@@ -1224,9 +1427,15 @@ function SortableField({
               <Badge tone="neutral">{field.type.replace("_", " ")}</Badge>
               {field.required ? <Badge tone="warning">required</Badge> : null}
               {field.logic?.length ? <Badge tone="accent">logic</Badge> : null}
-              {Object.keys(field.validation ?? {}).length ? <Badge tone="warning">validation</Badge> : null}
-              {referenceBound ? <Badge tone="success">reference data</Badge> : null}
-              {field.type === "repeat_group" ? <Badge tone="collect">repeat group</Badge> : null}
+              {Object.keys(field.validation ?? {}).length ? (
+                <Badge tone="warning">validation</Badge>
+              ) : null}
+              {referenceBound ? (
+                <Badge tone="success">reference data</Badge>
+              ) : null}
+              {field.type === "repeat_group" ? (
+                <Badge tone="collect">repeat group</Badge>
+              ) : null}
             </div>
             <Input
               className="mt-1 h-8 border-transparent bg-transparent px-0 text-sm font-semibold shadow-none focus:border-primary"
@@ -1235,86 +1444,88 @@ function SortableField({
               value={field.label}
             />
             {field.hint ? (
-              <p className="line-clamp-1 text-xs text-muted-foreground">{field.hint}</p>
+              <p className="line-clamp-1 text-xs text-muted-foreground">
+                {field.hint}
+              </p>
             ) : null}
             <FieldInputPreview field={field} />
           </div>
         </div>
         <div className="grid shrink-0 grid-cols-2 gap-1 opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
-        <Button
-          aria-label={`Open settings for ${field.label}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onEditSettings();
-          }}
-          size="icon"
-          type="button"
-          variant="secondary"
-        >
-          <Settings2 aria-hidden="true" />
-        </Button>
-        <Button
-          aria-label={`${field.required ? "Make optional" : "Make required"} ${field.label}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleRequired(!field.required);
-          }}
-          size="icon"
-          type="button"
-          variant={field.required ? "secondary" : "ghost"}
-        >
-          <Check aria-hidden="true" />
-        </Button>
-        <Button
-          aria-label={`Move ${field.label} up`}
-          disabled={!canMoveUp}
-          onClick={(event) => {
-            event.stopPropagation();
-            onMoveUp();
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowUp aria-hidden="true" />
-        </Button>
-        <Button
-          aria-label={`Move ${field.label} down`}
-          disabled={!canMoveDown}
-          onClick={(event) => {
-            event.stopPropagation();
-            onMoveDown();
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowDown aria-hidden="true" />
-        </Button>
-        <Button
-          aria-label={`Duplicate ${field.label}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDuplicate();
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Copy aria-hidden="true" />
-        </Button>
-        <Button
-          aria-label={`Remove ${field.label}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove();
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Trash2 aria-hidden="true" />
-        </Button>
+          <Button
+            aria-label={`Open settings for ${field.label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onEditSettings();
+            }}
+            size="icon"
+            type="button"
+            variant="secondary"
+          >
+            <Settings2 aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label={`${field.required ? "Make optional" : "Make required"} ${field.label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleRequired(!field.required);
+            }}
+            size="icon"
+            type="button"
+            variant={field.required ? "secondary" : "ghost"}
+          >
+            <Check aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label={`Move ${field.label} up`}
+            disabled={!canMoveUp}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMoveUp();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowUp aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label={`Move ${field.label} down`}
+            disabled={!canMoveDown}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMoveDown();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <ArrowDown aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label={`Duplicate ${field.label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDuplicate();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Copy aria-hidden="true" />
+          </Button>
+          <Button
+            aria-label={`Remove ${field.label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemove();
+            }}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
         </div>
       </div>
     </div>
@@ -1332,7 +1543,9 @@ function FieldPropertiesPanel({
 }: {
   field?: FormField;
   form?: DynamicForm;
-  onApplySmartSetup: (kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule") => void;
+  onApplySmartSetup: (
+    kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule",
+  ) => void;
   onBindReference: (field?: FormField) => void;
   onTabChange: (tab: RightPanelTab) => void;
   onUpdateForm: (form: DynamicForm) => void;
@@ -1346,13 +1559,15 @@ function FieldPropertiesPanel({
           <h2 className="text-sm font-semibold">Properties</h2>
         </div>
         <div className="mt-4 rounded-lg border border-dashed bg-background/70 p-5 text-center text-sm text-muted-foreground">
-          Select a question on the canvas to edit its label, variable, validation, logic, reference data, and appearance.
+          Select a question on the canvas to edit its label, variable,
+          validation, logic, reference data, and appearance.
         </div>
       </section>
     );
   }
 
-  const updateSelectedField = (patch: Partial<FormField>) => onUpdateForm(updateField(form, field.id, patch));
+  const updateSelectedField = (patch: Partial<FormField>) =>
+    onUpdateForm(updateField(form, field.id, patch));
   const logicRules = field.logic ?? [];
 
   return (
@@ -1363,24 +1578,31 @@ function FieldPropertiesPanel({
             <Settings2 aria-hidden="true" className="text-primary" size={17} />
             <h2 className="text-sm font-semibold">Properties</h2>
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{field.label}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {field.label}
+          </p>
         </div>
-        <Badge tone={field.required ? "warning" : "neutral"}>{field.required ? "Required" : "Optional"}</Badge>
+        <Badge tone={field.required ? "warning" : "neutral"}>
+          {field.required ? "Required" : "Optional"}
+        </Badge>
       </div>
 
       <div className="mt-4 grid grid-cols-5 gap-1 rounded-md border bg-background p-1">
-        {([
-          ["field", Settings2, "General"],
-          ["validation", Check, "Validation"],
-          ["logic", Workflow, "Logic"],
-          ["advanced", Database, "Data"],
-          ["appearance", Palette, "Appearance"],
-        ] satisfies [RightPanelTab, typeof Type, string][]).map(([nextTab, Icon, label]) => (
+        {(
+          [
+            ["field", Settings2, "General"],
+            ["validation", Check, "Validation"],
+            ["logic", Workflow, "Logic"],
+            ["advanced", Database, "Data"],
+            ["appearance", Palette, "Appearance"],
+          ] satisfies [RightPanelTab, typeof Type, string][]
+        ).map(([nextTab, Icon, label]) => (
           <button
             aria-label={label}
             className={cn(
               "flex h-8 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground",
-              tab === nextTab && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+              tab === nextTab &&
+                "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
             )}
             key={nextTab}
             onClick={() => onTabChange(nextTab)}
@@ -1400,16 +1622,34 @@ function FieldPropertiesPanel({
         <div className="mt-3 grid gap-2 text-xs">
           {[
             ["Label", field.label.trim().length > 0],
-            ["Variable", Boolean(field.variableName?.trim()) && !field.variableName?.includes(" ")],
+            [
+              "Variable",
+              Boolean(field.variableName?.trim()) &&
+                !field.variableName?.includes(" "),
+            ],
             ["Choices", !field.options || field.options.length >= 2],
-            ["Validation", Boolean(field.validation && Object.keys(field.validation).length)],
+            [
+              "Validation",
+              Boolean(field.validation && Object.keys(field.validation).length),
+            ],
             ["Logic", Boolean(field.logic?.length)],
           ].map(([label, done]) => (
             <div className="flex items-center gap-2" key={String(label)}>
-              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", done ? "border-success bg-success/10 text-success" : "border-muted text-muted-foreground")}>
+              <span
+                className={cn(
+                  "flex h-5 w-5 items-center justify-center rounded-full border",
+                  done
+                    ? "border-success bg-success/10 text-success"
+                    : "border-muted text-muted-foreground",
+                )}
+              >
                 <Check aria-hidden="true" size={12} />
               </span>
-              <span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+              <span
+                className={done ? "text-foreground" : "text-muted-foreground"}
+              >
+                {label}
+              </span>
             </div>
           ))}
         </div>
@@ -1419,38 +1659,101 @@ function FieldPropertiesPanel({
         <div className="mt-4 space-y-4">
           <label className="block text-sm font-medium">
             Question label
-            <Input className="mt-2" onChange={(event) => updateSelectedField({ label: event.target.value })} value={field.label} />
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({ label: event.target.value })
+              }
+              value={field.label}
+            />
           </label>
           <label className="block text-sm font-medium">
             Variable name
-            <Input className="mt-2 font-mono" onChange={(event) => updateSelectedField({ variableName: event.target.value })} value={field.variableName ?? field.id} />
+            <Input
+              className="mt-2 font-mono"
+              onChange={(event) =>
+                updateSelectedField({ variableName: event.target.value })
+              }
+              value={field.variableName ?? field.id}
+            />
           </label>
           <label className="block text-sm font-medium">
             Help text
-            <Input className="mt-2" onChange={(event) => updateSelectedField({ hint: event.target.value })} placeholder="Explain what the enumerator should capture" value={field.hint ?? ""} />
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({ hint: event.target.value })
+              }
+              placeholder="Explain what the enumerator should capture"
+              value={field.hint ?? ""}
+            />
           </label>
           <label className="block text-sm font-medium">
             Placeholder
-            <Input className="mt-2" onChange={(event) => updateSelectedField({ appearance: { ...field.appearance, placeholder: event.target.value } })} value={field.appearance?.placeholder ?? ""} />
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({
+                  appearance: {
+                    ...field.appearance,
+                    placeholder: event.target.value,
+                  },
+                })
+              }
+              value={field.appearance?.placeholder ?? ""}
+            />
           </label>
           <label className="block text-sm font-medium">
             Type
-            <Select className="mt-2" onChange={(event) => updateSelectedField({ type: event.target.value as FieldType })} value={field.type}>
-              {!fieldCatalog.flatMap((group) => group.fields).some((catalogField) => catalogField.type === field.type) ? (
+            <Select
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({ type: event.target.value as FieldType })
+              }
+              value={field.type}
+            >
+              {!fieldCatalog
+                .flatMap((group) => group.fields)
+                .some((catalogField) => catalogField.type === field.type) ? (
                 <option value={field.type}>{field.type}</option>
               ) : null}
-              {fieldCatalog.flatMap((group) => group.fields).map((catalogField) => (
-                <option key={catalogField.type} value={catalogField.type}>{catalogField.label}</option>
-              ))}
+              {fieldCatalog
+                .flatMap((group) => group.fields)
+                .map((catalogField) => (
+                  <option key={catalogField.type} value={catalogField.type}>
+                    {catalogField.label}
+                  </option>
+                ))}
             </Select>
           </label>
           <div className="grid gap-2">
             <label className="flex items-center gap-2 text-sm font-medium">
-              <input checked={field.required} className="h-4 w-4" onChange={(event) => updateSelectedField({ required: event.target.checked })} type="checkbox" />
+              <input
+                checked={field.required}
+                className="h-4 w-4"
+                onChange={(event) =>
+                  updateSelectedField({ required: event.target.checked })
+                }
+                type="checkbox"
+              />
               Required
             </label>
             <label className="flex items-center gap-2 text-sm font-medium">
-              <input checked={Boolean(field.appearance?.helpText?.includes("[readonly]"))} className="h-4 w-4" onChange={(event) => updateSelectedField({ appearance: { ...field.appearance, helpText: event.target.checked ? "[readonly]" : "" } })} type="checkbox" />
+              <input
+                checked={Boolean(
+                  field.appearance?.helpText?.includes("[readonly]"),
+                )}
+                className="h-4 w-4"
+                onChange={(event) =>
+                  updateSelectedField({
+                    appearance: {
+                      ...field.appearance,
+                      helpText: event.target.checked ? "[readonly]" : "",
+                    },
+                  })
+                }
+                type="checkbox"
+              />
               Read only
             </label>
           </div>
@@ -1459,7 +1762,14 @@ function FieldPropertiesPanel({
               Option list
               <Textarea
                 className="mt-2 min-h-28"
-                onChange={(event) => updateSelectedField({ options: event.target.value.split("\n").map((option) => option.trim()).filter(Boolean) })}
+                onChange={(event) =>
+                  updateSelectedField({
+                    options: event.target.value
+                      .split("\n")
+                      .map((option) => option.trim())
+                      .filter(Boolean),
+                  })
+                }
                 value={field.options.join("\n")}
               />
             </label>
@@ -1472,28 +1782,112 @@ function FieldPropertiesPanel({
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm font-medium">
               Minimum value
-              <Input className="mt-2" onChange={(event) => updateSelectedField({ validation: { ...field.validation, min: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.validation?.min ?? ""} />
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateSelectedField({
+                    validation: {
+                      ...field.validation,
+                      min:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    },
+                  })
+                }
+                type="number"
+                value={field.validation?.min ?? ""}
+              />
             </label>
             <label className="text-sm font-medium">
               Maximum value
-              <Input className="mt-2" onChange={(event) => updateSelectedField({ validation: { ...field.validation, max: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.validation?.max ?? ""} />
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateSelectedField({
+                    validation: {
+                      ...field.validation,
+                      max:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    },
+                  })
+                }
+                type="number"
+                value={field.validation?.max ?? ""}
+              />
             </label>
             <label className="text-sm font-medium">
               Minimum length
-              <Input className="mt-2" onChange={(event) => updateSelectedField({ validation: { ...field.validation, minLength: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.validation?.minLength ?? ""} />
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateSelectedField({
+                    validation: {
+                      ...field.validation,
+                      minLength:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    },
+                  })
+                }
+                type="number"
+                value={field.validation?.minLength ?? ""}
+              />
             </label>
             <label className="text-sm font-medium">
               Maximum length
-              <Input className="mt-2" onChange={(event) => updateSelectedField({ validation: { ...field.validation, maxLength: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.validation?.maxLength ?? ""} />
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateSelectedField({
+                    validation: {
+                      ...field.validation,
+                      maxLength:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    },
+                  })
+                }
+                type="number"
+                value={field.validation?.maxLength ?? ""}
+              />
             </label>
           </div>
           <label className="block text-sm font-medium">
             Regex pattern
-            <Input className="mt-2 font-mono" onChange={(event) => updateSelectedField({ validation: { ...field.validation, pattern: event.target.value } })} placeholder="^[A-Z0-9-]+$" value={field.validation?.pattern ?? ""} />
+            <Input
+              className="mt-2 font-mono"
+              onChange={(event) =>
+                updateSelectedField({
+                  validation: {
+                    ...field.validation,
+                    pattern: event.target.value,
+                  },
+                })
+              }
+              placeholder="^[A-Z0-9-]+$"
+              value={field.validation?.pattern ?? ""}
+            />
           </label>
           <label className="block text-sm font-medium">
             Cross-field validation
-            <Input className="mt-2 font-mono" onChange={(event) => updateSelectedField({ validation: { ...field.validation, expression: event.target.value } })} placeholder="${end_date} >= ${start_date}" value={field.validation?.expression ?? ""} />
+            <Input
+              className="mt-2 font-mono"
+              onChange={(event) =>
+                updateSelectedField({
+                  validation: {
+                    ...field.validation,
+                    expression: event.target.value,
+                  },
+                })
+              }
+              placeholder="${end_date} >= ${start_date}"
+              value={field.validation?.expression ?? ""}
+            />
           </label>
           <div className="rounded-md border bg-background p-3">
             <p className="text-sm font-semibold">Validation preview</p>
@@ -1510,19 +1904,45 @@ function FieldPropertiesPanel({
         <div className="mt-4 space-y-3">
           <div className="rounded-md border bg-background p-3">
             <p className="text-sm font-semibold">Visual logic builder</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Configure IF answer conditions THEN show, require, skip, or load choices.</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Configure IF answer conditions THEN show, require, skip, or load
+              choices.
+            </p>
           </div>
           {logicRules.map((rule) => (
             <div className="rounded-md border bg-background p-3" key={rule.id}>
               <div className="flex items-center justify-between gap-2">
                 <Badge tone="accent">{rule.kind.replace("_", " ")}</Badge>
-                <Button aria-label={`Remove ${rule.kind} rule`} onClick={() => updateSelectedField({ logic: logicRules.filter((candidate) => candidate.id !== rule.id) })} size="icon" type="button" variant="ghost">
+                <Button
+                  aria-label={`Remove ${rule.kind} rule`}
+                  onClick={() =>
+                    updateSelectedField({
+                      logic: logicRules.filter(
+                        (candidate) => candidate.id !== rule.id,
+                      ),
+                    })
+                  }
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
                   <Trash2 aria-hidden="true" />
                 </Button>
               </div>
               <div className="mt-3 grid gap-2">
                 <Select
-                  onChange={(event) => updateSelectedField({ logic: logicRules.map((candidate) => candidate.id === rule.id ? { ...candidate, kind: event.target.value as LogicRule["kind"] } : candidate) })}
+                  onChange={(event) =>
+                    updateSelectedField({
+                      logic: logicRules.map((candidate) =>
+                        candidate.id === rule.id
+                          ? {
+                              ...candidate,
+                              kind: event.target.value as LogicRule["kind"],
+                            }
+                          : candidate,
+                      ),
+                    })
+                  }
                   value={rule.kind}
                 >
                   <option value="show">Show If</option>
@@ -1532,12 +1952,28 @@ function FieldPropertiesPanel({
                   <option value="dynamic_choices">Dynamic Choices</option>
                 </Select>
                 <Input
-                  onChange={(event) => updateSelectedField({ logic: logicRules.map((candidate) => candidate.id === rule.id ? { ...candidate, expression: event.target.value } : candidate) })}
+                  onChange={(event) =>
+                    updateSelectedField({
+                      logic: logicRules.map((candidate) =>
+                        candidate.id === rule.id
+                          ? { ...candidate, expression: event.target.value }
+                          : candidate,
+                      ),
+                    })
+                  }
                   placeholder="IF ${gender} = 'Female'"
                   value={rule.expression}
                 />
                 <Input
-                  onChange={(event) => updateSelectedField({ logic: logicRules.map((candidate) => candidate.id === rule.id ? { ...candidate, message: event.target.value } : candidate) })}
+                  onChange={(event) =>
+                    updateSelectedField({
+                      logic: logicRules.map((candidate) =>
+                        candidate.id === rule.id
+                          ? { ...candidate, message: event.target.value }
+                          : candidate,
+                      ),
+                    })
+                  }
                   placeholder="THEN describe the action"
                   value={rule.message ?? ""}
                 />
@@ -1553,7 +1989,19 @@ function FieldPropertiesPanel({
             ].map(([kind, label]) => (
               <Button
                 key={kind}
-                onClick={() => updateSelectedField({ logic: [...logicRules, { id: `${field.id}-${kind}-${Date.now()}`, kind: kind as LogicRule["kind"], expression: "${answer} = 'Yes'", message: String(label) }] })}
+                onClick={() =>
+                  updateSelectedField({
+                    logic: [
+                      ...logicRules,
+                      {
+                        id: `${field.id}-${kind}-${Date.now()}`,
+                        kind: kind as LogicRule["kind"],
+                        expression: "${answer} = 'Yes'",
+                        message: String(label),
+                      },
+                    ],
+                  })
+                }
                 type="button"
                 variant="secondary"
               >
@@ -1567,7 +2015,12 @@ function FieldPropertiesPanel({
 
       {tab === "advanced" ? (
         <div className="mt-4 space-y-4">
-          <Button className="w-full" onClick={() => onBindReference(field)} type="button" variant="secondary">
+          <Button
+            className="w-full"
+            onClick={() => onBindReference(field)}
+            type="button"
+            variant="secondary"
+          >
             <Database aria-hidden="true" />
             Bind reference list
           </Button>
@@ -1589,11 +2042,41 @@ function FieldPropertiesPanel({
             <div className="grid grid-cols-2 gap-3">
               <label className="text-sm font-medium">
                 Repeat min
-                <Input className="mt-2" onChange={(event) => updateSelectedField({ repeat: { ...field.repeat, min: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.repeat.min ?? ""} />
+                <Input
+                  className="mt-2"
+                  onChange={(event) =>
+                    updateSelectedField({
+                      repeat: {
+                        ...field.repeat,
+                        min:
+                          event.target.value === ""
+                            ? undefined
+                            : Number(event.target.value),
+                      },
+                    })
+                  }
+                  type="number"
+                  value={field.repeat.min ?? ""}
+                />
               </label>
               <label className="text-sm font-medium">
                 Repeat max
-                <Input className="mt-2" onChange={(event) => updateSelectedField({ repeat: { ...field.repeat, max: event.target.value === "" ? undefined : Number(event.target.value) } })} type="number" value={field.repeat.max ?? ""} />
+                <Input
+                  className="mt-2"
+                  onChange={(event) =>
+                    updateSelectedField({
+                      repeat: {
+                        ...field.repeat,
+                        max:
+                          event.target.value === ""
+                            ? undefined
+                            : Number(event.target.value),
+                      },
+                    })
+                  }
+                  type="number"
+                  value={field.repeat.max ?? ""}
+                />
               </label>
             </div>
           ) : null}
@@ -1604,7 +2087,18 @@ function FieldPropertiesPanel({
         <div className="mt-4 space-y-4">
           <label className="block text-sm font-medium">
             Width
-            <Select className="mt-2" onChange={(event) => updateSelectedField({ appearance: { ...field.appearance, width: event.target.value as "full" | "half" | "third" } })} value={field.appearance?.width ?? "full"}>
+            <Select
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({
+                  appearance: {
+                    ...field.appearance,
+                    width: event.target.value as "full" | "half" | "third",
+                  },
+                })
+              }
+              value={field.appearance?.width ?? "full"}
+            >
               <option value="full">Full width</option>
               <option value="half">Half width</option>
               <option value="third">One third</option>
@@ -1612,17 +2106,52 @@ function FieldPropertiesPanel({
           </label>
           <label className="block text-sm font-medium">
             Mobile display hint
-            <Input className="mt-2" onChange={(event) => updateSelectedField({ appearance: { ...field.appearance, helpText: event.target.value } })} value={field.appearance?.helpText ?? ""} />
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                updateSelectedField({
+                  appearance: {
+                    ...field.appearance,
+                    helpText: event.target.value,
+                  },
+                })
+              }
+              value={field.appearance?.helpText ?? ""}
+            />
           </label>
           {field.matrix ? (
             <div className="space-y-3">
               <label className="block text-sm font-medium">
                 Matrix rows
-                <Textarea className="mt-2 min-h-20" onChange={(event) => updateSelectedField({ matrix: { rows: event.target.value.split("\n").filter(Boolean), columns: field.matrix?.columns ?? [], scoring: field.matrix?.scoring } })} value={field.matrix.rows.join("\n")} />
+                <Textarea
+                  className="mt-2 min-h-20"
+                  onChange={(event) =>
+                    updateSelectedField({
+                      matrix: {
+                        rows: event.target.value.split("\n").filter(Boolean),
+                        columns: field.matrix?.columns ?? [],
+                        scoring: field.matrix?.scoring,
+                      },
+                    })
+                  }
+                  value={field.matrix.rows.join("\n")}
+                />
               </label>
               <label className="block text-sm font-medium">
                 Matrix columns
-                <Textarea className="mt-2 min-h-20" onChange={(event) => updateSelectedField({ matrix: { rows: field.matrix?.rows ?? [], columns: event.target.value.split("\n").filter(Boolean), scoring: field.matrix?.scoring } })} value={field.matrix.columns.join("\n")} />
+                <Textarea
+                  className="mt-2 min-h-20"
+                  onChange={(event) =>
+                    updateSelectedField({
+                      matrix: {
+                        rows: field.matrix?.rows ?? [],
+                        columns: event.target.value.split("\n").filter(Boolean),
+                        scoring: field.matrix?.scoring,
+                      },
+                    })
+                  }
+                  value={field.matrix.columns.join("\n")}
+                />
               </label>
             </div>
           ) : null}
@@ -1636,7 +2165,23 @@ function FieldPropertiesPanel({
           ["gps", "GPS"],
           ["skip_rule", "Show rule"],
         ].map(([kind, label]) => (
-          <Button key={kind} onClick={() => onApplySmartSetup(kind as "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule")} size="sm" type="button" variant="secondary">
+          <Button
+            key={kind}
+            onClick={() =>
+              onApplySmartSetup(
+                kind as
+                  | "required"
+                  | "email"
+                  | "phone"
+                  | "gps"
+                  | "yes_no"
+                  | "skip_rule",
+              )
+            }
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
             {label}
           </Button>
         ))}
@@ -1645,9 +2190,19 @@ function FieldPropertiesPanel({
   );
 }
 
-export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
+export function DynamicForms({
+  contextProjectName,
+  initialDraft,
+  onFormChange,
+  token,
+}: DynamicFormsProps) {
+  const contextProjectId = contextProjectName
+    ? `context-${slugify(contextProjectName)}`
+    : "";
   const initialDraftIdRef = useRef(initialDraft?.id ?? "");
-  const [forms, setForms] = useState<DynamicForm[]>(() => (initialDraft ? [initialDraft] : []));
+  const [forms, setForms] = useState<DynamicForm[]>(() =>
+    initialDraft ? [initialDraft] : [],
+  );
   const [selectedFormId, setSelectedFormId] = useState("");
   const [selectedFieldId, setSelectedFieldId] = useState("");
   const [builderMode, setBuilderMode] = useState<"builder" | "templates">(
@@ -1656,9 +2211,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("mobile");
   const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>("bank");
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("field");
-  const [builderFocusPanel, setBuilderFocusPanel] = useState<BuilderFocusPanel>("build");
-  const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<Record<string, boolean>>({});
-  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
+  const [builderFocusPanel, setBuilderFocusPanel] =
+    useState<BuilderFocusPanel>("build");
+  const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<
+    Record<string, boolean>
+  >({});
   const [selectedPageId, setSelectedPageId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [historyPast, setHistoryPast] = useState<DynamicForm[]>([]);
@@ -1669,33 +2229,68 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   const [mobileDeployDialogOpen, setMobileDeployDialogOpen] = useState(false);
   const [formControlsDialogOpen, setFormControlsDialogOpen] = useState(false);
   const [readinessDialogOpen, setReadinessDialogOpen] = useState(false);
-  const [reviewWorkspaceDialogOpen, setReviewWorkspaceDialogOpen] = useState(false);
-  const [assignmentWorkspaceDialogOpen, setAssignmentWorkspaceDialogOpen] = useState(false);
-  const [importWorkspaceDialogOpen, setImportWorkspaceDialogOpen] = useState(false);
-  const [qualityWorkspaceDialogOpen, setQualityWorkspaceDialogOpen] = useState(false);
-  const [formControlsTab, setFormControlsTab] = useState<FormControlsTab>("overview");
-  const [builderAssistantMode, setBuilderAssistantMode] = useState<BuilderAssistantMode>("question");
+  const [reviewWorkspaceDialogOpen, setReviewWorkspaceDialogOpen] =
+    useState(false);
+  const [assignmentWorkspaceDialogOpen, setAssignmentWorkspaceDialogOpen] =
+    useState(false);
+  const [importWorkspaceDialogOpen, setImportWorkspaceDialogOpen] =
+    useState(false);
+  const [qualityWorkspaceDialogOpen, setQualityWorkspaceDialogOpen] =
+    useState(false);
+  const [formControlsTab, setFormControlsTab] =
+    useState<FormControlsTab>("overview");
+  const [builderAssistantMode, setBuilderAssistantMode] =
+    useState<BuilderAssistantMode>("question");
   const [smartFieldQuery, setSmartFieldQuery] = useState("");
   const [newFormDialogOpen, setNewFormDialogOpen] = useState(false);
   const [newFormName, setNewFormName] = useState("New survey form");
   const [newFormDescription, setNewFormDescription] = useState("");
-  const [newFormChannel, setNewFormChannel] = useState<DistributionChannel>("survey_app");
-  const [newFormBlocks, setNewFormBlocks] = useState<string[]>(["respondent-details", "gps-evidence"]);
+  const [newFormChannel, setNewFormChannel] =
+    useState<DistributionChannel>("survey_app");
+  const [newFormBlocks, setNewFormBlocks] = useState<string[]>([
+    "respondent-details",
+    "gps-evidence",
+  ]);
   const [templateCategory, setTemplateCategory] = useState("Recommended");
   const [templateQuery, setTemplateQuery] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState(previewFormProjects[0]?.id ?? "");
-  const [selectedSurveyId, setSelectedSurveyId] = useState(previewFormSurveys[0]?.id ?? "");
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    contextProjectId || previewFormProjects[0]?.id || "",
+  );
+  const [selectedSurveyId, setSelectedSurveyId] = useState(
+    contextProjectId
+      ? `${contextProjectId}-survey`
+      : (previewFormSurveys[0]?.id ?? ""),
+  );
   const [showWorkflowDetails, setShowWorkflowDetails] = useState(false);
-  const [mobileDeploymentAudience, setMobileDeploymentAudience] = useState("All assigned field officers");
-  const [mobileDeploymentSyncMode, setMobileDeploymentSyncMode] = useState<"offline_first" | "online_required">("offline_first");
-  const [mobileDeployments, setMobileDeployments] = useState<Record<string, MobileDeployment>>({});
-  const [formControlsByFormId, setFormControlsByFormId] = useState<Record<string, FormControlsSettings>>({});
-  const [formReadinessByFormId, setFormReadinessByFormId] = useState<Record<string, FormReadinessState>>({});
-  const [formReviewRowsByFormId, setFormReviewRowsByFormId] = useState<Record<string, SubmissionRead[]>>({});
-  const [formAssignmentByFormId, setFormAssignmentByFormId] = useState<Record<string, FormAssignmentPlan>>({});
-  const [formImportRunsByFormId, setFormImportRunsByFormId] = useState<Record<string, FormImportRun[]>>({});
-  const [formQualityFlagsByFormId, setFormQualityFlagsByFormId] = useState<Record<string, FormQualityFlag[]>>({});
-  const [selectedReviewSubmissionId, setSelectedReviewSubmissionId] = useState("");
+  const [mobileDeploymentAudience, setMobileDeploymentAudience] = useState(
+    "All assigned field officers",
+  );
+  const [mobileDeploymentSyncMode, setMobileDeploymentSyncMode] = useState<
+    "offline_first" | "online_required"
+  >("offline_first");
+  const [mobileDeployments, setMobileDeployments] = useState<
+    Record<string, MobileDeployment>
+  >({});
+  const [formControlsByFormId, setFormControlsByFormId] = useState<
+    Record<string, FormControlsSettings>
+  >({});
+  const [formReadinessByFormId, setFormReadinessByFormId] = useState<
+    Record<string, FormReadinessState>
+  >({});
+  const [formReviewRowsByFormId, setFormReviewRowsByFormId] = useState<
+    Record<string, SubmissionRead[]>
+  >({});
+  const [formAssignmentByFormId, setFormAssignmentByFormId] = useState<
+    Record<string, FormAssignmentPlan>
+  >({});
+  const [formImportRunsByFormId, setFormImportRunsByFormId] = useState<
+    Record<string, FormImportRun[]>
+  >({});
+  const [formQualityFlagsByFormId, setFormQualityFlagsByFormId] = useState<
+    Record<string, FormQualityFlag[]>
+  >({});
+  const [selectedReviewSubmissionId, setSelectedReviewSubmissionId] =
+    useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     formTemplates[0]?.id ?? "",
@@ -1709,7 +2304,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     (state) => state.pendingTemplateId,
   );
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
-  const setSidebarCollapsed = useWorkspaceStore((state) => state.setSidebarCollapsed);
+  const setSidebarCollapsed = useWorkspaceStore(
+    (state) => state.setSidebarCollapsed,
+  );
   const setPendingTemplateId = useWorkspaceStore(
     (state) => state.setPendingTemplateId,
   );
@@ -1733,19 +2330,60 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   const formSubmissionsQuery = useQuery({
     queryKey: ["form-submissions", token, selectedFormId],
     queryFn: () => listSubmissions(token ?? ""),
-    enabled: Boolean(token && !isPreview && selectedFormId && reviewWorkspaceDialogOpen),
+    enabled: Boolean(
+      token && !isPreview && selectedFormId && reviewWorkspaceDialogOpen,
+    ),
   });
-  const projects = useMemo(
-    () => (isPreview ? previewFormProjects : projectsQuery.data ?? []),
-    [isPreview, projectsQuery.data],
+  const projects = useMemo(() => {
+    if (!isPreview) return projectsQuery.data ?? [];
+    if (!contextProjectName || !contextProjectId) return previewFormProjects;
+    const contextProject: ProgramRead = {
+      id: contextProjectId,
+      is_active: true,
+      name: contextProjectName,
+      region: "Selected project",
+      slug: slugify(contextProjectName),
+    };
+    return [
+      contextProject,
+      ...previewFormProjects.filter(
+        (project) => project.name !== contextProjectName,
+      ),
+    ];
+  }, [contextProjectId, contextProjectName, isPreview, projectsQuery.data]);
+  const surveys = useMemo(() => {
+    if (!isPreview) return surveysQuery.data ?? [];
+    if (!contextProjectId) return previewFormSurveys;
+    const contextSurvey: SurveyRead = {
+      code: "SERVICE-FORM",
+      created_by_user_id: "preview-user",
+      custom_type_label: null,
+      description: "Survey workspace created from the guided form setup.",
+      end_date: null,
+      geographic_scope: contextProjectName ?? "Selected project",
+      id: `${contextProjectId}-survey`,
+      indicator_ids_json: [],
+      is_active: true,
+      manager_user_id: null,
+      organization_id: "preview-org",
+      owner_user_id: "preview-user",
+      project_id: contextProjectId,
+      start_date: null,
+      status: "active",
+      survey_type: "service",
+      target_population: "Assigned service participants",
+      title: "Service Intake Survey",
+    };
+    return [contextSurvey, ...previewFormSurveys];
+  }, [contextProjectId, contextProjectName, isPreview, surveysQuery.data]);
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  const projectSurveys = surveys.filter(
+    (survey) => survey.project_id === selectedProject?.id,
   );
-  const surveys = useMemo(
-    () => (isPreview ? previewFormSurveys : surveysQuery.data ?? []),
-    [isPreview, surveysQuery.data],
-  );
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
-  const projectSurveys = surveys.filter((survey) => survey.project_id === selectedProject?.id);
-  const selectedSurvey = projectSurveys.find((survey) => survey.id === selectedSurveyId) ?? projectSurveys[0];
+  const selectedSurvey =
+    projectSurveys.find((survey) => survey.id === selectedSurveyId) ??
+    projectSurveys[0];
   const persistedForms = useMemo(
     () => (backendFormsQuery.data ?? []).map(persistedFormToLocal),
     [backendFormsQuery.data],
@@ -1760,21 +2398,27 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       return true;
     });
   }, [forms, persistedForms]);
-  const selectedForm = useMemo(
-    () => {
-      const form = allForms.find((candidate) => candidate.id === selectedFormId) ?? allForms[0];
-      return form ? normalizeForm(form) : undefined;
-    },
-    [allForms, selectedFormId],
-  );
+  const selectedForm = useMemo(() => {
+    const form =
+      allForms.find((candidate) => candidate.id === selectedFormId) ??
+      allForms[0];
+    return form ? normalizeForm(form) : undefined;
+  }, [allForms, selectedFormId]);
   const selectedBackendForm = useMemo(
-    () => (backendFormsQuery.data ?? []).find((form) => form.id === selectedForm?.id),
+    () =>
+      (backendFormsQuery.data ?? []).find(
+        (form) => form.id === selectedForm?.id,
+      ),
     [backendFormsQuery.data, selectedForm?.id],
   );
   const selectedFormControls = useMemo(
     () =>
       selectedForm
-        ? formControlsByFormId[selectedForm.id] ?? normalizeFormControls(selectedBackendForm?.controls_json, selectedForm)
+        ? (formControlsByFormId[selectedForm.id] ??
+          normalizeFormControls(
+            selectedBackendForm?.controls_json,
+            selectedForm,
+          ))
         : createDefaultFormControls(),
     [formControlsByFormId, selectedBackendForm?.controls_json, selectedForm],
   );
@@ -1782,10 +2426,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     selectedForm?.mobileDeployment ??
     (selectedForm ? mobileDeployments[selectedForm.id] : undefined);
   const selectedPages = selectedForm ? defaultPages(selectedForm) : [];
-  const activePage = selectedPages.find((page) => page.id === selectedPageId) ?? selectedPages[0];
-  const activeSections = selectedForm?.sections.filter((section) => section.pageId === activePage?.id) ?? [];
-  const activeSection = activeSections.find((section) => section.id === selectedSectionId) ?? activeSections[0] ?? selectedForm?.sections[0];
-  const activePageFields = selectedForm?.fields.filter((field) => field.pageId === activePage?.id) ?? [];
+  const activePage =
+    selectedPages.find((page) => page.id === selectedPageId) ??
+    selectedPages[0];
+  const activeSections =
+    selectedForm?.sections.filter(
+      (section) => section.pageId === activePage?.id,
+    ) ?? [];
+  const activeSection =
+    activeSections.find((section) => section.id === selectedSectionId) ??
+    activeSections[0] ??
+    selectedForm?.sections[0];
+  const activePageFields =
+    selectedForm?.fields.filter((field) => field.pageId === activePage?.id) ??
+    [];
   const selectedField =
     selectedForm?.fields.find((field) => field.id === selectedFieldId) ??
     selectedForm?.fields[0];
@@ -1794,17 +2448,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   );
   const formControlsReady = Boolean(
     selectedFormControls.permission_rules.length &&
-      selectedFormControls.workflow_stages.length &&
-      selectedFormControls.data_quality_rules.some((rule) => rule.enabled),
+    selectedFormControls.workflow_stages.length &&
+    selectedFormControls.data_quality_rules.some((rule) => rule.enabled),
   );
-  const selectedFormReadiness =
-    selectedForm
-      ? formReadinessByFormId[selectedForm.id] ?? defaultReadinessState
-      : defaultReadinessState;
+  const selectedFormReadiness = selectedForm
+    ? (formReadinessByFormId[selectedForm.id] ?? defaultReadinessState)
+    : defaultReadinessState;
   const selectedPreviewReviewRows = useMemo(
     () =>
       selectedForm
-        ? formReviewRowsByFormId[selectedForm.id] ?? createPreviewSubmissionRows(selectedForm)
+        ? (formReviewRowsByFormId[selectedForm.id] ??
+          createPreviewSubmissionRows(selectedForm))
         : [],
     [formReviewRowsByFormId, selectedForm],
   );
@@ -1812,34 +2466,46 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     () =>
       isPreview
         ? selectedPreviewReviewRows
-        : (formSubmissionsQuery.data ?? []).filter((submission) => submission.form_id === selectedForm?.id),
-    [formSubmissionsQuery.data, isPreview, selectedForm?.id, selectedPreviewReviewRows],
+        : (formSubmissionsQuery.data ?? []).filter(
+            (submission) => submission.form_id === selectedForm?.id,
+          ),
+    [
+      formSubmissionsQuery.data,
+      isPreview,
+      selectedForm?.id,
+      selectedPreviewReviewRows,
+    ],
   );
-  const selectedAssignmentPlan =
-    selectedForm
-      ? formAssignmentByFormId[selectedForm.id] ?? {
-          ...defaultAssignmentPlan,
-          audience: mobileDeploymentAudience,
-          locationScope: selectedSurvey?.geographic_scope ?? selectedProject?.region ?? defaultAssignmentPlan.locationScope,
-        }
-      : defaultAssignmentPlan;
+  const selectedAssignmentPlan = selectedForm
+    ? (formAssignmentByFormId[selectedForm.id] ?? {
+        ...defaultAssignmentPlan,
+        audience: mobileDeploymentAudience,
+        locationScope:
+          selectedSurvey?.geographic_scope ??
+          selectedProject?.region ??
+          defaultAssignmentPlan.locationScope,
+      })
+    : defaultAssignmentPlan;
   const selectedImportRuns = useMemo(
     () =>
       selectedForm
-        ? formImportRunsByFormId[selectedForm.id] ?? createPreviewImportRuns(selectedForm)
+        ? (formImportRunsByFormId[selectedForm.id] ??
+          createPreviewImportRuns(selectedForm))
         : [],
     [formImportRunsByFormId, selectedForm],
   );
   const selectedQualityFlags = useMemo(
     () =>
       selectedForm
-        ? formQualityFlagsByFormId[selectedForm.id] ?? createPreviewQualityFlags(selectedForm, selectedFormReviewRows)
+        ? (formQualityFlagsByFormId[selectedForm.id] ??
+          createPreviewQualityFlags(selectedForm, selectedFormReviewRows))
         : [],
     [formQualityFlagsByFormId, selectedForm, selectedFormReviewRows],
   );
   const selectedReviewSubmission =
-    selectedFormReviewRows.find((submission) => submission.id === selectedReviewSubmissionId) ??
-    selectedFormReviewRows[0];
+    selectedFormReviewRows.find(
+      (submission) => submission.id === selectedReviewSubmissionId,
+    ) ?? selectedFormReviewRows[0];
   const readinessItems: FormReadinessItem[] = useMemo(
     () =>
       buildFormReadinessChecklist(selectedForm, {
@@ -1847,7 +2513,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         hasSurvey: Boolean(selectedSurvey),
         controlsConfigured: formControlsReady,
         workflowConfigured: selectedFormControls.workflow_stages.length > 0,
-        qualityChecksConfigured: selectedFormControls.data_quality_rules.some((rule) => rule.enabled),
+        qualityChecksConfigured: selectedFormControls.data_quality_rules.some(
+          (rule) => rule.enabled,
+        ),
         mobilePreviewChecked: selectedFormReadiness.mobilePreviewChecked,
         pilotTestCompleted: selectedFormReadiness.pilotTestCompleted,
         deploymentAudienceSelected: Boolean(mobileDeploymentAudience.trim()),
@@ -1865,23 +2533,64 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     ],
   );
   const readinessReadyForPublish = isFormReadyForPublish(readinessItems);
-  const readinessCompletedCount = readinessItems.filter((item) => item.complete).length;
-  const readinessRequiredMissingCount = readinessItems.filter((item) => item.required && !item.complete).length;
+  const readinessCompletedCount = readinessItems.filter(
+    (item) => item.complete,
+  ).length;
+  const readinessRequiredMissingCount = readinessItems.filter(
+    (item) => item.required && !item.complete,
+  ).length;
   const builderValidationItems = useMemo(() => {
     const fields = selectedForm?.fields ?? [];
-    const variableNames = fields.map((field) => field.variableName?.trim() ?? "").filter(Boolean);
-    const duplicates = variableNames.filter((name, index) => variableNames.indexOf(name) !== index);
+    const variableNames = fields
+      .map((field) => field.variableName?.trim() ?? "")
+      .filter(Boolean);
+    const duplicates = variableNames.filter(
+      (name, index) => variableNames.indexOf(name) !== index,
+    );
     const brokenLogic = fields.filter((field) =>
-      (field.logic ?? []).some((rule) => rule.targetId && !fields.some((candidate) => candidate.id === rule.targetId)),
+      (field.logic ?? []).some(
+        (rule) =>
+          rule.targetId &&
+          !fields.some((candidate) => candidate.id === rule.targetId),
+      ),
     );
     const missingLabels = fields.filter((field) => !field.label.trim());
-    const repeatGroupsWithoutLimits = fields.filter((field) => field.type === "repeat_group" && !field.repeat?.max);
+    const repeatGroupsWithoutLimits = fields.filter(
+      (field) => field.type === "repeat_group" && !field.repeat?.max,
+    );
     return [
-      { id: "labels", label: "Missing question labels", count: missingLabels.length, severity: "critical" },
-      { id: "variables", label: "Duplicate variable names", count: new Set(duplicates).size, severity: "critical" },
-      { id: "logic", label: "Broken logic references", count: brokenLogic.length, severity: "critical" },
-      { id: "sections", label: "Sections without questions", count: (selectedForm?.sections ?? []).filter((section) => !fields.some((field) => field.sectionId === section.id)).length, severity: "warning" },
-      { id: "repeats", label: "Repeat groups without limits", count: repeatGroupsWithoutLimits.length, severity: "warning" },
+      {
+        id: "labels",
+        label: "Missing question labels",
+        count: missingLabels.length,
+        severity: "critical",
+      },
+      {
+        id: "variables",
+        label: "Duplicate variable names",
+        count: new Set(duplicates).size,
+        severity: "critical",
+      },
+      {
+        id: "logic",
+        label: "Broken logic references",
+        count: brokenLogic.length,
+        severity: "critical",
+      },
+      {
+        id: "sections",
+        label: "Sections without questions",
+        count: (selectedForm?.sections ?? []).filter(
+          (section) => !fields.some((field) => field.sectionId === section.id),
+        ).length,
+        severity: "warning",
+      },
+      {
+        id: "repeats",
+        label: "Repeat groups without limits",
+        count: repeatGroupsWithoutLimits.length,
+        severity: "warning",
+      },
     ];
   }, [selectedForm]);
   const criticalValidationCount = builderValidationItems
@@ -1904,7 +2613,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   }
 
   const publishMutation = useMutation({
-    mutationFn: (payload: { form: DynamicForm; publish: boolean; deployToMobile?: boolean }) =>
+    mutationFn: (payload: {
+      form: DynamicForm;
+      publish: boolean;
+      deployToMobile?: boolean;
+    }) =>
       createForm(token ?? "", {
         project_id: selectedProject?.id ?? "",
         survey_id: selectedSurvey?.id ?? "",
@@ -1931,12 +2644,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         );
       }
       pushToast({
-        title:
-          variables.deployToMobile
-            ? "Deployed to Survey App"
-            : savedForm.status === "published"
-              ? "Form published"
-              : "Form saved",
+        title: variables.deployToMobile
+          ? "Deployed to Survey App"
+          : savedForm.status === "published"
+            ? "Form published"
+            : "Form saved",
         description: variables.deployToMobile
           ? `${savedForm.name} will appear for assigned field officers after mobile sync.`
           : `${savedForm.name} is stored in the backend as version ${savedForm.current_version}.`,
@@ -1949,7 +2661,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         const nextControls = {
           ...current,
           [savedForm.id]: normalizeFormControls(
-            savedForm.controls_json ?? current[variables.form.id] ?? createDefaultFormControls(variables.form),
+            savedForm.controls_json ??
+              current[variables.form.id] ??
+              createDefaultFormControls(variables.form),
             persistedFormToLocal(savedForm),
           ),
         };
@@ -1975,9 +2689,7 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   const serverCompatibilityQuery = useQuery({
     queryKey: ["form-compatibility", token, selectedFormId],
     queryFn: () => getFormCollectionCompatibility(token ?? "", selectedFormId),
-    enabled: Boolean(
-      token && !isPreview && isPersistedSelectedForm,
-    ),
+    enabled: Boolean(token && !isPreview && isPersistedSelectedForm),
   });
   const xlsFormQuery = useQuery({
     queryKey: ["form-xlsform", token, selectedFormId],
@@ -2030,7 +2742,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     onSuccess: async (savedForm, variables) => {
       setFormControlsByFormId((current) => ({
         ...current,
-        [variables.formId]: normalizeFormControls(savedForm.controls_json ?? variables.controls, selectedForm),
+        [variables.formId]: normalizeFormControls(
+          savedForm.controls_json ?? variables.controls,
+          selectedForm,
+        ),
       }));
       setFormControlsDialogOpen(false);
       setBuilderResult(
@@ -2055,14 +2770,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     },
   });
   const formReviewMutation = useMutation({
-    mutationFn: (payload: { submissionId: string; action: ReviewAction; comment: string }) =>
+    mutationFn: (payload: {
+      submissionId: string;
+      action: ReviewAction;
+      comment: string;
+    }) =>
       reviewSubmission(token ?? "", payload.submissionId, {
         action: payload.action,
         comment: payload.comment,
       }),
     onSuccess: async (submission, variables) => {
       setReviewComment("");
-      setBuilderResult(`${submission.client_submission_id} is now ${formatReviewStatus(submission.status)}. Reviewer note: ${variables.comment}`);
+      setBuilderResult(
+        `${submission.client_submission_id} is now ${formatReviewStatus(submission.status)}. Reviewer note: ${variables.comment}`,
+      );
       pushToast({
         title: `Submission ${variables.action.replace("_", " ")}`,
         description: `${submission.client_submission_id} was updated.`,
@@ -2110,7 +2831,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       })),
     );
     const deduped = [...quickFieldPresets, ...catalogPresets].filter(
-      (preset, index, presets) => presets.findIndex((candidate) => candidate.label === preset.label) === index,
+      (preset, index, presets) =>
+        presets.findIndex((candidate) => candidate.label === preset.label) ===
+        index,
     );
     const needle = smartFieldQuery.trim().toLowerCase();
     if (!needle) {
@@ -2132,26 +2855,34 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }),
   );
 
-  const updateSelectedForm = useCallback((nextForm: DynamicForm, options: { trackHistory?: boolean } = {}) => {
-    if (selectedForm && options.trackHistory !== false) {
-      setHistoryPast((current) => [...current.slice(-19), selectedForm]);
-      setHistoryFuture([]);
-    }
-    setForms((current) => {
-      const exists = current.some((form) => form.id === nextForm.id);
-      return exists
-        ? current.map((form) => (form.id === nextForm.id ? nextForm : form))
-        : [nextForm, ...current];
-    });
-  }, [selectedForm]);
+  const updateSelectedForm = useCallback(
+    (nextForm: DynamicForm, options: { trackHistory?: boolean } = {}) => {
+      if (selectedForm && options.trackHistory !== false) {
+        setHistoryPast((current) => [...current.slice(-19), selectedForm]);
+        setHistoryFuture([]);
+      }
+      setForms((current) => {
+        const exists = current.some((form) => form.id === nextForm.id);
+        return exists
+          ? current.map((form) => (form.id === nextForm.id ? nextForm : form))
+          : [nextForm, ...current];
+      });
+      onFormChange?.(nextForm);
+    },
+    [onFormChange, selectedForm],
+  );
 
-  function updateSelectedFormControls(updater: (controls: FormControlsSettings) => FormControlsSettings) {
+  function updateSelectedFormControls(
+    updater: (controls: FormControlsSettings) => FormControlsSettings,
+  ) {
     if (!selectedForm) {
       return;
     }
     setFormControlsByFormId((current) => ({
       ...current,
-      [selectedForm.id]: updater(current[selectedForm.id] ?? selectedFormControls),
+      [selectedForm.id]: updater(
+        current[selectedForm.id] ?? selectedFormControls,
+      ),
     }));
   }
 
@@ -2159,12 +2890,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (!field) {
       pushToast({
         title: "Select a question first",
-        description: "Choose the form question that should use controlled reference data.",
+        description:
+          "Choose the form question that should use controlled reference data.",
         tone: "warning",
       });
       return;
     }
-    const existing = selectedFormControls.reference_bindings.some((binding) => binding.question_id === field.id);
+    const existing = selectedFormControls.reference_bindings.some(
+      (binding) => binding.question_id === field.id,
+    );
     if (existing) {
       setFormControlsTab("reference");
       setFormControlsDialogOpen(true);
@@ -2195,11 +2929,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           question_id: field.id,
           question_label: field.label,
           reference_list_name: suggestedList,
-          reference_type: suggestedList.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "reference",
+          reference_type:
+            suggestedList
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_|_$/g, "") || "reference",
           source: "existing",
           enforce_controlled_values: true,
           allow_inactive_values: false,
-          parent_reference: /district|community|village|ward/i.test(field.label) ? "Region" : null,
+          parent_reference: /district|community|village|ward/i.test(field.label)
+            ? "Region"
+            : null,
           effective_from: null,
           effective_to: null,
           version: 1,
@@ -2210,13 +2950,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }));
     setFormControlsTab("reference");
     setFormControlsDialogOpen(true);
-    setBuilderResult(`${field.label} is now mapped to a controlled reference list.`);
+    setBuilderResult(
+      `${field.label} is now mapped to a controlled reference list.`,
+    );
   }
 
   function applyWorkflowPreset(preset: "simple" | "standard" | "correction") {
     updateSelectedFormControls((controls) => ({
       ...controls,
-      workflow_stages: workflowPresets[preset].map((stage) => ({ ...stage, reviewer_roles: [...stage.reviewer_roles] })),
+      workflow_stages: workflowPresets[preset].map((stage) => ({
+        ...stage,
+        reviewer_roles: [...stage.reviewer_roles],
+      })),
       governance: {
         ...controls.governance,
         approval_workflow: preset,
@@ -2231,7 +2976,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       return;
     }
     if (token && !isPreview && isPersistedSelectedForm) {
-      updateControlsMutation.mutate({ formId: selectedForm.id, controls: selectedFormControls });
+      updateControlsMutation.mutate({
+        formId: selectedForm.id,
+        controls: selectedFormControls,
+      });
       return;
     }
     setFormControlsByFormId((current) => ({
@@ -2244,7 +2992,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     );
     pushToast({
       title: "Preview controls saved",
-      description: "Controls are ready locally and will be persisted after the form is saved to the backend.",
+      description:
+        "Controls are ready locally and will be persisted after the form is saved to the backend.",
       tone: "success",
     });
   }
@@ -2271,7 +3020,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     setImportWorkspaceDialogOpen(false);
     setQualityWorkspaceDialogOpen(false);
     setReadinessDialogOpen(true);
-    setBuilderResult("Review readiness before publishing or deploying this form to field teams.");
+    setBuilderResult(
+      "Review readiness before publishing or deploying this form to field teams.",
+    );
   }
 
   function openDeploymentCenter() {
@@ -2282,7 +3033,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     setImportWorkspaceDialogOpen(false);
     setQualityWorkspaceDialogOpen(false);
     setMobileDeployDialogOpen(true);
-    setBuilderResult("Use the deployment center to publish, assign, deploy, and monitor mobile sync readiness.");
+    setBuilderResult(
+      "Use the deployment center to publish, assign, deploy, and monitor mobile sync readiness.",
+    );
   }
 
   function openSubmissionReviewWorkspace() {
@@ -2296,7 +3049,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (selectedFormReviewRows[0] && !selectedReviewSubmissionId) {
       setSelectedReviewSubmissionId(selectedFormReviewRows[0].id);
     }
-    setBuilderResult("Review incoming records for this form without leaving the form workspace.");
+    setBuilderResult(
+      "Review incoming records for this form without leaving the form workspace.",
+    );
   }
 
   function openAssignmentWorkspace() {
@@ -2307,7 +3062,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     setImportWorkspaceDialogOpen(false);
     setQualityWorkspaceDialogOpen(false);
     setAssignmentWorkspaceDialogOpen(true);
-    setBuilderResult("Assign the form to teams, supervisors, locations, and collection targets.");
+    setBuilderResult(
+      "Assign the form to teams, supervisors, locations, and collection targets.",
+    );
   }
 
   function openImportWorkspace() {
@@ -2318,7 +3075,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     setAssignmentWorkspaceDialogOpen(false);
     setQualityWorkspaceDialogOpen(false);
     setImportWorkspaceDialogOpen(true);
-    setBuilderResult("Use the form import workspace to download a matching template, map columns, validate records, and import clean data.");
+    setBuilderResult(
+      "Use the form import workspace to download a matching template, map columns, validate records, and import clean data.",
+    );
   }
 
   function openQualityWorkspace() {
@@ -2329,7 +3088,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     setAssignmentWorkspaceDialogOpen(false);
     setImportWorkspaceDialogOpen(false);
     setQualityWorkspaceDialogOpen(true);
-    setBuilderResult("Review data quality flags, affected records, owners, and next actions for this form.");
+    setBuilderResult(
+      "Review data quality flags, affected records, owners, and next actions for this form.",
+    );
   }
 
   function updateAssignmentPlan(patch: Partial<FormAssignmentPlan>) {
@@ -2382,7 +3143,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       [selectedForm.id]: [nextRun, ...(current[selectedForm.id] ?? [])],
     }));
     updateSelectedReadiness({ importTemplateReviewed: true });
-    setBuilderResult(`${nextRun.fileName} was validated against ${selectedForm.fields.length} form fields. Fix ${nextRun.issueCount} issue(s) before final import.`);
+    setBuilderResult(
+      `${nextRun.fileName} was validated against ${selectedForm.fields.length} form fields. Fix ${nextRun.issueCount} issue(s) before final import.`,
+    );
     pushToast({
       title: "Import template validated",
       description: `${nextRun.validRows} rows are ready after column mapping checks.`,
@@ -2396,14 +3159,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     setFormImportRunsByFormId((current) => ({
       ...current,
-      [selectedForm.id]: (current[selectedForm.id] ?? selectedImportRuns).map((run) =>
-        run.id === runId ? { ...run, status: "imported", issueCount: 0, validRows: run.rows } : run,
+      [selectedForm.id]: (current[selectedForm.id] ?? selectedImportRuns).map(
+        (run) =>
+          run.id === runId
+            ? { ...run, status: "imported", issueCount: 0, validRows: run.rows }
+            : run,
       ),
     }));
-    setBuilderResult("Validated records were imported into this form workspace and are ready for review and reporting.");
+    setBuilderResult(
+      "Validated records were imported into this form workspace and are ready for review and reporting.",
+    );
     pushToast({
       title: "Preview import completed",
-      description: "Imported records are now treated as form data in this workspace.",
+      description:
+        "Imported records are now treated as form data in this workspace.",
       tone: "success",
     });
   }
@@ -2414,11 +3183,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     setFormQualityFlagsByFormId((current) => ({
       ...current,
-      [selectedForm.id]: (current[selectedForm.id] ?? selectedQualityFlags).map((flag) =>
-        flag.id === flagId ? { ...flag, status: "resolved", affectedRecords: 0 } : flag,
+      [selectedForm.id]: (current[selectedForm.id] ?? selectedQualityFlags).map(
+        (flag) =>
+          flag.id === flagId
+            ? { ...flag, status: "resolved", affectedRecords: 0 }
+            : flag,
       ),
     }));
-    setBuilderResult("Quality flag resolved for this form. Keep monitoring the form before using data in reports.");
+    setBuilderResult(
+      "Quality flag resolved for this form. Keep monitoring the form before using data in reports.",
+    );
     pushToast({
       title: "Quality flag resolved",
       description: "The form quality workspace was updated.",
@@ -2430,16 +3204,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (!selectedForm || !selectedReviewSubmission) {
       pushToast({
         title: "Select a submission first",
-        description: "Choose a submission from the review queue before applying a decision.",
+        description:
+          "Choose a submission from the review queue before applying a decision.",
         tone: "warning",
       });
       return;
     }
     const trimmedComment = reviewComment.trim();
-    if ((action === "request_correction" || action === "reject") && !trimmedComment) {
+    if (
+      (action === "request_correction" || action === "reject") &&
+      !trimmedComment
+    ) {
       pushToast({
         title: "Reviewer note required",
-        description: "Explain what field teams need to correct or why the record is rejected.",
+        description:
+          "Explain what field teams need to correct or why the record is rejected.",
         tone: "warning",
       });
       return;
@@ -2452,7 +3231,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           : action === "request_correction"
             ? "correction_requested"
             : "under_review";
-    const comment = trimmedComment || `Marked as ${formatReviewStatus(nextStatus)} from the form review workspace.`;
+    const comment =
+      trimmedComment ||
+      `Marked as ${formatReviewStatus(nextStatus)} from the form review workspace.`;
 
     if (token && !isPreview) {
       formReviewMutation.mutate({
@@ -2464,7 +3245,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
 
     setFormReviewRowsByFormId((current) => {
-      const rows = current[selectedForm.id] ?? createPreviewSubmissionRows(selectedForm);
+      const rows =
+        current[selectedForm.id] ?? createPreviewSubmissionRows(selectedForm);
       return {
         ...current,
         [selectedForm.id]: rows.map((submission) =>
@@ -2483,11 +3265,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       };
     });
     setReviewComment("");
-    setBuilderResult(`${selectedReviewSubmission.client_submission_id} is now ${formatReviewStatus(nextStatus)}. Reviewer note: ${comment}`);
+    setBuilderResult(
+      `${selectedReviewSubmission.client_submission_id} is now ${formatReviewStatus(nextStatus)}. Reviewer note: ${comment}`,
+    );
     pushToast({
       title: `Preview ${action.replace("_", " ")}`,
       description: selectedReviewSubmission.client_submission_id,
-      tone: action === "approve" ? "success" : action === "reject" ? "danger" : "warning",
+      tone:
+        action === "approve"
+          ? "success"
+          : action === "reject"
+            ? "danger"
+            : "warning",
     });
   }
 
@@ -2515,7 +3304,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
   function openNewFormDialog() {
     setNewFormDialogOpen(true);
-    setNewFormName(selectedSurvey ? `${selectedSurvey.title} form` : "New survey form");
+    setNewFormName(
+      selectedSurvey ? `${selectedSurvey.title} form` : "New survey form",
+    );
     setNewFormDescription(selectedSurvey?.description ?? "");
     setNewFormChannel("survey_app");
     setNewFormBlocks(["respondent-details", "gps-evidence"]);
@@ -2533,8 +3324,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     const formId = `guided-form-${Date.now()}`;
     const pageId = `${formId}-page-1`;
-    const selectedBlocks = sectionTemplates.filter((template) => newFormBlocks.includes(template.id));
-    const blocks = selectedBlocks.length ? selectedBlocks : sectionTemplates.filter((template) => template.id === "respondent-details");
+    const selectedBlocks = sectionTemplates.filter((template) =>
+      newFormBlocks.includes(template.id),
+    );
+    const blocks = selectedBlocks.length
+      ? selectedBlocks
+      : sectionTemplates.filter(
+          (template) => template.id === "respondent-details",
+        );
     const formDescription = newFormDescription.trim();
     const sections: FormSection[] = [];
     const fields: FormField[] = [];
@@ -2542,10 +3339,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       const section = createSection(pageId, block.title);
       const sectionWithDescription = {
         ...section,
-        description: index === 0 && formDescription ? formDescription : block.description,
+        description:
+          index === 0 && formDescription ? formDescription : block.description,
       };
       sections.push(sectionWithDescription);
-      fields.push(...block.fields.map((preset) => fieldFromPreset(preset, sectionWithDescription)));
+      fields.push(
+        ...block.fields.map((preset) =>
+          fieldFromPreset(preset, sectionWithDescription),
+        ),
+      );
     }
     const nextForm: DynamicForm = {
       id: formId,
@@ -2558,15 +3360,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         {
           id: pageId,
           title: "Page 1",
-          description: formDescription || `Created for ${selectedSurvey.title} via ${
-            newFormChannel === "survey_app"
-              ? "Survey App"
-              : newFormChannel === "web_link"
-                ? "Web Link"
-                : newFormChannel === "public_link"
-                  ? "Public Link"
-                  : "XLSForm/ODK"
-          }.`,
+          description:
+            formDescription ||
+            `Created for ${selectedSurvey.title} via ${
+              newFormChannel === "survey_app"
+                ? "Survey App"
+                : newFormChannel === "web_link"
+                  ? "Web Link"
+                  : newFormChannel === "public_link"
+                    ? "Public Link"
+                    : "XLSForm/ODK"
+            }.`,
         },
       ],
       sections,
@@ -2581,6 +3385,7 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       ],
     };
     setForms((current) => [nextForm, ...current]);
+    onFormChange?.(nextForm);
     setFormControlsByFormId((current) => ({
       ...current,
       [nextForm.id]: createDefaultFormControls(nextForm),
@@ -2599,7 +3404,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     );
     pushToast({
       title: "Guided form created",
-      description: "Atlas added the selected blocks and opened the next recommended action.",
+      description:
+        "Atlas added the selected blocks and opened the next recommended action.",
       tone: "success",
     });
   }
@@ -2651,7 +3457,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       openReadinessChecklist();
       pushToast({
         title: "Readiness review needed",
-        description: "Complete required readiness items before publishing this form.",
+        description:
+          "Complete required readiness items before publishing this form.",
         tone: "warning",
       });
       return;
@@ -2686,7 +3493,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       );
       pushToast({
         title: "Survey context required",
-        description: "Choose Project and Survey before deploying to the mobile app.",
+        description:
+          "Choose Project and Survey before deploying to the mobile app.",
         tone: "warning",
       });
       return;
@@ -2697,7 +3505,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       );
       pushToast({
         title: "Add questions first",
-        description: "Field officers need at least one question before the form can be deployed.",
+        description:
+          "Field officers need at least one question before the form can be deployed.",
         tone: "warning",
       });
       return;
@@ -2706,7 +3515,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       openReadinessChecklist();
       pushToast({
         title: "Finish readiness first",
-        description: "Complete required readiness items before deploying this form to field officers.",
+        description:
+          "Complete required readiness items before deploying this form to field officers.",
         tone: "warning",
       });
       return;
@@ -2805,7 +3615,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       return;
     }
     initialDraftIdRef.current = initialDraft.id;
-    setForms((current) => [initialDraft, ...current.filter((form) => form.id !== initialDraft.id)]);
+    setForms((current) => [
+      initialDraft,
+      ...current.filter((form) => form.id !== initialDraft.id),
+    ]);
     setSelectedFormId(initialDraft.id);
     setSelectedFieldId(initialDraft.fields[0]?.id ?? "");
     setSelectedPageId(defaultPages(initialDraft)[0]?.id ?? "");
@@ -2841,13 +3654,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     const pages = defaultPages(selectedForm);
     const pageStillValid = pages.some((page) => page.id === selectedPageId);
-    const nextPage = pageStillValid ? pages.find((page) => page.id === selectedPageId) : pages[0];
+    const nextPage = pageStillValid
+      ? pages.find((page) => page.id === selectedPageId)
+      : pages[0];
     if (nextPage && nextPage.id !== selectedPageId) {
       setSelectedPageId(nextPage.id);
     }
-    const sections = selectedForm.sections.filter((section) => section.pageId === nextPage?.id);
-    const sectionStillValid = sections.some((section) => section.id === selectedSectionId);
-    const nextSection = sectionStillValid ? sections.find((section) => section.id === selectedSectionId) : sections[0] ?? selectedForm.sections[0];
+    const sections = selectedForm.sections.filter(
+      (section) => section.pageId === nextPage?.id,
+    );
+    const sectionStillValid = sections.some(
+      (section) => section.id === selectedSectionId,
+    );
+    const nextSection = sectionStillValid
+      ? sections.find((section) => section.id === selectedSectionId)
+      : (sections[0] ?? selectedForm.sections[0]);
     if (nextSection && nextSection.id !== selectedSectionId) {
       setSelectedSectionId(nextSection.id);
     }
@@ -2855,8 +3676,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const isUndo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !event.shiftKey;
-      const isRedo = (event.metaKey || event.ctrlKey) && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"));
+      const isUndo =
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "z" &&
+        !event.shiftKey;
+      const isRedo =
+        (event.metaKey || event.ctrlKey) &&
+        (event.key.toLowerCase() === "y" ||
+          (event.shiftKey && event.key.toLowerCase() === "z"));
       if (isUndo) {
         event.preventDefault();
         undoLastChange();
@@ -2881,7 +3708,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (!selectedProject) {
       return;
     }
-    const surveyStillValid = projectSurveys.some((survey) => survey.id === selectedSurveyId);
+    const surveyStillValid = projectSurveys.some(
+      (survey) => survey.id === selectedSurveyId,
+    );
     if (!surveyStillValid) {
       setSelectedSurveyId(projectSurveys[0]?.id ?? "");
     }
@@ -2903,7 +3732,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (!stillSelected) {
       setSelectedReviewSubmissionId(selectedFormReviewRows[0]?.id ?? "");
     }
-  }, [reviewWorkspaceDialogOpen, selectedFormReviewRows, selectedReviewSubmissionId]);
+  }, [
+    reviewWorkspaceDialogOpen,
+    selectedFormReviewRows,
+    selectedReviewSubmissionId,
+  ]);
 
   function addCatalogField(type: FieldType) {
     if (!selectedForm) {
@@ -2911,7 +3744,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     const section = activeSection ?? selectedForm.sections[0];
     const sectionId = section?.id ?? "default";
-    const field = createField(type, sectionId, section?.pageId ?? activePage?.id);
+    const field = createField(
+      type,
+      sectionId,
+      section?.pageId ?? activePage?.id,
+    );
     updateSelectedForm(addField(selectedForm, field));
     setSelectedFieldId(field.id);
     setRightPanelTab("field");
@@ -2939,7 +3776,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
   }
 
-  function fieldFromPreset(preset: FieldPreset, section: FormSection): FormField {
+  function fieldFromPreset(
+    preset: FieldPreset,
+    section: FormSection,
+  ): FormField {
     const field = createField(preset.type, section.id, section.pageId);
     return {
       ...field,
@@ -2963,7 +3803,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     const field = fieldFromPreset(preset, section);
     updateSelectedForm(addField(selectedForm, field));
     openFieldSettings(field.id);
-    setBuilderResult(`${preset.label} was added with beginner-friendly defaults.`);
+    setBuilderResult(
+      `${preset.label} was added with beginner-friendly defaults.`,
+    );
     setBuilderAssistantOpen(true);
     setBuilderActionDialogOpen(false);
   }
@@ -2973,10 +3815,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       return;
     }
     const section = createSection(activePage.id, template.title);
-    const nextFields = template.fields.map((preset) => fieldFromPreset(preset, section));
+    const nextFields = template.fields.map((preset) =>
+      fieldFromPreset(preset, section),
+    );
     updateSelectedForm({
       ...selectedForm,
-      sections: [...selectedForm.sections, { ...section, description: template.description }],
+      sections: [
+        ...selectedForm.sections,
+        { ...section, description: template.description },
+      ],
       fields: [...selectedForm.fields, ...nextFields],
       updatedAt: new Date().toISOString(),
     });
@@ -2984,12 +3831,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (nextFields[0]) {
       openFieldSettings(nextFields[0].id);
     }
-    setBuilderResult(`${template.title} was inserted with ${nextFields.length} ready-to-edit questions.`);
+    setBuilderResult(
+      `${template.title} was inserted with ${nextFields.length} ready-to-edit questions.`,
+    );
     setBuilderAssistantOpen(true);
     setBuilderActionDialogOpen(false);
   }
 
-  function applySmartFieldSetup(kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule") {
+  function applySmartFieldSetup(
+    kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule",
+  ) {
     if (!selectedForm || !selectedField) {
       return;
     }
@@ -2997,13 +3848,38 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
       kind === "required"
         ? { required: true }
         : kind === "email"
-          ? { type: "email", validation: { ...selectedField.validation, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" }, hint: selectedField.hint || "Enter a valid email address." }
+          ? {
+              type: "email",
+              validation: {
+                ...selectedField.validation,
+                pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+              },
+              hint: selectedField.hint || "Enter a valid email address.",
+            }
           : kind === "phone"
-            ? { type: "phone", validation: { ...selectedField.validation, pattern: "^[0-9+\\-\\s()]{7,}$" }, hint: selectedField.hint || "Enter a valid phone number." }
+            ? {
+                type: "phone",
+                validation: {
+                  ...selectedField.validation,
+                  pattern: "^[0-9+\\-\\s()]{7,}$",
+                },
+                hint: selectedField.hint || "Enter a valid phone number.",
+              }
             : kind === "gps"
-              ? { type: "gps", required: true, validation: { ...selectedField.validation, accuracyMax: 25 }, hint: selectedField.hint || "Capture GPS with acceptable accuracy before submitting." }
+              ? {
+                  type: "gps",
+                  required: true,
+                  validation: { ...selectedField.validation, accuracyMax: 25 },
+                  hint:
+                    selectedField.hint ||
+                    "Capture GPS with acceptable accuracy before submitting.",
+                }
               : kind === "yes_no"
-                ? { type: "radio", options: ["Yes", "No"], hint: selectedField.hint || "Choose one response." }
+                ? {
+                    type: "radio",
+                    options: ["Yes", "No"],
+                    hint: selectedField.hint || "Choose one response.",
+                  }
                 : {
                     logic: [
                       ...(selectedField.logic ?? []),
@@ -3011,7 +3887,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         id: `${selectedField.id}-show-${Date.now()}`,
                         kind: "show",
                         expression: "${previous_answer} = 'Yes'",
-                        message: "Show this question only when the previous answer is Yes.",
+                        message:
+                          "Show this question only when the previous answer is Yes.",
                       },
                     ],
                   };
@@ -3030,15 +3907,22 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     const nextForm = addPage(selectedForm, page);
     updateSelectedForm(nextForm);
     setSelectedPageId(page.id);
-    setSelectedSectionId(nextForm.sections.find((section) => section.pageId === page.id)?.id ?? "");
-    setBuilderResult(`${page.title} was added. Add sections and questions for this survey step.`);
+    setSelectedSectionId(
+      nextForm.sections.find((section) => section.pageId === page.id)?.id ?? "",
+    );
+    setBuilderResult(
+      `${page.title} was added. Add sections and questions for this survey step.`,
+    );
   }
 
   function addBuilderSection() {
     if (!selectedForm || !activePage) {
       return;
     }
-    const section = createSection(activePage.id, `Section ${activeSections.length + 1}`);
+    const section = createSection(
+      activePage.id,
+      `Section ${activeSections.length + 1}`,
+    );
     updateSelectedForm(addSection(selectedForm, section));
     setSelectedSectionId(section.id);
     setBuilderResult(`${section.title} was added to ${activePage.title}.`);
@@ -3052,7 +3936,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     updateSelectedForm(nextForm);
     const duplicatedPage = defaultPages(nextForm).at(-1);
     setSelectedPageId(duplicatedPage?.id ?? pageId);
-    setBuilderResult("The page, its sections, and its questions were duplicated into a new draft page.");
+    setBuilderResult(
+      "The page, its sections, and its questions were duplicated into a new draft page.",
+    );
   }
 
   function duplicateBuilderSection(sectionId: string) {
@@ -3082,7 +3968,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     if (!selectedForm) {
       return;
     }
-    const index = activeSections.findIndex((section) => section.id === sectionId);
+    const index = activeSections.findIndex(
+      (section) => section.id === sectionId,
+    );
     const target = activeSections[index + direction];
     if (!target) {
       return;
@@ -3162,9 +4050,22 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             : "Confirm mobile readiness, XLSForm compatibility, media fields, and publish/export actions.";
   const smartCanvasAction = useMemo(() => {
     const fields = selectedForm?.fields ?? [];
-    const hasIdentity = fields.some((field) => /name|respondent|beneficiary/i.test(field.label));
+    const hasIdentity = fields.some((field) =>
+      /name|respondent|beneficiary/i.test(field.label),
+    );
     const hasGpsOrEvidence = fields.some((field) =>
-      ["gps", "geolocation", "map", "geofence", "photo", "image", "video", "audio", "file", "signature"].includes(field.type),
+      [
+        "gps",
+        "geolocation",
+        "map",
+        "geofence",
+        "photo",
+        "image",
+        "video",
+        "audio",
+        "file",
+        "signature",
+      ].includes(field.type),
     );
     const hasLogic = fields.some((field) => field.logic?.length);
     if (!selectedForm || !activeSections.length) {
@@ -3177,7 +4078,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     if (!fields.length || !hasIdentity) {
       return {
-        description: "Collect the person, beneficiary, or respondent identity first.",
+        description:
+          "Collect the person, beneficiary, or respondent identity first.",
         label: "Add respondent details",
         mode: "question" as BuilderAssistantMode,
         query: "name",
@@ -3185,7 +4087,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     if (!hasGpsOrEvidence) {
       return {
-        description: "Add location or evidence fields before sending teams to the field.",
+        description:
+          "Add location or evidence fields before sending teams to the field.",
         label: "Add GPS and evidence",
         mode: "section" as BuilderAssistantMode,
         query: "",
@@ -3193,7 +4096,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
     }
     if (fields.length >= 5 && !hasLogic) {
       return {
-        description: "Use smart logic to hide questions, require answers, or simplify branches.",
+        description:
+          "Use smart logic to hide questions, require answers, or simplify branches.",
         label: "Add smart logic",
         mode: "logic" as BuilderAssistantMode,
         query: "",
@@ -3215,7 +4119,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
   }, [formBuilderFocused, setSidebarCollapsed]);
 
   return (
-    <section aria-labelledby="forms-title" className={cn("space-y-5", formBuilderFocused && "space-y-3")}>
+    <section
+      aria-labelledby="forms-title"
+      className={cn("space-y-5", formBuilderFocused && "space-y-3")}
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -3224,23 +4131,27 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <h1
               id="forms-title"
-              className={cn("font-semibold tracking-tight", formBuilderFocused ? "text-xl" : "text-2xl")}
+              className={cn(
+                "font-semibold tracking-tight",
+                formBuilderFocused ? "text-xl" : "text-2xl",
+              )}
             >
               Survey form builder
             </h1>
-            <HelpHint label="About survey form builder" title="Survey form builder">
-              Select the project and survey first, then build clear, offline-ready forms your field team can use confidently on mobile devices.
+            <HelpHint
+              label="About survey form builder"
+              title="Survey form builder"
+            >
+              Select the project and survey first, then build clear,
+              offline-ready forms your field team can use confidently on mobile
+              devices.
             </HelpHint>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              if (
-                token &&
-                !isPreview &&
-                !isPersistedSelectedForm
-              ) {
+              if (token && !isPreview && !isPersistedSelectedForm) {
                 setBuilderResult(
                   "Save this form to the backend before requesting a backend XLSForm export. Draft-only forms can still be reviewed in the on-screen preview.",
                 );
@@ -3261,11 +4172,7 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 description: `${selectedForm?.name ?? "Form"} is ready as JSON and XLSForm with ${surveyRows} survey rows.`,
                 tone: "success",
               });
-              if (
-                isPersistedSelectedForm &&
-                token &&
-                !isPreview
-              ) {
+              if (isPersistedSelectedForm && token && !isPreview) {
                 void xlsFormQuery.refetch();
               }
             }}
@@ -3308,17 +4215,40 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto] xl:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="truncate text-sm font-semibold">{selectedForm?.name}</p>
-                <Badge tone={selectedForm?.status === "published" ? "success" : "accent"}>
+                <p className="truncate text-sm font-semibold">
+                  {selectedForm?.name}
+                </p>
+                <Badge
+                  tone={
+                    selectedForm?.status === "published" ? "success" : "accent"
+                  }
+                >
                   {selectedForm?.status ?? "draft"}
                 </Badge>
-                <Badge tone={criticalValidationCount ? "danger" : warningValidationCount ? "warning" : "success"}>
-                  {criticalValidationCount ? `${criticalValidationCount} errors` : warningValidationCount ? `${warningValidationCount} warnings` : "Valid"}
+                <Badge
+                  tone={
+                    criticalValidationCount
+                      ? "danger"
+                      : warningValidationCount
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {criticalValidationCount
+                    ? `${criticalValidationCount} errors`
+                    : warningValidationCount
+                      ? `${warningValidationCount} warnings`
+                      : "Valid"}
                 </Badge>
-                <span className="text-xs text-muted-foreground">Autosave: Saved</span>
+                <span className="text-xs text-muted-foreground">
+                  Autosave: Saved
+                </span>
               </div>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {selectedProject?.name ?? "Project"} / {selectedSurvey?.title ?? "Survey"} / {selectedForm?.sections.length ?? 0} sections / {selectedForm?.fields.length ?? 0} questions
+                {selectedProject?.name ?? "Project"} /{" "}
+                {selectedSurvey?.title ?? "Survey"} /{" "}
+                {selectedForm?.sections.length ?? 0} sections /{" "}
+                {selectedForm?.fields.length ?? 0} questions
               </p>
             </div>
             <label className="text-xs">
@@ -3327,12 +4257,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 value={selectedProject?.id ?? ""}
                 onChange={(event) => {
                   setSelectedProjectId(event.target.value);
-                  const firstSurvey = surveys.find((survey) => survey.project_id === event.target.value);
+                  const firstSurvey = surveys.find(
+                    (survey) => survey.project_id === event.target.value,
+                  );
                   setSelectedSurveyId(firstSurvey?.id ?? "");
                 }}
               >
                 {projects.length ? (
-                  projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)
+                  projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))
                 ) : (
                   <option value="">No projects yet</option>
                 )}
@@ -3345,14 +4281,23 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 onChange={(event) => setSelectedSurveyId(event.target.value)}
               >
                 {projectSurveys.length ? (
-                  projectSurveys.map((survey) => <option key={survey.id} value={survey.id}>{survey.title}</option>)
+                  projectSurveys.map((survey) => (
+                    <option key={survey.id} value={survey.id}>
+                      {survey.title}
+                    </option>
+                  ))
                 ) : (
                   <option value="">No surveys in project</option>
                 )}
               </Select>
             </label>
             <div className="flex flex-wrap justify-end gap-1.5">
-              <Button onClick={() => openBuilderAssistant("preview")} size="sm" type="button" variant="secondary">
+              <Button
+                onClick={() => openBuilderAssistant("preview")}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
                 <Eye aria-hidden="true" />
                 Preview
               </Button>
@@ -3374,11 +4319,24 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <Check aria-hidden="true" />
                 Validate
               </Button>
-              <Button onClick={openReadinessChecklist} size="sm" type="button" variant="secondary">
+              <Button
+                onClick={openReadinessChecklist}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
                 <ClipboardList aria-hidden="true" />
                 Review
               </Button>
-              <Button disabled={publishMutation.isPending || criticalValidationCount > 0} onClick={() => saveSelectedForm(true)} size="sm" type="button" variant="primary">
+              <Button
+                disabled={
+                  publishMutation.isPending || criticalValidationCount > 0
+                }
+                onClick={() => saveSelectedForm(true)}
+                size="sm"
+                type="button"
+                variant="primary"
+              >
                 <UploadCloud aria-hidden="true" />
                 Publish
               </Button>
@@ -3386,72 +4344,100 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           </div>
         </section>
       ) : (
-      <section className="surface-premium rounded-2xl p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Required creation flow
-            </p>
-            <h2 className="mt-2 text-lg font-semibold">
-              Project, Survey, Form, Publish, Deploy
-            </h2>
-            <div className="mt-1">
-              <HelpHint label="About required creation flow" title="Required creation flow">
-                Forms are now collection tools inside surveys. This keeps every submission connected to the correct project, M&E activity, indicator set, team, and report.
-              </HelpHint>
+        <section className="surface-premium rounded-2xl p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Required creation flow
+              </p>
+              <h2 className="mt-2 text-lg font-semibold">
+                Project, Survey, Form, Publish, Deploy
+              </h2>
+              <div className="mt-1">
+                <HelpHint
+                  label="About required creation flow"
+                  title="Required creation flow"
+                >
+                  Forms are now collection tools inside surveys. This keeps
+                  every submission connected to the correct project, M&E
+                  activity, indicator set, team, and report.
+                </HelpHint>
+              </div>
+            </div>
+            <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Step 1: Project</span>
+                <Select
+                  value={selectedProject?.id ?? ""}
+                  onChange={(event) => {
+                    setSelectedProjectId(event.target.value);
+                    const firstSurvey = surveys.find(
+                      (survey) => survey.project_id === event.target.value,
+                    );
+                    setSelectedSurveyId(firstSurvey?.id ?? "");
+                  }}
+                >
+                  {projects.length ? (
+                    projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No projects yet</option>
+                  )}
+                </Select>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block font-medium">Step 2: Survey</span>
+                <Select
+                  value={selectedSurvey?.id ?? ""}
+                  onChange={(event) => setSelectedSurveyId(event.target.value)}
+                >
+                  {projectSurveys.length ? (
+                    projectSurveys.map((survey) => (
+                      <option key={survey.id} value={survey.id}>
+                        {survey.title}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No surveys in project</option>
+                  )}
+                </Select>
+              </label>
+              <Button
+                className="md:self-end"
+                onClick={() => setShowWorkflowDetails((current) => !current)}
+                type="button"
+                variant="secondary"
+              >
+                <ClipboardList aria-hidden="true" />
+                {showWorkflowDetails ? "Hide steps" : "Show steps"}
+              </Button>
             </div>
           </div>
-          <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <label className="text-sm">
-              <span className="mb-1 block font-medium">Step 1: Project</span>
-              <Select
-                value={selectedProject?.id ?? ""}
-                onChange={(event) => {
-                  setSelectedProjectId(event.target.value);
-                  const firstSurvey = surveys.find((survey) => survey.project_id === event.target.value);
-                  setSelectedSurveyId(firstSurvey?.id ?? "");
-                }}
-              >
-                {projects.length ? (
-                  projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)
-                ) : (
-                  <option value="">No projects yet</option>
-                )}
-              </Select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block font-medium">Step 2: Survey</span>
-              <Select
-                value={selectedSurvey?.id ?? ""}
-                onChange={(event) => setSelectedSurveyId(event.target.value)}
-              >
-                {projectSurveys.length ? (
-                  projectSurveys.map((survey) => <option key={survey.id} value={survey.id}>{survey.title}</option>)
-                ) : (
-                  <option value="">No surveys in project</option>
-                )}
-              </Select>
-            </label>
-            <Button
-              className="md:self-end"
-              onClick={() => setShowWorkflowDetails((current) => !current)}
-              type="button"
-              variant="secondary"
-            >
-              <ClipboardList aria-hidden="true" />
-              {showWorkflowDetails ? "Hide steps" : "Show steps"}
-            </Button>
-          </div>
-        </div>
-        {showWorkflowDetails ? <div className="mt-4 grid gap-2 text-xs text-muted-foreground md:grid-cols-5">
-          {["Select project", "Select survey", "Create form", "Publish form", "Deploy to app"].map((step, index) => (
-            <div key={step} className="rounded-lg border bg-panel px-3 py-2">
-              <span className="font-semibold text-foreground">Step {index + 1}</span>
-              <span className="mt-1 block">{step}</span>
+          {showWorkflowDetails ? (
+            <div className="mt-4 grid gap-2 text-xs text-muted-foreground md:grid-cols-5">
+              {[
+                "Select project",
+                "Select survey",
+                "Create form",
+                "Publish form",
+                "Deploy to app",
+              ].map((step, index) => (
+                <div
+                  key={step}
+                  className="rounded-lg border bg-panel px-3 py-2"
+                >
+                  <span className="font-semibold text-foreground">
+                    Step {index + 1}
+                  </span>
+                  <span className="mt-1 block">{step}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div> : null}
-      </section>
+          ) : null}
+        </section>
       )}
 
       {builderResult ? (
@@ -3469,8 +4455,22 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               size={formBuilderFocused ? 15 : 18}
             />
             <div>
-              <h2 className={cn("font-semibold", formBuilderFocused ? "sr-only" : "text-sm")}>Builder result</h2>
-              <p className={cn("text-muted-foreground", formBuilderFocused ? "line-clamp-1 text-xs" : "mt-1 text-sm leading-6")}>
+              <h2
+                className={cn(
+                  "font-semibold",
+                  formBuilderFocused ? "sr-only" : "text-sm",
+                )}
+              >
+                Builder result
+              </h2>
+              <p
+                className={cn(
+                  "text-muted-foreground",
+                  formBuilderFocused
+                    ? "line-clamp-1 text-xs"
+                    : "mt-1 text-sm leading-6",
+                )}
+              >
                 {builderResult}
               </p>
             </div>
@@ -3492,13 +4492,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 value={selectedProject?.id ?? ""}
                 onChange={(event) => {
                   setSelectedProjectId(event.target.value);
-                  const firstSurvey = surveys.find((survey) => survey.project_id === event.target.value);
+                  const firstSurvey = surveys.find(
+                    (survey) => survey.project_id === event.target.value,
+                  );
                   setSelectedSurveyId(firstSurvey?.id ?? "");
                 }}
               >
                 {projects.length ? (
                   projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
                   ))
                 ) : (
                   <option value="">No projects available</option>
@@ -3513,7 +4517,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               >
                 {projectSurveys.length ? (
                   projectSurveys.map((survey) => (
-                    <option key={survey.id} value={survey.id}>{survey.title}</option>
+                    <option key={survey.id} value={survey.id}>
+                      {survey.title}
+                    </option>
                   ))
                 ) : (
                   <option value="">No surveys in this project</option>
@@ -3544,32 +4550,65 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <div className="mt-4">
             <p className="text-sm font-medium">3. Distribution channel</p>
             <div className="mt-1">
-              <HelpHint label="About distribution channel" title="Distribution channel">
-                Choose the main way this form will be shared with enumerators or respondents.
+              <HelpHint
+                label="About distribution channel"
+                title="Distribution channel"
+              >
+                Choose the main way this form will be shared with enumerators or
+                respondents.
               </HelpHint>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {([
-                ["survey_app", Smartphone, "Survey App", "Best for trained field teams collecting data on mobile."],
-                ["web_link", MonitorSmartphone, "Web link", "Best for browser-based staff collection."],
-                ["public_link", FileUp, "Public form", "Best for controlled external respondent access."],
-                ["xlsform", FileDown, "XLSForm / ODK", "Best for Kobo or ODK-style migration and review."],
-              ] satisfies [DistributionChannel, typeof Type, string, string][]).map(([channel, Icon, label, helper]) => (
+              {(
+                [
+                  [
+                    "survey_app",
+                    Smartphone,
+                    "Survey App",
+                    "Best for trained field teams collecting data on mobile.",
+                  ],
+                  [
+                    "web_link",
+                    MonitorSmartphone,
+                    "Web link",
+                    "Best for browser-based staff collection.",
+                  ],
+                  [
+                    "public_link",
+                    FileUp,
+                    "Public form",
+                    "Best for controlled external respondent access.",
+                  ],
+                  [
+                    "xlsform",
+                    FileDown,
+                    "XLSForm / ODK",
+                    "Best for Kobo or ODK-style migration and review.",
+                  ],
+                ] satisfies [DistributionChannel, typeof Type, string, string][]
+              ).map(([channel, Icon, label, helper]) => (
                 <button
                   className={cn(
                     "rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                    newFormChannel === channel && "border-primary/50 bg-primary/10",
+                    newFormChannel === channel &&
+                      "border-primary/50 bg-primary/10",
                   )}
                   key={channel}
                   onClick={() => setNewFormChannel(channel)}
                   type="button"
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold">
-                    <Icon aria-hidden="true" className="text-primary" size={16} />
+                    <Icon
+                      aria-hidden="true"
+                      className="text-primary"
+                      size={16}
+                    />
                     {label}
                   </span>
                   <span className="mt-2 inline-flex">
-                    <HelpHint label={`About ${label}`} title={label}>{helper}</HelpHint>
+                    <HelpHint label={`About ${label}`} title={label}>
+                      {helper}
+                    </HelpHint>
                   </span>
                 </button>
               ))}
@@ -3577,10 +4616,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           </div>
 
           <div className="mt-4">
-            <p className="text-sm font-medium">4. Recommended starting blocks</p>
+            <p className="text-sm font-medium">
+              4. Recommended starting blocks
+            </p>
             <div className="mt-1">
-              <HelpHint label="About recommended starting blocks" title="Recommended starting blocks">
-                Atlas will add these sections first. You can remove, edit, or add more later.
+              <HelpHint
+                label="About recommended starting blocks"
+                title="Recommended starting blocks"
+              >
+                Atlas will add these sections first. You can remove, edit, or
+                add more later.
               </HelpHint>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -3603,11 +4648,22 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     type="button"
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold">{template.title}</span>
-                      {checked ? <Check aria-hidden="true" className="text-primary" size={16} /> : null}
+                      <span className="text-sm font-semibold">
+                        {template.title}
+                      </span>
+                      {checked ? (
+                        <Check
+                          aria-hidden="true"
+                          className="text-primary"
+                          size={16}
+                        />
+                      ) : null}
                     </span>
                     <span className="mt-2 inline-flex">
-                      <HelpHint label={`About ${template.title}`} title={template.title}>
+                      <HelpHint
+                        label={`About ${template.title}`}
+                        title={template.title}
+                      >
                         {template.description} · {template.fields.length} fields
                       </HelpHint>
                     </span>
@@ -3621,17 +4677,25 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <p className="text-sm font-semibold">What happens next</p>
             <div className="mt-1">
               <HelpHint label="What happens next" title="What happens next">
-                Atlas creates the starter form, opens the simplified canvas, and shows one next action: add a question, add a section, preview, or check readiness.
+                Atlas creates the starter form, opens the simplified canvas, and
+                shows one next action: add a question, add a section, preview,
+                or check readiness.
               </HelpHint>
             </div>
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end">
-          <Button onClick={() => setNewFormDialogOpen(false)} type="button" variant="ghost">
+          <Button
+            onClick={() => setNewFormDialogOpen(false)}
+            type="button"
+            variant="ghost"
+          >
             Cancel
           </Button>
           <Button
-            disabled={!selectedProject || !selectedSurvey || !newFormName.trim()}
+            disabled={
+              !selectedProject || !selectedSurvey || !newFormName.trim()
+            }
             onClick={createGuidedForm}
             type="button"
             variant="primary"
@@ -3651,24 +4715,39 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-lg border bg-primary/5 p-4">
-              <p className="text-xs font-medium text-muted-foreground">Readiness progress</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Readiness progress
+              </p>
               <p className="mt-2 text-2xl font-semibold">
                 {readinessCompletedCount}/{readinessItems.length}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">Checks complete</p>
-            </div>
-            <div className="rounded-lg border bg-background p-4">
-              <p className="text-xs font-medium text-muted-foreground">Required blockers</p>
-              <p className="mt-2 text-2xl font-semibold">{readinessRequiredMissingCount}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {readinessRequiredMissingCount ? "Resolve before publishing" : "Ready to publish"}
+                Checks complete
               </p>
             </div>
             <div className="rounded-lg border bg-background p-4">
-              <p className="text-xs font-medium text-muted-foreground">Form context</p>
-              <p className="mt-2 truncate text-sm font-semibold">{selectedForm?.name ?? "No form selected"}</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Required blockers
+              </p>
+              <p className="mt-2 text-2xl font-semibold">
+                {readinessRequiredMissingCount}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {readinessRequiredMissingCount
+                  ? "Resolve before publishing"
+                  : "Ready to publish"}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-background p-4">
+              <p className="text-xs font-medium text-muted-foreground">
+                Form context
+              </p>
+              <p className="mt-2 truncate text-sm font-semibold">
+                {selectedForm?.name ?? "No form selected"}
+              </p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {selectedProject?.name ?? "No project"} / {selectedSurvey?.title ?? "No survey"}
+                {selectedProject?.name ?? "No project"} /{" "}
+                {selectedSurvey?.title ?? "No survey"}
               </p>
             </div>
           </div>
@@ -3678,7 +4757,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <div
                 className={cn(
                   "flex flex-col gap-3 rounded-lg border bg-background p-3 sm:flex-row sm:items-center sm:justify-between",
-                  item.complete ? "border-success/20" : item.required ? "border-warning/35 bg-warning/5" : "border-border",
+                  item.complete
+                    ? "border-success/20"
+                    : item.required
+                      ? "border-warning/35 bg-warning/5"
+                      : "border-border",
                 )}
                 key={item.id}
               >
@@ -3691,21 +4774,34 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         : "border-warning/25 bg-warning/10 text-warning",
                     )}
                   >
-                    {item.complete ? <Check aria-hidden="true" size={16} /> : <ClipboardList aria-hidden="true" size={16} />}
+                    {item.complete ? (
+                      <Check aria-hidden="true" size={16} />
+                    ) : (
+                      <ClipboardList aria-hidden="true" size={16} />
+                    )}
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold">{item.label}</p>
-                      <HelpHint label={`About ${item.label}`} title={item.label}>{item.description}</HelpHint>
+                      <HelpHint
+                        label={`About ${item.label}`}
+                        title={item.label}
+                      >
+                        {item.description}
+                      </HelpHint>
                       <Badge tone={item.required ? "warning" : "neutral"}>
                         {item.required ? "Required" : "Recommended"}
                       </Badge>
-                      {item.complete ? <Badge tone="success">Complete</Badge> : null}
+                      {item.complete ? (
+                        <Badge tone="success">Complete</Badge>
+                      ) : null}
                     </div>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  {item.id === "controls" || item.id === "workflow" || item.id === "quality" ? (
+                  {item.id === "controls" ||
+                  item.id === "workflow" ||
+                  item.id === "quality" ? (
                     <Button
                       onClick={() => {
                         setReadinessDialogOpen(false);
@@ -3740,7 +4836,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   ) : null}
                   {item.id === "pilot-test" && !item.complete ? (
                     <Button
-                      onClick={() => updateSelectedReadiness({ pilotTestCompleted: true })}
+                      onClick={() =>
+                        updateSelectedReadiness({ pilotTestCompleted: true })
+                      }
                       size="sm"
                       type="button"
                       variant="secondary"
@@ -3755,7 +4853,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
           <div className="mt-5 rounded-lg border bg-panel p-4">
             <div className="flex items-center gap-2">
-              <ShieldCheck aria-hidden="true" className="text-primary" size={17} />
+              <ShieldCheck
+                aria-hidden="true"
+                className="text-primary"
+                size={17}
+              />
               <h3 className="text-sm font-semibold">Manager preparation</h3>
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -3763,26 +4865,40 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 ["enumeratorBriefingReady", "Enumerator briefing is ready"],
                 ["importTemplateReviewed", "Excel import template reviewed"],
               ].map(([key, label]) => {
-                const stateKey = key as keyof Pick<FormReadinessState, "enumeratorBriefingReady" | "importTemplateReviewed">;
+                const stateKey = key as keyof Pick<
+                  FormReadinessState,
+                  "enumeratorBriefingReady" | "importTemplateReviewed"
+                >;
                 return (
                   <button
                     className={cn(
                       "flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5",
-                      selectedFormReadiness[stateKey] && "border-success/25 bg-success/10",
+                      selectedFormReadiness[stateKey] &&
+                        "border-success/25 bg-success/10",
                     )}
                     key={key}
                     onClick={() =>
                       updateSelectedReadiness(
                         stateKey === "enumeratorBriefingReady"
-                          ? { enumeratorBriefingReady: !selectedFormReadiness.enumeratorBriefingReady }
-                          : { importTemplateReviewed: !selectedFormReadiness.importTemplateReviewed },
+                          ? {
+                              enumeratorBriefingReady:
+                                !selectedFormReadiness.enumeratorBriefingReady,
+                            }
+                          : {
+                              importTemplateReviewed:
+                                !selectedFormReadiness.importTemplateReviewed,
+                            },
                       )
                     }
                     type="button"
                   >
                     <Check
                       aria-hidden="true"
-                      className={selectedFormReadiness[stateKey] ? "text-success" : "text-muted-foreground"}
+                      className={
+                        selectedFormReadiness[stateKey]
+                          ? "text-success"
+                          : "text-muted-foreground"
+                      }
                       size={16}
                     />
                     <span>{label}</span>
@@ -3806,10 +4922,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             Open controls
           </Button>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={() => setReadinessDialogOpen(false)} type="button" variant="ghost">
+            <Button
+              onClick={() => setReadinessDialogOpen(false)}
+              type="button"
+              variant="ghost"
+            >
               Close
             </Button>
-            <Button onClick={openDeploymentCenter} type="button" variant="secondary">
+            <Button
+              onClick={openDeploymentCenter}
+              type="button"
+              variant="secondary"
+            >
               <Smartphone aria-hidden="true" />
               Deployment center
             </Button>
@@ -3839,15 +4963,39 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
           <div className="grid gap-3 md:grid-cols-4">
             {[
-              ["Readiness", `${readinessCompletedCount}/${readinessItems.length}`, readinessRequiredMissingCount ? `${readinessRequiredMissingCount} required left` : "Ready"],
-              ["Version", `v${selectedForm?.version ?? 0}`, selectedForm?.status ?? "Draft"],
-              ["Audience", mobileDeploymentAudience, mobileDeploymentSyncMode.replace("_", " ")],
-              ["Mobile status", selectedMobileDeployment ? "Deployed" : "Not sent", selectedMobileDeployment?.deployedAt ? new Date(selectedMobileDeployment.deployedAt).toLocaleString() : "Pending"],
+              [
+                "Readiness",
+                `${readinessCompletedCount}/${readinessItems.length}`,
+                readinessRequiredMissingCount
+                  ? `${readinessRequiredMissingCount} required left`
+                  : "Ready",
+              ],
+              [
+                "Version",
+                `v${selectedForm?.version ?? 0}`,
+                selectedForm?.status ?? "Draft",
+              ],
+              [
+                "Audience",
+                mobileDeploymentAudience,
+                mobileDeploymentSyncMode.replace("_", " "),
+              ],
+              [
+                "Mobile status",
+                selectedMobileDeployment ? "Deployed" : "Not sent",
+                selectedMobileDeployment?.deployedAt
+                  ? new Date(
+                      selectedMobileDeployment.deployedAt,
+                    ).toLocaleString()
+                  : "Pending",
+              ],
             ].map(([label, value, helper]) => (
               <div className="rounded-lg border bg-background p-3" key={label}>
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-2 truncate text-sm font-semibold">{value}</p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{helper}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {helper}
+                </p>
               </div>
             ))}
           </div>
@@ -3862,35 +5010,60 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   {selectedForm?.name ?? "Selected form"}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {selectedProject?.name ?? "Project"} / {selectedSurvey?.title ?? "Survey"} / {selectedForm?.fields.length ?? 0} questions
+                  {selectedProject?.name ?? "Project"} /{" "}
+                  {selectedSurvey?.title ?? "Survey"} /{" "}
+                  {selectedForm?.fields.length ?? 0} questions
                 </p>
               </div>
             </div>
           </div>
 
           <label className="mt-4 block text-sm">
-            <span className="mb-1 block font-medium">Who should receive it?</span>
+            <span className="mb-1 block font-medium">
+              Who should receive it?
+            </span>
             <Select
               value={mobileDeploymentAudience}
-              onChange={(event) => setMobileDeploymentAudience(event.target.value)}
+              onChange={(event) =>
+                setMobileDeploymentAudience(event.target.value)
+              }
             >
-              <option value="All assigned field officers">All assigned field officers</option>
+              <option value="All assigned field officers">
+                All assigned field officers
+              </option>
               <option value="Survey team only">Survey team only</option>
-              <option value="Supervisors for testing">Supervisors for testing</option>
+              <option value="Supervisors for testing">
+                Supervisors for testing
+              </option>
             </Select>
           </label>
 
           <div className="mt-4">
             <p className="text-sm font-medium">Mobile sync mode</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {([
-                ["offline_first", "Offline first", "Best for field teams with unreliable internet."],
-                ["online_required", "Online required", "Use when submissions must be sent immediately."],
-              ] satisfies ["offline_first" | "online_required", string, string][]).map(([mode, label, helper]) => (
+              {(
+                [
+                  [
+                    "offline_first",
+                    "Offline first",
+                    "Best for field teams with unreliable internet.",
+                  ],
+                  [
+                    "online_required",
+                    "Online required",
+                    "Use when submissions must be sent immediately.",
+                  ],
+                ] satisfies [
+                  "offline_first" | "online_required",
+                  string,
+                  string,
+                ][]
+              ).map(([mode, label, helper]) => (
                 <button
                   className={cn(
                     "rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                    mobileDeploymentSyncMode === mode && "border-primary/50 bg-primary/10",
+                    mobileDeploymentSyncMode === mode &&
+                      "border-primary/50 bg-primary/10",
                   )}
                   key={mode}
                   onClick={() => setMobileDeploymentSyncMode(mode)}
@@ -3898,7 +5071,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold">
                     {label}
-                    <HelpHint label={`About ${label}`} title={label}>{helper}</HelpHint>
+                    <HelpHint label={`About ${label}`} title={label}>
+                      {helper}
+                    </HelpHint>
                   </span>
                 </button>
               ))}
@@ -3916,12 +5091,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold">
-                  {readinessReadyForPublish ? "Ready for field rollout" : "Readiness items need attention"}
+                  {readinessReadyForPublish
+                    ? "Ready for field rollout"
+                    : "Readiness items need attention"}
                 </p>
                 <div className="mt-1">
                   <HelpHint
                     label="About rollout readiness"
-                    title={readinessReadyForPublish ? "Ready for field rollout" : "Readiness items need attention"}
+                    title={
+                      readinessReadyForPublish
+                        ? "Ready for field rollout"
+                        : "Readiness items need attention"
+                    }
                   >
                     {readinessReadyForPublish
                       ? "Publish and deploy this version, then ask field officers to sync the Survey App and open Assigned forms."
@@ -3929,7 +5110,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   </HelpHint>
                 </div>
               </div>
-              <Button onClick={openReadinessChecklist} size="sm" type="button" variant="secondary">
+              <Button
+                onClick={openReadinessChecklist}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
                 View checklist
               </Button>
             </div>
@@ -3953,11 +5139,19 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             Assignment workspace
           </Button>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={() => setMobileDeployDialogOpen(false)} type="button" variant="ghost">
+            <Button
+              onClick={() => setMobileDeployDialogOpen(false)}
+              type="button"
+              variant="ghost"
+            >
               Cancel
             </Button>
             <Button
-              disabled={!selectedForm || publishMutation.isPending || !readinessReadyForPublish}
+              disabled={
+                !selectedForm ||
+                publishMutation.isPending ||
+                !readinessReadyForPublish
+              }
               onClick={deploySelectedFormToMobileApp}
               type="button"
               variant="primary"
@@ -3979,15 +5173,31 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
           <div className="grid gap-3 md:grid-cols-4">
             {[
-              ["Audience", selectedAssignmentPlan.audience, "Who receives the form"],
+              [
+                "Audience",
+                selectedAssignmentPlan.audience,
+                "Who receives the form",
+              ],
               ["Team", selectedAssignmentPlan.team, "Collection group"],
-              ["Target", String(selectedAssignmentPlan.targetSubmissions), "Expected submissions"],
-              ["Briefing", selectedAssignmentPlan.briefingComplete ? "Complete" : "Pending", "Enumerator readiness"],
+              [
+                "Target",
+                String(selectedAssignmentPlan.targetSubmissions),
+                "Expected submissions",
+              ],
+              [
+                "Briefing",
+                selectedAssignmentPlan.briefingComplete
+                  ? "Complete"
+                  : "Pending",
+                "Enumerator readiness",
+              ],
             ].map(([label, value, helper]) => (
               <div className="rounded-lg border bg-background p-3" key={label}>
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-2 truncate text-sm font-semibold">{value}</p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{helper}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {helper}
+                </p>
               </div>
             ))}
           </div>
@@ -3997,7 +5207,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Collection team
               <Input
                 className="mt-2"
-                onChange={(event) => updateAssignmentPlan({ team: event.target.value })}
+                onChange={(event) =>
+                  updateAssignmentPlan({ team: event.target.value })
+                }
                 value={selectedAssignmentPlan.team}
               />
             </label>
@@ -4005,7 +5217,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Supervisor
               <Input
                 className="mt-2"
-                onChange={(event) => updateAssignmentPlan({ supervisor: event.target.value })}
+                onChange={(event) =>
+                  updateAssignmentPlan({ supervisor: event.target.value })
+                }
                 value={selectedAssignmentPlan.supervisor}
               />
             </label>
@@ -4013,7 +5227,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Location scope
               <Input
                 className="mt-2"
-                onChange={(event) => updateAssignmentPlan({ locationScope: event.target.value })}
+                onChange={(event) =>
+                  updateAssignmentPlan({ locationScope: event.target.value })
+                }
                 value={selectedAssignmentPlan.locationScope}
               />
             </label>
@@ -4021,11 +5237,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Mobile audience
               <Select
                 value={selectedAssignmentPlan.audience}
-                onChange={(event) => updateAssignmentPlan({ audience: event.target.value })}
+                onChange={(event) =>
+                  updateAssignmentPlan({ audience: event.target.value })
+                }
               >
-                <option value="All assigned field officers">All assigned field officers</option>
+                <option value="All assigned field officers">
+                  All assigned field officers
+                </option>
                 <option value="Survey team only">Survey team only</option>
-                <option value="Supervisors for testing">Supervisors for testing</option>
+                <option value="Supervisors for testing">
+                  Supervisors for testing
+                </option>
               </Select>
             </label>
             <label className="block text-sm font-medium">
@@ -4033,7 +5255,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <Input
                 className="mt-2"
                 min={0}
-                onChange={(event) => updateAssignmentPlan({ targetSubmissions: Number(event.target.value) || 0 })}
+                onChange={(event) =>
+                  updateAssignmentPlan({
+                    targetSubmissions: Number(event.target.value) || 0,
+                  })
+                }
                 type="number"
                 value={selectedAssignmentPlan.targetSubmissions}
               />
@@ -4043,7 +5269,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <Input
                 className="mt-2"
                 min={0}
-                onChange={(event) => updateAssignmentPlan({ dailyTarget: Number(event.target.value) || 0 })}
+                onChange={(event) =>
+                  updateAssignmentPlan({
+                    dailyTarget: Number(event.target.value) || 0,
+                  })
+                }
                 type="number"
                 value={selectedAssignmentPlan.dailyTarget}
               />
@@ -4052,7 +5282,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Pilot enumerator
               <Input
                 className="mt-2"
-                onChange={(event) => updateAssignmentPlan({ pilotEnumerator: event.target.value })}
+                onChange={(event) =>
+                  updateAssignmentPlan({ pilotEnumerator: event.target.value })
+                }
                 value={selectedAssignmentPlan.pilotEnumerator}
               />
             </label>
@@ -4061,34 +5293,58 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <button
             className={cn(
               "mt-5 flex w-full items-center gap-3 rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-              selectedAssignmentPlan.briefingComplete && "border-success/25 bg-success/10",
+              selectedAssignmentPlan.briefingComplete &&
+                "border-success/25 bg-success/10",
             )}
-            onClick={() => updateAssignmentPlan({ briefingComplete: !selectedAssignmentPlan.briefingComplete })}
+            onClick={() =>
+              updateAssignmentPlan({
+                briefingComplete: !selectedAssignmentPlan.briefingComplete,
+              })
+            }
             type="button"
           >
             <Check
               aria-hidden="true"
-              className={selectedAssignmentPlan.briefingComplete ? "text-success" : "text-muted-foreground"}
+              className={
+                selectedAssignmentPlan.briefingComplete
+                  ? "text-success"
+                  : "text-muted-foreground"
+              }
               size={18}
             />
             <span>
-              <span className="block text-sm font-semibold">Enumerator briefing completed</span>
+              <span className="block text-sm font-semibold">
+                Enumerator briefing completed
+              </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Confirm the team understands the form, sync process, correction workflow, and collection targets.
+                Confirm the team understands the form, sync process, correction
+                workflow, and collection targets.
               </span>
             </span>
           </button>
         </div>
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-between">
-          <Button onClick={openDeploymentCenter} type="button" variant="secondary">
+          <Button
+            onClick={openDeploymentCenter}
+            type="button"
+            variant="secondary"
+          >
             <Smartphone aria-hidden="true" />
             Deployment center
           </Button>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={() => setAssignmentWorkspaceDialogOpen(false)} type="button" variant="ghost">
+            <Button
+              onClick={() => setAssignmentWorkspaceDialogOpen(false)}
+              type="button"
+              variant="ghost"
+            >
               Close
             </Button>
-            <Button onClick={saveAssignmentPlan} type="button" variant="primary">
+            <Button
+              onClick={saveAssignmentPlan}
+              type="button"
+              variant="primary"
+            >
               Save assignment
             </Button>
           </div>
@@ -4106,18 +5362,25 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <aside className="min-h-0 border-b bg-background/70 p-5 lg:border-b-0 lg:border-r">
             <div className="rounded-lg border bg-panel p-4">
               <FileUp aria-hidden="true" className="text-primary" />
-              <h3 className="mt-3 text-sm font-semibold">Template and mapping</h3>
+              <h3 className="mt-3 text-sm font-semibold">
+                Template and mapping
+              </h3>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Use the template generated from this form so uploaded Excel or CSV files match question names, required fields, and validation rules.
+                Use the template generated from this form so uploaded Excel or
+                CSV files match question names, required fields, and validation
+                rules.
               </p>
               <div className="mt-4 grid gap-2">
                 <Button
                   onClick={() => {
                     updateSelectedReadiness({ importTemplateReviewed: true });
-                    setBuilderResult(`${selectedForm?.name ?? "Form"} import template is ready with ${selectedFormWorkbook?.survey.length ?? 0} XLSForm survey rows.`);
+                    setBuilderResult(
+                      `${selectedForm?.name ?? "Form"} import template is ready with ${selectedFormWorkbook?.survey.length ?? 0} XLSForm survey rows.`,
+                    );
                     pushToast({
                       title: "Template ready",
-                      description: "Use Export for the XLSForm workbook, or validate a spreadsheet from this workspace.",
+                      description:
+                        "Use Export for the XLSForm workbook, or validate a spreadsheet from this workspace.",
                       tone: "success",
                     });
                   }}
@@ -4127,7 +5390,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   <FileDown aria-hidden="true" />
                   Prepare template
                 </Button>
-                <Button onClick={validateImportTemplate} type="button" variant="primary">
+                <Button
+                  onClick={validateImportTemplate}
+                  type="button"
+                  variant="primary"
+                >
                   <Check aria-hidden="true" />
                   Validate sample file
                 </Button>
@@ -4139,11 +5406,26 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <div className="mt-3 space-y-2 text-sm">
                 {[
                   ["Questions", String(selectedForm?.fields.length ?? 0)],
-                  ["Required columns", String(selectedForm?.fields.filter((field) => field.required).length ?? 0)],
-                  ["XLSForm rows", String(selectedFormWorkbook?.survey.length ?? 0)],
-                  ["Template checked", selectedFormReadiness.importTemplateReviewed ? "Yes" : "No"],
+                  [
+                    "Required columns",
+                    String(
+                      selectedForm?.fields.filter((field) => field.required)
+                        .length ?? 0,
+                    ),
+                  ],
+                  [
+                    "XLSForm rows",
+                    String(selectedFormWorkbook?.survey.length ?? 0),
+                  ],
+                  [
+                    "Template checked",
+                    selectedFormReadiness.importTemplateReviewed ? "Yes" : "No",
+                  ],
                 ].map(([label, value]) => (
-                  <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2" key={label}>
+                  <div
+                    className="flex items-center justify-between rounded-md border bg-background px-3 py-2"
+                    key={label}
+                  >
                     <span className="text-muted-foreground">{label}</span>
                     <span className="font-semibold">{value}</span>
                   </div>
@@ -4156,17 +5438,30 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <div className="rounded-lg border bg-panel">
               <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Column mapping preview</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Each spreadsheet column should map to one form question.</p>
+                  <h3 className="text-sm font-semibold">
+                    Column mapping preview
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Each spreadsheet column should map to one form question.
+                  </p>
                 </div>
-                <Badge tone="accent">{selectedForm?.fields.length ?? 0} fields</Badge>
+                <Badge tone="accent">
+                  {selectedForm?.fields.length ?? 0} fields
+                </Badge>
               </div>
               <div className="max-h-64 overflow-y-auto product-scrollbar">
                 {(selectedForm?.fields ?? []).map((field) => (
-                  <div className="grid gap-2 border-b px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_140px_100px]" key={field.id}>
+                  <div
+                    className="grid gap-2 border-b px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_140px_100px]"
+                    key={field.id}
+                  >
                     <span className="truncate font-medium">{field.label}</span>
-                    <span className="text-muted-foreground">{field.type.replace("_", " ")}</span>
-                    <Badge tone={field.required ? "warning" : "neutral"}>{field.required ? "Required" : "Optional"}</Badge>
+                    <span className="text-muted-foreground">
+                      {field.type.replace("_", " ")}
+                    </span>
+                    <Badge tone={field.required ? "warning" : "neutral"}>
+                      {field.required ? "Required" : "Optional"}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -4178,14 +5473,23 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               </div>
               <div className="divide-y">
                 {selectedImportRuns.map((run) => (
-                  <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]" key={run.id}>
+                  <div
+                    className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+                    key={run.id}
+                  >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold">{run.fileName}</p>
-                        <Badge tone={getImportStatusTone(run.status)}>{run.status.replace("_", " ")}</Badge>
+                        <p className="truncate text-sm font-semibold">
+                          {run.fileName}
+                        </p>
+                        <Badge tone={getImportStatusTone(run.status)}>
+                          {run.status.replace("_", " ")}
+                        </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {run.rows} rows · {run.mappedColumns} mapped columns · {run.validRows} valid · {run.issueCount} issues · {new Date(run.createdAt).toLocaleString()}
+                        {run.rows} rows · {run.mappedColumns} mapped columns ·{" "}
+                        {run.validRows} valid · {run.issueCount} issues ·{" "}
+                        {new Date(run.createdAt).toLocaleString()}
                       </p>
                     </div>
                     <Button
@@ -4193,9 +5497,13 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onClick={() => markImportAsImported(run.id)}
                       size="sm"
                       type="button"
-                      variant={run.status === "imported" ? "secondary" : "primary"}
+                      variant={
+                        run.status === "imported" ? "secondary" : "primary"
+                      }
                     >
-                      {run.status === "imported" ? "Imported" : "Import clean rows"}
+                      {run.status === "imported"
+                        ? "Imported"
+                        : "Import clean rows"}
                     </Button>
                   </div>
                 ))}
@@ -4204,11 +5512,19 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           </section>
         </div>
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-between">
-          <Button onClick={openQualityWorkspace} type="button" variant="secondary">
+          <Button
+            onClick={openQualityWorkspace}
+            type="button"
+            variant="secondary"
+          >
             <Check aria-hidden="true" />
             Open quality workspace
           </Button>
-          <Button onClick={() => setImportWorkspaceDialogOpen(false)} type="button" variant="ghost">
+          <Button
+            onClick={() => setImportWorkspaceDialogOpen(false)}
+            type="button"
+            variant="ghost"
+          >
             Close
           </Button>
         </div>
@@ -4224,10 +5540,34 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
         <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
           <div className="grid gap-3 md:grid-cols-4">
             {[
-              ["Open flags", selectedQualityFlags.filter((flag) => flag.status !== "resolved").length],
-              ["Critical / high", selectedQualityFlags.filter((flag) => ["Critical", "High"].includes(flag.severity)).length],
-              ["Needs review", selectedFormReviewRows.filter((submission) => ["submitted", "under_review", "correction_requested"].includes(submission.status)).length],
-              ["Approved", selectedFormReviewRows.filter((submission) => submission.status === "approved").length],
+              [
+                "Open flags",
+                selectedQualityFlags.filter(
+                  (flag) => flag.status !== "resolved",
+                ).length,
+              ],
+              [
+                "Critical / high",
+                selectedQualityFlags.filter((flag) =>
+                  ["Critical", "High"].includes(flag.severity),
+                ).length,
+              ],
+              [
+                "Needs review",
+                selectedFormReviewRows.filter((submission) =>
+                  [
+                    "submitted",
+                    "under_review",
+                    "correction_requested",
+                  ].includes(submission.status),
+                ).length,
+              ],
+              [
+                "Approved",
+                selectedFormReviewRows.filter(
+                  (submission) => submission.status === "approved",
+                ).length,
+              ],
             ].map(([label, value]) => (
               <div className="rounded-lg border bg-background p-3" key={label}>
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -4243,15 +5583,27 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               </div>
               <div className="divide-y">
                 {selectedQualityFlags.map((flag) => (
-                  <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]" key={flag.id}>
+                  <div
+                    className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+                    key={flag.id}
+                  >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold">{flag.label}</p>
-                        <Badge tone={getQualitySeverityTone(flag.severity)}>{flag.severity}</Badge>
-                        <Badge tone={flag.status === "resolved" ? "success" : "warning"}>{flag.status}</Badge>
+                        <Badge tone={getQualitySeverityTone(flag.severity)}>
+                          {flag.severity}
+                        </Badge>
+                        <Badge
+                          tone={
+                            flag.status === "resolved" ? "success" : "warning"
+                          }
+                        >
+                          {flag.status}
+                        </Badge>
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {flag.affectedRecords} affected records · Owner: {flag.owner}. {flag.recommendation}
+                        {flag.affectedRecords} affected records · Owner:{" "}
+                        {flag.owner}. {flag.recommendation}
                       </p>
                     </div>
                     <Button
@@ -4274,10 +5626,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 {selectedFormControls.data_quality_rules
                   .filter((rule) => rule.enabled)
                   .map((rule) => (
-                    <div className="rounded-md border bg-panel px-3 py-2 text-sm" key={rule.id}>
+                    <div
+                      className="rounded-md border bg-panel px-3 py-2 text-sm"
+                      key={rule.id}
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium">{rule.label}</span>
-                        <Badge tone={rule.severity === "critical" ? "danger" : rule.severity === "high" ? "warning" : "neutral"}>
+                        <Badge
+                          tone={
+                            rule.severity === "critical"
+                              ? "danger"
+                              : rule.severity === "high"
+                                ? "warning"
+                                : "neutral"
+                          }
+                        >
                           {rule.severity}
                         </Badge>
                       </div>
@@ -4288,7 +5651,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </div>
                   ))}
               </div>
-              <Button className="mt-4 w-full" onClick={openSubmissionReviewWorkspace} type="button" variant="primary">
+              <Button
+                className="mt-4 w-full"
+                onClick={openSubmissionReviewWorkspace}
+                type="button"
+                variant="primary"
+              >
                 <Eye aria-hidden="true" />
                 Review records
               </Button>
@@ -4296,11 +5664,19 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:justify-between">
-          <Button onClick={openImportWorkspace} type="button" variant="secondary">
+          <Button
+            onClick={openImportWorkspace}
+            type="button"
+            variant="secondary"
+          >
             <FileUp aria-hidden="true" />
             Import workspace
           </Button>
-          <Button onClick={() => setQualityWorkspaceDialogOpen(false)} type="button" variant="ghost">
+          <Button
+            onClick={() => setQualityWorkspaceDialogOpen(false)}
+            type="button"
+            variant="ghost"
+          >
             Close
           </Button>
         </div>
@@ -4317,10 +5693,33 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           <aside className="min-h-0 border-b bg-background/70 lg:border-b-0 lg:border-r">
             <div className="grid grid-cols-2 gap-2 border-b p-4">
               {[
-                ["Waiting", selectedFormReviewRows.filter((submission) => ["submitted", "under_review", "resubmitted"].includes(submission.status)).length],
-                ["Approved", selectedFormReviewRows.filter((submission) => submission.status === "approved").length],
-                ["Correction", selectedFormReviewRows.filter((submission) => submission.status === "correction_requested").length],
-                ["Offline", selectedFormReviewRows.filter((submission) => submission.offline_created).length],
+                [
+                  "Waiting",
+                  selectedFormReviewRows.filter((submission) =>
+                    ["submitted", "under_review", "resubmitted"].includes(
+                      submission.status,
+                    ),
+                  ).length,
+                ],
+                [
+                  "Approved",
+                  selectedFormReviewRows.filter(
+                    (submission) => submission.status === "approved",
+                  ).length,
+                ],
+                [
+                  "Correction",
+                  selectedFormReviewRows.filter(
+                    (submission) =>
+                      submission.status === "correction_requested",
+                  ).length,
+                ],
+                [
+                  "Offline",
+                  selectedFormReviewRows.filter(
+                    (submission) => submission.offline_created,
+                  ).length,
+                ],
               ].map(([label, value]) => (
                 <div className="rounded-lg border bg-panel p-3" key={label}>
                   <p className="text-xs text-muted-foreground">{label}</p>
@@ -4330,18 +5729,23 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             </div>
             <div className="max-h-[56vh] space-y-2 overflow-y-auto p-4 product-scrollbar">
               {formSubmissionsQuery.isLoading && !isPreview ? (
-                <div className="rounded-lg border bg-panel p-4 text-sm text-muted-foreground">Loading submissions...</div>
+                <div className="rounded-lg border bg-panel p-4 text-sm text-muted-foreground">
+                  Loading submissions...
+                </div>
               ) : null}
-              {!selectedFormReviewRows.length && !formSubmissionsQuery.isLoading ? (
+              {!selectedFormReviewRows.length &&
+              !formSubmissionsQuery.isLoading ? (
                 <div className="rounded-lg border bg-panel p-4 text-sm leading-5 text-muted-foreground">
-                  No submissions are available for this form yet. Once field officers sync records, they will appear here for review.
+                  No submissions are available for this form yet. Once field
+                  officers sync records, they will appear here for review.
                 </div>
               ) : null}
               {selectedFormReviewRows.map((submission) => (
                 <button
                   className={cn(
                     "w-full rounded-lg border bg-panel p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                    selectedReviewSubmission?.id === submission.id && "border-primary/50 bg-primary/10",
+                    selectedReviewSubmission?.id === submission.id &&
+                      "border-primary/50 bg-primary/10",
                   )}
                   key={submission.id}
                   onClick={() => setSelectedReviewSubmissionId(submission.id)}
@@ -4349,7 +5753,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{submission.client_submission_id}</p>
+                      <p className="truncate text-sm font-semibold">
+                        {submission.client_submission_id}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {new Date(submission.submitted_at).toLocaleString()}
                       </p>
@@ -4359,7 +5765,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </Badge>
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    GPS {submission.latitude.toFixed(4)}, {submission.longitude.toFixed(4)}
+                    GPS {submission.latitude.toFixed(4)},{" "}
+                    {submission.longitude.toFixed(4)}
                     {submission.offline_created ? " · offline draft" : ""}
                   </p>
                 </button>
@@ -4373,13 +5780,26 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <div className="flex flex-col gap-3 rounded-lg border bg-panel p-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold">{selectedReviewSubmission.client_submission_id}</h3>
-                      <Badge tone={getReviewStatusTone(selectedReviewSubmission.status)}>
+                      <h3 className="text-base font-semibold">
+                        {selectedReviewSubmission.client_submission_id}
+                      </h3>
+                      <Badge
+                        tone={getReviewStatusTone(
+                          selectedReviewSubmission.status,
+                        )}
+                      >
                         {formatReviewStatus(selectedReviewSubmission.status)}
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Captured {new Date(selectedReviewSubmission.captured_at).toLocaleString()} · Synced {new Date(selectedReviewSubmission.sync_received_at).toLocaleString()}
+                      Captured{" "}
+                      {new Date(
+                        selectedReviewSubmission.captured_at,
+                      ).toLocaleString()}{" "}
+                      · Synced{" "}
+                      {new Date(
+                        selectedReviewSubmission.sync_received_at,
+                      ).toLocaleString()}
                     </p>
                   </div>
                   <Button
@@ -4395,13 +5815,29 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <div className="grid gap-3 md:grid-cols-4">
                   {[
                     ["Enumerator", selectedReviewSubmission.field_officer_id],
-                    ["Server sequence", String(selectedReviewSubmission.server_sequence)],
-                    ["GPS accuracy", selectedReviewSubmission.accuracy ? `${selectedReviewSubmission.accuracy}m` : "Not reported"],
-                    ["Offline", selectedReviewSubmission.offline_created ? "Yes" : "No"],
+                    [
+                      "Server sequence",
+                      String(selectedReviewSubmission.server_sequence),
+                    ],
+                    [
+                      "GPS accuracy",
+                      selectedReviewSubmission.accuracy
+                        ? `${selectedReviewSubmission.accuracy}m`
+                        : "Not reported",
+                    ],
+                    [
+                      "Offline",
+                      selectedReviewSubmission.offline_created ? "Yes" : "No",
+                    ],
                   ].map(([label, value]) => (
-                    <div className="rounded-lg border bg-background p-3" key={label}>
+                    <div
+                      className="rounded-lg border bg-background p-3"
+                      key={label}
+                    >
                       <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="mt-2 truncate text-sm font-semibold">{value}</p>
+                      <p className="mt-2 truncate text-sm font-semibold">
+                        {value}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -4411,14 +5847,23 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <p className="text-sm font-semibold">Response values</p>
                   </div>
                   <div className="divide-y">
-                    {Object.entries(selectedReviewSubmission.payload_json).map(([key, value]) => (
-                      <div className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[220px_minmax(0,1fr)]" key={key}>
-                        <span className="font-medium text-muted-foreground">{key}</span>
-                        <span className="break-words">
-                          {typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)}
-                        </span>
-                      </div>
-                    ))}
+                    {Object.entries(selectedReviewSubmission.payload_json).map(
+                      ([key, value]) => (
+                        <div
+                          className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[220px_minmax(0,1fr)]"
+                          key={key}
+                        >
+                          <span className="font-medium text-muted-foreground">
+                            {key}
+                          </span>
+                          <span className="break-words">
+                            {typeof value === "object" && value !== null
+                              ? JSON.stringify(value)
+                              : String(value)}
+                          </span>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </div>
 
@@ -4462,11 +5907,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             ) : (
               <div className="flex h-full min-h-72 items-center justify-center rounded-lg border bg-panel p-6 text-center">
                 <div>
-                  <Eye aria-hidden="true" className="mx-auto text-muted-foreground" size={28} />
+                  <Eye
+                    aria-hidden="true"
+                    className="mx-auto text-muted-foreground"
+                    size={28}
+                  />
                   <div className="mt-3 flex items-center justify-center gap-2">
                     <p className="text-sm font-semibold">No record selected</p>
-                    <HelpHint label="About selecting a record" title="No record selected">
-                      Select a synced submission from the queue to inspect values, add a reviewer note, approve clean data, or return records that need correction.
+                    <HelpHint
+                      label="About selecting a record"
+                      title="No record selected"
+                    >
+                      Select a synced submission from the queue to inspect
+                      values, add a reviewer note, approve clean data, or return
+                      records that need correction.
                     </HelpHint>
                   </div>
                 </div>
@@ -4489,7 +5943,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <button
                 className={cn(
                   "inline-flex h-9 shrink-0 items-center gap-2 rounded px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
-                  formControlsTab === tab && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                  formControlsTab === tab &&
+                    "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
                 )}
                 key={tab}
                 onClick={() => setFormControlsTab(tab)}
@@ -4507,15 +5962,38 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-4">
                 {[
-                  ["Reference lists", selectedFormControls.reference_bindings.length, "Controlled values attached"],
-                  ["Access rules", selectedFormControls.permission_rules.length, "Roles, users, or teams"],
-                  ["Workflow stages", selectedFormControls.workflow_stages.length, selectedFormControls.governance.approval_workflow],
-                  ["Quality checks", selectedFormControls.data_quality_rules.filter((rule) => rule.enabled).length, "Active controls"],
+                  [
+                    "Reference lists",
+                    selectedFormControls.reference_bindings.length,
+                    "Controlled values attached",
+                  ],
+                  [
+                    "Access rules",
+                    selectedFormControls.permission_rules.length,
+                    "Roles, users, or teams",
+                  ],
+                  [
+                    "Workflow stages",
+                    selectedFormControls.workflow_stages.length,
+                    selectedFormControls.governance.approval_workflow,
+                  ],
+                  [
+                    "Quality checks",
+                    selectedFormControls.data_quality_rules.filter(
+                      (rule) => rule.enabled,
+                    ).length,
+                    "Active controls",
+                  ],
                 ].map(([label, value, helper]) => (
-                  <div className="rounded-lg border bg-background p-3" key={label}>
+                  <div
+                    className="rounded-lg border bg-background p-3"
+                    key={label}
+                  >
                     <p className="text-xs text-muted-foreground">{label}</p>
                     <p className="mt-2 text-2xl font-semibold">{value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {helper}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -4525,10 +6003,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onClick={() => setFormControlsTab("reference")}
                   type="button"
                 >
-                  <Database aria-hidden="true" className="text-emerald-700 dark:text-emerald-300" />
-                  <p className="mt-3 text-sm font-semibold">Bind official lists</p>
+                  <Database
+                    aria-hidden="true"
+                    className="text-emerald-700 dark:text-emerald-300"
+                  />
+                  <p className="mt-3 text-sm font-semibold">
+                    Bind official lists
+                  </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Attach districts, schools, facilities, communities, beneficiaries, donor codes, or custom master data to form questions.
+                    Attach districts, schools, facilities, communities,
+                    beneficiaries, donor codes, or custom master data to form
+                    questions.
                   </p>
                 </button>
                 <button
@@ -4536,10 +6021,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onClick={() => setFormControlsTab("workflow")}
                   type="button"
                 >
-                  <Workflow aria-hidden="true" className="text-sky-700 dark:text-sky-300" />
-                  <p className="mt-3 text-sm font-semibold">Choose the review path</p>
+                  <Workflow
+                    aria-hidden="true"
+                    className="text-sky-700 dark:text-sky-300"
+                  />
+                  <p className="mt-3 text-sm font-semibold">
+                    Choose the review path
+                  </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Use simple approval, supervisor review, data manager review, or correction workflows before records become approved data.
+                    Use simple approval, supervisor review, data manager review,
+                    or correction workflows before records become approved data.
                   </p>
                 </button>
                 <button
@@ -4547,10 +6038,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onClick={() => setFormControlsTab("quality")}
                   type="button"
                 >
-                  <Check aria-hidden="true" className="text-amber-700 dark:text-amber-300" />
-                  <p className="mt-3 text-sm font-semibold">Protect data quality</p>
+                  <Check
+                    aria-hidden="true"
+                    className="text-amber-700 dark:text-amber-300"
+                  />
+                  <p className="mt-3 text-sm font-semibold">
+                    Protect data quality
+                  </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Set blocking rules for required fields, GPS, duplicate records, consent, duration, and logical consistency.
+                    Set blocking rules for required fields, GPS, duplicate
+                    records, consent, duration, and logical consistency.
                   </p>
                 </button>
               </div>
@@ -4562,12 +6059,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <section className="rounded-lg border bg-background p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold">Reference data bindings</h3>
+                    <h3 className="text-sm font-semibold">
+                      Reference data bindings
+                    </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Bind form questions to official lists and prevent uncontrolled free text.
+                      Bind form questions to official lists and prevent
+                      uncontrolled free text.
                     </p>
                   </div>
-                  <Button onClick={() => addReferenceBinding()} size="sm" type="button" variant="primary">
+                  <Button
+                    onClick={() => addReferenceBinding()}
+                    size="sm"
+                    type="button"
+                    variant="primary"
+                  >
                     <Database aria-hidden="true" />
                     Bind selected question
                   </Button>
@@ -4575,12 +6080,20 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <div className="mt-4 space-y-3">
                   {selectedFormControls.reference_bindings.length ? (
                     selectedFormControls.reference_bindings.map((binding) => (
-                      <div className="rounded-lg border bg-panel p-3" key={binding.id}>
+                      <div
+                        className="rounded-lg border bg-panel p-3"
+                        key={binding.id}
+                      >
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{binding.question_label}</p>
+                            <p className="truncate text-sm font-semibold">
+                              {binding.question_label}
+                            </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {binding.source} · v{binding.version} · {binding.enforce_controlled_values ? "controlled values enforced" : "free text allowed"}
+                              {binding.source} · v{binding.version} ·{" "}
+                              {binding.enforce_controlled_values
+                                ? "controlled values enforced"
+                                : "free text allowed"}
                             </p>
                           </div>
                           <Button
@@ -4588,7 +6101,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                             onClick={() =>
                               updateSelectedFormControls((controls) => ({
                                 ...controls,
-                                reference_bindings: controls.reference_bindings.filter((candidate) => candidate.id !== binding.id),
+                                reference_bindings:
+                                  controls.reference_bindings.filter(
+                                    (candidate) => candidate.id !== binding.id,
+                                  ),
                               }))
                             }
                             size="icon"
@@ -4606,11 +6122,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                               onChange={(event) =>
                                 updateSelectedFormControls((controls) => ({
                                   ...controls,
-                                  reference_bindings: controls.reference_bindings.map((candidate) =>
-                                    candidate.id === binding.id
-                                      ? { ...candidate, reference_list_name: event.target.value, changed_since_publish: true }
-                                      : candidate,
-                                  ),
+                                  reference_bindings:
+                                    controls.reference_bindings.map(
+                                      (candidate) =>
+                                        candidate.id === binding.id
+                                          ? {
+                                              ...candidate,
+                                              reference_list_name:
+                                                event.target.value,
+                                              changed_since_publish: true,
+                                            }
+                                          : candidate,
+                                    ),
                                 }))
                               }
                               value={binding.reference_list_name}
@@ -4623,11 +6146,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                               onChange={(event) =>
                                 updateSelectedFormControls((controls) => ({
                                   ...controls,
-                                  reference_bindings: controls.reference_bindings.map((candidate) =>
-                                    candidate.id === binding.id
-                                      ? { ...candidate, parent_reference: event.target.value || null, changed_since_publish: true }
-                                      : candidate,
-                                  ),
+                                  reference_bindings:
+                                    controls.reference_bindings.map(
+                                      (candidate) =>
+                                        candidate.id === binding.id
+                                          ? {
+                                              ...candidate,
+                                              parent_reference:
+                                                event.target.value || null,
+                                              changed_since_publish: true,
+                                            }
+                                          : candidate,
+                                    ),
                                 }))
                               }
                               placeholder="Example: Region"
@@ -4639,11 +6169,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     ))
                   ) : (
                     <div className="rounded-lg border border-dashed bg-panel p-5 text-center">
-                      <Database aria-hidden="true" className="mx-auto text-primary" />
+                      <Database
+                        aria-hidden="true"
+                        className="mx-auto text-primary"
+                      />
                       <div className="mt-3 flex items-center justify-center gap-2">
-                        <p className="text-sm font-semibold">No reference lists attached yet</p>
-                        <HelpHint label="About reference lists" title="No reference lists attached yet">
-                          Select a district, community, school, facility, beneficiary, or donor-code question, then bind it to an official list.
+                        <p className="text-sm font-semibold">
+                          No reference lists attached yet
+                        </p>
+                        <HelpHint
+                          label="About reference lists"
+                          title="No reference lists attached yet"
+                        >
+                          Select a district, community, school, facility,
+                          beneficiary, or donor-code question, then bind it to
+                          an official list.
                         </HelpHint>
                       </div>
                     </div>
@@ -4657,7 +6197,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <button
                       className={cn(
                         "w-full rounded-md border bg-background p-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/5",
-                        selectedField?.id === field.id && "border-primary/40 bg-primary/10",
+                        selectedField?.id === field.id &&
+                          "border-primary/40 bg-primary/10",
                       )}
                       key={field.id}
                       onClick={() => {
@@ -4667,7 +6208,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       type="button"
                     >
                       <span className="block font-semibold">{field.label}</span>
-                      <span className="mt-1 block text-muted-foreground">{field.type.replace("_", " ")}</span>
+                      <span className="mt-1 block text-muted-foreground">
+                        {field.type.replace("_", " ")}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -4679,9 +6222,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <div className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold">Per-form access control</h3>
+                  <h3 className="text-sm font-semibold">
+                    Per-form access control
+                  </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Permissions inherit from the project, then M&E Managers can narrow access for this form.
+                    Permissions inherit from the project, then M&E Managers can
+                    narrow access for this form.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -4689,7 +6235,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     onClick={() =>
                       updateSelectedFormControls((controls) => ({
                         ...controls,
-                        permission_rules: createDefaultFormControls(selectedForm).permission_rules,
+                        permission_rules:
+                          createDefaultFormControls(selectedForm)
+                            .permission_rules,
                       }))
                     }
                     size="sm"
@@ -4725,19 +6273,29 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               </div>
               <div className="grid gap-3 lg:grid-cols-3">
                 {selectedFormControls.permission_rules.map((rule) => (
-                  <div className="rounded-lg border bg-background p-4" key={`${rule.subject_type}-${rule.subject_name}`}>
+                  <div
+                    className="rounded-lg border bg-background p-4"
+                    key={`${rule.subject_type}-${rule.subject_name}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold">{rule.subject_name}</p>
+                        <p className="text-sm font-semibold">
+                          {rule.subject_name}
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {rule.subject_type} · {rule.location_scope}
                         </p>
                       </div>
-                      <Badge tone={rule.read_only ? "neutral" : "accent"}>{rule.read_only ? "Read only" : "Active"}</Badge>
+                      <Badge tone={rule.read_only ? "neutral" : "accent"}>
+                        {rule.read_only ? "Read only" : "Active"}
+                      </Badge>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {rule.permissions.map((permission) => (
-                        <span className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground" key={permission}>
+                        <span
+                          className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                          key={permission}
+                        >
                           {permission.replaceAll("_", " ")}
                         </span>
                       ))}
@@ -4748,10 +6306,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         onChange={(event) =>
                           updateSelectedFormControls((controls) => ({
                             ...controls,
-                            permission_rules: controls.permission_rules.map((candidate) =>
-                              candidate.subject_name === rule.subject_name
-                                ? { ...candidate, can_approve_own_submission: event.target.checked }
-                                : candidate,
+                            permission_rules: controls.permission_rules.map(
+                              (candidate) =>
+                                candidate.subject_name === rule.subject_name
+                                  ? {
+                                      ...candidate,
+                                      can_approve_own_submission:
+                                        event.target.checked,
+                                    }
+                                  : candidate,
                             ),
                           }))
                         }
@@ -4768,22 +6331,39 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           {formControlsTab === "workflow" ? (
             <div className="space-y-4">
               <div className="grid gap-2 md:grid-cols-3">
-                {([
-                  ["simple", "Simple", "Submitted to approved or rejected"],
-                  ["standard", "Standard", "Supervisor and data manager review"],
-                  ["correction", "Correction", "Return, resubmit, review, approve"],
-                ] satisfies ["simple" | "standard" | "correction", string, string][]).map(([preset, label, helper]) => (
+                {(
+                  [
+                    ["simple", "Simple", "Submitted to approved or rejected"],
+                    [
+                      "standard",
+                      "Standard",
+                      "Supervisor and data manager review",
+                    ],
+                    [
+                      "correction",
+                      "Correction",
+                      "Return, resubmit, review, approve",
+                    ],
+                  ] satisfies [
+                    "simple" | "standard" | "correction",
+                    string,
+                    string,
+                  ][]
+                ).map(([preset, label, helper]) => (
                   <button
                     className={cn(
                       "rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                      selectedFormControls.governance.approval_workflow === preset && "border-primary/50 bg-primary/10",
+                      selectedFormControls.governance.approval_workflow ===
+                        preset && "border-primary/50 bg-primary/10",
                     )}
                     key={preset}
                     onClick={() => applyWorkflowPreset(preset)}
                     type="button"
                   >
                     <span className="text-sm font-semibold">{label}</span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{helper}</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      {helper}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -4791,14 +6371,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <h3 className="text-sm font-semibold">Workflow stages</h3>
                 <div className="mt-4 space-y-3">
                   {selectedFormControls.workflow_stages.map((stage, index) => (
-                    <div className="grid gap-3 rounded-lg border bg-panel p-3 md:grid-cols-[40px_minmax(0,1fr)_160px]" key={stage.id}>
+                    <div
+                      className="grid gap-3 rounded-lg border bg-panel p-3 md:grid-cols-[40px_minmax(0,1fr)_160px]"
+                      key={stage.id}
+                    >
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                         {index + 1}
                       </span>
                       <div>
                         <p className="text-sm font-semibold">{stage.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {stage.reviewer_roles.join(", ")} · {stage.reviewer_location_scope}
+                          {stage.reviewer_roles.join(", ")} ·{" "}
+                          {stage.reviewer_location_scope}
                         </p>
                       </div>
                       <label className="text-xs font-medium">
@@ -4809,8 +6393,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                           onChange={(event) =>
                             updateSelectedFormControls((controls) => ({
                               ...controls,
-                              workflow_stages: controls.workflow_stages.map((candidate) =>
-                                candidate.id === stage.id ? { ...candidate, sla_hours: Number(event.target.value) || 1 } : candidate,
+                              workflow_stages: controls.workflow_stages.map(
+                                (candidate) =>
+                                  candidate.id === stage.id
+                                    ? {
+                                        ...candidate,
+                                        sla_hours:
+                                          Number(event.target.value) || 1,
+                                      }
+                                    : candidate,
                               ),
                             }))
                           }
@@ -4828,7 +6419,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
           {formControlsTab === "quality" ? (
             <div className="space-y-3">
               {selectedFormControls.data_quality_rules.map((rule) => (
-                <div className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[minmax(0,1fr)_160px_120px]" key={rule.id}>
+                <div
+                  className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-[minmax(0,1fr)_160px_120px]"
+                  key={rule.id}
+                >
                   <label className="flex items-start gap-3">
                     <input
                       checked={rule.enabled}
@@ -4836,17 +6430,28 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onChange={(event) =>
                         updateSelectedFormControls((controls) => ({
                           ...controls,
-                          data_quality_rules: controls.data_quality_rules.map((candidate) =>
-                            candidate.id === rule.id ? { ...candidate, enabled: event.target.checked } : candidate,
+                          data_quality_rules: controls.data_quality_rules.map(
+                            (candidate) =>
+                              candidate.id === rule.id
+                                ? {
+                                    ...candidate,
+                                    enabled: event.target.checked,
+                                  }
+                                : candidate,
                           ),
                         }))
                       }
                       type="checkbox"
                     />
                     <span>
-                      <span className="block text-sm font-semibold">{rule.label}</span>
+                      <span className="block text-sm font-semibold">
+                        {rule.label}
+                      </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {rule.rule_type.replaceAll("_", " ")} · {rule.fields.length ? rule.fields.join(", ") : "all relevant fields"}
+                        {rule.rule_type.replaceAll("_", " ")} ·{" "}
+                        {rule.fields.length
+                          ? rule.fields.join(", ")
+                          : "all relevant fields"}
                       </span>
                     </span>
                   </label>
@@ -4857,10 +6462,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onChange={(event) =>
                         updateSelectedFormControls((controls) => ({
                           ...controls,
-                          data_quality_rules: controls.data_quality_rules.map((candidate) =>
-                            candidate.id === rule.id
-                              ? { ...candidate, severity: event.target.value as FormControlsSettings["data_quality_rules"][number]["severity"] }
-                              : candidate,
+                          data_quality_rules: controls.data_quality_rules.map(
+                            (candidate) =>
+                              candidate.id === rule.id
+                                ? {
+                                    ...candidate,
+                                    severity: event.target
+                                      .value as FormControlsSettings["data_quality_rules"][number]["severity"],
+                                  }
+                                : candidate,
                           ),
                         }))
                       }
@@ -4878,8 +6488,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onChange={(event) =>
                         updateSelectedFormControls((controls) => ({
                           ...controls,
-                          data_quality_rules: controls.data_quality_rules.map((candidate) =>
-                            candidate.id === rule.id ? { ...candidate, blocking: event.target.checked } : candidate,
+                          data_quality_rules: controls.data_quality_rules.map(
+                            (candidate) =>
+                              candidate.id === rule.id
+                                ? {
+                                    ...candidate,
+                                    blocking: event.target.checked,
+                                  }
+                                : candidate,
                           ),
                         }))
                       }
@@ -4903,7 +6519,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       ...controls,
                       governance: {
                         ...controls.governance,
-                        form_status: event.target.value as FormControlsSettings["governance"]["form_status"],
+                        form_status: event.target
+                          .value as FormControlsSettings["governance"]["form_status"],
                       },
                     }))
                   }
@@ -4925,7 +6542,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onChange={(event) =>
                     updateSelectedFormControls((controls) => ({
                       ...controls,
-                      governance: { ...controls.governance, minimum_quality_score: Number(event.target.value) || 0 },
+                      governance: {
+                        ...controls.governance,
+                        minimum_quality_score: Number(event.target.value) || 0,
+                      },
                     }))
                   }
                   type="number"
@@ -4940,7 +6560,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onChange={(event) =>
                     updateSelectedFormControls((controls) => ({
                       ...controls,
-                      governance: { ...controls.governance, review_sla_hours: Number(event.target.value) || 1 },
+                      governance: {
+                        ...controls.governance,
+                        review_sla_hours: Number(event.target.value) || 1,
+                      },
                     }))
                   }
                   type="number"
@@ -4955,7 +6578,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   onChange={(event) =>
                     updateSelectedFormControls((controls) => ({
                       ...controls,
-                      governance: { ...controls.governance, data_retention_days: Number(event.target.value) || 1 },
+                      governance: {
+                        ...controls.governance,
+                        data_retention_days: Number(event.target.value) || 1,
+                      },
                     }))
                   }
                   type="number"
@@ -4965,25 +6591,48 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <div className="rounded-lg border bg-background p-4 lg:col-span-2">
                 <h3 className="text-sm font-semibold">Governance switches</h3>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {([
-                    ["require_gps_capture", "Require GPS capture"],
-                    ["require_timestamp_capture", "Require timestamp capture"],
-                    ["require_enumerator_assignment", "Require enumerator assignment"],
-                    ["require_supervisor_review", "Require supervisor review"],
-                    ["export_restricted", "Restrict exports"],
-                    ["sensitive_field_masking", "Mask sensitive fields"],
-                    ["pii_tagging_required", "Require PII tagging"],
-                    ["consent_required", "Require consent"],
-                    ["auto_lock_after_approval", "Auto-lock after approval"],
-                    ["auto_archive_after_project_closure", "Auto-archive after project closure"],
-                  ] satisfies [keyof FormControlsSettings["governance"], string][]).map(([key, label]) => (
-                    <label className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm" key={String(key)}>
+                  {(
+                    [
+                      ["require_gps_capture", "Require GPS capture"],
+                      [
+                        "require_timestamp_capture",
+                        "Require timestamp capture",
+                      ],
+                      [
+                        "require_enumerator_assignment",
+                        "Require enumerator assignment",
+                      ],
+                      [
+                        "require_supervisor_review",
+                        "Require supervisor review",
+                      ],
+                      ["export_restricted", "Restrict exports"],
+                      ["sensitive_field_masking", "Mask sensitive fields"],
+                      ["pii_tagging_required", "Require PII tagging"],
+                      ["consent_required", "Require consent"],
+                      ["auto_lock_after_approval", "Auto-lock after approval"],
+                      [
+                        "auto_archive_after_project_closure",
+                        "Auto-archive after project closure",
+                      ],
+                    ] satisfies [
+                      keyof FormControlsSettings["governance"],
+                      string,
+                    ][]
+                  ).map(([key, label]) => (
+                    <label
+                      className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm"
+                      key={String(key)}
+                    >
                       <input
                         checked={Boolean(selectedFormControls.governance[key])}
                         onChange={(event) =>
                           updateSelectedFormControls((controls) => ({
                             ...controls,
-                            governance: { ...controls.governance, [key]: event.target.checked },
+                            governance: {
+                              ...controls.governance,
+                              [key]: event.target.checked,
+                            },
                           }))
                         }
                         type="checkbox"
@@ -5000,30 +6649,48 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
               <section className="rounded-lg border bg-background p-4">
                 <ShieldCheck aria-hidden="true" className="text-primary" />
-                <h3 className="mt-3 text-sm font-semibold">Immutable audit trail</h3>
+                <h3 className="mt-3 text-sm font-semibold">
+                  Immutable audit trail
+                </h3>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Audit records cannot be deleted. High-risk events require a reason and exports are restricted to approved roles.
+                  Audit records cannot be deleted. High-risk events require a
+                  reason and exports are restricted to approved roles.
                 </p>
-                <Badge className="mt-3" tone={selectedFormControls.audit.immutable ? "success" : "danger"}>
-                  {selectedFormControls.audit.immutable ? "Immutable" : "Not immutable"}
+                <Badge
+                  className="mt-3"
+                  tone={
+                    selectedFormControls.audit.immutable ? "success" : "danger"
+                  }
+                >
+                  {selectedFormControls.audit.immutable
+                    ? "Immutable"
+                    : "Not immutable"}
                 </Badge>
               </section>
               <section className="rounded-lg border bg-background p-4">
                 <h3 className="text-sm font-semibold">Tracked events</h3>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {selectedFormControls.audit.tracked_events.map((event) => (
-                    <span className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground" key={event}>
+                    <span
+                      className="rounded-md border bg-panel px-2 py-1 text-[11px] text-muted-foreground"
+                      key={event}
+                    >
                       {event.replaceAll("_", " ")}
                     </span>
                   ))}
                 </div>
                 <h3 className="mt-5 text-sm font-semibold">Reason required</h3>
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {selectedFormControls.audit.reason_required_events.map((event) => (
-                    <span className="rounded-md border border-warning/30 bg-warning/10 px-2 py-1 text-[11px]" key={event}>
-                      {event.replaceAll("_", " ")}
-                    </span>
-                  ))}
+                  {selectedFormControls.audit.reason_required_events.map(
+                    (event) => (
+                      <span
+                        className="rounded-md border border-warning/30 bg-warning/10 px-2 py-1 text-[11px]"
+                        key={event}
+                      >
+                        {event.replaceAll("_", " ")}
+                      </span>
+                    ),
+                  )}
                 </div>
               </section>
             </div>
@@ -5034,20 +6701,46 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <section className="rounded-lg border bg-background p-4">
                 <h3 className="text-sm font-semibold">Version rules</h3>
                 <div className="mt-3 grid gap-2">
-                  {([
-                    ["editing_published_creates_draft", "Editing a published form creates a new draft"],
-                    ["preserve_submission_version_link", "Submissions stay linked to the collected version"],
-                    ["compare_versions_enabled", "Version comparison is enabled"],
-                    ["reference_lists_version_aware", "Reference lists are version-aware"],
-                    ["archived_versions_viewable", "Archived versions stay viewable for audit"],
-                  ] satisfies [keyof FormControlsSettings["versioning"], string][]).map(([key, label]) => (
-                    <label className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm" key={String(key)}>
+                  {(
+                    [
+                      [
+                        "editing_published_creates_draft",
+                        "Editing a published form creates a new draft",
+                      ],
+                      [
+                        "preserve_submission_version_link",
+                        "Submissions stay linked to the collected version",
+                      ],
+                      [
+                        "compare_versions_enabled",
+                        "Version comparison is enabled",
+                      ],
+                      [
+                        "reference_lists_version_aware",
+                        "Reference lists are version-aware",
+                      ],
+                      [
+                        "archived_versions_viewable",
+                        "Archived versions stay viewable for audit",
+                      ],
+                    ] satisfies [
+                      keyof FormControlsSettings["versioning"],
+                      string,
+                    ][]
+                  ).map(([key, label]) => (
+                    <label
+                      className="flex items-center gap-2 rounded-md border bg-panel px-3 py-2 text-sm"
+                      key={String(key)}
+                    >
                       <input
                         checked={selectedFormControls.versioning[key]}
                         onChange={(event) =>
                           updateSelectedFormControls((controls) => ({
                             ...controls,
-                            versioning: { ...controls.versioning, [key]: event.target.checked },
+                            versioning: {
+                              ...controls.versioning,
+                              [key]: event.target.checked,
+                            },
                           }))
                         }
                         type="checkbox"
@@ -5060,13 +6753,36 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <aside className="rounded-lg border bg-panel p-4">
                 <h3 className="text-sm font-semibold">Current form history</h3>
                 <div className="mt-3 space-y-2">
-                  {(selectedForm?.history ?? [{ version: selectedForm?.version ?? 1, status: selectedForm?.status ?? "draft", createdAt: selectedForm?.updatedAt ?? new Date().toISOString(), summary: "Current draft" }]).map((entry) => (
-                    <div className="rounded-md border bg-background px-3 py-2 text-xs" key={`${entry.version}-${entry.createdAt}`}>
+                  {(
+                    selectedForm?.history ?? [
+                      {
+                        version: selectedForm?.version ?? 1,
+                        status: selectedForm?.status ?? "draft",
+                        createdAt:
+                          selectedForm?.updatedAt ?? new Date().toISOString(),
+                        summary: "Current draft",
+                      },
+                    ]
+                  ).map((entry) => (
+                    <div
+                      className="rounded-md border bg-background px-3 py-2 text-xs"
+                      key={`${entry.version}-${entry.createdAt}`}
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold">Version {entry.version}</span>
-                        <Badge tone={entry.status === "published" ? "success" : "neutral"}>{entry.status}</Badge>
+                        <span className="font-semibold">
+                          Version {entry.version}
+                        </span>
+                        <Badge
+                          tone={
+                            entry.status === "published" ? "success" : "neutral"
+                          }
+                        >
+                          {entry.status}
+                        </Badge>
                       </div>
-                      <p className="mt-1 text-muted-foreground">{entry.summary}</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {entry.summary}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -5077,10 +6793,15 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
 
         <div className="flex flex-col gap-2 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            Controls are saved per form and apply to publishing, field assignment, review, export, and audit behavior.
+            Controls are saved per form and apply to publishing, field
+            assignment, review, export, and audit behavior.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={() => setFormControlsDialogOpen(false)} type="button" variant="ghost">
+            <Button
+              onClick={() => setFormControlsDialogOpen(false)}
+              type="button"
+              variant="ghost"
+            >
               Cancel
             </Button>
             <Button
@@ -5113,8 +6834,13 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 Choose a ready-made form template
               </h2>
               <div className="mt-1">
-                <HelpHint label="About form templates" title="Choose a ready-made form template">
-                  Templates open directly inside the builder, so teams can preview, copy, edit, and publish without leaving the form workflow.
+                <HelpHint
+                  label="About form templates"
+                  title="Choose a ready-made form template"
+                >
+                  Templates open directly inside the builder, so teams can
+                  preview, copy, edit, and publish without leaving the form
+                  workflow.
                 </HelpHint>
               </div>
             </div>
@@ -5163,8 +6889,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               </div>
               <div className="mt-2 flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium">
                 {templateCategory}
-                <HelpHint label={`About ${templateCategory}`} title={templateCategory}>
-                  {templateCategoryDescriptions[templateCategory] ?? "Choose templates by the operational workflow your survey needs to support."}
+                <HelpHint
+                  label={`About ${templateCategory}`}
+                  title={templateCategory}
+                >
+                  {templateCategoryDescriptions[templateCategory] ??
+                    "Choose templates by the operational workflow your survey needs to support."}
                 </HelpHint>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -5191,7 +6921,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold">{template.name}</h3>
-                      <HelpHint label={`About ${template.name}`} title={template.name}>{template.description}</HelpHint>
+                      <HelpHint
+                        label={`About ${template.name}`}
+                        title={template.name}
+                      >
+                        {template.description}
+                      </HelpHint>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
                       <span>{template.fields} fields</span>
@@ -5211,7 +6946,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   {selectedTemplate.name}
                 </h3>
                 <div className="mt-2">
-                  <HelpHint label={`About ${selectedTemplate.name}`} title={selectedTemplate.name}>
+                  <HelpHint
+                    label={`About ${selectedTemplate.name}`}
+                    title={selectedTemplate.name}
+                  >
                     {selectedTemplate.description}
                   </HelpHint>
                 </div>
@@ -5260,8 +6998,13 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
             Create your first operational form
           </h2>
           <div className="mt-2 flex justify-center">
-            <HelpHint label="About creating the first form" title="Create your first operational form">
-              This organization has no saved forms yet. Start from a proven template, create a blank form, or import an existing XLSForm/CSV workflow through Data tools.
+            <HelpHint
+              label="About creating the first form"
+              title="Create your first operational form"
+            >
+              This organization has no saved forms yet. Start from a proven
+              template, create a blank form, or import an existing XLSForm/CSV
+              workflow through Data tools.
             </HelpHint>
           </div>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -5304,15 +7047,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               Builder view
             </p>
             <div className="grid grid-cols-3 gap-1 rounded-md border bg-background p-1">
-              {([
-                ["build", ClipboardList, "Build", "Questions"],
-                ["structure", PanelsTopLeft, "Structure", "Pages"],
-                ["preview", Eye, "Preview", "Test"],
-              ] satisfies [BuilderFocusPanel, typeof Type, string, string][]).map(([panel, Icon, label, hint]) => (
+              {(
+                [
+                  ["build", ClipboardList, "Build", "Questions"],
+                  ["structure", PanelsTopLeft, "Structure", "Pages"],
+                  ["preview", Eye, "Preview", "Test"],
+                ] satisfies [BuilderFocusPanel, typeof Type, string, string][]
+              ).map(([panel, Icon, label, hint]) => (
                 <button
                   className={cn(
                     "flex min-h-12 flex-col items-center justify-center rounded px-2 text-center text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
-                    builderFocusPanel === panel && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                    builderFocusPanel === panel &&
+                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
                   )}
                   key={panel}
                   onClick={() => setBuilderFocusPanel(panel)}
@@ -5320,7 +7066,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 >
                   <Icon aria-hidden="true" size={15} />
                   <span className="mt-1">{label}</span>
-                  <span className={cn("text-[10px] font-normal", builderFocusPanel === panel ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                  <span
+                    className={cn(
+                      "text-[10px] font-normal",
+                      builderFocusPanel === panel
+                        ? "text-primary-foreground/80"
+                        : "text-muted-foreground",
+                    )}
+                  >
                     {hint}
                   </span>
                 </button>
@@ -5340,18 +7093,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <h2 className="text-sm font-semibold">Builder workspace</h2>
               </div>
               <div className="mt-3 grid gap-1 rounded-md border bg-background p-1">
-                {([
-                  ["structure", ClipboardList, "Structure"],
-                  ["bank", Plus, "Question bank"],
-                  ["templates", Star, "Templates"],
-                  ["logic", Workflow, "Logic flows"],
-                  ["variables", Variable, "Variables"],
-                ] satisfies [LeftPanelTab, typeof Type, string][]).map(([tab, Icon, label]) => (
+                {(
+                  [
+                    ["structure", ClipboardList, "Structure"],
+                    ["bank", Plus, "Question bank"],
+                    ["templates", Star, "Templates"],
+                    ["logic", Workflow, "Logic flows"],
+                    ["variables", Variable, "Variables"],
+                  ] satisfies [LeftPanelTab, typeof Type, string][]
+                ).map(([tab, Icon, label]) => (
                   <button
                     key={String(tab)}
                     className={cn(
                       "flex h-8 items-center gap-2 rounded px-2 text-left text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
-                      leftPanelTab === tab && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                      leftPanelTab === tab &&
+                        "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
                     )}
                     onClick={() => setLeftPanelTab(tab as LeftPanelTab)}
                     aria-label={String(label)}
@@ -5374,17 +7130,35 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       Workspace, program, project, survey, version, responses.
                     </p>
                   </div>
-                  <Button aria-label="Add survey page" onClick={addBuilderPage} size="icon" type="button" variant="ghost">
+                  <Button
+                    aria-label="Add survey page"
+                    onClick={addBuilderPage}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
                     <Plus aria-hidden="true" />
                   </Button>
                 </div>
                 <div className="mt-3 space-y-2 rounded-md border bg-background p-2 text-xs">
-                  {["Workspace", selectedProject?.name ?? "Program", selectedProject?.name ?? "Project", selectedSurvey?.title ?? "Survey", `Version ${selectedForm?.version ?? 1}`, `${selectedForm?.fields.length ?? 0} Responses-ready fields`].map((item, index) => (
-                    <div className="flex items-center gap-2" key={`${item}-${index}`}>
+                  {[
+                    "Workspace",
+                    selectedProject?.name ?? "Program",
+                    selectedProject?.name ?? "Project",
+                    selectedSurvey?.title ?? "Survey",
+                    `Version ${selectedForm?.version ?? 1}`,
+                    `${selectedForm?.fields.length ?? 0} Responses-ready fields`,
+                  ].map((item, index) => (
+                    <div
+                      className="flex items-center gap-2"
+                      key={`${item}-${index}`}
+                    >
                       <span className="flex h-5 w-5 items-center justify-center rounded bg-primary/10 text-[10px] font-semibold text-primary">
                         {index + 1}
                       </span>
-                      <span className="truncate text-muted-foreground">{item}</span>
+                      <span className="truncate text-muted-foreground">
+                        {item}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -5394,7 +7168,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Pages
                     </p>
-                    <Button onClick={addBuilderPage} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={addBuilderPage}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Plus aria-hidden="true" />
                       Page
                     </Button>
@@ -5403,7 +7182,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <div
                       className={cn(
                         "rounded-md border bg-background p-2",
-                        activePage?.id === page.id && "border-primary/40 bg-primary/5",
+                        activePage?.id === page.id &&
+                          "border-primary/40 bg-primary/5",
                       )}
                       key={page.id}
                     >
@@ -5413,19 +7193,48 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         type="button"
                       >
                         <span className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium">{page.title}</span>
-                          <Badge tone="neutral">{selectedForm?.sections.filter((section) => section.pageId === page.id).length ?? 0} sections</Badge>
+                          <span className="text-sm font-medium">
+                            {page.title}
+                          </span>
+                          <Badge tone="neutral">
+                            {selectedForm?.sections.filter(
+                              (section) => section.pageId === page.id,
+                            ).length ?? 0}{" "}
+                            sections
+                          </Badge>
                         </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">{page.description}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {page.description}
+                        </span>
                       </button>
                       <div className="mt-2 flex gap-1">
-                        <Button aria-label={`Move ${page.title} up`} disabled={index === 0} onClick={() => movePage(page.id, -1)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Move ${page.title} up`}
+                          disabled={index === 0}
+                          onClick={() => movePage(page.id, -1)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <ArrowUp aria-hidden="true" />
                         </Button>
-                        <Button aria-label={`Move ${page.title} down`} disabled={index === selectedPages.length - 1} onClick={() => movePage(page.id, 1)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Move ${page.title} down`}
+                          disabled={index === selectedPages.length - 1}
+                          onClick={() => movePage(page.id, 1)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <ArrowDown aria-hidden="true" />
                         </Button>
-                        <Button aria-label={`Duplicate ${page.title}`} onClick={() => duplicateBuilderPage(page.id)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Duplicate ${page.title}`}
+                          onClick={() => duplicateBuilderPage(page.id)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <Copy aria-hidden="true" />
                         </Button>
                       </div>
@@ -5438,7 +7247,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Sections on {activePage?.title ?? "page"}
                     </p>
-                    <Button onClick={addBuilderSection} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={addBuilderSection}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Plus aria-hidden="true" />
                       Section
                     </Button>
@@ -5447,7 +7261,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <div
                       className={cn(
                         "rounded-md border bg-background p-2",
-                        activeSection?.id === section.id && "border-primary/40 bg-primary/5",
+                        activeSection?.id === section.id &&
+                          "border-primary/40 bg-primary/5",
                       )}
                       key={section.id}
                     >
@@ -5456,19 +7271,44 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         onClick={() => setSelectedSectionId(section.id)}
                         type="button"
                       >
-                        <span className="text-sm font-medium">{section.title}</span>
+                        <span className="text-sm font-medium">
+                          {section.title}
+                        </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
-                          {selectedForm?.fields.filter((field) => field.sectionId === section.id).length ?? 0} questions
+                          {selectedForm?.fields.filter(
+                            (field) => field.sectionId === section.id,
+                          ).length ?? 0}{" "}
+                          questions
                         </span>
                       </button>
                       <div className="mt-2 flex gap-1">
-                        <Button aria-label={`Move ${section.title} up`} disabled={index === 0} onClick={() => moveSection(section.id, -1)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Move ${section.title} up`}
+                          disabled={index === 0}
+                          onClick={() => moveSection(section.id, -1)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <ArrowUp aria-hidden="true" />
                         </Button>
-                        <Button aria-label={`Move ${section.title} down`} disabled={index === activeSections.length - 1} onClick={() => moveSection(section.id, 1)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Move ${section.title} down`}
+                          disabled={index === activeSections.length - 1}
+                          onClick={() => moveSection(section.id, 1)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <ArrowDown aria-hidden="true" />
                         </Button>
-                        <Button aria-label={`Duplicate ${section.title}`} onClick={() => duplicateBuilderSection(section.id)} size="icon" type="button" variant="ghost">
+                        <Button
+                          aria-label={`Duplicate ${section.title}`}
+                          onClick={() => duplicateBuilderSection(section.id)}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
                           <Copy aria-hidden="true" />
                         </Button>
                       </div>
@@ -5489,30 +7329,43 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Form outline
                     </p>
-                    <Badge tone="neutral">{selectedForm?.sections.length ?? 0} sections</Badge>
+                    <Badge tone="neutral">
+                      {selectedForm?.sections.length ?? 0} sections
+                    </Badge>
                   </div>
                   <div className="max-h-56 space-y-2 overflow-y-auto pr-1 product-scrollbar">
                     {selectedForm?.sections.map((section) => {
-                      const sectionFields = selectedForm.fields.filter((field) => field.sectionId === section.id);
+                      const sectionFields = selectedForm.fields.filter(
+                        (field) => field.sectionId === section.id,
+                      );
                       return (
-                        <div className="rounded-md border bg-panel/70 p-2" key={section.id}>
+                        <div
+                          className="rounded-md border bg-panel/70 p-2"
+                          key={section.id}
+                        >
                           <button
                             className="flex w-full items-center justify-between gap-2 text-left"
                             onClick={() => {
                               setSelectedSectionId(section.id);
-                              if (section.pageId) setSelectedPageId(section.pageId);
+                              if (section.pageId)
+                                setSelectedPageId(section.pageId);
                             }}
                             type="button"
                           >
-                            <span className="truncate text-xs font-semibold">{section.title}</span>
-                            <span className="text-[10px] text-muted-foreground">{sectionFields.length}</span>
+                            <span className="truncate text-xs font-semibold">
+                              {section.title}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {sectionFields.length}
+                            </span>
                           </button>
                           <div className="mt-1 space-y-1">
                             {sectionFields.slice(0, 8).map((field) => (
                               <button
                                 className={cn(
                                   "block w-full truncate rounded px-2 py-1 text-left text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground",
-                                  selectedField?.id === field.id && "bg-primary/10 text-primary",
+                                  selectedField?.id === field.id &&
+                                    "bg-primary/10 text-primary",
                                 )}
                                 key={field.id}
                                 onClick={() => openFieldSettings(field.id)}
@@ -5522,7 +7375,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                               </button>
                             ))}
                             {sectionFields.length > 8 ? (
-                              <p className="px-2 text-[10px] text-muted-foreground">+{sectionFields.length - 8} more</p>
+                              <p className="px-2 text-[10px] text-muted-foreground">
+                                +{sectionFields.length - 8} more
+                              </p>
                             ) : null}
                           </div>
                         </div>
@@ -5535,11 +7390,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     Groups
                   </p>
                   <div className="grid gap-1.5">
-                    <Button onClick={addBuilderSection} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={addBuilderSection}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Layers3 aria-hidden="true" />
                       Section
                     </Button>
-                    <Button onClick={() => addCatalogField("repeat_group")} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={() => addCatalogField("repeat_group")}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Repeat2 aria-hidden="true" />
                       Repeat Group
                     </Button>
@@ -5547,7 +7412,10 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 </div>
                 <div className="space-y-2">
                   {fieldCatalog.map((group) => (
-                    <div className="rounded-md border bg-background" key={group.group}>
+                    <div
+                      className="rounded-md border bg-background"
+                      key={group.group}
+                    >
                       <button
                         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
                         onClick={() =>
@@ -5564,25 +7432,33 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         <Badge tone="neutral">{group.fields.length}</Badge>
                       </button>
                       {!collapsedLibraryGroups[group.group] ? (
-                      <div className="space-y-1.5 border-t p-2">
-                        {group.fields.map((field) => {
-                          const Icon = fieldTypeIcons[field.type];
-                          return (
-                            <button
-                              key={field.type}
-                              className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-muted"
-                              onClick={() => addCatalogField(field.type)}
-                              type="button"
-                            >
-                              <Icon aria-hidden="true" className="text-muted-foreground" size={16} />
-                              <span>
-                                <span className="block font-medium">{field.label}</span>
-                                <span className="block text-xs text-muted-foreground">{field.description}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                        <div className="space-y-1.5 border-t p-2">
+                          {group.fields.map((field) => {
+                            const Icon = fieldTypeIcons[field.type];
+                            return (
+                              <button
+                                key={field.type}
+                                className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-muted"
+                                onClick={() => addCatalogField(field.type)}
+                                type="button"
+                              >
+                                <Icon
+                                  aria-hidden="true"
+                                  className="text-muted-foreground"
+                                  size={16}
+                                />
+                                <span>
+                                  <span className="block font-medium">
+                                    {field.label}
+                                  </span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {field.description}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : null}
                     </div>
                   ))}
@@ -5596,7 +7472,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   <div>
                     <h2 className="text-sm font-semibold">Templates</h2>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Add a section block or replace the form with a full survey template.
+                      Add a section block or replace the form with a full survey
+                      template.
                     </p>
                   </div>
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -5605,7 +7482,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 </div>
                 <label className="relative mt-3 block">
                   <span className="sr-only">Search builder templates</span>
-                  <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                  <Search
+                    aria-hidden="true"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={14}
+                  />
                   <Input
                     className="h-9 bg-background pl-8 text-xs"
                     onChange={(event) => setTemplateQuery(event.target.value)}
@@ -5645,7 +7526,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onClick={() => addSectionTemplate(template)}
                       type="button"
                     >
-                      <span className="text-sm font-medium">{template.title}</span>
+                      <span className="text-sm font-medium">
+                        {template.title}
+                      </span>
                       <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                         {template.description} · {template.fields.length} fields
                       </span>
@@ -5660,7 +7543,8 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <button
                       className={cn(
                         "w-full rounded-md border bg-background p-3 text-left transition hover:border-primary/35 hover:bg-primary/5",
-                        selectedTemplate?.id === template.id && "border-primary/50 bg-primary/10",
+                        selectedTemplate?.id === template.id &&
+                          "border-primary/50 bg-primary/10",
                       )}
                       key={template.id}
                       onClick={() => {
@@ -5670,21 +7554,32 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       type="button"
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium">{template.name}</span>
-                        {template.featured ? <Badge tone="accent">Top</Badge> : null}
+                        <span className="text-sm font-medium">
+                          {template.name}
+                        </span>
+                        {template.featured ? (
+                          <Badge tone="accent">Top</Badge>
+                        ) : null}
                       </span>
                       <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        {template.category} · {template.fields} fields · {template.minutes} min
+                        {template.category} · {template.fields} fields ·{" "}
+                        {template.minutes} min
                       </span>
                     </button>
                   ))}
                   {!visibleTemplates.length ? (
                     <div className="rounded-md border border-dashed bg-background/80 p-3 text-xs leading-5 text-muted-foreground">
-                      No templates match this search. Clear the search or choose another category.
+                      No templates match this search. Clear the search or choose
+                      another category.
                     </div>
                   ) : null}
                 </div>
-                <Button className="mt-3 w-full" onClick={() => setBuilderMode("templates")} type="button" variant="secondary">
+                <Button
+                  className="mt-3 w-full"
+                  onClick={() => setBuilderMode("templates")}
+                  type="button"
+                  variant="secondary"
+                >
                   <Star aria-hidden="true" />
                   Open full template library
                 </Button>
@@ -5695,23 +7590,34 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <section className="rounded-lg border bg-panel p-3">
                 <h2 className="text-sm font-semibold">Logic flows</h2>
                 <div className="mt-3 space-y-2">
-                  {(selectedForm?.fields.filter((field) => field.logic?.length) ?? []).length ? (
-                    selectedForm?.fields.filter((field) => field.logic?.length).map((field) => (
-                      <button
-                        className="w-full rounded-md border bg-background p-3 text-left transition hover:bg-muted"
-                        key={field.id}
-                        onClick={() => {
-                          openFieldSettings(field.id, "logic");
-                        }}
-                        type="button"
-                      >
-                        <span className="text-sm font-medium">{field.label}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">{field.logic?.length ?? 0} rule(s)</span>
-                      </button>
-                    ))
+                  {(
+                    selectedForm?.fields.filter(
+                      (field) => field.logic?.length,
+                    ) ?? []
+                  ).length ? (
+                    selectedForm?.fields
+                      .filter((field) => field.logic?.length)
+                      .map((field) => (
+                        <button
+                          className="w-full rounded-md border bg-background p-3 text-left transition hover:bg-muted"
+                          key={field.id}
+                          onClick={() => {
+                            openFieldSettings(field.id, "logic");
+                          }}
+                          type="button"
+                        >
+                          <span className="text-sm font-medium">
+                            {field.label}
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            {field.logic?.length ?? 0} rule(s)
+                          </span>
+                        </button>
+                      ))
                   ) : (
                     <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
-                      Select a field, open Logic Rules, then add show, require, skip, or dynamic choice rules.
+                      Select a field, open Logic Rules, then add show, require,
+                      skip, or dynamic choice rules.
                     </div>
                   )}
                 </div>
@@ -5731,8 +7637,14 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       }}
                       type="button"
                     >
-                      <span className="block truncate font-mono text-xs text-primary">${"{"}{field.variableName ?? field.id}{"}"}</span>
-                      <span className="mt-1 block truncate text-xs text-muted-foreground">{field.label}</span>
+                      <span className="block truncate font-mono text-xs text-primary">
+                        ${"{"}
+                        {field.variableName ?? field.id}
+                        {"}"}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-muted-foreground">
+                        {field.label}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -5762,12 +7674,19 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   >
                     <span className="flex items-center justify-between gap-2">
                       <span className="block font-medium">{form.name}</span>
-                      <Badge tone={form.status === "published" ? "success" : "neutral"}>
+                      <Badge
+                        tone={
+                          form.status === "published" ? "success" : "neutral"
+                        }
+                      >
                         v{form.version}
                       </Badge>
                     </span>
                     <span className="mt-2 block text-xs text-muted-foreground">
-                      {form.fields.length ? `${form.fields.length} questions` : "Saved backend form"} · {form.status}
+                      {form.fields.length
+                        ? `${form.fields.length} questions`
+                        : "Saved backend form"}{" "}
+                      · {form.status}
                     </span>
                   </button>
                 ))}
@@ -5846,7 +7765,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onClick={openReadinessChecklist}
                       size="sm"
                       type="button"
-                      variant={readinessReadyForPublish ? "secondary" : "primary"}
+                      variant={
+                        readinessReadyForPublish ? "secondary" : "primary"
+                      }
                     >
                       <ClipboardList aria-hidden="true" />
                       Readiness
@@ -5893,9 +7814,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold">Mobile deployment</p>
-                        <Badge tone={selectedMobileDeployment ? "success" : "warning"}>
-                          {selectedMobileDeployment ? "Deployed" : "Not deployed"}
+                        <p className="text-sm font-semibold">
+                          Mobile deployment
+                        </p>
+                        <Badge
+                          tone={
+                            selectedMobileDeployment ? "success" : "warning"
+                          }
+                        >
+                          {selectedMobileDeployment
+                            ? "Deployed"
+                            : "Not deployed"}
                         </Badge>
                       </div>
                       <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
@@ -5920,7 +7849,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       onClick={openDeploymentCenter}
                       size="sm"
                       type="button"
-                      variant={selectedMobileDeployment ? "secondary" : "primary"}
+                      variant={
+                        selectedMobileDeployment ? "secondary" : "primary"
+                      }
                     >
                       <Smartphone aria-hidden="true" />
                       Deployment center
@@ -5943,7 +7874,17 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         </Badge>
                       </div>
                       <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                        {selectedFormControls.reference_bindings.length} reference lists · {selectedFormControls.permission_rules.length} access rules · {selectedFormControls.workflow_stages.length} workflow stages · {selectedFormControls.data_quality_rules.filter((rule) => rule.enabled).length} quality checks
+                        {selectedFormControls.reference_bindings.length}{" "}
+                        reference lists ·{" "}
+                        {selectedFormControls.permission_rules.length} access
+                        rules · {selectedFormControls.workflow_stages.length}{" "}
+                        workflow stages ·{" "}
+                        {
+                          selectedFormControls.data_quality_rules.filter(
+                            (rule) => rule.enabled,
+                          ).length
+                        }{" "}
+                        quality checks
                       </p>
                     </div>
                   </div>
@@ -5970,28 +7911,51 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </span>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold">Operational workspaces</p>
+                        <p className="text-sm font-semibold">
+                          Operational workspaces
+                        </p>
                         <Badge tone="accent">Form-level</Badge>
                       </div>
                       <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                        Assign teams, import records, monitor quality, and review synced submissions without leaving this form.
+                        Assign teams, import records, monitor quality, and
+                        review synced submissions without leaving this form.
                       </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={openAssignmentWorkspace} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={openAssignmentWorkspace}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <ShieldCheck aria-hidden="true" />
                       Assign
                     </Button>
-                    <Button onClick={openImportWorkspace} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={openImportWorkspace}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <FileUp aria-hidden="true" />
                       Import
                     </Button>
-                    <Button onClick={openQualityWorkspace} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={openQualityWorkspace}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Check aria-hidden="true" />
                       Quality
                     </Button>
-                    <Button onClick={openSubmissionReviewWorkspace} size="sm" type="button" variant="secondary">
+                    <Button
+                      onClick={openSubmissionReviewWorkspace}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
                       <Eye aria-hidden="true" />
                       Review
                     </Button>
@@ -6002,15 +7966,28 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               <section className="hidden rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-start gap-2">
-                    <Sparkles aria-hidden="true" className="mt-0.5 shrink-0 text-primary" size={16} />
+                    <Sparkles
+                      aria-hidden="true"
+                      className="mt-0.5 shrink-0 text-primary"
+                      size={16}
+                    />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{smartCanvasAction.label}</p>
-                      <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{smartCanvasAction.description}</p>
+                      <p className="truncate text-sm font-semibold">
+                        {smartCanvasAction.label}
+                      </p>
+                      <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                        {smartCanvasAction.description}
+                      </p>
                     </div>
                   </div>
                   <Button
                     className="shrink-0"
-                    onClick={() => openBuilderAssistant(smartCanvasAction.mode, smartCanvasAction.query)}
+                    onClick={() =>
+                      openBuilderAssistant(
+                        smartCanvasAction.mode,
+                        smartCanvasAction.query,
+                      )
+                    }
                     size="sm"
                     type="button"
                     variant="primary"
@@ -6031,10 +8008,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <div>
                       <label className="relative block">
                         <span className="sr-only">Search smart fields</span>
-                        <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                        <Search
+                          aria-hidden="true"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                          size={15}
+                        />
                         <Input
                           className="pl-9"
-                          onChange={(event) => setSmartFieldQuery(event.target.value)}
+                          onChange={(event) =>
+                            setSmartFieldQuery(event.target.value)
+                          }
                           placeholder="Try age, phone, consent, GPS, photo, score..."
                           value={smartFieldQuery}
                         />
@@ -6050,7 +8033,11 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                               type="button"
                             >
                               <span className="flex items-center gap-2 text-sm font-semibold">
-                                <Icon aria-hidden="true" className="text-primary" size={15} />
+                                <Icon
+                                  aria-hidden="true"
+                                  className="text-primary"
+                                  size={15}
+                                />
                                 {preset.label}
                               </span>
                               <span className="mt-1 block text-xs leading-5 text-muted-foreground">
@@ -6072,9 +8059,12 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                           onClick={() => addSectionTemplate(template)}
                           type="button"
                         >
-                          <span className="block text-sm font-semibold">{template.title}</span>
+                          <span className="block text-sm font-semibold">
+                            {template.title}
+                          </span>
                           <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                            {template.description} · {template.fields.length} smart fields
+                            {template.description} · {template.fields.length}{" "}
+                            smart fields
                           </span>
                         </button>
                       ))}
@@ -6084,45 +8074,121 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   {builderAssistantMode === "logic" ? (
                     <div className="grid gap-2 sm:grid-cols-2">
                       {[
-                        ["required", "Require answer", "Make this field mandatory before submission."],
-                        ["email", "Email validation", "Convert this to an email field with validation."],
-                        ["phone", "Phone validation", "Convert this to a phone field with validation."],
-                        ["gps", "GPS evidence", "Require GPS with accuracy control."],
-                        ["yes_no", "Yes / No choice", "Use a simple binary response."],
-                        ["skip_rule", "Show / hide rule", "Add a starter no-code visibility rule."],
+                        [
+                          "required",
+                          "Require answer",
+                          "Make this field mandatory before submission.",
+                        ],
+                        [
+                          "email",
+                          "Email validation",
+                          "Convert this to an email field with validation.",
+                        ],
+                        [
+                          "phone",
+                          "Phone validation",
+                          "Convert this to a phone field with validation.",
+                        ],
+                        [
+                          "gps",
+                          "GPS evidence",
+                          "Require GPS with accuracy control.",
+                        ],
+                        [
+                          "yes_no",
+                          "Yes / No choice",
+                          "Use a simple binary response.",
+                        ],
+                        [
+                          "skip_rule",
+                          "Show / hide rule",
+                          "Add a starter no-code visibility rule.",
+                        ],
                       ].map(([kind, label, helper]) => (
                         <button
                           className="rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/10"
                           key={kind}
-                          onClick={() => applySmartFieldSetup(kind as "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule")}
+                          onClick={() =>
+                            applySmartFieldSetup(
+                              kind as
+                                | "required"
+                                | "email"
+                                | "phone"
+                                | "gps"
+                                | "yes_no"
+                                | "skip_rule",
+                            )
+                          }
                           type="button"
                         >
-                          <span className="block text-sm font-semibold">{label}</span>
-                          <span className="mt-1 block text-xs leading-5 text-muted-foreground">{helper}</span>
+                          <span className="block text-sm font-semibold">
+                            {label}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {helper}
+                          </span>
                         </button>
                       ))}
                     </div>
                   ) : null}
 
-                  {builderAssistantMode === "readiness" && selectedFormCompatibility && selectedFormWorkbook ? (
+                  {builderAssistantMode === "readiness" &&
+                  selectedFormCompatibility &&
+                  selectedFormWorkbook ? (
                     <div className="space-y-4">
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
-                          ["XLSForm", activeCompatibility?.xlsform_ready ? "Ready" : "Needs questions"],
-                          ["Mobile", activeCompatibility?.mobile_app_ready ? "Offline-ready" : "Check fields"],
-                          ["Web", activeCompatibility?.web_form_ready ? "Ready" : "Check scanner fields"],
-                          ["Media fields", String(activeCompatibility?.media_field_count ?? 0)],
-                          ["XLSForm rows", String(xlsFormQuery.data?.survey.length ?? selectedFormWorkbook.survey.length)],
+                          [
+                            "XLSForm",
+                            activeCompatibility?.xlsform_ready
+                              ? "Ready"
+                              : "Needs questions",
+                          ],
+                          [
+                            "Mobile",
+                            activeCompatibility?.mobile_app_ready
+                              ? "Offline-ready"
+                              : "Check fields",
+                          ],
+                          [
+                            "Web",
+                            activeCompatibility?.web_form_ready
+                              ? "Ready"
+                              : "Check scanner fields",
+                          ],
+                          [
+                            "Media fields",
+                            String(activeCompatibility?.media_field_count ?? 0),
+                          ],
+                          [
+                            "XLSForm rows",
+                            String(
+                              xlsFormQuery.data?.survey.length ??
+                                selectedFormWorkbook.survey.length,
+                            ),
+                          ],
                         ].map(([label, value]) => (
-                          <div className="rounded-lg border bg-background px-3 py-3" key={label}>
-                            <p className="text-xs text-muted-foreground">{label}</p>
-                            <p className="mt-1 text-sm font-semibold">{value}</p>
+                          <div
+                            className="rounded-lg border bg-background px-3 py-3"
+                            key={label}
+                          >
+                            <p className="text-xs text-muted-foreground">
+                              {label}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold">
+                              {value}
+                            </p>
                           </div>
                         ))}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
-                          disabled={!isPersistedSelectedForm || !token || token === "preview-token" || xlsFormQuery.isFetching}
+                          disabled={
+                            !isPersistedSelectedForm ||
+                            !token ||
+                            token === "preview-token" ||
+                            xlsFormQuery.isFetching
+                          }
                           onClick={() => xlsFormQuery.refetch()}
                           size="sm"
                           type="button"
@@ -6132,14 +8198,21 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                           {xlsFormQuery.isFetching ? "Checking" : "XLSForm"}
                         </Button>
                         <Button
-                          disabled={!isPersistedSelectedForm || !token || token === "preview-token" || publicLinkMutation.isPending}
+                          disabled={
+                            !isPersistedSelectedForm ||
+                            !token ||
+                            token === "preview-token" ||
+                            publicLinkMutation.isPending
+                          }
                           onClick={() => publicLinkMutation.mutate()}
                           size="sm"
                           type="button"
                           variant="secondary"
                         >
                           <FileUp aria-hidden="true" />
-                          {publicLinkMutation.isPending ? "Creating" : "Public link"}
+                          {publicLinkMutation.isPending
+                            ? "Creating"
+                            : "Public link"}
                         </Button>
                       </div>
                     </div>
@@ -6148,12 +8221,22 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   {builderAssistantMode === "preview" ? (
                     <div>
                       <div className="flex flex-wrap gap-1 rounded-md border bg-background p-1">
-                        {(["desktop", "tablet", "mobile", "enumerator", "respondent"] as const).map((mode) => (
+                        {(
+                          [
+                            "desktop",
+                            "tablet",
+                            "mobile",
+                            "enumerator",
+                            "respondent",
+                          ] as const
+                        ).map((mode) => (
                           <button
                             key={mode}
                             className={cn(
                               "rounded px-2.5 py-1 text-xs font-medium",
-                              previewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                              previewMode === mode
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground",
                             )}
                             onClick={() => setPreviewMode(mode)}
                             type="button"
@@ -6162,54 +8245,146 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                           </button>
                         ))}
                       </div>
-                      <div className={cn("mt-3 rounded-xl border bg-background p-4", ["mobile", "enumerator", "respondent"].includes(previewMode) && "mx-auto max-w-sm", previewMode === "tablet" && "mx-auto max-w-2xl")}>
+                      <div
+                        className={cn(
+                          "mt-3 rounded-xl border bg-background p-4",
+                          ["mobile", "enumerator", "respondent"].includes(
+                            previewMode,
+                          ) && "mx-auto max-w-sm",
+                          previewMode === "tablet" && "mx-auto max-w-2xl",
+                        )}
+                      >
                         <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
                           <Smartphone aria-hidden="true" size={14} />
-                          {previewMode === "respondent" ? "Respondent preview" : previewMode === "enumerator" ? "Enumerator preview" : "Device preview"} · {selectedPages.length} page(s) · {selectedForm.fields.length} fields
+                          {previewMode === "respondent"
+                            ? "Respondent preview"
+                            : previewMode === "enumerator"
+                              ? "Enumerator preview"
+                              : "Device preview"}{" "}
+                          · {selectedPages.length} page(s) ·{" "}
+                          {selectedForm.fields.length} fields
                         </div>
                         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1 product-scrollbar">
                           {selectedPages.map((page, pageIndex) => {
-                            const pageSections = selectedForm.sections.filter((section) => section.pageId === page.id);
+                            const pageSections = selectedForm.sections.filter(
+                              (section) => section.pageId === page.id,
+                            );
                             return (
-                              <section className="rounded-lg border bg-panel/70 p-3" key={page.id}>
+                              <section
+                                className="rounded-lg border bg-panel/70 p-3"
+                                key={page.id}
+                              >
                                 <div className="mb-3 flex items-start justify-between gap-3">
                                   <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Page {pageIndex + 1}</p>
-                                    <h3 className="mt-1 text-sm font-semibold">{page.title}</h3>
-                                    {page.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{page.description}</p> : null}
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                      Page {pageIndex + 1}
+                                    </p>
+                                    <h3 className="mt-1 text-sm font-semibold">
+                                      {page.title}
+                                    </h3>
+                                    {page.description ? (
+                                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {page.description}
+                                      </p>
+                                    ) : null}
                                   </div>
                                   <Badge tone="neutral">
-                                    {selectedForm.fields.filter((field) => field.pageId === page.id).length} fields
+                                    {
+                                      selectedForm.fields.filter(
+                                        (field) => field.pageId === page.id,
+                                      ).length
+                                    }{" "}
+                                    fields
                                   </Badge>
                                 </div>
                                 <div className="space-y-3">
                                   {pageSections.map((section, sectionIndex) => {
-                                    const sectionFields = selectedForm.fields.filter((field) => field.sectionId === section.id);
+                                    const sectionFields =
+                                      selectedForm.fields.filter(
+                                        (field) =>
+                                          field.sectionId === section.id,
+                                      );
                                     const tone = getSectionTone(sectionIndex);
                                     return (
-                                      <div className={cn("overflow-hidden rounded-lg border bg-background", tone.border)} key={section.id}>
-                                        <div className={cn("mb-3 border-b px-3 py-2", tone.header)}>
+                                      <div
+                                        className={cn(
+                                          "overflow-hidden rounded-lg border bg-background",
+                                          tone.border,
+                                        )}
+                                        key={section.id}
+                                      >
+                                        <div
+                                          className={cn(
+                                            "mb-3 border-b px-3 py-2",
+                                            tone.header,
+                                          )}
+                                        >
                                           <div className="flex items-center gap-2">
-                                            <span className={cn("h-7 w-1.5 rounded-full", tone.rail)} />
-                                            <h4 className="text-sm font-semibold">{section.title}</h4>
+                                            <span
+                                              className={cn(
+                                                "h-7 w-1.5 rounded-full",
+                                                tone.rail,
+                                              )}
+                                            />
+                                            <h4 className="text-sm font-semibold">
+                                              {section.title}
+                                            </h4>
                                           </div>
-                                          {section.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{section.description}</p> : null}
+                                          {section.description ? (
+                                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                              {section.description}
+                                            </p>
+                                          ) : null}
                                         </div>
                                         <div className="space-y-3 px-3 pb-3">
-                                          {sectionFields.map((field, fieldIndex) => (
-                                            <label className="block rounded-lg border bg-panel p-3 text-sm" key={field.id}>
-                                              <span className="flex flex-wrap items-center gap-1.5">
-                                                <span className="font-mono text-[11px] text-muted-foreground">{fieldIndex + 1}</span>
-                                                <span className="font-semibold">{field.label}</span>
-                                                {field.required ? <span className="text-danger">*</span> : null}
-                                                <Badge tone="neutral">{field.type.replace("_", " ")}</Badge>
-                                                {field.logic?.length ? <Badge tone="accent">logic</Badge> : null}
-                                                {Object.keys(field.validation ?? {}).length ? <Badge tone="warning">validation</Badge> : null}
-                                              </span>
-                                              {field.hint ? <span className="mt-1 block text-xs leading-5 text-muted-foreground">{field.hint}</span> : null}
-                                              <FieldInputPreview field={field} />
-                                            </label>
-                                          ))}
+                                          {sectionFields.map(
+                                            (field, fieldIndex) => (
+                                              <label
+                                                className="block rounded-lg border bg-panel p-3 text-sm"
+                                                key={field.id}
+                                              >
+                                                <span className="flex flex-wrap items-center gap-1.5">
+                                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                                    {fieldIndex + 1}
+                                                  </span>
+                                                  <span className="font-semibold">
+                                                    {field.label}
+                                                  </span>
+                                                  {field.required ? (
+                                                    <span className="text-danger">
+                                                      *
+                                                    </span>
+                                                  ) : null}
+                                                  <Badge tone="neutral">
+                                                    {field.type.replace(
+                                                      "_",
+                                                      " ",
+                                                    )}
+                                                  </Badge>
+                                                  {field.logic?.length ? (
+                                                    <Badge tone="accent">
+                                                      logic
+                                                    </Badge>
+                                                  ) : null}
+                                                  {Object.keys(
+                                                    field.validation ?? {},
+                                                  ).length ? (
+                                                    <Badge tone="warning">
+                                                      validation
+                                                    </Badge>
+                                                  ) : null}
+                                                </span>
+                                                {field.hint ? (
+                                                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                                                    {field.hint}
+                                                  </span>
+                                                ) : null}
+                                                <FieldInputPreview
+                                                  field={field}
+                                                />
+                                              </label>
+                                            ),
+                                          )}
                                           {!sectionFields.length ? (
                                             <div className="rounded-md border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
                                               No fields in this section yet.
@@ -6242,23 +8417,45 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                       </h2>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Button onClick={() => openBuilderAssistant("question")} size="sm" type="button" variant="primary">
+                      <Button
+                        onClick={() => openBuilderAssistant("question")}
+                        size="sm"
+                        type="button"
+                        variant="primary"
+                      >
                         <MousePointer2 aria-hidden="true" />
                         Add question
                       </Button>
-                      <Button onClick={() => openBuilderAssistant("section")} size="sm" type="button" variant="secondary">
+                      <Button
+                        onClick={() => openBuilderAssistant("section")}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
                         <Plus aria-hidden="true" />
                         Add section
                       </Button>
-                      <Button onClick={() => openBuilderAssistant("preview")} size="sm" type="button" variant="secondary">
+                      <Button
+                        onClick={() => openBuilderAssistant("preview")}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
                         <Smartphone aria-hidden="true" />
                         Preview
                       </Button>
-                      <Button onClick={() => openBuilderAssistant("readiness")} size="sm" type="button" variant="ghost">
+                      <Button
+                        onClick={() => openBuilderAssistant("readiness")}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
                         <Check aria-hidden="true" />
                         Readiness
                       </Button>
-                      <Badge tone="accent">{activePageFields.length} on page</Badge>
+                      <Badge tone="accent">
+                        {activePageFields.length} on page
+                      </Badge>
                     </div>
                   </div>
                   <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
@@ -6275,8 +8472,18 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         type="button"
                       >
                         {page.title}
-                        <span className={cn("rounded bg-muted px-1.5 py-0.5 text-[10px]", activePage?.id === page.id && "bg-primary-foreground/20")}>
-                          {selectedForm.fields.filter((field) => field.pageId === page.id).length}
+                        <span
+                          className={cn(
+                            "rounded bg-muted px-1.5 py-0.5 text-[10px]",
+                            activePage?.id === page.id &&
+                              "bg-primary-foreground/20",
+                          )}
+                        >
+                          {
+                            selectedForm.fields.filter(
+                              (field) => field.pageId === page.id,
+                            ).length
+                          }
                         </span>
                       </button>
                     ))}
@@ -6284,18 +8491,32 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   <div
                     className={cn(
                       "mt-2 rounded-md border px-3 py-2",
-                      criticalValidationCount ? "border-danger/25 bg-danger/10" : warningValidationCount ? "border-warning/25 bg-warning/10" : "border-success/25 bg-success/10",
+                      criticalValidationCount
+                        ? "border-danger/25 bg-danger/10"
+                        : warningValidationCount
+                          ? "border-warning/25 bg-warning/10"
+                          : "border-success/25 bg-success/10",
                     )}
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-start gap-2">
                         {criticalValidationCount ? (
-                          <XCircle aria-hidden="true" className="mt-0.5 shrink-0 text-danger" size={16} />
+                          <XCircle
+                            aria-hidden="true"
+                            className="mt-0.5 shrink-0 text-danger"
+                            size={16}
+                          />
                         ) : (
-                          <Check aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={16} />
+                          <Check
+                            aria-hidden="true"
+                            className="mt-0.5 shrink-0 text-success"
+                            size={16}
+                          />
                         )}
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold">Validation center</p>
+                          <p className="text-sm font-semibold">
+                            Validation center
+                          </p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             {criticalValidationCount
                               ? `${criticalValidationCount} critical issue(s) block publishing.`
@@ -6306,18 +8527,29 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {builderValidationItems.filter((item) => item.count > 0).slice(0, 3).map((item) => (
-                          <Badge key={item.id} tone={item.severity === "critical" ? "danger" : "warning"}>
-                            {item.count} {item.label}
-                          </Badge>
-                        ))}
+                        {builderValidationItems
+                          .filter((item) => item.count > 0)
+                          .slice(0, 3)
+                          .map((item) => (
+                            <Badge
+                              key={item.id}
+                              tone={
+                                item.severity === "critical"
+                                  ? "danger"
+                                  : "warning"
+                              }
+                            >
+                              {item.count} {item.label}
+                            </Badge>
+                          ))}
                         <Button
                           onClick={() => {
                             setBuilderResult(
                               builderValidationItems
                                 .filter((item) => item.count > 0)
                                 .map((item) => `${item.label}: ${item.count}`)
-                                .join(" · ") || "Validation passed. No critical builder issues found.",
+                                .join(" · ") ||
+                                "Validation passed. No critical builder issues found.",
                             );
                           }}
                           size="sm"
@@ -6330,33 +8562,73 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     </div>
                   </div>
                 </div>
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-                  <SortableContext items={activePageFields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={onDragEnd}
+                >
+                  <SortableContext
+                    items={activePageFields.map((field) => field.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
                     <div className="max-h-[56vh] space-y-2 overflow-y-auto bg-muted/20 p-3 product-scrollbar">
                       {activeSections.map((section, sectionIndex) => {
-                        const sectionFields = selectedForm.fields.filter((field) => field.sectionId === section.id);
+                        const sectionFields = selectedForm.fields.filter(
+                          (field) => field.sectionId === section.id,
+                        );
                         const tone = getSectionTone(sectionIndex);
                         return (
-                          <section className={cn("overflow-hidden rounded-lg border bg-background shadow-line", tone.border)} key={section.id}>
-                            <div className={cn("flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between", tone.header)}>
+                          <section
+                            className={cn(
+                              "overflow-hidden rounded-lg border bg-background shadow-line",
+                              tone.border,
+                            )}
+                            key={section.id}
+                          >
+                            <div
+                              className={cn(
+                                "flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                                tone.header,
+                              )}
+                            >
                               <button
                                 className="flex items-start gap-2 text-left"
                                 onClick={() => {
                                   setSelectedSectionId(section.id);
-                                  setCollapsedSectionIds((current) => ({ ...current, [section.id]: !current[section.id] }));
+                                  setCollapsedSectionIds((current) => ({
+                                    ...current,
+                                    [section.id]: !current[section.id],
+                                  }));
                                 }}
                                 type="button"
                               >
-                                <span className={cn("mt-1 h-8 w-1.5 rounded-full", tone.rail)} />
+                                <span
+                                  className={cn(
+                                    "mt-1 h-8 w-1.5 rounded-full",
+                                    tone.rail,
+                                  )}
+                                />
                                 <span>
-                                  <h3 className="text-sm font-semibold">{section.title}</h3>
+                                  <h3 className="text-sm font-semibold">
+                                    {section.title}
+                                  </h3>
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    {section.description ?? "No section description"} · {sectionFields.length} questions
+                                    {section.description ??
+                                      "No section description"}{" "}
+                                    · {sectionFields.length} questions
                                   </p>
                                 </span>
                               </button>
                               <div className="flex gap-1">
-                                <Button aria-label={`Duplicate ${section.title}`} onClick={() => duplicateBuilderSection(section.id)} size="icon" type="button" variant="ghost">
+                                <Button
+                                  aria-label={`Duplicate ${section.title}`}
+                                  onClick={() =>
+                                    duplicateBuilderSection(section.id)
+                                  }
+                                  size="icon"
+                                  type="button"
+                                  variant="ghost"
+                                >
                                   <Copy aria-hidden="true" />
                                 </Button>
                                 <Button
@@ -6375,28 +8647,60 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                             </div>
                             {collapsedSectionIds[section.id] ? (
                               <div className="px-4 py-3 text-xs text-muted-foreground">
-                                Section collapsed · {sectionFields.length} question{sectionFields.length === 1 ? "" : "s"}
+                                Section collapsed · {sectionFields.length}{" "}
+                                question{sectionFields.length === 1 ? "" : "s"}
                               </div>
                             ) : sectionFields.length ? (
                               sectionFields.map((field) => {
-                                const globalIndex = selectedForm.fields.findIndex((candidate) => candidate.id === field.id);
+                                const globalIndex =
+                                  selectedForm.fields.findIndex(
+                                    (candidate) => candidate.id === field.id,
+                                  );
                                 return (
                                   <SortableField
                                     key={field.id}
                                     field={field}
                                     index={globalIndex}
                                     selected={selectedField?.id === field.id}
-                                    canMoveDown={globalIndex < selectedForm.fields.length - 1}
+                                    canMoveDown={
+                                      globalIndex <
+                                      selectedForm.fields.length - 1
+                                    }
                                     canMoveUp={globalIndex > 0}
-                                    onDuplicate={() => updateSelectedForm(duplicateField(selectedForm, field.id))}
-                                    onEditSettings={() => openFieldSettings(field.id)}
-                                    onLabelChange={(label) => updateSelectedForm(updateField(selectedForm, field.id, { label }))}
+                                    onDuplicate={() =>
+                                      updateSelectedForm(
+                                        duplicateField(selectedForm, field.id),
+                                      )
+                                    }
+                                    onEditSettings={() =>
+                                      openFieldSettings(field.id)
+                                    }
+                                    onLabelChange={(label) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, field.id, {
+                                          label,
+                                        }),
+                                      )
+                                    }
                                     onMoveDown={() => moveField(field.id, 1)}
                                     onMoveUp={() => moveField(field.id, -1)}
-                                    onRemove={() => updateSelectedForm(removeField(selectedForm, field.id))}
+                                    onRemove={() =>
+                                      updateSelectedForm(
+                                        removeField(selectedForm, field.id),
+                                      )
+                                    }
                                     onSelect={() => openFieldSettings(field.id)}
-                                    onToggleRequired={(required) => updateSelectedForm(updateField(selectedForm, field.id, { required }))}
-                                    referenceBound={selectedFormControls.reference_bindings.some((binding) => binding.question_id === field.id)}
+                                    onToggleRequired={(required) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, field.id, {
+                                          required,
+                                        }),
+                                      )
+                                    }
+                                    referenceBound={selectedFormControls.reference_bindings.some(
+                                      (binding) =>
+                                        binding.question_id === field.id,
+                                    )}
                                   />
                                 );
                               })
@@ -6404,27 +8708,39 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                               <div className="p-4">
                                 <div className="rounded-lg border border-dashed bg-panel/60 p-4">
                                   <div className="text-center text-sm text-muted-foreground">
-                                    <Plus aria-hidden="true" className="mx-auto mb-2 text-primary" />
+                                    <Plus
+                                      aria-hidden="true"
+                                      className="mx-auto mb-2 text-primary"
+                                    />
                                     Start this section with a common question
                                   </div>
                                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                    {quickFieldPresets.slice(0, 4).map((preset) => {
-                                      const Icon = fieldTypeIcons[preset.type];
-                                      return (
-                                        <button
-                                          className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
-                                          key={preset.id}
-                                          onClick={() => {
-                                            setSelectedSectionId(section.id);
-                                            addPresetField(preset, section);
-                                          }}
-                                          type="button"
-                                        >
-                                          <Icon aria-hidden="true" className="text-primary" size={14} />
-                                          <span className="font-medium">{preset.label}</span>
-                                        </button>
-                                      );
-                                    })}
+                                    {quickFieldPresets
+                                      .slice(0, 4)
+                                      .map((preset) => {
+                                        const Icon =
+                                          fieldTypeIcons[preset.type];
+                                        return (
+                                          <button
+                                            className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
+                                            key={preset.id}
+                                            onClick={() => {
+                                              setSelectedSectionId(section.id);
+                                              addPresetField(preset, section);
+                                            }}
+                                            type="button"
+                                          >
+                                            <Icon
+                                              aria-hidden="true"
+                                              className="text-primary"
+                                              size={14}
+                                            />
+                                            <span className="font-medium">
+                                              {preset.label}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
                                   </div>
                                   <Button
                                     className="mt-3 w-full"
@@ -6474,461 +8790,756 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
               title={`Field settings: ${selectedField.label}`}
             >
               <div className="flex-1 overflow-y-auto p-5 product-scrollbar">
-              <section className="rounded-lg border bg-panel p-4">
-                <div className="flex items-center gap-2">
-                  <Settings2 aria-hidden="true" size={17} />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-semibold">Field settings</h2>
-                      <HelpHint label="About field settings" title="Field settings">
-                        Configure one selected question at a time.
-                      </HelpHint>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-1 rounded-md border bg-background p-1">
-                {([
-                    ["field", Settings2, "Field"],
-                    ["validation", Check, "Validation"],
-                    ["logic", Workflow, "Logic"],
-                    ["calculation", Sigma, "Formula"],
-                    ["appearance", Palette, "Look"],
-                    ["advanced", Command, "Advanced"],
-                  ] satisfies [RightPanelTab, typeof Type, string][]).map(([tab, Icon, label]) => (
-                    <button
-                      className={cn(
-                        "flex h-8 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground",
-                        rightPanelTab === tab && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-                      )}
-                      key={String(tab)}
-                      onClick={() => setRightPanelTab(tab as RightPanelTab)}
-                      aria-label={String(label)}
-                      title={String(label)}
-                      type="button"
-                    >
-                      <Icon aria-hidden="true" size={15} />
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-4 rounded-md border bg-background p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">Setup checklist</p>
-                    <Badge tone="accent">Selected field</Badge>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs">
-                    {[
-                      ["Label added", selectedField.label.trim().length > 0],
-                      ["Helper text clear", Boolean(selectedField.hint?.trim())],
-                      ["Choices ready", !selectedField.options || selectedField.options.length >= 2],
-                      ["Validation checked", Boolean(selectedField.validation && Object.keys(selectedField.validation).length)],
-                      ["Logic reviewed", Boolean(selectedField.logic?.length)],
-                    ].map(([label, done]) => (
-                      <div className="flex items-center gap-2" key={String(label)}>
-                        <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", done ? "border-success bg-success/10 text-success" : "border-muted text-muted-foreground")}>
-                          <Check aria-hidden="true" size={12} />
-                        </span>
-                        <span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-3 rounded-md border bg-background p-3">
+                <section className="rounded-lg border bg-panel p-4">
                   <div className="flex items-center gap-2">
-                    <Sparkles aria-hidden="true" className="text-primary" size={15} />
-                    <p className="text-sm font-semibold">Smart setup</p>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {[
-                      ["required", "Require"],
-                      ["email", "Email rule"],
-                      ["phone", "Phone rule"],
-                      ["gps", "GPS rule"],
-                      ["yes_no", "Yes / No"],
-                      ["skip_rule", "Show rule"],
-                    ].map(([kind, label]) => (
-                      <Button
-                        key={kind}
-                        onClick={() => applySmartFieldSetup(kind as "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule")}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                {rightPanelTab === "field" ? (
-                  <div className="mt-4 space-y-4">
-                    <label className="block text-sm font-medium">
-                      Field label
-                      <Input
-                        className="mt-2"
-                        value={selectedField.label}
-                        onChange={(event) =>
-                          updateSelectedForm(updateField(selectedForm, selectedField.id, { label: event.target.value }))
-                        }
-                      />
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Type
-                      <Select
-                        className="mt-2"
-                        value={selectedField.type}
-                        onChange={(event) =>
-                          updateSelectedForm(updateField(selectedForm, selectedField.id, { type: event.target.value as FieldType }))
-                        }
-                      >
-                        {!fieldCatalog.flatMap((group) => group.fields).some((field) => field.type === selectedField.type) ? (
-                          <option value={selectedField.type}>{selectedField.type}</option>
-                        ) : null}
-                        {fieldCatalog.flatMap((group) => group.fields).map((field) => (
-                          <option key={field.type} value={field.type}>
-                            {field.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Helper text
-                      <Input
-                        className="mt-2"
-                        value={selectedField.hint ?? ""}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { hint: event.target.value }))}
-                        placeholder="Explain what the enumerator should capture"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Page
-                      <Select
-                        className="mt-2"
-                        value={selectedField.pageId ?? activePage?.id ?? ""}
-                        onChange={(event) => updateSelectedForm(moveFieldToPage(selectedForm, selectedField.id, event.target.value))}
-                      >
-                        {selectedPages.map((page) => (
-                          <option key={page.id} value={page.id}>{page.title}</option>
-                        ))}
-                      </Select>
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Section
-                      <Select
-                        className="mt-2"
-                        value={selectedField.sectionId}
-                        onChange={(event) => updateSelectedForm(moveFieldToSection(selectedForm, selectedField.id, event.target.value))}
-                      >
-                        {selectedForm.sections.map((section: FormSection) => (
-                          <option key={section.id} value={section.id}>{section.title}</option>
-                        ))}
-                      </Select>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm font-medium">
-                      <input
-                        checked={selectedField.required}
-                        className="h-4 w-4"
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { required: event.target.checked }))}
-                        type="checkbox"
-                      />
-                      Required by default
-                    </label>
-                    {selectedField.options ? (
-                      <label className="block text-sm font-medium">
-                        Choices
-                        <textarea
-                          className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                          value={selectedField.options.join("\n")}
-                          onChange={(event) =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                options: event.target.value.split("\n").map((option) => option.trim()).filter(Boolean),
-                              }),
-                            )
-                          }
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {rightPanelTab === "validation" ? (
-                  <div className="mt-4 space-y-4">
-                    <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
-                      Set rules that protect data quality before submissions reach review.
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="text-sm font-medium">
-                        Min
-                        <Input
-                          className="mt-2"
-                          type="number"
-                          value={selectedField.validation?.min ?? ""}
-                          onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { validation: { ...selectedField.validation, min: event.target.value === "" ? undefined : Number(event.target.value) } }))}
-                        />
-                      </label>
-                      <label className="text-sm font-medium">
-                        Max
-                        <Input
-                          className="mt-2"
-                          type="number"
-                          value={selectedField.validation?.max ?? ""}
-                          onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { validation: { ...selectedField.validation, max: event.target.value === "" ? undefined : Number(event.target.value) } }))}
-                        />
-                      </label>
-                    </div>
-                    <label className="block text-sm font-medium">
-                      Regex or format rule
-                      <Input
-                        className="mt-2"
-                        value={selectedField.validation?.pattern ?? ""}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { validation: { ...selectedField.validation, pattern: event.target.value } }))}
-                        placeholder="Example: ^[A-Z0-9-]+$"
-                      />
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Cross-field expression
-                      <Input
-                        className="mt-2"
-                        value={selectedField.validation?.expression ?? ""}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { validation: { ...selectedField.validation, expression: event.target.value } }))}
-                        placeholder="${end_date} >= ${start_date}"
-                      />
-                    </label>
-                    {["gps", "geolocation", "map", "geofence"].includes(selectedField.type) ? (
-                      <label className="block text-sm font-medium">
-                        Maximum GPS accuracy in meters
-                        <Input
-                          className="mt-2"
-                          type="number"
-                          value={selectedField.validation?.accuracyMax ?? ""}
-                          onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { validation: { ...selectedField.validation, accuracyMax: event.target.value === "" ? undefined : Number(event.target.value) } }))}
-                        />
-                      </label>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {rightPanelTab === "logic" ? (
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
-                      Build no-code logic with XLSForm-style expressions. Use AND/OR groups in expressions for complex branching.
-                    </div>
-                    {(selectedField.logic ?? []).map((rule) => (
-                      <div className="rounded-md border bg-background p-3" key={rule.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge tone="accent">{rule.kind.replace("_", " ")}</Badge>
-                          <Button
-                            onClick={() => updateSelectedForm(updateField(selectedForm, selectedField.id, { logic: selectedField.logic?.filter((candidate) => candidate.id !== rule.id) ?? [] }))}
-                            aria-label={`Remove ${rule.kind} rule`}
-                            size="icon"
-                            type="button"
-                            variant="ghost"
-                          >
-                            <Trash2 aria-hidden="true" />
-                          </Button>
-                        </div>
-                        <Input
-                          className="mt-3"
-                          value={rule.expression}
-                          onChange={(event) =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                logic: (selectedField.logic ?? []).map((candidate) => candidate.id === rule.id ? { ...candidate, expression: event.target.value } : candidate),
-                              }),
-                            )
-                          }
-                          placeholder="${consent} = 'Yes'"
-                        />
-                        <Input
-                          className="mt-2"
-                          value={rule.message ?? ""}
-                          onChange={(event) =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                logic: (selectedField.logic ?? []).map((candidate) => candidate.id === rule.id ? { ...candidate, message: event.target.value } : candidate),
-                              }),
-                            )
-                          }
-                          placeholder="Message shown to the team"
-                        />
+                    <Settings2 aria-hidden="true" size={17} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-semibold">
+                          Field settings
+                        </h2>
+                        <HelpHint
+                          label="About field settings"
+                          title="Field settings"
+                        >
+                          Configure one selected question at a time.
+                        </HelpHint>
                       </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-1 rounded-md border bg-background p-1">
+                    {(
+                      [
+                        ["field", Settings2, "Field"],
+                        ["validation", Check, "Validation"],
+                        ["logic", Workflow, "Logic"],
+                        ["calculation", Sigma, "Formula"],
+                        ["appearance", Palette, "Look"],
+                        ["advanced", Command, "Advanced"],
+                      ] satisfies [RightPanelTab, typeof Type, string][]
+                    ).map(([tab, Icon, label]) => (
+                      <button
+                        className={cn(
+                          "flex h-8 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground",
+                          rightPanelTab === tab &&
+                            "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                        )}
+                        key={String(tab)}
+                        onClick={() => setRightPanelTab(tab as RightPanelTab)}
+                        aria-label={String(label)}
+                        title={String(label)}
+                        type="button"
+                      >
+                        <Icon aria-hidden="true" size={15} />
+                      </button>
                     ))}
-                    <div className="grid grid-cols-2 gap-2">
+                  </div>
+                  <div className="mt-4 rounded-md border bg-background p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">Setup checklist</p>
+                      <Badge tone="accent">Selected field</Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs">
                       {[
-                        ["show", "Show / Hide"],
-                        ["required", "Required"],
-                        ["skip", "Skip logic"],
-                        ["dynamic_choices", "Dynamic choices"],
+                        ["Label added", selectedField.label.trim().length > 0],
+                        [
+                          "Helper text clear",
+                          Boolean(selectedField.hint?.trim()),
+                        ],
+                        [
+                          "Choices ready",
+                          !selectedField.options ||
+                            selectedField.options.length >= 2,
+                        ],
+                        [
+                          "Validation checked",
+                          Boolean(
+                            selectedField.validation &&
+                            Object.keys(selectedField.validation).length,
+                          ),
+                        ],
+                        [
+                          "Logic reviewed",
+                          Boolean(selectedField.logic?.length),
+                        ],
+                      ].map(([label, done]) => (
+                        <div
+                          className="flex items-center gap-2"
+                          key={String(label)}
+                        >
+                          <span
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded-full border",
+                              done
+                                ? "border-success bg-success/10 text-success"
+                                : "border-muted text-muted-foreground",
+                            )}
+                          >
+                            <Check aria-hidden="true" size={12} />
+                          </span>
+                          <span
+                            className={
+                              done ? "text-foreground" : "text-muted-foreground"
+                            }
+                          >
+                            {label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-md border bg-background p-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles
+                        aria-hidden="true"
+                        className="text-primary"
+                        size={15}
+                      />
+                      <p className="text-sm font-semibold">Smart setup</p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {[
+                        ["required", "Require"],
+                        ["email", "Email rule"],
+                        ["phone", "Phone rule"],
+                        ["gps", "GPS rule"],
+                        ["yes_no", "Yes / No"],
+                        ["skip_rule", "Show rule"],
                       ].map(([kind, label]) => (
                         <Button
                           key={kind}
                           onClick={() =>
-                            updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                logic: [
-                                  ...(selectedField.logic ?? []),
-                                  { id: `${selectedField.id}-${kind}-${Date.now()}`, kind: kind as LogicRule["kind"], expression: "${answer} = 'Yes'", message: String(label) },
-                                ],
-                              }),
+                            applySmartFieldSetup(
+                              kind as
+                                | "required"
+                                | "email"
+                                | "phone"
+                                | "gps"
+                                | "yes_no"
+                                | "skip_rule",
                             )
                           }
+                          size="sm"
                           type="button"
                           variant="secondary"
                         >
-                          <Plus aria-hidden="true" />
                           {label}
                         </Button>
                       ))}
                     </div>
                   </div>
-                ) : null}
 
-                {rightPanelTab === "calculation" ? (
-                  <div className="mt-4 space-y-4">
-                    <label className="block text-sm font-medium">
-                      Formula
-                      <textarea
-                        className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
-                        value={selectedField.calculation?.expression ?? selectedField.logic?.find((rule) => rule.kind === "calculation")?.expression ?? ""}
-                        onChange={(event) =>
-                          updateSelectedForm(
-                            updateField(selectedForm, selectedField.id, {
-                              calculation: { ...(selectedField.calculation ?? { preview: "Pending validation" }), expression: event.target.value },
-                            }),
-                          )
-                        }
-                        placeholder="(${weight_kg} / (${height_m} * ${height_m}))"
-                      />
-                    </label>
-                    <div className="rounded-md border bg-background p-3">
-                      <p className="text-sm font-medium">Formula preview</p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {selectedField.calculation?.preview ?? "Add a formula to validate syntax and preview derived values."}
-                      </p>
+                  {rightPanelTab === "field" ? (
+                    <div className="mt-4 space-y-4">
+                      <label className="block text-sm font-medium">
+                        Field label
+                        <Input
+                          className="mt-2"
+                          value={selectedField.label}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                label: event.target.value,
+                              }),
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Type
+                        <Select
+                          className="mt-2"
+                          value={selectedField.type}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                type: event.target.value as FieldType,
+                              }),
+                            )
+                          }
+                        >
+                          {!fieldCatalog
+                            .flatMap((group) => group.fields)
+                            .some(
+                              (field) => field.type === selectedField.type,
+                            ) ? (
+                            <option value={selectedField.type}>
+                              {selectedField.type}
+                            </option>
+                          ) : null}
+                          {fieldCatalog
+                            .flatMap((group) => group.fields)
+                            .map((field) => (
+                              <option key={field.type} value={field.type}>
+                                {field.label}
+                              </option>
+                            ))}
+                        </Select>
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Helper text
+                        <Input
+                          className="mt-2"
+                          value={selectedField.hint ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                hint: event.target.value,
+                              }),
+                            )
+                          }
+                          placeholder="Explain what the enumerator should capture"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Page
+                        <Select
+                          className="mt-2"
+                          value={selectedField.pageId ?? activePage?.id ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              moveFieldToPage(
+                                selectedForm,
+                                selectedField.id,
+                                event.target.value,
+                              ),
+                            )
+                          }
+                        >
+                          {selectedPages.map((page) => (
+                            <option key={page.id} value={page.id}>
+                              {page.title}
+                            </option>
+                          ))}
+                        </Select>
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Section
+                        <Select
+                          className="mt-2"
+                          value={selectedField.sectionId}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              moveFieldToSection(
+                                selectedForm,
+                                selectedField.id,
+                                event.target.value,
+                              ),
+                            )
+                          }
+                        >
+                          {selectedForm.sections.map((section: FormSection) => (
+                            <option key={section.id} value={section.id}>
+                              {section.title}
+                            </option>
+                          ))}
+                        </Select>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                          checked={selectedField.required}
+                          className="h-4 w-4"
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                required: event.target.checked,
+                              }),
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        Required by default
+                      </label>
+                      {selectedField.options ? (
+                        <label className="block text-sm font-medium">
+                          Choices
+                          <textarea
+                            className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                            value={selectedField.options.join("\n")}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  options: event.target.value
+                                    .split("\n")
+                                    .map((option) => option.trim())
+                                    .filter(Boolean),
+                                }),
+                              )
+                            }
+                          />
+                        </label>
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
 
-                {rightPanelTab === "appearance" ? (
-                  <div className="mt-4 space-y-4">
-                    <label className="block text-sm font-medium">
-                      Width
-                      <Select
-                        className="mt-2"
-                        value={selectedField.appearance?.width ?? "full"}
-                        onChange={(event) =>
-                          updateSelectedForm(updateField(selectedForm, selectedField.id, { appearance: { ...selectedField.appearance, width: event.target.value as "full" | "half" | "third" } }))
-                        }
-                      >
-                        <option value="full">Full width</option>
-                        <option value="half">Half width</option>
-                        <option value="third">One third</option>
-                      </Select>
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Placeholder
-                      <Input
-                        className="mt-2"
-                        value={selectedField.appearance?.placeholder ?? ""}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { appearance: { ...selectedField.appearance, placeholder: event.target.value } }))}
-                      />
-                    </label>
-                    <label className="block text-sm font-medium">
-                      Help text
-                      <Input
-                        className="mt-2"
-                        value={selectedField.appearance?.helpText ?? ""}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { appearance: { ...selectedField.appearance, helpText: event.target.value } }))}
-                      />
-                    </label>
-                  </div>
-                ) : null}
-
-                {rightPanelTab === "advanced" ? (
-                  <div className="mt-4 space-y-4">
-                    <label className="block text-sm font-medium">
-                      Variable name
-                      <Input
-                        className="mt-2 font-mono"
-                        value={selectedField.variableName ?? selectedField.id}
-                        onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { variableName: event.target.value }))}
-                      />
-                    </label>
-                    {selectedField.repeat ? (
+                  {rightPanelTab === "validation" ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
+                        Set rules that protect data quality before submissions
+                        reach review.
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <label className="text-sm font-medium">
-                          Repeat min
+                          Min
                           <Input
                             className="mt-2"
                             type="number"
-                            value={selectedField.repeat.min ?? ""}
-                            onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { repeat: { ...selectedField.repeat, min: event.target.value === "" ? undefined : Number(event.target.value) } }))}
+                            value={selectedField.validation?.min ?? ""}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  validation: {
+                                    ...selectedField.validation,
+                                    min:
+                                      event.target.value === ""
+                                        ? undefined
+                                        : Number(event.target.value),
+                                  },
+                                }),
+                              )
+                            }
                           />
                         </label>
                         <label className="text-sm font-medium">
-                          Repeat max
+                          Max
                           <Input
                             className="mt-2"
                             type="number"
-                            value={selectedField.repeat.max ?? ""}
-                            onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { repeat: { ...selectedField.repeat, max: event.target.value === "" ? undefined : Number(event.target.value) } }))}
+                            value={selectedField.validation?.max ?? ""}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  validation: {
+                                    ...selectedField.validation,
+                                    max:
+                                      event.target.value === ""
+                                        ? undefined
+                                        : Number(event.target.value),
+                                  },
+                                }),
+                              )
+                            }
                           />
                         </label>
                       </div>
-                    ) : null}
-                    {selectedField.matrix ? (
-                      <div className="space-y-3">
+                      <label className="block text-sm font-medium">
+                        Regex or format rule
+                        <Input
+                          className="mt-2"
+                          value={selectedField.validation?.pattern ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                validation: {
+                                  ...selectedField.validation,
+                                  pattern: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                          placeholder="Example: ^[A-Z0-9-]+$"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Cross-field expression
+                        <Input
+                          className="mt-2"
+                          value={selectedField.validation?.expression ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                validation: {
+                                  ...selectedField.validation,
+                                  expression: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                          placeholder="${end_date} >= ${start_date}"
+                        />
+                      </label>
+                      {["gps", "geolocation", "map", "geofence"].includes(
+                        selectedField.type,
+                      ) ? (
                         <label className="block text-sm font-medium">
-                          Matrix rows
-                          <textarea
-                            className="mt-2 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                            value={selectedField.matrix.rows.join("\n")}
-                            onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { matrix: { rows: event.target.value.split("\n").filter(Boolean), columns: selectedField.matrix?.columns ?? [], scoring: selectedField.matrix?.scoring } }))}
+                          Maximum GPS accuracy in meters
+                          <Input
+                            className="mt-2"
+                            type="number"
+                            value={selectedField.validation?.accuracyMax ?? ""}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  validation: {
+                                    ...selectedField.validation,
+                                    accuracyMax:
+                                      event.target.value === ""
+                                        ? undefined
+                                        : Number(event.target.value),
+                                  },
+                                }),
+                              )
+                            }
                           />
                         </label>
-                        <label className="block text-sm font-medium">
-                          Matrix columns
-                          <textarea
-                            className="mt-2 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                            value={selectedField.matrix.columns.join("\n")}
-                            onChange={(event) => updateSelectedForm(updateField(selectedForm, selectedField.id, { matrix: { rows: selectedField.matrix?.rows ?? [], columns: event.target.value.split("\n").filter(Boolean), scoring: selectedField.matrix?.scoring } }))}
-                          />
-                        </label>
-                      </div>
-                    ) : null}
-                    <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
-                      Published responses stay attached to their original version. Create a draft version before making breaking changes.
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
-              </section>
+                  ) : null}
 
-              <section className="rounded-lg border bg-panel p-4">
-                <div className="flex items-center gap-2">
-                  <Check aria-hidden="true" size={17} />
-                  <h2 className="text-sm font-semibold">Offline readiness</h2>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {[
-                    "Works without internet",
-                    "GPS is captured automatically",
-                    "Photos and signatures can retry upload",
-                    "Published versions stay stable on mobile",
-                  ].map((item) => (
-                    <div
-                      key={item}
-                      className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <Check
-                        aria-hidden="true"
-                        className="text-success"
-                        size={15}
-                      />
-                      <span>{item}</span>
+                  {rightPanelTab === "logic" ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
+                        Build no-code logic with XLSForm-style expressions. Use
+                        AND/OR groups in expressions for complex branching.
+                      </div>
+                      {(selectedField.logic ?? []).map((rule) => (
+                        <div
+                          className="rounded-md border bg-background p-3"
+                          key={rule.id}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge tone="accent">
+                              {rule.kind.replace("_", " ")}
+                            </Badge>
+                            <Button
+                              onClick={() =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    logic:
+                                      selectedField.logic?.filter(
+                                        (candidate) => candidate.id !== rule.id,
+                                      ) ?? [],
+                                  }),
+                                )
+                              }
+                              aria-label={`Remove ${rule.kind} rule`}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Button>
+                          </div>
+                          <Input
+                            className="mt-3"
+                            value={rule.expression}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  logic: (selectedField.logic ?? []).map(
+                                    (candidate) =>
+                                      candidate.id === rule.id
+                                        ? {
+                                            ...candidate,
+                                            expression: event.target.value,
+                                          }
+                                        : candidate,
+                                  ),
+                                }),
+                              )
+                            }
+                            placeholder="${consent} = 'Yes'"
+                          />
+                          <Input
+                            className="mt-2"
+                            value={rule.message ?? ""}
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  logic: (selectedField.logic ?? []).map(
+                                    (candidate) =>
+                                      candidate.id === rule.id
+                                        ? {
+                                            ...candidate,
+                                            message: event.target.value,
+                                          }
+                                        : candidate,
+                                  ),
+                                }),
+                              )
+                            }
+                            placeholder="Message shown to the team"
+                          />
+                        </div>
+                      ))}
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          ["show", "Show / Hide"],
+                          ["required", "Required"],
+                          ["skip", "Skip logic"],
+                          ["dynamic_choices", "Dynamic choices"],
+                        ].map(([kind, label]) => (
+                          <Button
+                            key={kind}
+                            onClick={() =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  logic: [
+                                    ...(selectedField.logic ?? []),
+                                    {
+                                      id: `${selectedField.id}-${kind}-${Date.now()}`,
+                                      kind: kind as LogicRule["kind"],
+                                      expression: "${answer} = 'Yes'",
+                                      message: String(label),
+                                    },
+                                  ],
+                                }),
+                              )
+                            }
+                            type="button"
+                            variant="secondary"
+                          >
+                            <Plus aria-hidden="true" />
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </section>
+                  ) : null}
+
+                  {rightPanelTab === "calculation" ? (
+                    <div className="mt-4 space-y-4">
+                      <label className="block text-sm font-medium">
+                        Formula
+                        <textarea
+                          className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+                          value={
+                            selectedField.calculation?.expression ??
+                            selectedField.logic?.find(
+                              (rule) => rule.kind === "calculation",
+                            )?.expression ??
+                            ""
+                          }
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                calculation: {
+                                  ...(selectedField.calculation ?? {
+                                    preview: "Pending validation",
+                                  }),
+                                  expression: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                          placeholder="(${weight_kg} / (${height_m} * ${height_m}))"
+                        />
+                      </label>
+                      <div className="rounded-md border bg-background p-3">
+                        <p className="text-sm font-medium">Formula preview</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {selectedField.calculation?.preview ??
+                            "Add a formula to validate syntax and preview derived values."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {rightPanelTab === "appearance" ? (
+                    <div className="mt-4 space-y-4">
+                      <label className="block text-sm font-medium">
+                        Width
+                        <Select
+                          className="mt-2"
+                          value={selectedField.appearance?.width ?? "full"}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                appearance: {
+                                  ...selectedField.appearance,
+                                  width: event.target.value as
+                                    | "full"
+                                    | "half"
+                                    | "third",
+                                },
+                              }),
+                            )
+                          }
+                        >
+                          <option value="full">Full width</option>
+                          <option value="half">Half width</option>
+                          <option value="third">One third</option>
+                        </Select>
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Placeholder
+                        <Input
+                          className="mt-2"
+                          value={selectedField.appearance?.placeholder ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                appearance: {
+                                  ...selectedField.appearance,
+                                  placeholder: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Help text
+                        <Input
+                          className="mt-2"
+                          value={selectedField.appearance?.helpText ?? ""}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                appearance: {
+                                  ...selectedField.appearance,
+                                  helpText: event.target.value,
+                                },
+                              }),
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {rightPanelTab === "advanced" ? (
+                    <div className="mt-4 space-y-4">
+                      <label className="block text-sm font-medium">
+                        Variable name
+                        <Input
+                          className="mt-2 font-mono"
+                          value={selectedField.variableName ?? selectedField.id}
+                          onChange={(event) =>
+                            updateSelectedForm(
+                              updateField(selectedForm, selectedField.id, {
+                                variableName: event.target.value,
+                              }),
+                            )
+                          }
+                        />
+                      </label>
+                      {selectedField.repeat ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="text-sm font-medium">
+                            Repeat min
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              value={selectedField.repeat.min ?? ""}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    repeat: {
+                                      ...selectedField.repeat,
+                                      min:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Number(event.target.value),
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Repeat max
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              value={selectedField.repeat.max ?? ""}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    repeat: {
+                                      ...selectedField.repeat,
+                                      max:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Number(event.target.value),
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                      {selectedField.matrix ? (
+                        <div className="space-y-3">
+                          <label className="block text-sm font-medium">
+                            Matrix rows
+                            <textarea
+                              className="mt-2 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                              value={selectedField.matrix.rows.join("\n")}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    matrix: {
+                                      rows: event.target.value
+                                        .split("\n")
+                                        .filter(Boolean),
+                                      columns:
+                                        selectedField.matrix?.columns ?? [],
+                                      scoring: selectedField.matrix?.scoring,
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="block text-sm font-medium">
+                            Matrix columns
+                            <textarea
+                              className="mt-2 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                              value={selectedField.matrix.columns.join("\n")}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    matrix: {
+                                      rows: selectedField.matrix?.rows ?? [],
+                                      columns: event.target.value
+                                        .split("\n")
+                                        .filter(Boolean),
+                                      scoring: selectedField.matrix?.scoring,
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                      <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
+                        Published responses stay attached to their original
+                        version. Create a draft version before making breaking
+                        changes.
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className="rounded-lg border bg-panel p-4">
+                  <div className="flex items-center gap-2">
+                    <Check aria-hidden="true" size={17} />
+                    <h2 className="text-sm font-semibold">Offline readiness</h2>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {[
+                      "Works without internet",
+                      "GPS is captured automatically",
+                      "Photos and signatures can retry upload",
+                      "Published versions stay stable on mobile",
+                    ].map((item) => (
+                      <div
+                        key={item}
+                        className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <Check
+                          aria-hidden="true"
+                          className="text-success"
+                          size={15}
+                        />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               </div>
             </Modal>
           ) : null}
@@ -6944,11 +9555,16 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <Eye aria-hidden="true" className="text-primary" size={17} />
+                      <Eye
+                        aria-hidden="true"
+                        className="text-primary"
+                        size={17}
+                      />
                       <h2 className="text-sm font-semibold">Live preview</h2>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedForm.fields.length} fields across {selectedPages.length} page(s)
+                      {selectedForm.fields.length} fields across{" "}
+                      {selectedPages.length} page(s)
                     </p>
                   </div>
                   {selectedField ? (
@@ -6969,7 +9585,9 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                     <button
                       className={cn(
                         "rounded px-2.5 py-1 text-xs font-medium transition",
-                        previewMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        previewMode === mode
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                       key={mode}
                       onClick={() => setPreviewMode(mode)}
@@ -6988,32 +9606,62 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                   )}
                 >
                   <div className="mb-3 rounded-lg border bg-panel px-3 py-2">
-                    <p className="truncate text-sm font-semibold">{selectedForm.name}</p>
+                    <p className="truncate text-sm font-semibold">
+                      {selectedForm.name}
+                    </p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {selectedSurvey?.title ?? "Survey"} / v{selectedForm.version}
+                      {selectedSurvey?.title ?? "Survey"} / v
+                      {selectedForm.version}
                     </p>
                   </div>
                   <div className="space-y-3">
                     {selectedPages.map((page, pageIndex) => {
-                      const pageSections = selectedForm.sections.filter((section) => section.pageId === page.id);
+                      const pageSections = selectedForm.sections.filter(
+                        (section) => section.pageId === page.id,
+                      );
                       return (
-                        <section className="rounded-lg border bg-panel/60 p-3" key={page.id}>
+                        <section
+                          className="rounded-lg border bg-panel/60 p-3"
+                          key={page.id}
+                        >
                           <div className="mb-3">
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                               Page {pageIndex + 1}
                             </p>
-                            <h3 className="mt-1 text-sm font-semibold">{page.title}</h3>
+                            <h3 className="mt-1 text-sm font-semibold">
+                              {page.title}
+                            </h3>
                           </div>
                           <div className="space-y-3">
                             {pageSections.map((section, sectionIndex) => {
-                              const sectionFields = selectedForm.fields.filter((field) => field.sectionId === section.id);
+                              const sectionFields = selectedForm.fields.filter(
+                                (field) => field.sectionId === section.id,
+                              );
                               const tone = getSectionTone(sectionIndex);
                               return (
-                                <div className={cn("overflow-hidden rounded-lg border bg-background", tone.border)} key={section.id}>
-                                  <div className={cn("border-b px-3 py-2", tone.header)}>
+                                <div
+                                  className={cn(
+                                    "overflow-hidden rounded-lg border bg-background",
+                                    tone.border,
+                                  )}
+                                  key={section.id}
+                                >
+                                  <div
+                                    className={cn(
+                                      "border-b px-3 py-2",
+                                      tone.header,
+                                    )}
+                                  >
                                     <div className="flex items-center gap-2">
-                                      <span className={cn("h-6 w-1 rounded-full", tone.rail)} />
-                                      <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{section.title}</h4>
+                                      <span
+                                        className={cn(
+                                          "h-6 w-1 rounded-full",
+                                          tone.rail,
+                                        )}
+                                      />
+                                      <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                                        {section.title}
+                                      </h4>
                                     </div>
                                   </div>
                                   <div className="space-y-2 p-3">
@@ -7021,20 +9669,35 @@ export function DynamicForms({ initialDraft, token }: DynamicFormsProps) {
                                       <button
                                         className={cn(
                                           "w-full rounded-lg border bg-panel p-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                                          selectedField?.id === field.id && "border-primary/50 bg-primary/10",
+                                          selectedField?.id === field.id &&
+                                            "border-primary/50 bg-primary/10",
                                         )}
                                         key={field.id}
-                                        onClick={() => openFieldSettings(field.id)}
+                                        onClick={() =>
+                                          openFieldSettings(field.id)
+                                        }
                                         type="button"
                                       >
                                         <span className="flex flex-wrap items-center gap-1.5 text-xs">
-                                          <span className="font-semibold text-foreground">{field.label}</span>
-                                          {field.required ? <span className="text-danger">*</span> : null}
-                                          <Badge tone="neutral">{field.type.replace("_", " ")}</Badge>
-                                          {field.logic?.length ? <Badge tone="accent">logic</Badge> : null}
+                                          <span className="font-semibold text-foreground">
+                                            {field.label}
+                                          </span>
+                                          {field.required ? (
+                                            <span className="text-danger">
+                                              *
+                                            </span>
+                                          ) : null}
+                                          <Badge tone="neutral">
+                                            {field.type.replace("_", " ")}
+                                          </Badge>
+                                          {field.logic?.length ? (
+                                            <Badge tone="accent">logic</Badge>
+                                          ) : null}
                                         </span>
                                         {field.hint ? (
-                                          <span className="mt-1 line-clamp-1 block text-xs text-muted-foreground">{field.hint}</span>
+                                          <span className="mt-1 line-clamp-1 block text-xs text-muted-foreground">
+                                            {field.hint}
+                                          </span>
                                         ) : null}
                                         <FieldInputPreview field={field} />
                                       </button>

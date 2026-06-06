@@ -17,7 +17,7 @@ import {
   UserCog,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -146,6 +146,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [roleDraft, setRoleDraft] = useState(defaultRoleDraft);
   const [accessDraft, setAccessDraft] = useState(defaultAccessDraft);
   const [accessResult, setAccessResult] = useState<AccessSimulationRead | null>(null);
+  const [localUsers, setLocalUsers] = useState<UserRead[]>([]);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
@@ -167,7 +168,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const activityQuery = useQuery({ queryKey: ["users-teams", "activity", token], queryFn: () => listUsersTeamsActivityLogs(token ?? ""), enabled });
   const organizationQuery = useQuery({ queryKey: ["users-teams", "organization", token], queryFn: () => getOrganizationContext(token ?? ""), enabled });
 
-  const users = usersQuery.data ?? previewUsers;
+  const users = [...localUsers, ...(usersQuery.data ?? previewUsers)];
   const roles = rolesQuery.data ?? previewRoles;
   const teams = teamsQuery.data ?? previewTeams;
   const profiles = profilesQuery.data ?? previewProfiles;
@@ -191,9 +192,29 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     return [...roleNames.entries()].sort((left, right) => left[1].localeCompare(right[1]));
   }, [catalog.roles, roles]);
 
+  const defaultAssignableRole = roleOptions.find(([value]) => value === defaultUserDraft.role_name)?.[0] ?? roleOptions[0]?.[0] ?? defaultUserDraft.role_name;
+
+  useEffect(() => {
+    if (modalMode !== "user" || !roleOptions.length) return;
+    if (!roleOptions.some(([value]) => value === userDraft.role_name)) {
+      setUserDraft((current) => ({ ...current, role_name: roleOptions[0]?.[0] ?? defaultUserDraft.role_name }));
+    }
+  }, [modalMode, roleOptions, userDraft.role_name]);
+
   const invalidateUsersTeams = async () => {
     await queryClient.invalidateQueries({ queryKey: ["users-teams"] });
   };
+
+  function openCreateUserModal(): void {
+    setUserDraft((current) => ({
+      ...defaultUserDraft,
+      email: current.email,
+      full_name: current.full_name,
+      password: current.password,
+      role_name: roleOptions.some(([value]) => value === current.role_name) ? current.role_name : defaultAssignableRole,
+    }));
+    setModalMode("user");
+  }
 
   const createUserMutation = useMutation({
     mutationFn: () => createUser(token ?? "", userDraft),
@@ -205,6 +226,32 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     },
     onError: () => pushToast({ title: "Could not create user", description: "Check the email, password length, role, and your permissions.", tone: "danger" }),
   });
+
+  function submitUser(): void {
+    if (preview) {
+      const email = userDraft.email.trim().toLowerCase();
+      if (users.some((user) => user.email.toLowerCase() === email)) {
+        pushToast({ title: "User already exists", description: "Use a unique email address for the preview user.", tone: "warning" });
+        return;
+      }
+      const user: UserRead = {
+        email,
+        full_name: userDraft.full_name.trim(),
+        id: `user-local-${Date.now()}`,
+        is_active: true,
+        login_slug: "preview",
+        role_name: userDraft.role_name,
+        scope_type: userDraft.scope_type,
+        temporary_password: userDraft.password,
+      };
+      setLocalUsers((current) => [user, ...current]);
+      setModalMode(null);
+      setUserDraft({ ...defaultUserDraft, role_name: defaultAssignableRole });
+      pushToast({ title: "User created", description: `${user.full_name} was added to this local workspace preview.`, tone: "success" });
+      return;
+    }
+    createUserMutation.mutate();
+  }
 
   const importUsersMutation = useMutation({
     mutationFn: () => {
@@ -405,7 +452,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("user")} variant="primary">
+            <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
               <Plus aria-hidden="true" />
               Create user
             </Button>
@@ -458,7 +505,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
                   <Download aria-hidden="true" />
                   Export
                 </Button>
-                <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("user")} variant="primary">
+                <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
                   <Plus aria-hidden="true" />
                   Create user
                 </Button>
@@ -529,13 +576,14 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       ) : null}
 
       <CreateUserModal
-        canSubmit={!preview && canManageUsers && !createUserMutation.isPending}
+        canSubmit={canManageUsers && Boolean(roleOptions.length) && !createUserMutation.isPending}
         draft={userDraft}
         onChange={setUserDraft}
-        onSubmit={() => createUserMutation.mutate()}
+        onSubmit={submitUser}
         onOpenChange={(open) => setModalMode(open ? "user" : null)}
         open={modalMode === "user"}
         roleOptions={roleOptions}
+        saving={createUserMutation.isPending}
       />
       <ImportUsersModal
         canSubmit={!preview && canManageUsers && Boolean(selectedImportFile) && !importUsersMutation.isPending}
@@ -794,7 +842,7 @@ function PermissionsSection({ catalogGroups, onOpenAccessTest, roles, users }: {
   );
 }
 
-function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, roleOptions }: {
+function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, roleOptions, saving }: {
   canSubmit: boolean;
   draft: typeof defaultUserDraft;
   onChange: (draft: typeof defaultUserDraft) => void;
@@ -802,6 +850,7 @@ function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, o
   onSubmit: () => void;
   open: boolean;
   roleOptions: [string, string][];
+  saving: boolean;
 }) {
   return (
     <Modal description="Create an account, choose its role, and define the default access scope." onOpenChange={onOpenChange} open={open} title="Create user" contentClassName="max-w-2xl">
@@ -817,10 +866,18 @@ function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, o
             {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
           </Select>
         </div>
+        {!roleOptions.length ? (
+          <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+            No assignable roles are available for this account. Ask a System Admin to grant user management authority or create the required role template.
+          </div>
+        ) : null}
+        <div className="rounded-xl border bg-muted/35 p-3 text-xs text-muted-foreground">
+          Required before saving: full name, email, a 12-character temporary password, an assignable role, and an access scope.
+        </div>
       </div>
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
-        <Button disabled={!canSubmit || !draft.email || !draft.full_name || draft.password.length < 12} onClick={onSubmit} variant="primary">Create user</Button>
+        <Button disabled={!canSubmit || !draft.email || !draft.full_name || draft.password.length < 12 || !roleOptions.length} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create user"}</Button>
       </div>
     </Modal>
   );

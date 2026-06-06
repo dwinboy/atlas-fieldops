@@ -42,8 +42,15 @@ import {
 import { cn } from "@/lib/utils";
 import type { FormListItem } from "@/modules/forms/data";
 import { statusTone } from "@/modules/forms/utils";
+import { useWorkspaceStore, type LocalWorkspaceForm } from "@/stores/workspace";
 
-type CreationStage = "setup" | "start" | "builder" | "controls" | "preview" | "review";
+type CreationStage =
+  | "setup"
+  | "start"
+  | "builder"
+  | "controls"
+  | "preview"
+  | "review";
 type StartMethod = "blank" | "template" | "duplicate" | "import";
 type CollectionMethod = "web" | "mobile" | "web_mobile";
 
@@ -96,12 +103,83 @@ const setupDefaults: FormSetupDraft = {
   projectName: projectOptions[0] ?? "Project",
 };
 
-const flowSteps: { id: CreationStage; label: string; icon: LucideIcon; route: string }[] = [
-  { id: "setup", label: "Form Setup", icon: ClipboardList, route: "/forms/create" },
-  { id: "builder", label: "Builder", icon: Layers3, route: "/forms/:formId/builder" },
-  { id: "controls", label: "Controls", icon: ShieldCheck, route: "/forms/:formId/governance" },
-  { id: "preview", label: "Preview & Test", icon: MonitorSmartphone, route: "/forms/:formId/preview" },
-  { id: "review", label: "Review", icon: ListChecks, route: "/forms/:formId/review" },
+function slugifyFormName(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || `form-${Date.now()}`
+  );
+}
+
+function workspaceFormFromDraft(
+  form: DynamicForm,
+  setup: FormSetupDraft,
+  projectId?: string | null,
+): LocalWorkspaceForm {
+  return {
+    active_assignments: form.status === "published" ? 1 : 0,
+    created_by: "M&E Manager",
+    description: setup.description || form.pages?.[0]?.description || null,
+    form_type: setup.formType,
+    has_quality_issues: form.fields.length === 0,
+    id: form.id,
+    name: form.name,
+    owner: setup.owner || "M&E Manager",
+    pending_approval: form.status !== "published",
+    project_id: projectId ?? null,
+    project_name: setup.projectName,
+    quality_score:
+      form.status === "published" ? 86 : form.fields.length ? 72 : 45,
+    questions: form.fields.length,
+    recently_updated: true,
+    sections: form.sections.length,
+    slug: slugifyFormName(form.name),
+    status: form.status,
+    survey_name: setup.formType,
+    total_submissions: 0,
+    updated_at: form.updatedAt,
+    version: form.version,
+  };
+}
+
+const flowSteps: {
+  id: CreationStage;
+  label: string;
+  icon: LucideIcon;
+  route: string;
+}[] = [
+  {
+    id: "setup",
+    label: "Form Setup",
+    icon: ClipboardList,
+    route: "/forms/create",
+  },
+  {
+    id: "builder",
+    label: "Builder",
+    icon: Layers3,
+    route: "/forms/:formId/builder",
+  },
+  {
+    id: "controls",
+    label: "Controls",
+    icon: ShieldCheck,
+    route: "/forms/:formId/governance",
+  },
+  {
+    id: "preview",
+    label: "Preview & Test",
+    icon: MonitorSmartphone,
+    route: "/forms/:formId/preview",
+  },
+  {
+    id: "review",
+    label: "Review",
+    icon: ListChecks,
+    route: "/forms/:formId/review",
+  },
 ];
 
 const startMethods: {
@@ -111,19 +189,22 @@ const startMethods: {
   icon: LucideIcon;
 }[] = [
   {
-    description: "Open a clean draft with one starter section and no questions.",
+    description:
+      "Open a clean draft with one starter section and no questions.",
     id: "blank",
     label: "Start from Blank",
     icon: FileText,
   },
   {
-    description: "Use a recommended M&E structure with consent, respondent, GPS, and quality fields.",
+    description:
+      "Use a recommended M&E structure with consent, respondent, GPS, and quality fields.",
     id: "template",
     label: "Use Template",
     icon: Sparkles,
   },
   {
-    description: "Create a new editable draft based on an existing form summary.",
+    description:
+      "Create a new editable draft based on an existing form summary.",
     id: "duplicate",
     label: "Duplicate Existing Form",
     icon: GitBranch,
@@ -147,7 +228,12 @@ function variableNameFromLabel(label: string, fallback: string): string {
   );
 }
 
-function attachStarterField(section: FormSection, type: FieldType, label: string, required = false): FormField {
+function attachStarterField(
+  section: FormSection,
+  type: FieldType,
+  label: string,
+  required = false,
+): FormField {
   const field = createField(type, section.id, section.pageId);
   return {
     ...field,
@@ -164,7 +250,9 @@ function builderStatusFromListStatus(status: string): DynamicForm["status"] {
   return "draft";
 }
 
-export function createEditableDraftFromListItem(form: FormListItem): DynamicForm {
+export function createEditableDraftFromListItem(
+  form: FormListItem,
+): DynamicForm {
   const createdAt = form.updated_at || new Date().toISOString();
   const page = createPage("Page 1");
   const sectionCount = Math.max(1, form.sections || 1);
@@ -200,21 +288,32 @@ export function createEditableDraftFromListItem(form: FormListItem): DynamicForm
   ];
   const fields = Array.from({ length: questionCount }, (_, index) => {
     const section = sections[index % sections.length] ?? sections[0];
-    const type = index === Math.min(5, questionCount - 1) ? "repeat_group" : questionTypes[index % questionTypes.length] ?? "text";
+    const type =
+      index === Math.min(5, questionCount - 1)
+        ? "repeat_group"
+        : (questionTypes[index % questionTypes.length] ?? "text");
     const label =
       index === 0
         ? "Consent confirmed"
         : type === "repeat_group"
           ? "Household members"
           : `${section.title} question ${Math.floor(index / sections.length) + 1}`;
-    const field = attachStarterField(section, type, label, index < 3 || type === "gps");
+    const field = attachStarterField(
+      section,
+      type,
+      label,
+      index < 3 || type === "gps",
+    );
     return {
       ...field,
       options:
         type === "radio" || type === "select" || type === "checkbox"
           ? ["Yes", "No", "Not applicable"]
           : field.options,
-      repeat: type === "repeat_group" ? { min: 1, max: 12, allowNested: false } : field.repeat,
+      repeat:
+        type === "repeat_group"
+          ? { min: 1, max: 12, allowNested: false }
+          : field.repeat,
       validation:
         type === "gps"
           ? { accuracyMax: 15 }
@@ -283,7 +382,8 @@ export function createEnterpriseDraftForm(
     sections: [
       {
         ...overviewSection,
-        description: setup.description || "Core questions and respondent context.",
+        description:
+          setup.description || "Core questions and respondent context.",
       },
     ],
     status: "draft",
@@ -332,7 +432,8 @@ export function createEnterpriseDraftForm(
     form.sections[0] ?? overviewSection,
     {
       ...evidenceSection,
-      description: "GPS, consent evidence, files, and supervisor quality checks.",
+      description:
+        "GPS, consent evidence, files, and supervisor quality checks.",
     },
   ];
   const fields = [
@@ -348,12 +449,19 @@ export function createEnterpriseDraftForm(
   return { ...form, fields, sections };
 }
 
-export function validateFormForPublish(form: DynamicForm | null | undefined, setup: FormSetupDraft): FormReadinessItem[] {
+export function validateFormForPublish(
+  form: DynamicForm | null | undefined,
+  setup: FormSetupDraft,
+): FormReadinessItem[] {
   const fields = form?.fields ?? [];
   const sections = form?.sections ?? [];
-  const variableNames = fields.map((field) => field.variableName?.trim()).filter(Boolean) as string[];
+  const variableNames = fields
+    .map((field) => field.variableName?.trim())
+    .filter(Boolean) as string[];
   const uniqueVariableNames = new Set(variableNames);
-  const hasGps = fields.some((field) => ["gps", "geolocation", "map", "geofence"].includes(field.type));
+  const hasGps = fields.some((field) =>
+    ["gps", "geolocation", "map", "geofence"].includes(field.type),
+  );
 
   return [
     {
@@ -365,14 +473,16 @@ export function validateFormForPublish(form: DynamicForm | null | undefined, set
     },
     {
       complete: Boolean(setup.projectName.trim()),
-      description: "Every form must belong to a project so submissions remain traceable.",
+      description:
+        "Every form must belong to a project so submissions remain traceable.",
       id: "project",
       label: "Form belongs to a project",
       required: true,
     },
     {
       complete: sections.length > 0,
-      description: "Sections organize the survey for field officers and reviewers.",
+      description:
+        "Sections organize the survey for field officers and reviewers.",
       id: "sections",
       label: "At least one section exists",
       required: true,
@@ -385,14 +495,24 @@ export function validateFormForPublish(form: DynamicForm | null | undefined, set
       required: true,
     },
     {
-      complete: variableNames.length === fields.length && uniqueVariableNames.size === variableNames.length,
-      description: "Variable names must be present, unique, stable, lowercase-friendly, and without spaces.",
+      complete:
+        variableNames.length === fields.length &&
+        uniqueVariableNames.size === variableNames.length,
+      description:
+        "Variable names must be present, unique, stable, lowercase-friendly, and without spaces.",
       id: "variables",
       label: "Variable names are unique",
       required: true,
     },
     {
-      complete: fields.every((field) => !(field.logic ?? []).some((rule) => rule.targetId && !fields.some((candidate) => candidate.id === rule.targetId))),
+      complete: fields.every(
+        (field) =>
+          !(field.logic ?? []).some(
+            (rule) =>
+              rule.targetId &&
+              !fields.some((candidate) => candidate.id === rule.targetId),
+          ),
+      ),
       description: "Logic cannot point to deleted questions.",
       id: "logic",
       label: "Logic rules are valid",
@@ -400,28 +520,36 @@ export function validateFormForPublish(form: DynamicForm | null | undefined, set
     },
     {
       complete: true,
-      description: "Permissions, collectors, reviewers, and export access can be adjusted in Controls.",
+      description:
+        "Permissions, collectors, reviewers, and export access can be adjusted in Controls.",
       id: "permissions",
       label: "Permissions reviewed",
       required: true,
     },
     {
       complete: true,
-      description: "Supervisor and data manager review paths are ready by default.",
+      description:
+        "Supervisor and data manager review paths are ready by default.",
       id: "workflow",
       label: "Workflow configured",
       required: true,
     },
     {
       complete: true,
-      description: "Consent, retention, masking, edit rules, and record locking have production defaults.",
+      description:
+        "Consent, retention, masking, edit rules, and record locking have production defaults.",
       id: "governance",
       label: "Governance reviewed",
       required: true,
     },
     {
-      complete: !hasGps || fields.some((field) => field.type === "gps" && field.validation?.accuracyMax),
-      description: "GPS forms need an accuracy threshold before field deployment.",
+      complete:
+        !hasGps ||
+        fields.some(
+          (field) => field.type === "gps" && field.validation?.accuracyMax,
+        ),
+      description:
+        "GPS forms need an accuracy threshold before field deployment.",
       id: "mapping",
       label: "Mapping settings reviewed",
       required: hasGps,
@@ -429,9 +557,31 @@ export function validateFormForPublish(form: DynamicForm | null | undefined, set
   ];
 }
 
-export function FormCreationWorkspace({ existingForms, initialForm, onBack, token }: FormCreationWorkspaceProps) {
-  const initialDraft = useMemo(() => (initialForm ? createEditableDraftFromListItem(initialForm) : null), [initialForm]);
-  const [stage, setStage] = useState<CreationStage>(initialDraft ? "builder" : "setup");
+export function FormCreationWorkspace({
+  existingForms,
+  initialForm,
+  onBack,
+  token,
+}: FormCreationWorkspaceProps) {
+  const localProjects = useWorkspaceStore((state) => state.localProjects);
+  const upsertLocalForm = useWorkspaceStore((state) => state.upsertLocalForm);
+  const availableProjectOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...localProjects.map((project) => project.name),
+          ...projectOptions,
+        ]),
+      ),
+    [localProjects],
+  );
+  const initialDraft = useMemo(
+    () => (initialForm ? createEditableDraftFromListItem(initialForm) : null),
+    [initialForm],
+  );
+  const [stage, setStage] = useState<CreationStage>(
+    initialDraft ? "builder" : "setup",
+  );
   const [setup, setSetup] = useState<FormSetupDraft>(() =>
     initialForm
       ? {
@@ -444,13 +594,21 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
           owner: initialForm.owner,
           projectName: initialForm.project_name,
         }
-      : setupDefaults,
+      : {
+          ...setupDefaults,
+          projectName: localProjects[0]?.name ?? setupDefaults.projectName,
+        },
   );
   const [startMethod, setStartMethod] = useState<StartMethod>("blank");
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
-  const checklist = useMemo(() => validateFormForPublish(draftForm, setup), [draftForm, setup]);
-  const criticalFailures = checklist.filter((item) => item.required && !item.complete);
+  const checklist = useMemo(
+    () => validateFormForPublish(draftForm, setup),
+    [draftForm, setup],
+  );
+  const criticalFailures = checklist.filter(
+    (item) => item.required && !item.complete,
+  );
 
   function updateSetup(patch: Partial<FormSetupDraft>): void {
     setSetup((current) => ({ ...current, ...patch }));
@@ -459,13 +617,20 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
   function createDraftAndOpenBuilder(method = startMethod): void {
     const nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
     setDraftForm(nextDraft);
+    upsertLocalForm(
+      workspaceFormFromDraft(
+        nextDraft,
+        setup,
+        localProjects.find((project) => project.name === setup.projectName)?.id,
+      ),
+    );
     setPublishedForm(null);
     setStage("builder");
   }
 
   function publishDraft(): void {
     if (!draftForm || criticalFailures.length) return;
-    setPublishedForm({
+    const nextPublishedForm: DynamicForm = {
       ...draftForm,
       activeVersion: Math.max(draftForm.activeVersion, 1),
       history: [
@@ -479,10 +644,31 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       ],
       status: "published",
       updatedAt: new Date().toISOString(),
-    });
+    };
+    setPublishedForm(nextPublishedForm);
+    setDraftForm(nextPublishedForm);
+    upsertLocalForm(
+      workspaceFormFromDraft(
+        nextPublishedForm,
+        setup,
+        localProjects.find((project) => project.name === setup.projectName)?.id,
+      ),
+    );
   }
 
-  const currentRoute = flowSteps.find((step) => step.id === stage)?.route ?? "/forms/create";
+  function handleBuilderFormChange(nextForm: DynamicForm): void {
+    setDraftForm(nextForm);
+    upsertLocalForm(
+      workspaceFormFromDraft(
+        nextForm,
+        setup,
+        localProjects.find((project) => project.name === setup.projectName)?.id,
+      ),
+    );
+  }
+
+  const currentRoute =
+    flowSteps.find((step) => step.id === stage)?.route ?? "/forms/create";
   const status = publishedForm?.status ?? draftForm?.status ?? "draft";
 
   return (
@@ -494,12 +680,18 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               <Badge tone="collect">FORMS</Badge>
               <Badge tone={statusTone(status)}>{status}</Badge>
               <Badge tone="neutral">{currentRoute}</Badge>
-              <span className="text-xs text-muted-foreground">Autosave: Saved</span>
+              <span className="text-xs text-muted-foreground">
+                Autosave: Saved
+              </span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Create Form</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Create Form
+              </h1>
               <HelpHint label="About create form" title="Create Form">
-                Create the draft shell first, then build questions, configure controls, test the form, review readiness, and publish a governed version for field operations.
+                Create the draft shell first, then build questions, configure
+                controls, test the form, review readiness, and publish a
+                governed version for field operations.
               </HelpHint>
             </div>
           </div>
@@ -509,7 +701,11 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               Back to forms
             </Button>
             {stage === "review" ? (
-              <Button disabled={!draftForm || criticalFailures.length > 0} onClick={publishDraft} variant="primary">
+              <Button
+                disabled={!draftForm || criticalFailures.length > 0}
+                onClick={publishDraft}
+                variant="primary"
+              >
                 <Rocket aria-hidden="true" />
                 Publish
               </Button>
@@ -525,7 +721,9 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               <button
                 className={cn(
                   "rounded-xl border px-3 py-2 text-left transition",
-                  active ? "border-primary bg-primary text-primary-foreground" : "bg-background/60 hover:bg-muted/60",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-background/60 hover:bg-muted/60",
                   !available && "cursor-not-allowed opacity-50",
                 )}
                 disabled={!available}
@@ -537,7 +735,16 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
                   <Icon aria-hidden="true" size={15} />
                   {step.label}
                 </span>
-                <span className={cn("mt-1 block truncate text-xs", active ? "text-primary-foreground/75" : "text-muted-foreground")}>{step.route}</span>
+                <span
+                  className={cn(
+                    "mt-1 block truncate text-xs",
+                    active
+                      ? "text-primary-foreground/75"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {step.route}
+                </span>
               </button>
             );
           })}
@@ -554,59 +761,126 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
             <div className="mt-3 grid gap-4 md:grid-cols-2">
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Form Name</span>
-                <Input onChange={(event) => updateSetup({ formName: event.target.value })} placeholder="Baseline household survey" value={setup.formName} />
+                <Input
+                  onChange={(event) =>
+                    updateSetup({ formName: event.target.value })
+                  }
+                  placeholder="Baseline household survey"
+                  value={setup.formName}
+                />
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Project</span>
-                <Select onChange={(event) => updateSetup({ projectName: event.target.value })} value={setup.projectName}>
-                  {projectOptions.map((project) => <option key={project} value={project}>{project}</option>)}
+                <Select
+                  onChange={(event) =>
+                    updateSetup({ projectName: event.target.value })
+                  }
+                  value={setup.projectName}
+                >
+                  {availableProjectOptions.map((project) => (
+                    <option key={project} value={project}>
+                      {project}
+                    </option>
+                  ))}
                 </Select>
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Form Type</span>
-                <Select onChange={(event) => updateSetup({ formType: event.target.value })} value={setup.formType}>
-                  {formTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                <Select
+                  onChange={(event) =>
+                    updateSetup({ formType: event.target.value })
+                  }
+                  value={setup.formType}
+                >
+                  {formTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
                 </Select>
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Primary Language</span>
-                <Input onChange={(event) => updateSetup({ language: event.target.value })} value={setup.language} />
+                <Input
+                  onChange={(event) =>
+                    updateSetup({ language: event.target.value })
+                  }
+                  value={setup.language}
+                />
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Owner</span>
-                <Input onChange={(event) => updateSetup({ owner: event.target.value })} value={setup.owner} />
+                <Input
+                  onChange={(event) =>
+                    updateSetup({ owner: event.target.value })
+                  }
+                  value={setup.owner}
+                />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block font-medium">Estimated Duration</span>
-                <Input min={1} onChange={(event) => updateSetup({ durationMinutes: Number(event.target.value) || 1 })} type="number" value={setup.durationMinutes} />
+                <span className="mb-1 block font-medium">
+                  Estimated Duration
+                </span>
+                <Input
+                  min={1}
+                  onChange={(event) =>
+                    updateSetup({
+                      durationMinutes: Number(event.target.value) || 1,
+                    })
+                  }
+                  type="number"
+                  value={setup.durationMinutes}
+                />
               </label>
               <label className="text-sm md:col-span-2">
                 <span className="mb-1 block font-medium">Description</span>
-                <Textarea onChange={(event) => updateSetup({ description: event.target.value })} placeholder="What this form collects, who uses it, and what decisions the data supports." value={setup.description} />
+                <Textarea
+                  onChange={(event) =>
+                    updateSetup({ description: event.target.value })
+                  }
+                  placeholder="What this form collects, who uses it, and what decisions the data supports."
+                  value={setup.description}
+                />
               </label>
             </div>
             <div className="mt-5">
               <p className="text-sm font-medium">Data Collection Method</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                {([
-                  ["web", MonitorSmartphone, "Web"],
-                  ["mobile", Smartphone, "Mobile"],
-                  ["web_mobile", TabletSmartphone, "Web and Mobile"],
-                ] satisfies [CollectionMethod, LucideIcon, string][]).map(([method, Icon, label]) => (
+                {(
+                  [
+                    ["web", MonitorSmartphone, "Web"],
+                    ["mobile", Smartphone, "Mobile"],
+                    ["web_mobile", TabletSmartphone, "Web and Mobile"],
+                  ] satisfies [CollectionMethod, LucideIcon, string][]
+                ).map(([method, Icon, label]) => (
                   <button
-                    className={cn("rounded-xl border bg-background/60 p-3 text-left transition hover:border-primary/40", setup.collectionMethod === method && "border-primary/50 bg-primary/10")}
+                    className={cn(
+                      "rounded-xl border bg-background/60 p-3 text-left transition hover:border-primary/40",
+                      setup.collectionMethod === method &&
+                        "border-primary/50 bg-primary/10",
+                    )}
                     key={method}
                     onClick={() => updateSetup({ collectionMethod: method })}
                     type="button"
                   >
-                    <Icon aria-hidden="true" className="text-primary" size={17} />
-                    <span className="mt-2 block text-sm font-semibold">{label}</span>
+                    <Icon
+                      aria-hidden="true"
+                      className="text-primary"
+                      size={17}
+                    />
+                    <span className="mt-2 block text-sm font-semibold">
+                      {label}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
             <div className="mt-3 flex justify-end">
-              <Button disabled={!setup.formName.trim()} onClick={() => setStage("start")} variant="primary">
+              <Button
+                disabled={!setup.formName.trim()}
+                onClick={() => setStage("start")}
+                variant="primary"
+              >
                 Continue
               </Button>
             </div>
@@ -617,7 +891,10 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               <Signal label="Initial Status" value="Draft" />
               <Signal label="Owner" value={setup.owner} />
               <Signal label="Language" value={setup.language} />
-              <Signal label="Collection Method" value={setup.collectionMethod.replace("_", " + ")} />
+              <Signal
+                label="Collection Method"
+                value={setup.collectionMethod.replace("_", " + ")}
+              />
             </div>
           </aside>
         </div>
@@ -632,7 +909,11 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               const Icon = method.icon;
               return (
                 <button
-                  className={cn("rounded-2xl border bg-background/60 p-4 text-left transition hover:border-primary/40", startMethod === method.id && "border-primary/50 bg-primary/10")}
+                  className={cn(
+                    "rounded-2xl border bg-background/60 p-4 text-left transition hover:border-primary/40",
+                    startMethod === method.id &&
+                      "border-primary/50 bg-primary/10",
+                  )}
                   key={method.id}
                   onClick={() => setStartMethod(method.id)}
                   type="button"
@@ -640,15 +921,25 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
                   <Icon aria-hidden="true" className="text-primary" size={20} />
                   <span className="mt-3 flex items-center gap-2 font-semibold">
                     {method.label}
-                    <HelpHint label={`About ${method.label}`} title={method.label}>{method.description}</HelpHint>
+                    <HelpHint
+                      label={`About ${method.label}`}
+                      title={method.label}
+                    >
+                      {method.description}
+                    </HelpHint>
                   </span>
                 </button>
               );
             })}
           </div>
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <Button onClick={() => setStage("setup")} variant="ghost">Back</Button>
-            <Button onClick={() => createDraftAndOpenBuilder()} variant="primary">
+            <Button onClick={() => setStage("setup")} variant="ghost">
+              Back
+            </Button>
+            <Button
+              onClick={() => createDraftAndOpenBuilder()}
+              variant="primary"
+            >
               <Play aria-hidden="true" />
               Continue to Builder
             </Button>
@@ -659,7 +950,11 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       {stage === "builder" && draftForm ? (
         <section className="space-y-3">
           <StagePanel
-            action={<Button onClick={() => setStage("controls")} variant="primary">Continue to controls</Button>}
+            action={
+              <Button onClick={() => setStage("controls")} variant="primary">
+                Continue to controls
+              </Button>
+            }
             icon={Layers3}
             title="Builder"
             route="/forms/:formId/builder"
@@ -668,14 +963,23 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
               "The left panel contains the question library, the center is the form canvas, and field settings open where users can configure the selected question.",
             ]}
           />
-          <DynamicForms initialDraft={draftForm} token={token} />
+          <DynamicForms
+            contextProjectName={setup.projectName}
+            initialDraft={draftForm}
+            onFormChange={handleBuilderFormChange}
+            token={token}
+          />
         </section>
       ) : null}
 
       {stage === "controls" ? (
         <section className="space-y-3">
           <StagePanel
-            action={<Button onClick={() => setStage("preview")} variant="primary">Preview and test</Button>}
+            action={
+              <Button onClick={() => setStage("preview")} variant="primary">
+                Preview and test
+              </Button>
+            }
             icon={ShieldCheck}
             title="Controls & Governance"
             route="/forms/:formId/governance"
@@ -685,21 +989,54 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
             ]}
           />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {([
-              ["Permissions", "View, edit, publish, assign, collect, review, approve, and export access.", ShieldCheck],
-              ["Workflow", "Simple, supervisor review, data manager review, or custom stages.", Workflow],
-              ["Data Quality", "Required fields, duplicates, outliers, GPS validation, consent, and blocking rules.", ClipboardCheck],
-              ["Governance", "Retention, masking, consent, export restrictions, edit rules, and record locking.", ListChecks],
-              ["Mapping Settings", "GPS required, accuracy threshold, boundary validation, coordinate masking.", MonitorSmartphone],
-              ["Audit Trail", "Form created, question changes, rules, publish, archive, export, and preview events.", GitBranch],
-            ] satisfies [string, string, LucideIcon][]).map(([title, description, Icon]) => (
-              <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={String(title)}>
+            {(
+              [
+                [
+                  "Permissions",
+                  "View, edit, publish, assign, collect, review, approve, and export access.",
+                  ShieldCheck,
+                ],
+                [
+                  "Workflow",
+                  "Simple, supervisor review, data manager review, or custom stages.",
+                  Workflow,
+                ],
+                [
+                  "Data Quality",
+                  "Required fields, duplicates, outliers, GPS validation, consent, and blocking rules.",
+                  ClipboardCheck,
+                ],
+                [
+                  "Governance",
+                  "Retention, masking, consent, export restrictions, edit rules, and record locking.",
+                  ListChecks,
+                ],
+                [
+                  "Mapping Settings",
+                  "GPS required, accuracy threshold, boundary validation, coordinate masking.",
+                  MonitorSmartphone,
+                ],
+                [
+                  "Audit Trail",
+                  "Form created, question changes, rules, publish, archive, export, and preview events.",
+                  GitBranch,
+                ],
+              ] satisfies [string, string, LucideIcon][]
+            ).map(([title, description, Icon]) => (
+              <div
+                className="rounded-xl border bg-panel p-3.5 shadow-line"
+                key={String(title)}
+              >
                 <Icon aria-hidden="true" className="text-primary" size={19} />
                 <div className="mt-3 flex items-center gap-2">
                   <h3 className="font-semibold">{title}</h3>
-                  <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+                  <HelpHint label={`About ${title}`} title={title}>
+                    {description}
+                  </HelpHint>
                 </div>
-                <Badge className="mt-4" tone="success">Default reviewed</Badge>
+                <Badge className="mt-4" tone="success">
+                  Default reviewed
+                </Badge>
               </div>
             ))}
           </div>
@@ -709,7 +1046,11 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
       {stage === "preview" ? (
         <section className="space-y-3">
           <StagePanel
-            action={<Button onClick={() => setStage("review")} variant="primary">Review readiness</Button>}
+            action={
+              <Button onClick={() => setStage("review")} variant="primary">
+                Review readiness
+              </Button>
+            }
             icon={MonitorSmartphone}
             title="Preview & Test"
             route="/forms/:formId/preview"
@@ -719,31 +1060,62 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
             ]}
           />
           <div className="grid gap-4 xl:grid-cols-3">
-            {([
-              ["Web Preview", MonitorSmartphone, "Desktop staff collection and manager review."],
-              ["Tablet Preview", TabletSmartphone, "Supervisor-friendly operational layout."],
-              ["Mobile Preview", Smartphone, "Enumerator mode for offline collection."],
-            ] satisfies [string, LucideIcon, string][]).map(([title, Icon, description]) => (
-              <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={String(title)}>
+            {(
+              [
+                [
+                  "Web Preview",
+                  MonitorSmartphone,
+                  "Desktop staff collection and manager review.",
+                ],
+                [
+                  "Tablet Preview",
+                  TabletSmartphone,
+                  "Supervisor-friendly operational layout.",
+                ],
+                [
+                  "Mobile Preview",
+                  Smartphone,
+                  "Enumerator mode for offline collection.",
+                ],
+              ] satisfies [string, LucideIcon, string][]
+            ).map(([title, Icon, description]) => (
+              <div
+                className="rounded-xl border bg-panel p-3.5 shadow-line"
+                key={String(title)}
+              >
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">{title}</h3>
                   <Icon aria-hidden="true" className="text-primary" size={19} />
                 </div>
                 <div className="mt-4 rounded-xl border bg-background/70 p-4">
-                  <p className="text-sm font-semibold">{draftForm?.name ?? setup.formName}</p>
+                  <p className="text-sm font-semibold">
+                    {draftForm?.name ?? setup.formName}
+                  </p>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     Preview mode
-                    <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+                    <HelpHint label={`About ${title}`} title={title}>
+                      {description}
+                    </HelpHint>
                   </div>
                   <div className="mt-4 space-y-2">
                     {(draftForm?.fields ?? []).slice(0, 4).map((field) => (
-                      <div className="rounded-lg border bg-panel px-3 py-2" key={field.id}>
-                        <p className="text-sm font-medium">{field.label}{field.required ? " *" : ""}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{field.type} · {field.variableName}</p>
+                      <div
+                        className="rounded-lg border bg-panel px-3 py-2"
+                        key={field.id}
+                      >
+                        <p className="text-sm font-medium">
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {field.type} · {field.variableName}
+                        </p>
                       </div>
                     ))}
                     {draftForm?.fields.length ? null : (
-                      <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-5 text-center text-sm text-muted-foreground">No questions yet. Return to Builder and add questions.</div>
+                      <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-5 text-center text-sm text-muted-foreground">
+                        No questions yet. Return to Builder and add questions.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -767,18 +1139,43 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {checklist.map((item) => {
               const passed = item.complete;
-              const tone = passed ? "success" : item.required ? "danger" : "warning";
+              const tone = passed
+                ? "success"
+                : item.required
+                  ? "danger"
+                  : "warning";
               return (
-                <div className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
+                <div
+                  className="rounded-xl border bg-panel p-3 shadow-line"
+                  key={item.id}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <Badge tone={tone}>{passed ? "Passed" : item.required ? "Failed" : "Warning"}</Badge>
+                      <Badge tone={tone}>
+                        {passed
+                          ? "Passed"
+                          : item.required
+                            ? "Failed"
+                            : "Warning"}
+                      </Badge>
                       <div className="mt-3 flex items-center gap-2">
                         <h3 className="font-semibold">{item.label}</h3>
-                        <HelpHint label={`About ${item.label}`} title={item.label}>{item.description}</HelpHint>
+                        <HelpHint
+                          label={`About ${item.label}`}
+                          title={item.label}
+                        >
+                          {item.description}
+                        </HelpHint>
                       </div>
                     </div>
-                    {passed ? <CheckCircle2 aria-hidden="true" className="text-success" /> : <XCircle aria-hidden="true" className="text-danger" />}
+                    {passed ? (
+                      <CheckCircle2
+                        aria-hidden="true"
+                        className="text-success"
+                      />
+                    ) : (
+                      <XCircle aria-hidden="true" className="text-danger" />
+                    )}
                   </div>
                 </div>
               );
@@ -787,12 +1184,20 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
           {publishedForm ? (
             <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
               <div className="flex items-start gap-3">
-                <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" />
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="mt-0.5 text-success"
+                />
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold">Published version created</h3>
-                    <HelpHint label="About published version" title="Published version created">
-                      {publishedForm.name} is now Published as v{publishedForm.activeVersion}. Field Operations can assign it to collectors.
+                    <HelpHint
+                      label="About published version"
+                      title="Published version created"
+                    >
+                      {publishedForm.name} is now Published as v
+                      {publishedForm.activeVersion}. Field Operations can assign
+                      it to collectors.
                     </HelpHint>
                   </div>
                 </div>
@@ -805,7 +1210,19 @@ export function FormCreationWorkspace({ existingForms, initialForm, onBack, toke
   );
 }
 
-function StagePanel({ action, icon: Icon, lines, route, title }: { action?: ReactNode; icon: LucideIcon; lines: string[]; route: string; title: string }) {
+function StagePanel({
+  action,
+  icon: Icon,
+  lines,
+  route,
+  title,
+}: {
+  action?: ReactNode;
+  icon: LucideIcon;
+  lines: string[];
+  route: string;
+  title: string;
+}) {
   return (
     <div className="rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

@@ -1,11 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Camera, CheckCircle2, FileSignature, MapPin, RadioTower, Save, Send, ShieldCheck, WifiOff } from "lucide-react";
+import {
+  Camera,
+  CheckCircle2,
+  FileSignature,
+  MapPin,
+  RadioTower,
+  Save,
+  Send,
+  ShieldCheck,
+  WifiOff,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { SubmissionRecord } from "@/modules/submissions/data";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type PublicCollectionFormProps = {
   slug: string;
@@ -15,7 +27,7 @@ const collectionSteps = [
   "Identify the respondent",
   "Capture location and evidence",
   "Review answers",
-  "Submit or save offline"
+  "Submit or save offline",
 ];
 
 const evidenceActions = [
@@ -24,27 +36,30 @@ const evidenceActions = [
     icon: MapPin,
     title: "Capture GPS",
     text: "Attach current coordinates to this response.",
-    doneText: "GPS captured"
+    doneText: "GPS captured",
   },
   {
     key: "photo",
     icon: Camera,
     title: "Add photo",
     text: "Upload field evidence or inspection proof.",
-    doneText: "Photo attached"
+    doneText: "Photo attached",
   },
   {
     key: "consent",
     icon: FileSignature,
     title: "Capture consent",
     text: "Record respondent acknowledgement.",
-    doneText: "Consent proof added"
-  }
+    doneText: "Consent proof added",
+  },
 ] as const;
 
 type EvidenceKey = (typeof evidenceActions)[number]["key"];
 
 export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
+  const upsertLocalSubmission = useWorkspaceStore(
+    (state) => state.upsertLocalSubmission,
+  );
   const [savedOffline, setSavedOffline] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -52,11 +67,14 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [communityName, setCommunityName] = useState("");
   const [collectionResult, setCollectionResult] = useState("");
-  const [responseReference, setResponseReference] = useState(() => `AF-${slug.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-5)}`);
+  const [responseReference, setResponseReference] = useState(
+    () =>
+      `AF-${slug.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-5)}`,
+  );
   const [evidence, setEvidence] = useState<Record<EvidenceKey, boolean>>({
     gps: false,
     photo: false,
-    consent: false
+    consent: false,
   });
 
   const formTitle = useMemo(
@@ -66,19 +84,174 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
         .filter(Boolean)
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" ") || "Public Collection Form",
-    [slug]
+    [slug],
   );
   const evidenceCount = Object.values(evidence).filter(Boolean).length;
-  const hasRespondentDetails = Boolean(respondentName.trim() && communityName.trim());
+  const hasRespondentDetails = Boolean(
+    respondentName.trim() && communityName.trim(),
+  );
   const readyToSubmit = hasRespondentDetails && consent;
   const completionItems = [
-    { label: "Respondent details", complete: hasRespondentDetails, guidance: "Enter the respondent name and community or site name." },
-    { label: "Evidence", complete: evidenceCount > 0, guidance: "Add GPS, photo, or consent proof when required by the project." },
-    { label: "Consent", complete: consent, guidance: "Confirm that the respondent agreed to data collection." },
-    { label: "Review", complete: readyToSubmit, guidance: "Check all details before sending the response." }
+    {
+      label: "Respondent details",
+      complete: hasRespondentDetails,
+      guidance: "Enter the respondent name and community or site name.",
+    },
+    {
+      label: "Evidence",
+      complete: evidenceCount > 0,
+      guidance:
+        "Add GPS, photo, or consent proof when required by the project.",
+    },
+    {
+      label: "Consent",
+      complete: consent,
+      guidance: "Confirm that the respondent agreed to data collection.",
+    },
+    {
+      label: "Review",
+      complete: readyToSubmit,
+      guidance: "Check all details before sending the response.",
+    },
   ];
-  const completionPercent = Math.round((completionItems.filter((item) => item.complete).length / completionItems.length) * 100);
+  const completionPercent = Math.round(
+    (completionItems.filter((item) => item.complete).length /
+      completionItems.length) *
+      100,
+  );
   const nextMissingItem = completionItems.find((item) => !item.complete);
+
+  function createReviewSubmission(): SubmissionRecord {
+    const submittedAt = new Date().toISOString();
+    const slaDueAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const hasGps = evidence.gps;
+    const hasMediaEvidence = evidence.photo || evidence.consent;
+    const qualityFlags: SubmissionRecord["quality_flags"] = [];
+
+    if (!hasGps) {
+      qualityFlags.push({
+        check: "GPS Validation",
+        id: `${responseReference}-gps`,
+        message:
+          "No GPS evidence was captured from the public collection link.",
+        severity: "Medium",
+        status: "open",
+      });
+    }
+
+    if (!hasMediaEvidence) {
+      qualityFlags.push({
+        check: "Evidence Review",
+        id: `${responseReference}-evidence`,
+        message: "No photo or consent evidence was attached.",
+        severity: "Low",
+        status: "open",
+      });
+    }
+
+    return {
+      id: `public-${responseReference.toLowerCase()}`,
+      accuracy: hasGps ? 8.5 : null,
+      archived_at: null,
+      attachments: [
+        ...(evidence.photo
+          ? [
+              {
+                file_name: "public_collection_photo.jpg",
+                file_type: "Image" as const,
+                id: `${responseReference}-photo`,
+                size_label: "Preview evidence",
+                uploaded_at: submittedAt,
+              },
+            ]
+          : []),
+        ...(evidence.consent
+          ? [
+              {
+                file_name: "respondent_consent.txt",
+                file_type: "Signature" as const,
+                id: `${responseReference}-consent`,
+                size_label: "Consent captured",
+                uploaded_at: submittedAt,
+              },
+            ]
+          : []),
+      ],
+      audit_events: [
+        {
+          action: "Submission Created",
+          actor: "Public collection link",
+          created_at: submittedAt,
+          new_value: "draft",
+        },
+        {
+          action: "Submission Submitted",
+          actor: "Public collection link",
+          created_at: submittedAt,
+          new_value: "submitted",
+          reason: "Submitted from controlled public web form.",
+        },
+      ],
+      captured_at: submittedAt,
+      client_submission_id: responseReference,
+      duplicate_risk: "none",
+      field_officer_id: "Public web collector",
+      form_id: slug,
+      form_name: formTitle,
+      form_version: 1,
+      gps_status: hasGps ? "valid" : "missing",
+      history: [
+        {
+          action: "Created",
+          actor: "Public collection link",
+          created_at: submittedAt,
+        },
+        {
+          action: "Submitted",
+          actor: "Public collection link",
+          comment: "Submitted from web collection link.",
+          created_at: submittedAt,
+        },
+      ],
+      latitude: hasGps ? 4.0511 : 0,
+      location_name: communityName,
+      longitude: hasGps ? 9.7679 : 0,
+      offline_created: savedOffline,
+      payload_json: {
+        community_name: communityName,
+        consent_confirmed: consent,
+        evidence_count: evidenceCount,
+        phone_number: phoneNumber,
+        respondent_name: respondentName,
+      },
+      project_id: "public-collection",
+      project_name: "Public Collection Link",
+      quality_flags: qualityFlags,
+      quality_score: qualityFlags.length ? 82 : 96,
+      review_stage: "Pending Review",
+      reviewer: "Grace M.",
+      server_sequence: 1,
+      sla_due_at: slaDueAt,
+      status: "submitted",
+      submitted_at: submittedAt,
+      supervisor: "Grace M.",
+      survey_id: "public-service-intake",
+      sync_received_at: submittedAt,
+      workflow: [
+        {
+          action_date: submittedAt,
+          reviewer: "System",
+          sla_status: "On Time",
+          stage: "Submitted",
+        },
+        {
+          reviewer: "Grace M.",
+          sla_status: "On Time",
+          stage: "Pending Review",
+        },
+      ],
+    };
+  }
 
   function resetResponse(): void {
     setSavedOffline(false);
@@ -88,7 +261,9 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
     setPhoneNumber("");
     setCommunityName("");
     setCollectionResult("");
-    setResponseReference(`AF-${slug.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-5)}`);
+    setResponseReference(
+      `AF-${slug.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-5)}`,
+    );
     setEvidence({ gps: false, photo: false, consent: false });
   }
 
@@ -99,12 +274,18 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border bg-success/10 text-success shadow-sm">
             <CheckCircle2 aria-hidden="true" size={28} />
           </span>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight">Submission received</h1>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight">
+            Submission received
+          </h1>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-            Your answers were submitted for review. A supervisor can now validate the record, request corrections, or approve it for reporting.
+            Your answers were submitted for review. A supervisor can now
+            validate the record, request corrections, or approve it for
+            reporting.
           </p>
           <div className="mt-5 w-full rounded-2xl border bg-panel p-4 text-left shadow-line">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Submission summary</p>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Submission summary
+            </p>
             <dl className="mt-3 grid gap-3 text-sm">
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Reference</dt>
@@ -120,11 +301,18 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Evidence</dt>
-                <dd className="font-medium">{evidenceCount} item{evidenceCount === 1 ? "" : "s"}</dd>
+                <dd className="font-medium">
+                  {evidenceCount} item{evidenceCount === 1 ? "" : "s"}
+                </dd>
               </div>
             </dl>
           </div>
-          <Button className="mt-6" onClick={resetResponse} type="button" variant="secondary">
+          <Button
+            className="mt-6"
+            onClick={resetResponse}
+            type="button"
+            variant="secondary"
+          >
             Submit another response
           </Button>
         </section>
@@ -142,7 +330,9 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
             </span>
             <div>
               <p className="text-sm font-semibold">Atlas FieldOps</p>
-              <p className="text-xs text-muted-foreground">Public collection link</p>
+              <p className="text-xs text-muted-foreground">
+                Public collection link
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -161,29 +351,52 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
       <section className="mx-auto grid max-w-6xl gap-5 px-4 py-6 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-4">
           <section className="rounded-2xl border bg-panel p-4 shadow-line">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Collection progress</p>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Collection progress
+            </p>
             <div className="mt-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium">{completionPercent}% complete</span>
-                <span className="text-muted-foreground">{readyToSubmit ? "Ready to submit" : "In progress"}</span>
+                <span className="font-medium">
+                  {completionPercent}% complete
+                </span>
+                <span className="text-muted-foreground">
+                  {readyToSubmit ? "Ready to submit" : "In progress"}
+                </span>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completionPercent}%` }} />
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${completionPercent}%` }}
+                />
               </div>
             </div>
             <div className="mt-4 space-y-3">
               {collectionSteps.map((step, index) => {
                 const complete = completionItems[index]?.complete ?? false;
                 return (
-                <div className="flex gap-3" key={step}>
-                  <span className={complete ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-success/25 bg-success/10 text-success" : "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold text-muted-foreground"}>
-                    {complete ? <CheckCircle2 aria-hidden="true" size={14} /> : index + 1}
-                  </span>
-                  <div>
-                    <p className="pt-0.5 text-sm font-medium leading-5">{step}</p>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{completionItems[index]?.guidance}</p>
+                  <div className="flex gap-3" key={step}>
+                    <span
+                      className={
+                        complete
+                          ? "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-success/25 bg-success/10 text-success"
+                          : "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold text-muted-foreground"
+                      }
+                    >
+                      {complete ? (
+                        <CheckCircle2 aria-hidden="true" size={14} />
+                      ) : (
+                        index + 1
+                      )}
+                    </span>
+                    <div>
+                      <p className="pt-0.5 text-sm font-medium leading-5">
+                        {step}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                        {completionItems[index]?.guidance}
+                      </p>
+                    </div>
                   </div>
-                </div>
                 );
               })}
             </div>
@@ -203,31 +416,60 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
           className="rounded-2xl border bg-panel p-4 shadow-line md:p-6"
           onSubmit={(event) => {
             event.preventDefault();
-            setCollectionResult(`${respondentName} from ${communityName} is ready for review with ${evidenceCount} evidence item${evidenceCount === 1 ? "" : "s"}.`);
+            setCollectionResult(
+              `${respondentName} from ${communityName} is ready for review with ${evidenceCount} evidence item${evidenceCount === 1 ? "" : "s"}.`,
+            );
+            upsertLocalSubmission(createReviewSubmission());
             setSubmitted(true);
           }}
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Active form</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight">{formTitle}</h1>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Active form
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+                {formTitle}
+              </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Complete each required field. The form can be submitted immediately or saved offline when connectivity is unreliable.
+                Complete each required field. The form can be submitted
+                immediately or saved offline when connectivity is unreliable.
               </p>
             </div>
-            <Badge tone={savedOffline ? "warning" : "success"}>{savedOffline ? "Saved offline" : "Ready"}</Badge>
+            <Badge tone={savedOffline ? "warning" : "success"}>
+              {savedOffline ? "Saved offline" : "Ready"}
+            </Badge>
           </div>
 
           <div className="mt-6 grid gap-5">
-            <section className={readyToSubmit ? "rounded-xl border border-success/30 bg-success/10 p-4" : "rounded-xl border border-warning/30 bg-warning/10 p-4"} aria-live="polite">
+            <section
+              className={
+                readyToSubmit
+                  ? "rounded-xl border border-success/30 bg-success/10 p-4"
+                  : "rounded-xl border border-warning/30 bg-warning/10 p-4"
+              }
+              aria-live="polite"
+            >
               <div className="flex items-start gap-3">
                 {readyToSubmit ? (
-                  <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={18} />
+                  <CheckCircle2
+                    aria-hidden="true"
+                    className="mt-0.5 shrink-0 text-success"
+                    size={18}
+                  />
                 ) : (
-                  <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-warning" size={18} />
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className="mt-0.5 shrink-0 text-warning"
+                    size={18}
+                  />
                 )}
                 <div>
-                  <h2 className="text-sm font-semibold">{readyToSubmit ? "Ready for submission" : "Complete the required details"}</h2>
+                  <h2 className="text-sm font-semibold">
+                    {readyToSubmit
+                      ? "Ready for submission"
+                      : "Complete the required details"}
+                  </h2>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
                     {readyToSubmit
                       ? `${respondentName} from ${communityName} can now be submitted for supervisor review.`
@@ -244,15 +486,33 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium">
                   Full name <span className="text-danger">*</span>
-                  <Input className="mt-2" onChange={(event) => setRespondentName(event.target.value)} required placeholder="Enter respondent name" value={respondentName} />
+                  <Input
+                    className="mt-2"
+                    onChange={(event) => setRespondentName(event.target.value)}
+                    required
+                    placeholder="Enter respondent name"
+                    value={respondentName}
+                  />
                 </label>
                 <label className="text-sm font-medium">
                   Phone number
-                  <Input className="mt-2" onChange={(event) => setPhoneNumber(event.target.value)} placeholder="+237 600 000 000" value={phoneNumber} />
+                  <Input
+                    className="mt-2"
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+237 600 000 000"
+                    value={phoneNumber}
+                  />
                 </label>
                 <label className="text-sm font-medium md:col-span-2">
-                  Community or location name <span className="text-danger">*</span>
-                  <Input className="mt-2" onChange={(event) => setCommunityName(event.target.value)} required placeholder="Village, school, facility, farm, or site name" value={communityName} />
+                  Community or location name{" "}
+                  <span className="text-danger">*</span>
+                  <Input
+                    className="mt-2"
+                    onChange={(event) => setCommunityName(event.target.value)}
+                    required
+                    placeholder="Village, school, facility, farm, or site name"
+                    value={communityName}
+                  />
                 </label>
               </div>
             </section>
@@ -264,37 +524,56 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
                   const Icon = action.icon;
                   const captured = evidence[action.key];
                   return (
-                  <button
-                    className="rounded-xl border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
-                    key={action.key}
-                    onClick={() => {
-                      setEvidence((current) => ({ ...current, [action.key]: true }));
-                      setSavedOffline(false);
-                    }}
-                    type="button"
-                  >
-                    <span className="flex items-start justify-between gap-3">
-                      <Icon aria-hidden="true" className="text-primary" size={20} />
-                      {captured ? <Badge tone="success">Done</Badge> : null}
-                    </span>
-                    <span className="mt-3 block text-sm font-semibold">{captured ? action.doneText : action.title}</span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">{action.text}</span>
-                  </button>
+                    <button
+                      className="rounded-xl border bg-panel p-4 text-left transition hover:border-primary/30 hover:bg-primary/5"
+                      key={action.key}
+                      onClick={() => {
+                        setEvidence((current) => ({
+                          ...current,
+                          [action.key]: true,
+                        }));
+                        setSavedOffline(false);
+                      }}
+                      type="button"
+                    >
+                      <span className="flex items-start justify-between gap-3">
+                        <Icon
+                          aria-hidden="true"
+                          className="text-primary"
+                          size={20}
+                        />
+                        {captured ? <Badge tone="success">Done</Badge> : null}
+                      </span>
+                      <span className="mt-3 block text-sm font-semibold">
+                        {captured ? action.doneText : action.title}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {action.text}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
               {Object.values(evidence).some(Boolean) ? (
                 <p className="mt-3 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-xs leading-5 text-success">
-                  Evidence is staged with this response. Review the respondent details before submitting.
+                  Evidence is staged with this response. Review the respondent
+                  details before submitting.
                 </p>
               ) : null}
             </section>
 
             <section className="rounded-xl border bg-background p-4">
               <label className="flex gap-3 text-sm leading-6">
-                <input className="mt-1 h-4 w-4" checked={consent} onChange={(event) => setConsent(event.target.checked)} required type="checkbox" />
+                <input
+                  className="mt-1 h-4 w-4"
+                  checked={consent}
+                  onChange={(event) => setConsent(event.target.checked)}
+                  required
+                  type="checkbox"
+                />
                 <span>
-                  The respondent gave consent for this information to be collected and reviewed by the authorized project team.
+                  The respondent gave consent for this information to be
+                  collected and reviewed by the authorized project team.
                 </span>
               </label>
             </section>
@@ -307,7 +586,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
                 setCollectionResult(
                   respondentName && communityName
                     ? `${respondentName} from ${communityName} is saved offline with ${evidenceCount} evidence item${evidenceCount === 1 ? "" : "s"}. Submit when connectivity is available.`
-                    : "This response is saved offline. Complete the required details before final submission."
+                    : "This response is saved offline. Complete the required details before final submission.",
                 );
               }}
               type="button"
@@ -323,20 +602,36 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
           </div>
 
           {collectionResult ? (
-            <section className="mt-5 rounded-xl border border-success/30 bg-success/10 p-3" aria-live="polite">
+            <section
+              className="mt-5 rounded-xl border border-success/30 bg-success/10 p-3"
+              aria-live="polite"
+            >
               <div className="flex items-start gap-2">
-                <CheckCircle2 aria-hidden="true" className="mt-0.5 shrink-0 text-success" size={16} />
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0 text-success"
+                  size={16}
+                />
                 <div>
                   <h2 className="text-sm font-semibold">Collection status</h2>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{collectionResult}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {collectionResult}
+                  </p>
                 </div>
               </div>
             </section>
           ) : null}
 
           <div className="mt-5 flex gap-2 rounded-xl border border-primary/20 bg-primary/10 p-3 text-sm leading-6 text-muted-foreground">
-            <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-primary" size={16} />
-            <p>Submissions from this public link enter the same review, approval, audit, and reporting workflow as mobile submissions.</p>
+            <ShieldCheck
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-primary"
+              size={16}
+            />
+            <p>
+              Submissions from this public link enter the same review, approval,
+              audit, and reporting workflow as mobile submissions.
+            </p>
           </div>
         </form>
       </section>

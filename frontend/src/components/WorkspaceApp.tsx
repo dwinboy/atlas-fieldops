@@ -84,6 +84,10 @@ export function WorkspaceApp() {
 
   useEffect(() => {
     setToken(readToken());
+    const fallback = window.setTimeout(() => {
+      setToken((current) => (current === undefined ? null : current));
+    }, 1200);
+    return () => window.clearTimeout(fallback);
   }, []);
 
   useEffect(() => {

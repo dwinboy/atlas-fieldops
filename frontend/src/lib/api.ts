@@ -1067,6 +1067,21 @@ export type IndicatorRead = {
   progress_percent: number;
 };
 
+export type IndicatorCreate = {
+  code: string;
+  name: string;
+  project_id?: string | null;
+  survey_id?: string | null;
+  description?: string | null;
+  unit?: string;
+  reporting_frequency?: "monthly" | "quarterly" | "annual";
+  baseline_value?: number;
+  target_value?: number;
+  current_value?: number;
+  sdg_code?: string | null;
+  formula?: string | null;
+};
+
 export type CaseRead = {
   id: string;
   project_id: string | null;
@@ -2233,6 +2248,10 @@ export async function addSurveyTeamMember(
 
 export async function listIndicators(token: string): Promise<IndicatorRead[]> {
   return request<IndicatorRead[]>("/operations/indicators", { token });
+}
+
+export async function createIndicator(token: string, payload: IndicatorCreate): Promise<IndicatorRead> {
+  return request<IndicatorRead>("/operations/indicators", { method: "POST", token, bodyJson: payload });
 }
 
 export async function listCases(token: string): Promise<CaseRead[]> {

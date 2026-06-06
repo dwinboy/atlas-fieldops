@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   BarChart3,
@@ -28,9 +28,9 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal, IndicatorRead } from "@/lib/api";
-import { listIndicators } from "@/lib/api";
+import { Input, Select, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { ApiError, createIndicator, listIndicators, type CurrentPrincipal, type IndicatorCreate, type IndicatorRead } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   indicatorSections,
@@ -70,6 +70,23 @@ type IndicatorsModuleProps = {
   token: string | null;
 };
 
+type IndicatorDraft = {
+  baseline: string;
+  calculationMethod: string;
+  code: string;
+  current: string;
+  dataSource: string;
+  definition: string;
+  frequency: IndicatorRecord["frequency"];
+  name: string;
+  project: string;
+  responsiblePerson: string;
+  resultArea: string;
+  target: string;
+  type: IndicatorRecord["type"];
+  unit: string;
+};
+
 type IndicatorDetailTab =
   | "Overview"
   | "Data Sources"
@@ -95,8 +112,63 @@ const detailTabs: IndicatorDetailTab[] = [
   "Audit Trail",
 ];
 
+const defaultIndicatorDraft: IndicatorDraft = {
+  baseline: "0",
+  calculationMethod: "Approved submissions only",
+  code: "",
+  current: "0",
+  dataSource: "",
+  definition: "",
+  frequency: "Quarterly",
+  name: "",
+  project: "Organization-wide",
+  responsiblePerson: "",
+  resultArea: "",
+  target: "0",
+  type: "Outcome",
+  unit: "count",
+};
+
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
+}
+
+function hasAnyPermission(principal: CurrentPrincipal | null | undefined, permissions: string[]): boolean {
+  if (!principal || principal.platform_admin) return true;
+  return permissions.some((permission) => principal.permissions?.includes(permission));
+}
+
+function normalizeIndicatorCode(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_.-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+}
+
+function apiFrequency(value: IndicatorRecord["frequency"]): IndicatorCreate["reporting_frequency"] {
+  if (value === "Monthly") return "monthly";
+  if (value === "Annual" || value === "Project lifetime") return "annual";
+  return "quarterly";
+}
+
+function numberOrZero(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function messageFromError(error: unknown): string {
+  if (error instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(error.message) as { detail?: unknown };
+      if (typeof parsed.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed.detail)) return parsed.detail.map((item) => item?.msg ?? "Invalid field").join(" ");
+    } catch {
+      return error.message;
+    }
+  }
+  return "Check the required fields and your indicator management permission.";
 }
 
 function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
@@ -139,13 +211,19 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
-export function IndicatorsModule({ token }: IndicatorsModuleProps) {
+export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const [activeSection, setActiveSection] = useState<IndicatorSection>("dashboard");
   const [selectedIndicatorId, setSelectedIndicatorId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<IndicatorDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
+  const [creationOpen, setCreationOpen] = useState(false);
+  const [indicatorDraft, setIndicatorDraft] = useState<IndicatorDraft>(defaultIndicatorDraft);
+  const [localIndicators, setLocalIndicators] = useState<IndicatorRecord[]>([]);
+  const queryClient = useQueryClient();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
+  const canManageIndicators = hasAnyPermission(principal, ["indicators.manage"]);
 
   const indicatorsQuery = useQuery({
     queryKey: ["indicators-module", token],
@@ -154,8 +232,8 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
   });
 
   const indicators = useMemo(
-    () => (preview ? previewIndicators : (indicatorsQuery.data ?? []).map(mapApiIndicator)),
-    [indicatorsQuery.data, preview],
+    () => [...localIndicators, ...(preview ? previewIndicators : (indicatorsQuery.data ?? []).map(mapApiIndicator))],
+    [indicatorsQuery.data, localIndicators, preview],
   );
   const summary = useMemo(() => computeIndicatorSummary(indicators), [indicators]);
   const visibleIndicators = useMemo(() => filterIndicatorsBySection(indicators, activeSection), [activeSection, indicators]);
@@ -185,6 +263,99 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
     setActionResult("Indicator export prepared. Production exports should write an immutable Governance audit event.");
   }
 
+  function indicatorFromDraft(id: string): IndicatorRecord {
+    const baseline = numberOrZero(indicatorDraft.baseline);
+    const target = numberOrZero(indicatorDraft.target);
+    const current = numberOrZero(indicatorDraft.current);
+    const progress = progressPercent(current, baseline, target);
+    return {
+      baseline,
+      calculationMethod: indicatorDraft.calculationMethod || "Approved submissions only",
+      calculationType: "Percentage",
+      code: normalizeIndicatorCode(indicatorDraft.code),
+      current,
+      dataSource: indicatorDraft.dataSource || null,
+      definition: indicatorDraft.definition || "Indicator definition to be completed.",
+      disaggregation: ["Project", "Location"],
+      frequency: indicatorDraft.frequency,
+      id,
+      lastCalculatedAt: new Date().toISOString(),
+      linkedForm: null,
+      linkedQuestion: null,
+      name: indicatorDraft.name.trim(),
+      owner: principal?.full_name ?? "M&E Manager",
+      project: indicatorDraft.project || "Organization-wide",
+      responsiblePerson: indicatorDraft.responsiblePerson || "Unassigned",
+      resultArea: indicatorDraft.resultArea || "Results framework",
+      status: progress >= 80 ? "On Track" : target > 0 ? "Behind Target" : "Needs Baseline",
+      target,
+      type: indicatorDraft.type,
+      unit: indicatorDraft.unit || "count",
+    };
+  }
+
+  const createIndicatorMutation = useMutation({
+    mutationFn: () =>
+      createIndicator(token ?? "", {
+        baseline_value: numberOrZero(indicatorDraft.baseline),
+        code: normalizeIndicatorCode(indicatorDraft.code),
+        current_value: numberOrZero(indicatorDraft.current),
+        description: indicatorDraft.definition || null,
+        formula: indicatorDraft.calculationMethod || null,
+        name: indicatorDraft.name.trim(),
+        reporting_frequency: apiFrequency(indicatorDraft.frequency),
+        sdg_code: indicatorDraft.resultArea || null,
+        target_value: numberOrZero(indicatorDraft.target),
+        unit: indicatorDraft.unit || "count",
+      }),
+    onSuccess: async (indicator) => {
+      const created = mapApiIndicator(indicator);
+      setLocalIndicators((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setSelectedIndicatorId(created.id);
+      setActiveDetailTab("Overview");
+      setActiveSection("library");
+      setCreationOpen(false);
+      setIndicatorDraft(defaultIndicatorDraft);
+      await queryClient.invalidateQueries({ queryKey: ["indicators-module"] });
+      pushToast({ title: "Indicator created", description: `${created.code} is ready for targets, baselines, and form links.`, tone: "success" });
+    },
+    onError: (error) => {
+      const description = messageFromError(error);
+      setActionResult(description);
+      pushToast({ title: "Could not create indicator", description, tone: "danger" });
+    },
+  });
+
+  function openCreateIndicator(): void {
+    setActionResult("");
+    setIndicatorDraft(defaultIndicatorDraft);
+    setCreationOpen(true);
+  }
+
+  function submitIndicator(): void {
+    const code = normalizeIndicatorCode(indicatorDraft.code);
+    if (!indicatorDraft.name.trim() || code.length < 2) {
+      setActionResult("Indicator name and a valid code are required before saving.");
+      return;
+    }
+    if (indicators.some((indicator) => indicator.code === code)) {
+      setActionResult("An indicator with this code already exists. Use a unique indicator code.");
+      return;
+    }
+    if (preview) {
+      const created = indicatorFromDraft(`indicator-local-${Date.now()}`);
+      setLocalIndicators((current) => [created, ...current]);
+      setSelectedIndicatorId(created.id);
+      setActiveDetailTab("Overview");
+      setActiveSection("library");
+      setCreationOpen(false);
+      setIndicatorDraft(defaultIndicatorDraft);
+      pushToast({ title: "Indicator added", description: `${created.code} was added to this preview workspace.`, tone: "success" });
+      return;
+    }
+    createIndicatorMutation.mutate();
+  }
+
   return (
     <section className="space-y-3">
       <div className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -203,7 +374,7 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveSection("library")} variant="primary">
+            <Button disabled={!canManageIndicators} onClick={openCreateIndicator} variant="primary">
               <BookOpenCheck aria-hidden="true" />
               Create indicator
             </Button>
@@ -266,13 +437,22 @@ export function IndicatorsModule({ token }: IndicatorsModuleProps) {
       ) : null}
 
       {!selectedIndicator && activeSection === "library" ? (
-        <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onOpenIndicator={openIndicator} />
+        <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Indicator import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
       {!selectedIndicator && activeSection === "results-framework" ? <ResultsFramework /> : null}
       {!selectedIndicator && activeSection === "logframes" ? <Logframes /> : null}
       {!selectedIndicator && activeSection === "targets" ? <Targets /> : null}
       {!selectedIndicator && activeSection === "baselines" ? <Baselines /> : null}
       {!selectedIndicator && activeSection === "reports" ? <IndicatorReports onOpenReports={() => setActiveView("analytics")} /> : null}
+      <CreateIndicatorModal
+        canSubmit={canManageIndicators && !createIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
+        draft={indicatorDraft}
+        onChange={setIndicatorDraft}
+        onOpenChange={setCreationOpen}
+        onSubmit={submitIndicator}
+        open={creationOpen}
+        saving={createIndicatorMutation.isPending}
+      />
     </section>
   );
 }
@@ -364,7 +544,7 @@ function IndicatorsDashboard({
   );
 }
 
-function IndicatorLibrary({ indicators, loading, onOpenIndicator }: { indicators: IndicatorRecord[]; loading: boolean; onOpenIndicator: (indicator: IndicatorRecord, tab?: IndicatorDetailTab) => void }) {
+function IndicatorLibrary({ indicators, loading, onCreateIndicator, onImportIndicators, onOpenIndicator }: { indicators: IndicatorRecord[]; loading: boolean; onCreateIndicator: () => void; onImportIndicators: () => void; onOpenIndicator: (indicator: IndicatorRecord, tab?: IndicatorDetailTab) => void }) {
   const columns: TableColumn<IndicatorRecord>[] = [
     { key: "code", header: "Code", value: (row) => row.code, render: (row) => <span className="font-mono text-xs">{row.code}</span> },
     {
@@ -388,13 +568,69 @@ function IndicatorLibrary({ indicators, loading, onOpenIndicator }: { indicators
   return (
     <section className="space-y-4">
       <SectionHeader
-        action={<div className="flex flex-wrap gap-2"><Button variant="primary"><BookOpenCheck aria-hidden="true" /> Create indicator</Button><Button variant="secondary"><Import aria-hidden="true" /> Import indicators</Button></div>}
+        action={<div className="flex flex-wrap gap-2"><Button onClick={onCreateIndicator} variant="primary"><BookOpenCheck aria-hidden="true" /> Create indicator</Button><Button onClick={onImportIndicators} variant="secondary"><Import aria-hidden="true" /> Import indicators</Button></div>}
         description="Create, edit, archive, duplicate, import, export, and link indicators to projects, forms, questions, targets, baselines, and responsible people."
         route="/indicators/library"
         title="Indicator Library"
       />
       <DataTable columns={columns} emptyLabel="No indicators yet" rows={indicators} searchLabel="Search indicators, projects, codes, owners" title={loading ? "Indicator library syncing" : "Indicator library"} />
     </section>
+  );
+}
+
+function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, saving }: {
+  canSubmit: boolean;
+  draft: IndicatorDraft;
+  onChange: (draft: IndicatorDraft) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  saving: boolean;
+}) {
+  const normalizedCode = normalizeIndicatorCode(draft.code);
+  return (
+    <Modal contentClassName="max-w-3xl" description="Create a reusable M&E indicator, then attach targets, baselines, forms, and calculations from the indicator workspace." onOpenChange={onOpenChange} open={open} title="Create indicator">
+      <div className="grid max-h-[70vh] gap-4 overflow-y-auto p-5 product-scrollbar">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input placeholder="Indicator name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
+          <Input placeholder="Indicator code, e.g. WASH.ACCESS" value={draft.code} onChange={(event) => onChange({ ...draft, code: normalizeIndicatorCode(event.target.value) })} />
+        </div>
+        <Textarea placeholder="Definition" value={draft.definition} onChange={(event) => onChange({ ...draft, definition: event.target.value })} />
+        <div className="grid gap-3 md:grid-cols-3">
+          <Select value={draft.type} onChange={(event) => onChange({ ...draft, type: event.target.value as IndicatorRecord["type"] })}>
+            <option value="Output">Output</option>
+            <option value="Outcome">Outcome</option>
+            <option value="Impact">Impact</option>
+          </Select>
+          <Select value={draft.frequency} onChange={(event) => onChange({ ...draft, frequency: event.target.value as IndicatorRecord["frequency"] })}>
+            <option value="Monthly">Monthly</option>
+            <option value="Quarterly">Quarterly</option>
+            <option value="Annual">Annual</option>
+            <option value="Project lifetime">Project lifetime</option>
+          </Select>
+          <Input placeholder="Unit, e.g. %, count, households" value={draft.unit} onChange={(event) => onChange({ ...draft, unit: event.target.value })} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Input inputMode="decimal" placeholder="Baseline" value={draft.baseline} onChange={(event) => onChange({ ...draft, baseline: event.target.value })} />
+          <Input inputMode="decimal" placeholder="Target" value={draft.target} onChange={(event) => onChange({ ...draft, target: event.target.value })} />
+          <Input inputMode="decimal" placeholder="Current value" value={draft.current} onChange={(event) => onChange({ ...draft, current: event.target.value })} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input placeholder="Project or program" value={draft.project} onChange={(event) => onChange({ ...draft, project: event.target.value })} />
+          <Input placeholder="Responsible person" value={draft.responsiblePerson} onChange={(event) => onChange({ ...draft, responsiblePerson: event.target.value })} />
+          <Input placeholder="Result area / SDG code" value={draft.resultArea} onChange={(event) => onChange({ ...draft, resultArea: event.target.value })} />
+          <Input placeholder="Data source, e.g. Form / question" value={draft.dataSource} onChange={(event) => onChange({ ...draft, dataSource: event.target.value })} />
+        </div>
+        <Textarea placeholder="Calculation method or formula notes" value={draft.calculationMethod} onChange={(event) => onChange({ ...draft, calculationMethod: event.target.value })} />
+        <div className="rounded-xl border bg-muted/35 p-3 text-xs text-muted-foreground">
+          Save readiness: {draft.name.trim() ? "name set" : "name missing"} · {normalizedCode.length >= 2 ? `code ${normalizedCode}` : "valid code missing"} · targets and baselines can be refined after creation.
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 border-t px-5 py-4">
+        <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create indicator"}</Button>
+      </div>
+    </Modal>
   );
 }
 
