@@ -19,7 +19,7 @@ import {
   Target,
   UsersRound,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -35,6 +35,7 @@ import {
   getProjectsSummary,
   listProjectTemplates,
   listProjects,
+  updateProject,
   type CurrentPrincipal,
   type ProjectCreate,
   type ProjectDetailRead,
@@ -81,11 +82,28 @@ const defaultProjectDraft: ProjectCreate = {
   implementing_organization: "",
   name: "",
   owner: "",
-  program_type: "Monitoring Program",
+  program_type: "",
   project_code: "",
   region: "",
   status: "draft",
 };
+
+const countryOptions = [
+  "Cameroon",
+  "Ghana",
+  "Kenya",
+  "Liberia",
+  "Malawi",
+  "Nigeria",
+  "Rwanda",
+  "Sierra Leone",
+  "South Africa",
+  "Tanzania",
+  "Uganda",
+  "United States",
+  "Zambia",
+  "Zimbabwe",
+];
 
 const wizardSteps = [
   "Basic Information",
@@ -201,6 +219,7 @@ function downloadCsv(
 
 export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [activeSection, setActiveSection] =
     useState<ProjectSection>("dashboard");
   const [activeTab, setActiveTab] = useState<ProjectTab>("Overview");
@@ -209,6 +228,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const [projectDraft, setProjectDraft] =
     useState<ProjectCreate>(defaultProjectDraft);
   const [projectWizardError, setProjectWizardError] = useState("");
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
@@ -304,9 +324,61 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     },
   });
 
+  const updateProjectMutation = useMutation({
+    mutationFn: () =>
+      updateProject(
+        token ?? "",
+        editingProjectId ?? "",
+        normalizeProjectPayload(projectDraft),
+      ),
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      upsertLocalProject(project);
+      setWizardOpen(false);
+      setWizardStep(0);
+      setEditingProjectId(null);
+      setProjectWizardError("");
+      setProjectDraft(defaultProjectDraft);
+      setSelectedProjectId(project.id);
+      setActiveSection("all");
+      pushToast({
+        title: "Project updated",
+        description: `${project.name} was updated.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      const description = messageFromError(error);
+      setProjectWizardError(description);
+      pushToast({
+        title: "Could not update project",
+        description,
+        tone: "danger",
+      });
+    },
+  });
+
   function openProjectWizard(nextDraft: ProjectCreate = projectDraft): void {
     setProjectWizardError("");
+    setEditingProjectId(null);
     setProjectDraft(nextDraft);
+    setWizardOpen(true);
+  }
+
+  function openProjectEditor(project: ProjectListItemRead): void {
+    setProjectWizardError("");
+    setEditingProjectId(project.id);
+    setProjectDraft({
+      ...defaultProjectDraft,
+      country: project.country ?? "",
+      donor: project.donor ?? "",
+      name: project.name,
+      owner: project.owner ?? "",
+      project_code: project.project_code,
+      region: project.region ?? "",
+      status: project.status,
+    });
+    setWizardStep(0);
     setWizardOpen(true);
   }
 
@@ -333,6 +405,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         description: `${project.name} was added to this local workspace preview.`,
         tone: "success",
       });
+      return;
+    }
+    if (editingProjectId) {
+      updateProjectMutation.mutate();
       return;
     }
     createProjectMutation.mutate();
@@ -430,7 +506,12 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           >
             View
           </Button>
-          <Button disabled={!canManageProjects} size="sm" variant="ghost">
+          <Button
+            disabled={!canManageProjects}
+            onClick={() => openProjectEditor(project)}
+            size="sm"
+            variant="ghost"
+          >
             Edit
           </Button>
         </div>
@@ -516,12 +597,30 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         <ProjectDetailWorkspace
           detail={detail}
           onClose={() => setSelectedProjectId(null)}
-          onOpenForms={() => setActiveView("forms")}
-          onOpenBeneficiaries={() => setActiveView("beneficiaries")}
-          onOpenIndicators={() => setActiveView("indicators")}
-          onOpenReports={() => setActiveView("analytics")}
-          onOpenSubmissions={() => setActiveView("submissions")}
-          onOpenTeams={() => setActiveView("organizations")}
+          onOpenForms={() => {
+            setActiveView("forms");
+            router.push("/forms");
+          }}
+          onOpenBeneficiaries={() => {
+            setActiveView("beneficiaries");
+            router.push(`/projects/${detail.id}/beneficiaries`);
+          }}
+          onOpenIndicators={() => {
+            setActiveView("indicators");
+            router.push("/indicators");
+          }}
+          onOpenReports={() => {
+            setActiveView("analytics");
+            router.push("/reports");
+          }}
+          onOpenSubmissions={() => {
+            setActiveView("submissions");
+            router.push("/submissions");
+          }}
+          onOpenTeams={() => {
+            setActiveView("organizations");
+            router.push("/users-teams");
+          }}
           preview={preview}
           tab={activeTab}
           setTab={setActiveTab}
@@ -591,11 +690,13 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
               projectCodeFromName(projectDraft.name)
             ).trim(),
           ) &&
-          !createProjectMutation.isPending
+          !createProjectMutation.isPending &&
+          !updateProjectMutation.isPending
         }
         draft={projectDraft}
         error={projectWizardError}
-        isSubmitting={createProjectMutation.isPending}
+        isEditing={Boolean(editingProjectId)}
+        isSubmitting={createProjectMutation.isPending || updateProjectMutation.isPending}
         onChange={setProjectDraft}
         onOpenChange={(open) => {
           setWizardOpen(open);
@@ -1092,6 +1193,7 @@ function ProjectWizard({
   canSubmit,
   draft,
   error,
+  isEditing,
   isSubmitting,
   onChange,
   onOpenChange,
@@ -1103,6 +1205,7 @@ function ProjectWizard({
   canSubmit: boolean;
   draft: ProjectCreate;
   error: string;
+  isEditing: boolean;
   isSubmitting: boolean;
   onChange: (draft: ProjectCreate) => void;
   onOpenChange: (open: boolean) => void;
@@ -1118,7 +1221,7 @@ function ProjectWizard({
       description="Create a project with the required operating context before attaching detailed forms, teams, indicators, and governance."
       onOpenChange={onOpenChange}
       open={open}
-      title="Project creation wizard"
+      title={isEditing ? "Edit project" : "Project creation wizard"}
     >
       <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 product-scrollbar lg:grid-cols-[220px_1fr]">
         <aside className="space-y-2">
@@ -1175,22 +1278,6 @@ function ProjectWizard({
                 }
               />
               <div className="grid gap-3 md:grid-cols-2">
-                <Select
-                  value={draft.program_type ?? "Monitoring Program"}
-                  onChange={(event) =>
-                    onChange({ ...draft, program_type: event.target.value })
-                  }
-                >
-                  <option value="Baseline Survey">Baseline Survey</option>
-                  <option value="Monitoring Program">Monitoring Program</option>
-                  <option value="Evaluation Program">Evaluation Program</option>
-                  <option value="Registration Program">
-                    Registration Program
-                  </option>
-                  <option value="Multi-Country Program">
-                    Multi-Country Program
-                  </option>
-                </Select>
                 <Input
                   placeholder="Category"
                   value={draft.category ?? ""}
@@ -1220,13 +1307,19 @@ function ProjectWizard({
           ) : null}
           {step === 1 ? (
             <div className="grid gap-3 md:grid-cols-2">
-              <Input
-                placeholder="Country"
+              <Select
                 value={draft.country ?? ""}
                 onChange={(event) =>
                   onChange({ ...draft, country: event.target.value })
                 }
-              />
+              >
+                <option value="">Select country</option>
+                {countryOptions.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </Select>
               <Input
                 placeholder="Region"
                 value={draft.region ?? ""}
@@ -1336,7 +1429,13 @@ function ProjectWizard({
             </Button>
           ) : (
             <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">
-              {isSubmitting ? "Creating..." : "Create project"}
+              {isSubmitting
+                ? isEditing
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditing
+                  ? "Save project"
+                  : "Create project"}
             </Button>
           )}
         </div>

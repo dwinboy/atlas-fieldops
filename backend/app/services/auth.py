@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
 from app.core.permissions import default_scope_for_roles
+from app.core.permissions import normalize_permission
+from app.core.permissions import permissions_for_roles
 from app.core.security import create_access_token, verify_password
 from app.repositories.users import UserRepository
 from app.schemas.auth import TokenResponse
@@ -39,6 +41,12 @@ class AuthService:
         primary_grant = grants[0] if grants else None
         scope_type = primary_grant.scope_type if primary_grant is not None else default_scope_for_roles([role.name]).value
         is_platform_admin = canonical_role(role.name) == "super_admin"
+        stored_permissions = {
+            normalized.value
+            for permission in (role.permissions or "").split(",")
+            if (normalized := normalize_permission(permission.strip())) is not None
+        }
+        effective_permissions = sorted({permission.value for permission in permissions_for_roles([role.name])} | stored_permissions)
         token = create_access_token(
             subject=str(user.id),
             organization_id=str(organization.id),
@@ -51,6 +59,7 @@ class AuthService:
             platform_organization_id=str(organization.id) if is_platform_admin else None,
             platform_organization_slug=organization.slug if is_platform_admin else None,
             scope_type=scope_type,
+            permissions=effective_permissions,
             geography_ids=[grant.geography_id for grant in grants if grant.geography_id],
             project_ids=[grant.project_id for grant in grants if grant.project_id],
             organization_unit_ids=[str(grant.organization_unit_id) for grant in grants if grant.organization_unit_id],

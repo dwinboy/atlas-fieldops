@@ -56,6 +56,7 @@ class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Ba
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
     region: Mapped[str | None] = mapped_column(String(160), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 

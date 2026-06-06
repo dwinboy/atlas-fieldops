@@ -49,6 +49,8 @@ export function computeFieldOperationsSummary({
   const activeOfficers = officers.filter((officer) => officer.is_active).length;
   const totalTarget = targets.reduce((sum, target) => sum + target.value, 0);
   const totalAchieved = targets.reduce((sum, target) => sum + target.achieved, 0);
+  const assignmentTarget = assignments.reduce((sum, assignment) => sum + assignment.targetCount, 0);
+  const assignmentCompleted = assignments.reduce((sum, assignment) => sum + assignment.completedCount, 0);
 
   return {
     activeAssignments,
@@ -56,7 +58,7 @@ export function computeFieldOperationsSummary({
     assignedFieldOfficers: activeOfficers,
     assignmentCompletionRate: assignments.length ? Math.round((completedAssignments / assignments.length) * 100) : 0,
     coverageProgress: totalTarget ? Math.round((totalAchieved / totalTarget) * 100) : 0,
-    dailyCollectionProgress: operationsSummary.sync_health_percent,
+    dailyCollectionProgress: assignmentTarget ? Math.round((assignmentCompleted / assignmentTarget) * 100) : 0,
     overdueAssignments: assignments.filter((assignment) => assignment.status === "Overdue").length,
     teamProductivity: officers.length ? Math.round((activeOfficers / officers.length) * 100) : 0,
     upcomingDeadlines: assignments.filter((assignment) => new Date(assignment.endDate).getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000).length,

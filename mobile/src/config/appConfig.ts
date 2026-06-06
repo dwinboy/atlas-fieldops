@@ -18,13 +18,28 @@ const appEnv = (runtimeEnv.APP_ENV ?? runtimeEnv.EXPO_PUBLIC_APP_ENV ?? "product
   | "development"
   | "staging"
   | "production";
+const configuredApiBaseUrl =
+  runtimeEnv.EXPO_PUBLIC_API_BASE_URL ??
+  runtimeEnv.API_BASE_URL ??
+  "https://atlasfieldops.com/api/v1";
+
+function normalizeApiBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "https://atlasfieldops.com/api/v1";
+  }
+  if (trimmed.endsWith("/api/v1")) {
+    return trimmed;
+  }
+  if (trimmed.endsWith("/api")) {
+    return `${trimmed}/v1`;
+  }
+  return `${trimmed}/api/v1`;
+}
 
 export const mobileAppConfig: MobileAppConfig = {
   appEnv,
-  apiBaseUrl:
-    runtimeEnv.EXPO_PUBLIC_API_BASE_URL ??
-    runtimeEnv.API_BASE_URL ??
-    "https://atlasfieldops.com/api/v1",
+  apiBaseUrl: normalizeApiBaseUrl(configuredApiBaseUrl),
   apiVersion: "v1",
   requestTimeoutMs: 30000,
   syncBatchSize: 25,

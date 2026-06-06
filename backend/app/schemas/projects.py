@@ -25,6 +25,27 @@ class ProjectCreate(BaseModel):
         return value.strip().lower().replace(" ", "-").replace("_", "-")
 
 
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    project_code: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=4000)
+    donor: str | None = Field(default=None, max_length=160)
+    implementing_organization: str | None = Field(default=None, max_length=200)
+    country: str | None = Field(default=None, max_length=120)
+    region: str | None = Field(default=None, max_length=160)
+    district: str | None = Field(default=None, max_length=160)
+    community: str | None = Field(default=None, max_length=180)
+    owner: str | None = Field(default=None, max_length=200)
+    status: str | None = Field(default=None, pattern=r"^(draft|planning|approved|active|suspended|completed|closed|archived)$")
+
+    @field_validator("project_code")
+    @classmethod
+    def normalize_optional_project_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return value.strip().lower().replace(" ", "-").replace("_", "-")
+
+
 class ProjectSummaryRead(BaseModel):
     total_projects: int = 0
     active_projects: int = 0
@@ -107,4 +128,3 @@ class ProjectTemplateRead(BaseModel):
     indicators: int
     governance_controls: int
     status: str = "published"
-

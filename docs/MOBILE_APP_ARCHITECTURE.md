@@ -298,6 +298,7 @@ Login -> Bootstrap Sync -> View Assignments -> Select Entity -> Open Form -> Sav
 
 Current backend behavior:
 
+- Web Field Operations assignments must persist the field officer profile, project ID, and published form ID on the backend. Mobile bootstrap sync downloads only those form-specific assignments for new records, with project-wide published forms used only for older project-only assignments.
 - `/api/v1/mobile/sync` returns assigned projects, project assignments, published forms, current form versions, assigned beneficiaries, and derived location/reference placeholders for the authenticated field officer.
 - `/api/v1/mobile/submissions` validates the downloaded form version, reuses the existing Submissions service, stores mobile metadata, and returns the server submission ID.
 - When a published form is configured to create a new entity, mobile registration sync creates a beneficiary/entity record and links the submission to it.
@@ -305,6 +306,8 @@ Current backend behavior:
 
 Current mobile behavior:
 
+- The first screen after login is a field-officer home screen, not an administration dashboard. It shows the signed-in user, organization, a manual "Sync assigned work" action, assignment readiness, downloaded forms, assigned beneficiaries, drafts, and queued sync items in plain field language.
+- Field officers can tap an assigned work card, select an assigned beneficiary when the form requires one, answer downloaded questions, record the submission GPS location, save the draft, queue the submission, and manually sync queued submissions.
 - Successful login loads the current user and runs assigned work sync.
 - Assigned work is stored locally with sync metadata.
 - Drafts are created from assignment, form version, and selected entity context.

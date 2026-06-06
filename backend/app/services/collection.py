@@ -4,23 +4,26 @@ from datetime import UTC, datetime
 from io import StringIO
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.security import hash_password
-from app.models.collection import DataForm, FieldOfficerProfile, Submission
+from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
 from app.schemas.collection import (
     DataFormCreate,
+    DataFormSchemaRead,
     FormControlsSettings,
     FormCollectionCompatibility,
     FieldOfficerInvite,
     FieldOfficerImportIssue,
     FieldOfficerImportResponse,
     FieldOfficerRead,
+    OfficerAssignmentCreate,
     FormSchema,
     SubmissionRead,
     SubmissionCreate,
@@ -458,6 +461,66 @@ class FieldOfficerService:
             for profile, user in rows
         ]
 
+    async def assign_officer(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: OfficerAssignmentCreate,
+    ) -> OfficerAssignment:
+        officer = await self.officers.get(organization_id=organization_id, profile_id=payload.officer_id)
+        if officer is None or not officer.is_active:
+            raise CollectionNotFoundError("Field officer not found or inactive")
+        project_result = await self.session.execute(
+            select(Project).where(
+                Project.organization_id == organization_id,
+                Project.id == payload.project_id,
+                Project.deleted_at.is_(None),
+                Project.is_active.is_(True),
+            )
+        )
+        project = project_result.scalar_one_or_none()
+        if project is None:
+            raise CollectionNotFoundError("Project not found or inactive")
+        if payload.form_id is not None:
+            form_result = await self.session.execute(
+                select(DataForm).where(
+                    DataForm.organization_id == organization_id,
+                    DataForm.id == payload.form_id,
+                    DataForm.project_id == project.id,
+                    DataForm.deleted_at.is_(None),
+                    DataForm.is_active.is_(True),
+                )
+            )
+            form = form_result.scalar_one_or_none()
+            if form is None:
+                raise CollectionNotFoundError("Form not found for the selected project")
+            if form.status != "published":
+                raise ValueError("Publish this form before assigning it to a field officer for mobile sync")
+        assignment = await self.officers.upsert_assignment(
+            organization_id=organization_id,
+            officer_id=officer.id,
+            project_id=project.id,
+            form_id=payload.form_id,
+            region=payload.region,
+            is_active=payload.is_active,
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_assignment.saved",
+            resource_type="officer_assignment",
+            resource_id=str(assignment.id),
+            metadata={
+                "officer_id": str(officer.id),
+                "project_id": str(project.id),
+                "form_id": str(payload.form_id) if payload.form_id else None,
+                "region": payload.region,
+                "is_active": payload.is_active,
+            },
+        )
+        return assignment
+
 
 class FormService:
     def __init__(self, session: AsyncSession) -> None:
@@ -518,6 +581,15 @@ class FormService:
             if not form.controls_json:
                 form.controls_json = FormControlsSettings().model_dump(mode="json")
         return forms
+
+    async def get_current_schema(self, *, organization_id: UUID, form_id: UUID) -> DataFormSchemaRead:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
+        if version is None:
+            raise CollectionNotFoundError("Form version not found")
+        return DataFormSchemaRead(form_id=form.id, version=version.version, schema=version.schema_json)
 
     async def get_controls(self, *, organization_id: UUID, form_id: UUID) -> FormControlsSettings:
         form = await self.forms.get(organization_id=organization_id, form_id=form_id)

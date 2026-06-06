@@ -14,6 +14,7 @@ from app.models.collection import (
     FieldOfficerProfile,
     FormTemplateUsage,
     MobileSyncBatch,
+    OfficerAssignment,
     Project,
     Submission,
     SubmissionStatusHistory,
@@ -96,6 +97,42 @@ class FieldOfficerRepository:
         profile.last_latitude = latitude
         profile.last_longitude = longitude
         await self.session.flush()
+
+    async def upsert_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        officer_id: UUID,
+        project_id: UUID,
+        form_id: UUID | None,
+        region: str | None,
+        is_active: bool,
+    ) -> OfficerAssignment:
+        result = await self.session.execute(
+            select(OfficerAssignment).where(
+                OfficerAssignment.organization_id == organization_id,
+                OfficerAssignment.officer_id == officer_id,
+                OfficerAssignment.project_id == project_id,
+                OfficerAssignment.deleted_at.is_(None),
+            )
+        )
+        assignment = result.scalar_one_or_none()
+        if assignment is None:
+            assignment = OfficerAssignment(
+                organization_id=organization_id,
+                officer_id=officer_id,
+                project_id=project_id,
+                form_id=form_id,
+                region=region,
+                is_active=is_active,
+            )
+            self.session.add(assignment)
+        else:
+            assignment.form_id = form_id
+            assignment.region = region
+            assignment.is_active = is_active
+        await self.session.flush()
+        return assignment
 
 
 class FormRepository:

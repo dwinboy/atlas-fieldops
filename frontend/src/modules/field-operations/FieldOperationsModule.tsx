@@ -17,6 +17,7 @@ import {
   UserPlus,
   UsersRound,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -27,10 +28,13 @@ import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createFieldOfficerAssignment,
   getOperationsSummary,
   importFieldOfficers,
   inviteFieldOfficer,
+  listForms,
   listFieldOfficers,
+  listProjects,
   type CurrentPrincipal,
   type FieldOfficerInvite,
   type FieldOfficerRead,
@@ -71,7 +75,13 @@ type FieldOperationsModuleProps = {
   token: string | null;
 };
 
-type ModalMode = "assignment" | "invite" | "work-plan" | "target" | null;
+type ModalMode =
+  | "assignment"
+  | "assignment-view"
+  | "invite"
+  | "work-plan"
+  | "target"
+  | null;
 
 const defaultAssignmentDraft: Omit<FieldAssignment, "id" | "completedCount"> = {
   assignedEntityIds: [],
@@ -148,16 +158,26 @@ function downloadCsv(
 function MetricCard({
   icon,
   label,
+  onClick,
   tone = "neutral",
   value,
 }: {
   icon: ReactNode;
   label: string;
+  onClick?: () => void;
   tone?: "danger" | "neutral" | "success" | "warning";
   value: string | number;
 }) {
+  const Component = onClick ? "button" : "article";
   return (
-    <article className="surface-premium rounded-2xl p-4">
+    <Component
+      className={cn(
+        "surface-premium w-full rounded-2xl p-4 text-left",
+        onClick && "transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-line focus:outline-none focus:ring-2 focus:ring-primary/30",
+      )}
+      onClick={onClick}
+      type={onClick ? "button" : undefined}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -180,7 +200,7 @@ function MetricCard({
           {icon}
         </span>
       </div>
-    </article>
+    </Component>
   );
 }
 
@@ -197,6 +217,15 @@ function ProgressBar({ value }: { value: number }) {
           style={{ width: `${Math.min(100, value)}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+function DetailSignal({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-right text-xs font-semibold">{value}</span>
     </div>
   );
 }
@@ -229,6 +258,7 @@ export function FieldOperationsModule({
   principal,
   token,
 }: FieldOperationsModuleProps) {
+  const router = useRouter();
   const preview = isPreview(token);
   const [activeSection, setActiveSection] =
     useState<FieldOperationsSection>("dashboard");
@@ -242,6 +272,13 @@ export function FieldOperationsModule({
   const [assignmentDraft, setAssignmentDraft] = useState(
     defaultAssignmentDraft,
   );
+  const [assignmentEditingId, setAssignmentEditingId] = useState<string | null>(
+    null,
+  );
+  const [viewAssignment, setViewAssignment] = useState<FieldAssignment | null>(
+    null,
+  );
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [inviteDraft, setInviteDraft] = useState(defaultInviteDraft);
   const [workPlanDraft, setWorkPlanDraft] = useState(defaultWorkPlanDraft);
   const [targetDraft, setTargetDraft] = useState(defaultTargetDraft);
@@ -276,6 +313,16 @@ export function FieldOperationsModule({
     queryFn: () => getOperationsSummary(token ?? ""),
     enabled,
   });
+  const projectsQuery = useQuery({
+    queryKey: ["field-operations", "projects", token],
+    queryFn: () => listProjects(token ?? ""),
+    enabled,
+  });
+  const formsQuery = useQuery({
+    queryKey: ["field-operations", "forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled,
+  });
   useEffect(() => {
     if (preview) return;
     setAssignments([]);
@@ -285,6 +332,47 @@ export function FieldOperationsModule({
   }, [preview]);
 
   const officers = preview ? officerPreviewRows : (officersQuery.data ?? []);
+  const availableProjects = useMemo(() => {
+    const byId = new Map<string, (typeof localProjects)[number]>();
+    for (const project of (preview ? localProjects : (projectsQuery.data ?? []))) {
+      byId.set(project.id, project);
+    }
+    return Array.from(byId.values());
+  }, [localProjects, preview, projectsQuery.data]);
+  const availableForms = useMemo(() => {
+    const byId = new Map<string, (typeof localForms)[number]>();
+    for (const form of (preview ? localForms : [])) {
+      byId.set(form.id, form);
+    }
+    for (const form of formsQuery.data ?? []) {
+      byId.set(form.id, {
+        active_assignments: 0,
+        created_by: "",
+        description: form.description,
+        form_type: "Field data collection",
+        has_quality_issues: false,
+        id: form.id,
+        owner: "",
+        pending_approval: false,
+        project_id: form.project_id,
+        project_name:
+          availableProjects.find((project) => project.id === form.project_id)?.name ??
+          "",
+        quality_score: 100,
+        questions: 0,
+        recently_updated: false,
+        sections: 0,
+        slug: form.slug,
+        status: form.status,
+        survey_name: "",
+        total_submissions: 0,
+        updated_at: new Date().toISOString(),
+        version: form.current_version,
+        name: form.name,
+      });
+    }
+    return Array.from(byId.values());
+  }, [availableProjects, formsQuery.data, localForms, preview]);
   const operationsSummary: OperationsSummary =
     preview ? (summaryQuery.data ?? previewOperationsSummary) : (summaryQuery.data ?? {
       active_programs: 0,
@@ -309,30 +397,43 @@ export function FieldOperationsModule({
       Array.from(
         new Set(
           [
-            ...(preview ? localProjects.map((project) => project.name) : []),
+            ...availableProjects.map((project) => project.name),
             ...assignments.map((assignment) => assignment.project),
             ...workPlans.map((plan) => plan.project),
             ...targets.map((target) => target.project),
           ].filter(Boolean),
         ),
       ),
-    [assignments, localProjects, preview, targets, workPlans],
+    [assignments, availableProjects, targets, workPlans],
   );
   const formOptions = useMemo(
-    () =>
-      Array.from(
+    () => {
+      const selectedProject = availableProjects.find(
+        (project) => project.name === assignmentDraft.project,
+      );
+      return Array.from(
         new Set(
           [
-            ...(preview ? localForms.map((form) => form.name) : []),
+            ...availableForms
+              .filter((form) => {
+                const isPublished = String(form.status).toLowerCase() === "published";
+                const matchesProject =
+                  !selectedProject ||
+                  form.project_id === selectedProject.id ||
+                  form.project_name === selectedProject.name;
+                return isPublished && matchesProject;
+              })
+              .map((form) => form.name),
             ...assignments.map((assignment) => assignment.form),
           ].filter(Boolean),
         ),
-      ),
-    [assignments, localForms, preview],
+      );
+    },
+    [assignmentDraft.project, assignments, availableForms, availableProjects],
   );
 
   useEffect(() => {
-    if (!localAssignments.length) return;
+    if (!preview || !localAssignments.length) return;
     setAssignments((current) => [
       ...localAssignments,
       ...current.filter(
@@ -342,7 +443,7 @@ export function FieldOperationsModule({
           ),
       ),
     ]);
-  }, [localAssignments]);
+  }, [localAssignments, preview]);
 
   const inviteMutation = useMutation({
     mutationFn: () => inviteFieldOfficer(token ?? "", inviteDraft),
@@ -469,10 +570,14 @@ export function FieldOperationsModule({
       key: "actions",
       header: "Actions",
       align: "right",
-      render: () => (
+      render: (assignment) => (
         <div className="flex justify-end gap-2">
           <Button
             disabled={!canManageFieldOperations}
+            onClick={() => {
+              setViewAssignment(assignment);
+              setModalMode("assignment-view");
+            }}
             size="sm"
             variant="secondary"
           >
@@ -480,10 +585,19 @@ export function FieldOperationsModule({
           </Button>
           <Button
             disabled={!canManageFieldOperations}
+            onClick={() => openAssignmentModal(assignment)}
             size="sm"
             variant="ghost"
           >
             Reassign
+          </Button>
+          <Button
+            disabled={!canManageFieldOperations}
+            onClick={() => openAssignmentModal(assignment)}
+            size="sm"
+            variant="ghost"
+          >
+            Edit
           </Button>
         </div>
       ),
@@ -716,7 +830,7 @@ export function FieldOperationsModule({
     },
   ];
 
-  function submitAssignment(): void {
+  async function submitAssignment(): Promise<void> {
     if (!assignmentDraft.project || !assignmentDraft.form) {
       pushToast({
         title: "Project and form required",
@@ -726,36 +840,101 @@ export function FieldOperationsModule({
       });
       return;
     }
+    const selectedProject = availableProjects.find(
+      (project) => project.name === assignmentDraft.project,
+    );
+    const selectedForm = availableForms.find(
+      (form) =>
+        form.name === assignmentDraft.form &&
+        (!selectedProject ||
+          form.project_id === selectedProject.id ||
+          form.project_name === selectedProject.name),
+    );
+    const selectedOfficers = officers.filter((officer) =>
+      assignmentDraft.fieldOfficers.includes(officer.full_name),
+    );
+    if (!preview && (!selectedProject || !selectedForm || !selectedOfficers.length)) {
+      pushToast({
+        title: "Select saved records",
+        description:
+          "Mobile assignments must use a saved project, published form, and at least one active field officer.",
+        tone: "warning",
+      });
+      return;
+    }
+    setAssignmentSaving(true);
+    let assignmentId = `assignment-${Date.now()}`;
+    try {
+      if (!preview && token && selectedProject && selectedForm) {
+        const savedAssignments = await Promise.all(
+          selectedOfficers.map((officer) =>
+            createFieldOfficerAssignment(token, {
+              officer_id: officer.id,
+              project_id: selectedProject.id,
+              form_id: selectedForm.id,
+              region: assignmentDraft.location || null,
+              is_active: true,
+            }),
+          ),
+        );
+        assignmentId =
+          assignmentEditingId ?? savedAssignments[0]?.id ?? assignmentId;
+      }
+    } catch (error) {
+      pushToast({
+        title: "Assignment could not be saved",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Publish the form and check your assignment permissions.",
+        tone: "danger",
+      });
+      setAssignmentSaving(false);
+      return;
+    }
     const nextAssignment: FieldAssignment = {
       ...assignmentDraft,
       completedCount: 0,
       fieldOfficers: assignmentDraft.fieldOfficers.length
         ? assignmentDraft.fieldOfficers
         : ["Unassigned"],
-      id: `assignment-${Date.now()}`,
+      id: assignmentEditingId ?? assignmentId,
       status: "Assigned",
     };
-    setAssignments((current) => [nextAssignment, ...current]);
+    setAssignments((current) => [
+      nextAssignment,
+      ...current.filter((assignment) => assignment.id !== nextAssignment.id),
+    ]);
     upsertLocalAssignment(nextAssignment);
     setAssignmentDraft(defaultAssignmentDraft);
+    setAssignmentEditingId(null);
     setModalMode(null);
     pushToast({
-      title: "Assignment created",
+      title: assignmentEditingId ? "Assignment updated" : "Assignment created",
       description:
-        "The assignment is ready for supervisor and officer coordination.",
+        "Selected field officers will receive the published form on the next mobile sync.",
       tone: "success",
     });
+    setAssignmentSaving(false);
   }
 
-  function openAssignmentModal(): void {
-    const latestForm = localForms[0];
+  function openAssignmentModal(assignment?: FieldAssignment): void {
+    if (assignment) {
+      setAssignmentEditingId(assignment.id);
+      setAssignmentDraft(assignment);
+      setModalMode("assignment");
+      return;
+    }
+    const latestForm = availableForms.find(
+      (form) => String(form.status).toLowerCase() === "published",
+    );
     const latestProject = latestForm
-      ? localProjects.find(
+      ? availableProjects.find(
           (project) =>
             project.id === latestForm.project_id ||
             project.name === latestForm.project_name,
         )
-      : localProjects[0];
+      : availableProjects[0];
     const today = new Date();
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
@@ -774,6 +953,7 @@ export function FieldOperationsModule({
       supervisor: supervisors[0]?.name ?? "",
       targetCount: 100,
     });
+    setAssignmentEditingId(null);
     setModalMode("assignment");
   }
 
@@ -840,7 +1020,7 @@ export function FieldOperationsModule({
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!canManageFieldOperations}
-              onClick={openAssignmentModal}
+              onClick={() => openAssignmentModal()}
               variant="primary"
             >
               <Plus aria-hidden="true" />
@@ -900,60 +1080,70 @@ export function FieldOperationsModule({
             <MetricCard
               icon={<ClipboardList aria-hidden="true" />}
               label="Active Assignments"
+              onClick={() => setActiveSection("assignments")}
               tone="success"
               value={summary.activeAssignments}
             />
             <MetricCard
               icon={<UsersRound aria-hidden="true" />}
               label="Assigned Field Officers"
+              onClick={() => setActiveSection("field-officers")}
               tone="success"
               value={summary.assignedFieldOfficers}
             />
             <MetricCard
               icon={<ShieldCheck aria-hidden="true" />}
               label="Active Supervisors"
+              onClick={() => setActiveSection("supervisors")}
               tone="success"
               value={summary.activeSupervisors}
             />
             <MetricCard
               icon={<MapPinned aria-hidden="true" />}
               label="Coverage Progress"
+              onClick={() => setActiveSection("field-monitoring")}
               tone={summary.coverageProgress >= 70 ? "success" : "warning"}
               value={`${summary.coverageProgress}%`}
             />
             <MetricCard
               icon={<AlertTriangle aria-hidden="true" />}
               label="Overdue Assignments"
+              onClick={() => setActiveSection("assignments")}
               tone={summary.overdueAssignments ? "danger" : "success"}
               value={summary.overdueAssignments}
             />
             <MetricCard
               icon={<RadioTower aria-hidden="true" />}
               label="Daily Collection Progress"
+              onClick={() => setActiveSection("field-monitoring")}
               tone="success"
               value={`${summary.dailyCollectionProgress}%`}
             />
             <MetricCard
               icon={<Target aria-hidden="true" />}
               label="Assignment Completion"
+              onClick={() => setActiveSection("assignments")}
               tone="warning"
               value={`${summary.assignmentCompletionRate}%`}
             />
             <MetricCard
               icon={<Route aria-hidden="true" />}
               label="Team Productivity"
+              onClick={() => setActiveSection("field-officers")}
               tone="success"
               value={`${summary.teamProductivity}%`}
             />
             <MetricCard
               icon={<CalendarDays aria-hidden="true" />}
               label="Upcoming Deadlines"
+              onClick={() => setActiveSection("work-plans")}
               tone={summary.upcomingDeadlines ? "warning" : "success"}
               value={summary.upcomingDeadlines}
             />
             <MetricCard
               icon={<AlertTriangle aria-hidden="true" />}
               label="Quality Alerts"
+              onClick={() => router.push("/data-quality")}
               tone={operationsSummary.quality_flags ? "warning" : "success"}
               value={operationsSummary.quality_flags}
             />
@@ -1230,14 +1420,17 @@ export function FieldOperationsModule({
       <Modal
         description="Assign work to a project, form, supervisor, field team, location, and target."
         open={modalMode === "assignment"}
-        onOpenChange={(open) => setModalMode(open ? "assignment" : null)}
-        title="Create assignment"
+        onOpenChange={(open) => {
+          setModalMode(open ? "assignment" : null);
+          if (!open) setAssignmentEditingId(null);
+        }}
+        title={assignmentEditingId ? "Edit assignment" : "Create assignment"}
       >
         <form
           className="space-y-4 overflow-y-auto p-5 product-scrollbar"
           onSubmit={(event) => {
             event.preventDefault();
-            submitAssignment();
+            void submitAssignment();
           }}
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -1315,20 +1508,59 @@ export function FieldOperationsModule({
                 }
               />
             </label>
-            <label className="text-sm font-medium">
+            <div className="text-sm font-medium">
               Field officers
-              <Input
-                className="mt-2"
-                placeholder="Comma separated names"
-                value={assignmentDraft.fieldOfficers.join(", ")}
-                onChange={(event) =>
-                  setAssignmentDraft((current) => ({
-                    ...current,
-                    fieldOfficers: splitList(event.target.value),
-                  }))
-                }
-              />
-            </label>
+              <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border bg-background p-2 product-scrollbar">
+                {officers
+                  .filter((officer) => officer.is_active)
+                  .map((officer) => {
+                    const checked = assignmentDraft.fieldOfficers.includes(
+                      officer.full_name,
+                    );
+                    return (
+                      <label
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                        key={officer.id}
+                      >
+                        <input
+                          checked={checked}
+                          className="h-4 w-4"
+                          onChange={(event) =>
+                            setAssignmentDraft((current) => ({
+                              ...current,
+                              fieldOfficers: event.target.checked
+                                ? [
+                                    ...current.fieldOfficers,
+                                    officer.full_name,
+                                  ]
+                                : current.fieldOfficers.filter(
+                                    (name) => name !== officer.full_name,
+                                  ),
+                            }))
+                          }
+                          type="checkbox"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {officer.full_name}
+                          </span>
+                          <span className="block truncate text-muted-foreground">
+                            {officer.email}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                {!officers.filter((officer) => officer.is_active).length ? (
+                  <p className="p-2 text-xs text-muted-foreground">
+                    Invite a field officer before creating assignments.
+                  </p>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {assignmentDraft.fieldOfficers.length} selected
+              </p>
+            </div>
             <label className="text-sm font-medium">
               Location
               <Input
@@ -1423,14 +1655,64 @@ export function FieldOperationsModule({
               Cancel
             </Button>
             <Button
-              disabled={!assignmentDraft.project || !assignmentDraft.form}
+              disabled={
+                assignmentSaving ||
+                !assignmentDraft.project ||
+                !assignmentDraft.form ||
+                (!preview && !assignmentDraft.fieldOfficers.length)
+              }
               variant="primary"
               type="submit"
             >
-              Create assignment
+              {assignmentSaving
+                ? "Saving..."
+                : assignmentEditingId
+                  ? "Save assignment"
+                  : "Create assignment"}
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        description="Review the selected field assignment and use Edit assignment to change who receives it."
+        open={modalMode === "assignment-view"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setModalMode(null);
+            setViewAssignment(null);
+          }
+        }}
+        title="Assignment details"
+      >
+        <div className="space-y-3 p-5">
+          {viewAssignment ? (
+            <>
+              <DetailSignal label="Assignment" value={viewAssignment.name} />
+              <DetailSignal label="Project" value={viewAssignment.project} />
+              <DetailSignal label="Form" value={viewAssignment.form} />
+              <DetailSignal
+                label="Field officers"
+                value={viewAssignment.fieldOfficers.join(", ") || "Unassigned"}
+              />
+              <DetailSignal label="Location" value={viewAssignment.location} />
+              <DetailSignal label="Status" value={viewAssignment.status} />
+            </>
+          ) : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t px-5 py-4">
+          <Button onClick={() => setModalMode(null)} variant="ghost">
+            Close
+          </Button>
+          {viewAssignment ? (
+            <Button
+              onClick={() => openAssignmentModal(viewAssignment)}
+              variant="primary"
+            >
+              Edit assignment
+            </Button>
+          ) : null}
+        </div>
       </Modal>
 
       <Modal

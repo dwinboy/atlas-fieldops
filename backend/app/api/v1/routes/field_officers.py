@@ -8,7 +8,7 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.collection import FieldOfficerImportResponse, FieldOfficerInvite, FieldOfficerRead
+from app.schemas.collection import FieldOfficerImportResponse, FieldOfficerInvite, FieldOfficerRead, OfficerAssignmentCreate, OfficerAssignmentRead
 from app.services.collection import CollectionNotFoundError, FieldOfficerService
 
 router = APIRouter()
@@ -46,6 +46,37 @@ async def invite_field_officer(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/assignments",
+    response_model=OfficerAssignmentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Assign a published project form to a field officer for mobile sync",
+)
+async def create_field_assignment(
+    payload: OfficerAssignmentCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OfficerAssignmentRead:
+    service = FieldOfficerService(session)
+    try:
+        assignment = await service.assign_officer(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            payload=payload,
+        )
+        await session.commit()
+        return OfficerAssignmentRead.model_validate(assignment)
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

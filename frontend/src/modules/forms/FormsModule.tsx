@@ -116,17 +116,13 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   });
 
   const forms = useMemo<FormListItem[]>(
-    () => [
-      ...localForms,
-      ...(preview
-        ? previewForms
-        : (formsQuery.data ?? []).map(normalizeBackendForm)),
-    ],
+    () =>
+      preview
+        ? [...localForms, ...previewForms]
+        : (formsQuery.data ?? []).map(normalizeBackendForm),
     [formsQuery.data, localForms, preview],
   );
-  const templates = templatesQuery.data?.length
-    ? templatesQuery.data
-    : previewTemplates;
+  const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const summary = computeFormsSummary(forms);
   const visibleForms = useMemo(
     () => filterForms(forms, activeSection),

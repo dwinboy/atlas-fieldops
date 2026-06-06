@@ -24,8 +24,10 @@ from app.core.permissions import (
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
+from app.schemas.identity import UserCreate
 from app.schemas.organization_governance import AccessSimulationRequest
 from app.services.auth import AuthService, AuthenticationError
+from app.services.identity import UserManagementService
 from app.services.organization_governance import OrganizationGovernanceService
 
 
@@ -324,7 +326,7 @@ def build_identity(
     )
     organization = SimpleNamespace(id=uuid4(), name=organization_name, slug=organization_slug, is_active=organization_active)
     membership = SimpleNamespace(is_active=membership_active)
-    role = SimpleNamespace(name=role_name)
+    role = SimpleNamespace(name=role_name, permissions="")
     return user, organization, membership, role, grants or []
 
 
@@ -420,6 +422,130 @@ async def test_auth_service_includes_persisted_access_grants(monkeypatch: pytest
     assert payload["geography_ids"] == ["northwest"]
     assert payload["project_ids"] == ["project-1"]
     assert payload["organization_unit_ids"] == [str(grant.organization_unit_id)]
+
+
+async def test_auth_service_field_officer_token_can_use_mobile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(build_identity(password_hash=password_hash, role_name="field_officer")),
+    )
+
+    token_response = await service.login(
+        email="user@example.com",
+        password="correct horse battery staple",
+        organization_slug="acme",
+    )
+
+    payload = decode_access_token(token_response.access_token)
+    assert payload["roles"] == ["field_officer"]
+    assert payload["scope_type"] == "own"
+    assert "sync.mobile" in payload["permissions"]
+    assert "officers.view" in payload["permissions"]
+    assert "forms.view" in payload["permissions"]
+    assert "submissions.create" in payload["permissions"]
+
+
+class FakeIdentityForUserCreation:
+    def __init__(self) -> None:
+        self.user = SimpleNamespace(
+            id=uuid4(),
+            email="field.officer@example.com",
+            full_name="Field Officer Test",
+            is_active=True,
+        )
+        self.membership = SimpleNamespace(is_active=True)
+        self.grant = SimpleNamespace(
+            scope_type="own",
+            geography_id=None,
+            project_id=None,
+            organization_unit_id=None,
+        )
+
+    async def get_by_email(self, email: object) -> object | None:
+        return None
+
+    async def create_user(self, *, email: str, password_hash: str, full_name: str) -> object:
+        self.user.email = email
+        self.user.password_hash = password_hash
+        self.user.full_name = full_name
+        return self.user
+
+    async def add_membership(self, *, organization_id: object, user_id: object, role_id: object) -> object:
+        return self.membership
+
+    async def add_access_grant(self, **_kwargs: object) -> object:
+        return self.grant
+
+    async def get_user_account(self, *, organization_id: object, user_id: object) -> tuple[object, object, object, object] | None:
+        return self.user, self.membership, SimpleNamespace(name="field_officer"), self.grant
+
+
+class FakeRolesForFieldOfficerCreation:
+    async def get_by_name(self, *, organization_id: object, name: str) -> object | None:
+        if name == "field_officer":
+            return SimpleNamespace(id=uuid4(), name="field_officer")
+        return None
+
+
+class FakeOrganizationsForFieldOfficerCreation:
+    async def get(self, organization_id: object) -> object:
+        return SimpleNamespace(id=organization_id, name="Acme Relief", slug="acme")
+
+
+class FakeFieldOfficerProfilesForUserCreation:
+    def __init__(self) -> None:
+        self.created: list[dict[str, object]] = []
+
+    async def get_for_user(self, *, organization_id: object, user_id: object) -> object | None:
+        return None
+
+    async def create_profile(self, **kwargs: object) -> object:
+        self.created.append(kwargs)
+        return SimpleNamespace(id=uuid4(), **kwargs)
+
+
+class FakeAuditForFieldOfficerCreation:
+    async def append(self, **_kwargs: object) -> None:
+        return None
+
+
+class FakeEventPublisher:
+    async def publish(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+async def test_web_created_field_officer_gets_mobile_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.identity as identity_service_module
+
+    monkeypatch.setattr(identity_service_module, "event_publisher", FakeEventPublisher())
+    service = object.__new__(UserManagementService)
+    service.identity = FakeIdentityForUserCreation()
+    service.organizations = FakeOrganizationsForFieldOfficerCreation()
+    service.field_officers = FakeFieldOfficerProfilesForUserCreation()
+    service.roles = FakeRolesForFieldOfficerCreation()
+    service.audit = FakeAuditForFieldOfficerCreation()
+    organization_id = uuid4()
+
+    created = await service.create_user(
+        organization_id=organization_id,
+        actor_user_id=uuid4(),
+        actor_roles=["owner"],
+        payload=UserCreate(
+            email="field.officer@example.com",
+            password="CorrectHorse123!",
+            full_name="Field Officer Test",
+            role_name="field_officer",
+        ),
+    )
+
+    assert created.role_name == "field_officer"
+    assert created.login_slug == "acme"
+    assert len(service.field_officers.created) == 1
+    assert service.field_officers.created[0]["organization_id"] == organization_id
+    assert service.field_officers.created[0]["user_id"] == service.identity.user.id
 
 
 @pytest.mark.parametrize(

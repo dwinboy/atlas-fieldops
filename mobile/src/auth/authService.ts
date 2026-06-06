@@ -30,13 +30,12 @@ export class AuthService {
       deviceName: "Atlas FieldOps Android",
       osVersion: null,
     });
-    const bootstrap = await this.apis.auth.currentUser(token.accessToken);
-    await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
+    const syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
     new AuditEventService(this.database).queue("mobile.login", { deviceId, organizationSlug });
     const session: MobileSession = {
       accessToken: token.accessToken,
       refreshToken: token.refreshToken,
-      bootstrap,
+      bootstrap: syncPackage.bootstrap,
       expiresAt: null,
     };
     await this.store.save(session);

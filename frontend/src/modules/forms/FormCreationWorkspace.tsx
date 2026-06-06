@@ -19,12 +19,13 @@ import {
   Smartphone,
   Sparkles,
   TabletSmartphone,
+  UploadCloud,
   Workflow,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +33,18 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { listProjects } from "@/lib/api";
+import {
+  createForm,
+  createSurvey,
+  getFormSchema,
+  listProjects,
+  listSurveys,
+} from "@/lib/api";
 import {
   createField,
   createPage,
   createSection,
+  toMobileSchema,
   type DynamicForm,
   type FieldType,
   type FormField,
@@ -363,6 +371,29 @@ function variableNameFromLabel(label: string, fallback: string): string {
   );
 }
 
+function uniqueVariableName(label: string, used: Set<string>, fallback: string): string {
+  const base = variableNameFromLabel(label, fallback);
+  let candidate = base;
+  let index = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}_${index}`;
+    index += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function slugFromText(value: string, fallback: string): string {
+  return (
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || fallback
+  );
+}
+
 function attachStarterField(
   section: FormSection,
   type: FieldType,
@@ -375,6 +406,215 @@ function attachStarterField(
     label,
     required,
     variableName: variableNameFromLabel(label, field.id),
+  };
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function parseDelimitedRows(text: string): string[][] {
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const delimiter = firstLine.includes("\t")
+    ? "\t"
+    : firstLine.split(";").length > firstLine.split(",").length
+      ? ";"
+      : ",";
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      row.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some((value) => value.length)) rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell.trim());
+  if (row.some((value) => value.length)) rows.push(row);
+  return rows;
+}
+
+function columnIndexFromCellRef(reference: string | null): number {
+  const letters = reference?.match(/[A-Z]+/i)?.[0]?.toUpperCase() ?? "A";
+  return [...letters].reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+}
+
+async function inflateRawZipEntry(bytes: Uint8Array): Promise<string> {
+  if (!("DecompressionStream" in globalThis)) {
+    throw new Error("This browser cannot read XLSX files directly. Save the spreadsheet as CSV and import again.");
+  }
+  const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const inflated = await new Response(stream).arrayBuffer();
+  return new TextDecoder().decode(inflated);
+}
+
+async function readZipTextFile(buffer: ArrayBuffer, wantedPath: string): Promise<string | null> {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  let endRecordOffset = -1;
+  for (let offset = buffer.byteLength - 22; offset >= 0; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      endRecordOffset = offset;
+      break;
+    }
+  }
+  if (endRecordOffset < 0) return null;
+  const totalEntries = view.getUint16(endRecordOffset + 10, true);
+  let centralOffset = view.getUint32(endRecordOffset + 16, true);
+  const decoder = new TextDecoder();
+
+  for (let entry = 0; entry < totalEntries; entry += 1) {
+    if (view.getUint32(centralOffset, true) !== 0x02014b50) break;
+    const method = view.getUint16(centralOffset + 10, true);
+    const compressedSize = view.getUint32(centralOffset + 20, true);
+    const nameLength = view.getUint16(centralOffset + 28, true);
+    const extraLength = view.getUint16(centralOffset + 30, true);
+    const commentLength = view.getUint16(centralOffset + 32, true);
+    const localOffset = view.getUint32(centralOffset + 42, true);
+    const name = decoder.decode(bytes.slice(centralOffset + 46, centralOffset + 46 + nameLength));
+    if (name === wantedPath) {
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const entryBytes = bytes.slice(dataStart, dataStart + compressedSize);
+      if (method === 0) return decoder.decode(entryBytes);
+      if (method === 8) return inflateRawZipEntry(entryBytes);
+      throw new Error("Unsupported XLSX compression method.");
+    }
+    centralOffset += 46 + nameLength + extraLength + commentLength;
+  }
+  return null;
+}
+
+function sharedStringsFromXml(xml: string): string[] {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return Array.from(doc.getElementsByTagName("si")).map((item) => item.textContent?.trim() ?? "");
+}
+
+function rowsFromWorksheetXml(xml: string, sharedStrings: string[]): string[][] {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  return Array.from(doc.getElementsByTagName("row")).map((row) => {
+    const values: string[] = [];
+    Array.from(row.getElementsByTagName("c")).forEach((cell) => {
+      const index = columnIndexFromCellRef(cell.getAttribute("r"));
+      const type = cell.getAttribute("t");
+      const rawValue =
+        cell.getElementsByTagName("v")[0]?.textContent ??
+        cell.getElementsByTagName("t")[0]?.textContent ??
+        "";
+      values[index] = type === "s" ? (sharedStrings[Number(rawValue)] ?? "") : decodeXmlText(rawValue);
+    });
+    return values.map((value) => value ?? "");
+  });
+}
+
+async function readSpreadsheetRows(file: File): Promise<string[][]> {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".xlsx")) {
+    const buffer = await file.arrayBuffer();
+    const sheetXml = await readZipTextFile(buffer, "xl/worksheets/sheet1.xml");
+    if (!sheetXml) throw new Error("No first worksheet was found in this Excel file.");
+    const sharedXml = await readZipTextFile(buffer, "xl/sharedStrings.xml");
+    return rowsFromWorksheetXml(sheetXml, sharedXml ? sharedStringsFromXml(sharedXml) : []);
+  }
+  if (lowerName.endsWith(".xls")) {
+    throw new Error("Older .xls files are not supported yet. Save the file as .xlsx or CSV and import again.");
+  }
+  return parseDelimitedRows(await file.text());
+}
+
+function inferFieldType(header: string, values: string[]): FieldType {
+  const label = header.toLowerCase();
+  const samples = values.map((value) => value.trim()).filter(Boolean);
+  if (label.includes("email")) return "email";
+  if (label.includes("phone") || label.includes("mobile") || label.includes("contact")) return "phone";
+  if (label.includes("gps") || label.includes("coordinate")) return "gps";
+  if (label.includes("photo") || label.includes("image")) return "photo";
+  if (label.includes("signature")) return "signature";
+  if (label.includes("date") || samples.every((value) => !Number.isNaN(Date.parse(value)))) return "date";
+  if (samples.length && samples.every((value) => /^-?\d+$/.test(value))) return "number";
+  if (samples.length && samples.every((value) => /^-?\d+(\.\d+)?$/.test(value))) return "decimal";
+  const normalized = new Set(samples.map((value) => value.toLowerCase()));
+  if (normalized.size > 0 && normalized.size <= 8) {
+    if ([...normalized].every((value) => ["yes", "no", "y", "n", "true", "false"].includes(value))) return "radio";
+    return "select";
+  }
+  if (samples.some((value) => value.length > 100)) return "textarea";
+  return "text";
+}
+
+function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
+  const form = createEnterpriseDraftForm(setup, "import", []);
+  const page = (form.pages ?? [])[0] ?? createPage("Page 1");
+  const section = {
+    ...(form.sections[0] ?? createSection(page.id, "Imported questions")),
+    title: "Imported spreadsheet columns",
+    description: "Questions generated from the first row of the uploaded spreadsheet. Review labels, required status, options, and validation before publishing.",
+  };
+  const used = new Set<string>();
+  const fields = rows
+    .map((header, index) => header.trim() || `Column ${index + 1}`)
+    .filter(Boolean)
+    .map((header, index) => {
+      const samples = sampleRows.map((row) => row[index] ?? "");
+      const type = inferFieldType(header, samples);
+      const field = createField(type, section.id, page.id);
+      const options = ["select", "radio", "dropdown", "multiselect"].includes(type)
+        ? Array.from(new Set(samples.map((value) => value.trim()).filter(Boolean))).slice(0, 20)
+        : field.options;
+      return {
+        ...field,
+        hint: `Imported from spreadsheet column ${index + 1}.`,
+        label: header,
+        options: options?.length ? options : field.options,
+        required: false,
+        variableName: uniqueVariableName(header, used, field.id),
+      };
+    });
+  return {
+    ...form,
+    fields,
+    history: [
+      ...(form.history ?? []),
+      {
+        createdAt: new Date().toISOString(),
+        status: "draft",
+        summary: `Generated ${fields.length} editable question(s) from spreadsheet headers`,
+        version: form.version,
+      },
+    ],
+    pages: [{ ...page, description: "Generated from spreadsheet import." }],
+    sections: [section],
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -482,6 +722,129 @@ export function createEditableDraftFromListItem(
     status: builderStatusFromListStatus(form.status),
     updatedAt: createdAt,
     version: form.version,
+  };
+}
+
+function createEditableDraftFromSavedSchema(
+  form: FormListItem,
+  schema: Record<string, unknown>,
+  version: number,
+): DynamicForm {
+  const schemaPages = Array.isArray((schema as { pages?: unknown }).pages)
+    ? ((schema as { pages: Record<string, unknown>[] }).pages)
+    : [];
+  const schemaSections = Array.isArray(
+    (schema as { sections?: unknown }).sections,
+  )
+    ? ((schema as { sections: Record<string, unknown>[] }).sections)
+    : [];
+  const pages =
+    schemaPages.length > 0
+      ? schemaPages.map((page, index) => ({
+          id: String(page.id ?? `page-${index + 1}`),
+          title: String(page.title ?? `Page ${index + 1}`),
+          description:
+            typeof page.description === "string" ? page.description : undefined,
+        }))
+      : [createPage("Page 1")];
+  const fallbackPageId = pages[0]?.id ?? "page-1";
+  const sections =
+    schemaSections.length > 0
+      ? schemaSections.map((section, index) => ({
+          id: String(section.id ?? `section-${index + 1}`),
+          title: String(section.title ?? `Section ${index + 1}`),
+          description:
+            typeof section.description === "string"
+              ? section.description
+              : undefined,
+          pageId:
+            typeof section.page_id === "string"
+              ? section.page_id
+              : fallbackPageId,
+        }))
+      : [createSection(fallbackPageId, "Questions")];
+  const fields = schemaSections.flatMap((section, sectionIndex) => {
+    const sectionId = String(section.id ?? sections[sectionIndex]?.id);
+    const rawFields = Array.isArray(section.fields)
+      ? (section.fields as Record<string, unknown>[])
+      : [];
+    return rawFields.map((field, fieldIndex) => {
+      const optionValues = Array.isArray(field.options)
+        ? (field.options as Record<string, unknown>[]).map((option) =>
+            String(option.label ?? option.value ?? ""),
+          )
+        : [];
+      return {
+        id: String(field.id ?? `field-${sectionIndex + 1}-${fieldIndex + 1}`),
+        label: String(field.label ?? `Question ${fieldIndex + 1}`),
+        type: String(field.type ?? "text") as FieldType,
+        required: Boolean(field.required),
+        hint: typeof field.hint === "string" ? field.hint : undefined,
+        pageId:
+          typeof field.page_id === "string"
+            ? field.page_id
+            : sections[sectionIndex]?.pageId,
+        sectionId,
+        variableName:
+          typeof field.variable_name === "string"
+            ? field.variable_name
+            : undefined,
+        options: optionValues.filter(Boolean),
+        validation:
+          field.validation && typeof field.validation === "object"
+            ? (field.validation as FormField["validation"])
+            : undefined,
+        logic: Array.isArray(field.logic)
+          ? (field.logic as FormField["logic"])
+          : undefined,
+        appearance:
+          field.appearance && typeof field.appearance === "object"
+            ? (field.appearance as FormField["appearance"])
+            : undefined,
+        calculation:
+          typeof field.calculation === "string"
+            ? { expression: field.calculation }
+            : field.calculation && typeof field.calculation === "object"
+              ? (field.calculation as FormField["calculation"])
+              : undefined,
+        matrix:
+          field.matrix && typeof field.matrix === "object"
+            ? (field.matrix as FormField["matrix"])
+            : undefined,
+        repeat:
+          field.repeat && typeof field.repeat === "object"
+            ? (field.repeat as FormField["repeat"])
+            : undefined,
+        media:
+          field.media && typeof field.media === "object"
+            ? (field.media as FormField["media"])
+            : undefined,
+        gps:
+          field.gps && typeof field.gps === "object"
+            ? (field.gps as FormField["gps"])
+            : undefined,
+      } satisfies FormField;
+    });
+  });
+  const updatedAt = form.updated_at || new Date().toISOString();
+  return {
+    activeVersion: form.status === "published" ? version : 0,
+    fields,
+    history: [
+      {
+        createdAt: updatedAt,
+        status: builderStatusFromListStatus(form.status),
+        summary: `Loaded saved schema for ${form.name}`,
+        version,
+      },
+    ],
+    id: form.id,
+    name: form.name,
+    pages,
+    sections,
+    status: builderStatusFromListStatus(form.status),
+    updatedAt,
+    version,
   };
 }
 
@@ -707,7 +1070,18 @@ export function FormCreationWorkspace({
     queryFn: () => listProjects(token ?? ""),
     queryKey: ["form-builder-projects", token],
   });
+  const surveysQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listSurveys(token ?? ""),
+    queryKey: ["form-builder-surveys", token],
+  });
   const tenantProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
+  const tenantSurveys = useMemo(() => surveysQuery.data ?? [], [surveysQuery.data]);
+  const formSchemaQuery = useQuery({
+    enabled: Boolean(initialForm && token && !preview),
+    queryFn: () => getFormSchema(token ?? "", initialForm?.id ?? ""),
+    queryKey: ["form-builder-schema", token, initialForm?.id],
+  });
   const availableProjectOptions = useMemo(
     () =>
       Array.from(
@@ -739,9 +1113,9 @@ export function FormCreationWorkspace({
         : {
             ...setupDefaults,
             formName: "New data collection form",
-            projectName: localProjects[0]?.name ?? setupDefaults.projectName,
+            projectName: "",
           },
-    [initialForm, localProjects],
+    [initialForm],
   );
   const [setup, setSetup] = useState<FormSetupDraft>(initialSetup);
   const [stage, setStage] = useState<CreationStage>(
@@ -750,7 +1124,13 @@ export function FormCreationWorkspace({
   const [startMethod, setStartMethod] = useState<StartMethod>("blank");
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMessage, setImportMessage] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
   const selectedProject = useMemo(
     () =>
       preview
@@ -759,6 +1139,10 @@ export function FormCreationWorkspace({
     [localProjects, preview, setup.projectName, tenantProjects],
   );
   const selectedProjectId = selectedProject?.id ?? null;
+  const selectedSurvey =
+    !preview && selectedProjectId
+      ? tenantSurveys.find((survey) => survey.project_id === selectedProjectId)
+      : null;
   const projectLinked = preview
     ? Boolean(setup.projectName.trim())
     : Boolean(selectedProjectId);
@@ -775,14 +1159,43 @@ export function FormCreationWorkspace({
   }
 
   useEffect(() => {
-    if (preview || !tenantProjects.length) return;
+    if (preview || !tenantProjects.length || !initialForm) return;
     if (tenantProjects.some((project) => project.name === setup.projectName)) return;
-    setSetup((current) => ({ ...current, projectName: tenantProjects[0]?.name ?? "" }));
-  }, [preview, setup.projectName, tenantProjects]);
+    setSetup((current) => ({ ...current, projectName: initialForm.project_name ?? "" }));
+  }, [initialForm, preview, setup.projectName, tenantProjects]);
 
-  function createDraftAndOpenBuilder(method = startMethod): void {
-    if (!projectLinked) return;
-    const nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
+  useEffect(() => {
+    if (!initialForm || !formSchemaQuery.data) return;
+    setDraftForm(
+      createEditableDraftFromSavedSchema(
+        initialForm,
+        formSchemaQuery.data.schema,
+        formSchemaQuery.data.version,
+      ),
+    );
+    setStage("builder");
+  }, [formSchemaQuery.data, initialForm]);
+
+  async function createDraftAndOpenBuilder(method = startMethod): Promise<void> {
+    setImportMessage("");
+    let nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
+    if (method === "import" && importFile) {
+      setImportBusy(true);
+      try {
+        const rows = await readSpreadsheetRows(importFile);
+        const headers = rows[0]?.map((header) => header.trim()) ?? [];
+        if (!headers.some(Boolean)) {
+          throw new Error("The spreadsheet must have question names in the first row.");
+        }
+        nextDraft = createDraftFromSpreadsheetRows(setup, headers, rows.slice(1, 51));
+        setImportMessage(`${headers.filter(Boolean).length} spreadsheet column(s) were converted into editable form questions.`);
+      } catch (error) {
+        setImportMessage(error instanceof Error ? error.message : "The spreadsheet could not be read.");
+        setImportBusy(false);
+        return;
+      }
+      setImportBusy(false);
+    }
     setDraftForm(nextDraft);
     upsertLocalForm(
       workspaceFormFromDraft(
@@ -795,8 +1208,72 @@ export function FormCreationWorkspace({
     setStage("builder");
   }
 
-  function publishDraft(): void {
-    if (!draftForm || criticalFailures.length) return;
+  function saveDraftLocally(): void {
+    if (!draftForm) return;
+    upsertLocalForm(workspaceFormFromDraft(draftForm, setup, selectedProjectId));
+    setPublishMessage(
+      projectLinked
+        ? "Draft saved. You can publish when ready."
+        : "Draft saved locally. Select an existing project before publishing.",
+    );
+  }
+
+  async function publishDraft(): Promise<void> {
+    if (!draftForm) return;
+    if (!projectLinked || !selectedProjectId) {
+      setPublishMessage("Select an existing project before publishing. Drafts can be saved without a project, but published forms must be project-linked.");
+      setStage("setup");
+      return;
+    }
+    if (criticalFailures.length) {
+      setPublishMessage("Resolve the required readiness checks before publishing.");
+      return;
+    }
+    if (token && !preview) {
+      setPublishing(true);
+      setPublishMessage("");
+      try {
+        const survey =
+          selectedSurvey ??
+          (await createSurvey(token, {
+            code: `FORM-${Date.now().toString(36).toUpperCase()}`,
+            description: "Auto-created survey context for a project-linked data collection form.",
+            geographic_scope: selectedProject?.region ?? null,
+            project_id: selectedProjectId,
+            status: "active",
+            survey_type: "monitoring",
+            target_population: "Project participants",
+            title: "General Data Collection",
+          }));
+        const saved = await createForm(token, {
+          description: setup.description || draftForm.sections[0]?.description || null,
+          name: draftForm.name,
+          project_id: selectedProjectId,
+          publish: true,
+          schema: toMobileSchema(draftForm) as Record<string, unknown>,
+          slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
+          survey_id: survey.id,
+        });
+        const nextPublishedForm: DynamicForm = {
+          ...draftForm,
+          activeVersion: saved.current_version,
+          id: saved.id,
+          status: "published",
+          updatedAt: new Date().toISOString(),
+          version: saved.current_version,
+        };
+        setPublishedForm(nextPublishedForm);
+        setDraftForm(nextPublishedForm);
+        upsertLocalForm(workspaceFormFromDraft(nextPublishedForm, setup, selectedProjectId));
+        setPublishMessage(`${saved.name} was published under ${selectedProject?.name ?? "the selected project"}.`);
+        setStage("review");
+      } catch (error) {
+        setPublishMessage(error instanceof Error ? error.message : "The form could not be published.");
+      } finally {
+        setPublishing(false);
+      }
+      return;
+    }
     const nextPublishedForm: DynamicForm = {
       ...draftForm,
       activeVersion: Math.max(draftForm.activeVersion, 1),
@@ -902,6 +1379,13 @@ export function FormCreationWorkspace({
             {compactBuilderMode ? (
               <>
                 <Button
+                  onClick={saveDraftLocally}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Save draft
+                </Button>
+                <Button
                   onClick={() => setStage("setup")}
                   size="sm"
                   variant="ghost"
@@ -924,22 +1408,30 @@ export function FormCreationWorkspace({
                   Preview
                 </Button>
                 <Button
-                  onClick={() => setStage("review")}
+                  onClick={() => {
+                    if (!projectLinked) {
+                      setPublishMessage("Select an existing project before publishing. Your draft is saved while you choose the project.");
+                      setStage("setup");
+                      return;
+                    }
+                    setStage("review");
+                  }}
                   size="sm"
-                  variant="secondary"
+                  variant="primary"
                 >
-                  Review
+                  <Rocket aria-hidden="true" />
+                  Publish
                 </Button>
               </>
             ) : null}
             {stage === "review" ? (
               <Button
-                disabled={!draftForm || criticalFailures.length > 0}
+                disabled={!draftForm || criticalFailures.length > 0 || publishing}
                 onClick={publishDraft}
                 variant="primary"
               >
                 <Rocket aria-hidden="true" />
-                Publish
+                {publishing ? "Publishing" : "Publish"}
               </Button>
             ) : null}
           </div>
@@ -1011,6 +1503,7 @@ export function FormCreationWorkspace({
                   }
                   value={setup.projectName}
                 >
+                  <option value="">Choose project when ready to publish</option>
                   {!availableProjectOptions.length ? (
                     <option value="">Create or select a project first</option>
                   ) : null}
@@ -1022,7 +1515,12 @@ export function FormCreationWorkspace({
                 </Select>
                 {!preview && !projectsQuery.isLoading && !availableProjectOptions.length ? (
                   <span className="mt-1 block text-xs text-danger">
-                    Create a project before building a data collection form.
+                    Create a project before publishing this data collection form.
+                  </span>
+                ) : null}
+                {availableProjectOptions.length ? (
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    You can save the draft now. Publishing requires an existing project.
                   </span>
                 ) : null}
               </label>
@@ -1061,7 +1559,7 @@ export function FormCreationWorkspace({
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">
-                  Estimated Duration
+                  Estimated Duration (minutes)
                 </span>
                 <Input
                   min={1}
@@ -1119,13 +1617,18 @@ export function FormCreationWorkspace({
             </div>
             <div className="mt-3 flex justify-end">
               <Button
-                disabled={!setup.formName.trim() || !projectLinked}
+                disabled={!setup.formName.trim()}
                 onClick={() => setStage("start")}
                 variant="primary"
               >
                 Continue
               </Button>
             </div>
+            {publishMessage ? (
+              <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-muted-foreground">
+                {publishMessage}
+              </div>
+            ) : null}
           </section>
           <aside className="rounded-xl border bg-panel p-3.5 shadow-line">
             <h3 className="font-semibold">Draft shell will contain</h3>
@@ -1174,16 +1677,66 @@ export function FormCreationWorkspace({
               );
             })}
           </div>
+          {startMethod === "import" ? (
+            <div className="mt-4 rounded-xl border bg-background/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold">
+                      Upload spreadsheet to create questions
+                    </h3>
+                    <HelpHint
+                      label="About spreadsheet form creation"
+                      title="Upload spreadsheet to create questions"
+                    >
+                      Use a CSV, TSV, or XLSX file where the first row contains
+                      column names. Atlas turns each column into an editable
+                      question and infers common response types from sample rows.
+                    </HelpHint>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {importFile
+                      ? `${importFile.name} selected`
+                      : "First row becomes question labels. You can edit every question before publishing."}
+                  </p>
+                </div>
+                <input
+                  accept=".csv,.tsv,.txt,.xlsx"
+                  className="hidden"
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] ?? null);
+                    setImportMessage("");
+                  }}
+                  ref={importFileRef}
+                  type="file"
+                />
+                <Button
+                  onClick={() => importFileRef.current?.click()}
+                  type="button"
+                  variant="secondary"
+                >
+                  <UploadCloud aria-hidden="true" />
+                  Choose file
+                </Button>
+              </div>
+              {importMessage ? (
+                <div className="mt-3 rounded-lg border bg-panel px-3 py-2 text-sm text-muted-foreground">
+                  {importMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <Button onClick={() => setStage("setup")} variant="ghost">
               Back
             </Button>
             <Button
-              onClick={() => createDraftAndOpenBuilder()}
+              disabled={importBusy}
+              onClick={() => void createDraftAndOpenBuilder()}
               variant="primary"
             >
               <Play aria-hidden="true" />
-              Continue to Builder
+              {importBusy ? "Reading file" : "Continue to Builder"}
             </Button>
           </div>
         </section>

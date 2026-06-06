@@ -9,7 +9,7 @@ from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import BeneficiaryRead, ImportJobRead
-from app.schemas.projects import ProjectCreate, ProjectDetailRead, ProjectListItemRead, ProjectSummaryRead, ProjectTemplateRead
+from app.schemas.projects import ProjectCreate, ProjectDetailRead, ProjectListItemRead, ProjectSummaryRead, ProjectTemplateRead, ProjectUpdate
 from app.services.operations import OperationsService
 from app.services.projects import ProjectConflictError, ProjectNotFoundError, ProjectsService
 
@@ -60,6 +60,23 @@ async def templates(
 ) -> list[ProjectTemplateRead]:
     _ = principal
     return await ProjectsService(session).templates()
+
+
+@router.patch("/{project_id}", response_model=ProjectListItemRead, summary="Update project")
+async def update_project(
+    project_id: UUID,
+    payload: ProjectUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectListItemRead:
+    try:
+        return await ProjectsService(session).update_project(organization_uuid(principal), user_uuid(principal), project_id, payload)
+    except ProjectNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProjectConflictError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/{project_id}/beneficiaries", response_model=list[BeneficiaryRead], summary="List project beneficiaries and entities")

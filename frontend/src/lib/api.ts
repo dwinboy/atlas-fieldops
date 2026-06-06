@@ -840,6 +840,23 @@ export type FieldOfficerRead = {
   is_active: boolean;
 };
 
+export type FieldOfficerAssignmentCreate = {
+  officer_id: string;
+  project_id: string;
+  form_id?: string | null;
+  region?: string | null;
+  is_active?: boolean;
+};
+
+export type FieldOfficerAssignmentRead = {
+  id: string;
+  officer_id: string;
+  project_id: string;
+  form_id: string | null;
+  region: string | null;
+  is_active: boolean;
+};
+
 export type FieldOfficerImportIssue = {
   row_number: number;
   email?: string | null;
@@ -1045,6 +1062,8 @@ export type ProjectCreate = {
   owner?: string | null;
   status?: string;
 };
+
+export type ProjectUpdate = Partial<ProjectCreate>;
 
 export type ProjectSummaryRead = {
   total_projects: number;
@@ -1633,6 +1652,12 @@ export type DataFormRead = {
   current_version: number;
   controls_json?: FormControlsSettings | Record<string, unknown>;
   is_active: boolean;
+};
+
+export type DataFormSchemaRead = {
+  form_id: string;
+  version: number;
+  schema: Record<string, unknown>;
 };
 
 export type TemplateFieldSummary = {
@@ -2378,6 +2403,13 @@ export async function inviteFieldOfficer(token: string, payload: FieldOfficerInv
   return request<FieldOfficerRead>("/field-officers", { method: "POST", token, bodyJson: payload });
 }
 
+export async function createFieldOfficerAssignment(
+  token: string,
+  payload: FieldOfficerAssignmentCreate,
+): Promise<FieldOfficerAssignmentRead> {
+  return request<FieldOfficerAssignmentRead>("/field-officers/assignments", { method: "POST", token, bodyJson: payload });
+}
+
 export async function importFieldOfficers(token: string, file: File): Promise<FieldOfficerImportResponse> {
   const body = new FormData();
   body.set("file", file);
@@ -2468,6 +2500,10 @@ export async function listProjects(token: string): Promise<ProjectListItemRead[]
 
 export async function createProject(token: string, payload: ProjectCreate): Promise<ProjectListItemRead> {
   return request<ProjectListItemRead>("/projects", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateProject(token: string, projectId: string, payload: ProjectUpdate): Promise<ProjectListItemRead> {
+  return request<ProjectListItemRead>(`/projects/${projectId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function getProjectDetail(token: string, projectId: string): Promise<ProjectDetailRead> {
@@ -2644,6 +2680,10 @@ export async function listForms(token: string): Promise<DataFormRead[]> {
 
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getFormSchema(token: string, formId: string): Promise<DataFormSchemaRead> {
+  return request<DataFormSchemaRead>(`/forms/${formId}/schema`, { token });
 }
 
 export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {

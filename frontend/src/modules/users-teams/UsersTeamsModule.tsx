@@ -35,6 +35,7 @@ import {
   getUsersTeamsSummary,
   importUsers,
   listOrganizationUnits,
+  listProjects,
   listRoles,
   listSessionLogs,
   listTeams,
@@ -88,13 +89,15 @@ type UsersTeamsModuleProps = {
 
 type ModalMode = "access-test" | "import-users" | "role" | "team" | "user" | null;
 
-const defaultUserDraft = {
+const defaultUserDraft: UserCreate = {
   email: "",
   full_name: "",
+  geography_ids: [],
   password: "",
+  project_ids: [],
   role_name: "field_officer",
   scope_type: "own" as NonNullable<UserCreate["scope_type"]>,
-} satisfies UserCreate;
+};
 
 const defaultTeamDraft = {
   code: "",
@@ -177,12 +180,14 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const organizationSummaryQuery = useQuery({ queryKey: ["users-teams", "org-summary", token], queryFn: () => getOrganizationGovernanceSummary(token ?? ""), enabled });
   const activityQuery = useQuery({ queryKey: ["users-teams", "activity", token], queryFn: () => listUsersTeamsActivityLogs(token ?? ""), enabled });
   const organizationQuery = useQuery({ queryKey: ["users-teams", "organization", token], queryFn: () => getOrganizationContext(token ?? ""), enabled });
+  const projectsQuery = useQuery({ queryKey: ["users-teams", "projects", token], queryFn: () => listProjects(token ?? ""), enabled });
 
   const users = preview ? [...localUsers, ...previewUsers] : (usersQuery.data ?? []);
   const roles = useMemo(() => (preview ? previewRoles : (rolesQuery.data ?? [])), [preview, rolesQuery.data]);
   const teams = preview ? previewTeams : (teamsQuery.data ?? []);
   const profiles = preview ? previewProfiles : (profilesQuery.data ?? []);
   const units = preview ? previewUnits : (unitsQuery.data ?? []);
+  const projects = preview ? [] : (projectsQuery.data ?? []);
   const sessions = preview ? previewSessions : (sessionsQuery.data ?? []);
   const catalog = useMemo(
     () => (preview ? previewAccessCatalog : (catalogQuery.data ?? emptyAccessCatalog)),
@@ -234,6 +239,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       full_name: current.full_name,
       password: current.password,
       role_name: roleOptions.some(([value]) => value === current.role_name) ? current.role_name : defaultAssignableRole,
+      scope_type: current.scope_type ?? defaultUserDraft.scope_type,
     }));
     setModalMode("user");
   }
@@ -609,8 +615,10 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         onSubmit={submitUser}
         onOpenChange={(open) => setModalMode(open ? "user" : null)}
         open={modalMode === "user"}
+        projects={projects}
         roleOptions={roleOptions}
         saving={createUserMutation.isPending}
+        units={units}
       />
       <ImportUsersModal
         canSubmit={!preview && canManageUsers && Boolean(selectedImportFile) && !importUsersMutation.isPending}
@@ -869,7 +877,7 @@ function PermissionsSection({ catalogGroups, onOpenAccessTest, roles, users }: {
   );
 }
 
-function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateCustomRole, onOpenChange, onSubmit, open, roleOptions, saving }: {
+function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateCustomRole, onOpenChange, onSubmit, open, projects, roleOptions, saving, units }: {
   canManageRoles: boolean;
   canSubmit: boolean;
   draft: typeof defaultUserDraft;
@@ -878,9 +886,14 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
+  projects: { id: string; name: string; project_code: string }[];
   roleOptions: [string, string][];
   saving: boolean;
+  units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
 }) {
+  const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
+  const needsProjectScope = draft.scope_type === "project";
+  const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type ?? "");
   return (
     <Modal description="Create an account, choose its role, and define the default access scope." onOpenChange={onOpenChange} open={open} title="Create user" contentClassName="max-w-2xl">
       <div className="grid gap-4 overflow-y-auto p-5 product-scrollbar">
@@ -909,10 +922,64 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
             </label>
             <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
               Access scope
-              <Select value={draft.scope_type} onChange={(event) => onChange({ ...draft, scope_type: event.target.value })}>
-                {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
+              <Select
+                value={draft.scope_type ?? ""}
+                onChange={(event) =>
+                  onChange({
+                    ...draft,
+                    geography_ids: [],
+                    project_ids: [],
+                    scope_type: event.target.value,
+                  })
+                }
+              >
+                {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
               </Select>
             </label>
+            {needsProjectScope ? (
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Project access
+                <Select
+                  value={draft.project_ids?.[0] ?? ""}
+                  onChange={(event) =>
+                    onChange({
+                      ...draft,
+                      project_ids: event.target.value ? [event.target.value] : [],
+                    })
+                  }
+                >
+                  <option value="">Select project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} · {project.project_code}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
+            {needsGeographyScope ? (
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Location/team access
+                <Select
+                  value={draft.geography_ids?.[0] ?? ""}
+                  onChange={(event) =>
+                    onChange({
+                      ...draft,
+                      geography_ids: event.target.value
+                        ? [event.target.value]
+                        : [],
+                    })
+                  }
+                >
+                  <option value="">Select {draft.scope_type?.replace("_", " ")}</option>
+                  {scopedUnits.map((unit) => (
+                    <option key={unit.id} value={unit.code}>
+                      {unit.name} · {unit.code}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
           </div>
         </div>
         {!roleOptions.length ? (
@@ -921,12 +988,12 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
           </div>
         ) : null}
         <div className="rounded-xl border bg-muted/35 p-3 text-xs text-muted-foreground">
-          Required before saving: full name, email, a 12-character temporary password, an assignable role, and an access scope.
+          Required before saving: full name, email, a 12-character temporary password, an assignable role, an access scope, and a project/location target when that scope requires one.
         </div>
       </div>
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
-        <Button disabled={!canSubmit || !draft.email || !draft.full_name || draft.password.length < 12 || !roleOptions.length} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create user"}</Button>
+        <Button disabled={!canSubmit || !draft.email || !draft.full_name || draft.password.length < 12 || !roleOptions.length || (needsProjectScope && !draft.project_ids?.length) || (needsGeographyScope && !draft.geography_ids?.length)} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create user"}</Button>
       </div>
     </Modal>
   );

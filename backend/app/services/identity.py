@@ -6,10 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
-from app.core.permissions import ROLE_DEFINITIONS, ScopeType, default_scope_for_roles, is_assignable_role, is_scope_allowed_for_role
+from app.core.permissions import ROLE_DEFINITIONS, ScopeType, canonical_role, default_scope_for_roles, is_assignable_role, is_scope_allowed_for_role
 from app.core.security import hash_password
 from app.models.identity import User
 from app.repositories.audit import AuditRepository
+from app.repositories.collection import FieldOfficerRepository
 from app.repositories.identity import IdentityRepository, OrganizationRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.identity import PasswordResetRead, OrganizationCreate, UserCreate, UserImportIssue, UserImportResponse, UserRead, UserUpdate
 
@@ -131,8 +132,23 @@ class UserManagementService:
         self.session = session
         self.identity = IdentityRepository(session)
         self.organizations = OrganizationRepository(session)
+        self.field_officers = FieldOfficerRepository(session)
         self.roles = RoleRepository(session)
         self.audit = AuditRepository(session)
+
+    async def _ensure_field_officer_profile(self, *, organization_id: UUID, user_id: UUID, role_name: str) -> None:
+        if canonical_role(role_name) != "field_officer":
+            return
+        existing_profile = await self.field_officers.get_for_user(organization_id=organization_id, user_id=user_id)
+        if existing_profile is not None:
+            return
+        await self.field_officers.create_profile(
+            organization_id=organization_id,
+            user_id=user_id,
+            employee_code=f"FO-{str(user_id)[:8].upper()}",
+            phone_number=None,
+            home_region=None,
+        )
 
     async def create_user(
         self,
@@ -167,6 +183,7 @@ class UserManagementService:
             geography_id=payload.geography_ids[0] if payload.geography_ids else None,
             project_id=payload.project_ids[0] if payload.project_ids else None,
         )
+        await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user.id, role_name=role.name)
         await self.audit.append(
             organization_id=organization_id,
             actor_user_id=actor_user_id,
@@ -329,6 +346,7 @@ class UserManagementService:
         )
         if account is None:
             raise IdentityNotFoundError("User not found")
+        await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user_id, role_name=effective_role_name)
         await self.audit.append(
             organization_id=organization_id,
             actor_user_id=actor_user_id,

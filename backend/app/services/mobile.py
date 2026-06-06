@@ -357,14 +357,21 @@ class MobileService:
         )
         return list(result.scalars())
 
-    async def _forms(self, organization_id: UUID, project_ids: set[UUID]) -> list[DataForm]:
-        if not project_ids:
+    async def _forms(self, organization_id: UUID, project_ids: set[UUID], form_ids: set[UUID]) -> list[DataForm]:
+        if not project_ids and not form_ids:
             return []
+        from sqlalchemy import or_
+
+        scope_conditions = []
+        if project_ids:
+            scope_conditions.append(DataForm.project_id.in_(project_ids))
+        if form_ids:
+            scope_conditions.append(DataForm.id.in_(form_ids))
         result = await self.session.execute(
             select(DataForm)
             .where(
                 DataForm.organization_id == organization_id,
-                DataForm.project_id.in_(project_ids),
+                or_(*scope_conditions),
                 DataForm.deleted_at.is_(None),
                 DataForm.is_active.is_(True),
                 DataForm.status == "published",
@@ -498,8 +505,14 @@ class MobileService:
 
         assignments = await self._assignments(organization_id, officer.id)
         project_ids = {assignment.project_id for assignment in assignments if assignment.is_active}
+        assigned_form_ids = {assignment.form_id for assignment in assignments if assignment.is_active and assignment.form_id is not None}
+        legacy_project_form_ids = {
+            assignment.project_id
+            for assignment in assignments
+            if assignment.is_active and assignment.form_id is None
+        }
         projects = await self._projects(organization_id, project_ids)
-        forms = await self._forms(organization_id, project_ids)
+        forms = await self._forms(organization_id, legacy_project_form_ids, assigned_form_ids)
         versions = await self._versions(organization_id, forms)
         entities = await self._entities(organization_id, project_ids)
         reference_lists = await self._reference_lists(organization_id)
@@ -509,6 +522,7 @@ class MobileService:
         for form in forms:
             if form.project_id is not None:
                 forms_by_project.setdefault(form.project_id, []).append(form)
+        forms_by_id = {form.id: form for form in forms}
 
         project_reads = [
             MobileProjectRead(
@@ -525,7 +539,9 @@ class MobileService:
         assignment_reads = []
         for assignment in assignments:
             project_forms = forms_by_project.get(assignment.project_id, [])
-            selected_form = project_forms[0] if project_forms else None
+            selected_form = forms_by_id.get(assignment.form_id) if assignment.form_id else None
+            if selected_form is None:
+                selected_form = project_forms[0] if project_forms else None
             selected_version = versions_by_form.get(selected_form.id) if selected_form else None
             project_entities = [entity for entity in entities if entity.project_id == assignment.project_id]
             assignment_reads.append(

@@ -848,6 +848,28 @@ function variableNameFromQuestion(
   return candidate;
 }
 
+function labelPatchWithAutoVariable(
+  field: FormField,
+  nextLabel: string,
+  existingNames: string[],
+): Partial<FormField> {
+  const currentVariable = field.variableName?.trim();
+  const previousAutoVariable = variableNameFromQuestion(
+    field.label,
+    existingNames,
+  );
+  const shouldRegenerate =
+    !currentVariable ||
+    currentVariable === field.id ||
+    currentVariable === previousAutoVariable;
+  return {
+    label: nextLabel,
+    ...(shouldRegenerate
+      ? { variableName: variableNameFromQuestion(nextLabel, existingNames) }
+      : {}),
+  };
+}
+
 function hasFieldTag(field: FormField, tag: string): boolean {
   return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
 }
@@ -2212,6 +2234,10 @@ function FieldPropertiesPanel({
 
   const updateSelectedField = (patch: Partial<FormField>) =>
     onUpdateForm(updateField(form, field.id, patch));
+  const siblingVariableNames = form.fields
+    .filter((candidate) => candidate.id !== field.id)
+    .map((candidate) => candidate.variableName)
+    .filter((name): name is string => Boolean(name));
   const logicRules = field.logic ?? [];
 
   return (
@@ -2306,7 +2332,13 @@ function FieldPropertiesPanel({
             <Input
               className="mt-2"
               onChange={(event) =>
-                updateSelectedField({ label: event.target.value })
+                updateSelectedField(
+                  labelPatchWithAutoVariable(
+                    field,
+                    event.target.value,
+                    siblingVariableNames,
+                  ),
+                )
               }
               value={field.label}
             />
@@ -10014,13 +10046,27 @@ export function DynamicForms({
 
                           <Textarea
                             className="mt-3 min-h-20 border-x-0 border-t-0 bg-transparent px-0 text-base shadow-none focus:ring-0"
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              const siblingVariableNames = selectedForm.fields
+                                .filter(
+                                  (field) => field.id !== selectedField.id,
+                                )
+                                .map((field) => field.variableName)
+                                .filter((name): name is string =>
+                                  Boolean(name),
+                                );
                               updateSelectedForm(
-                                updateField(selectedForm, selectedField.id, {
-                                  label: event.target.value,
-                                }),
-                              )
-                            }
+                                updateField(
+                                  selectedForm,
+                                  selectedField.id,
+                                  labelPatchWithAutoVariable(
+                                    selectedField,
+                                    event.target.value,
+                                    siblingVariableNames,
+                                  ),
+                                ),
+                              );
+                            }}
                             value={selectedField.label}
                           />
 
@@ -10072,17 +10118,29 @@ export function DynamicForms({
                                   Question label
                                   <Input
                                     className="mt-2"
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                      const siblingVariableNames =
+                                        selectedForm.fields
+                                          .filter(
+                                            (field) =>
+                                              field.id !== selectedField.id,
+                                          )
+                                          .map((field) => field.variableName)
+                                          .filter((name): name is string =>
+                                            Boolean(name),
+                                          );
                                       updateSelectedForm(
                                         updateField(
                                           selectedForm,
                                           selectedField.id,
-                                          {
-                                            label: event.target.value,
-                                          },
+                                          labelPatchWithAutoVariable(
+                                            selectedField,
+                                            event.target.value,
+                                            siblingVariableNames,
+                                          ),
                                         ),
-                                      )
-                                    }
+                                      );
+                                    }}
                                     placeholder="Question shown to field officers"
                                     value={selectedField.label}
                                   />
@@ -12178,13 +12236,27 @@ export function DynamicForms({
                         <Input
                           className="mt-2"
                           value={selectedField.label}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const siblingVariableNames = selectedForm.fields
+                              .filter(
+                                (field) => field.id !== selectedField.id,
+                              )
+                              .map((field) => field.variableName)
+                              .filter((name): name is string =>
+                                Boolean(name),
+                              );
                             updateSelectedForm(
-                              updateField(selectedForm, selectedField.id, {
-                                label: event.target.value,
-                              }),
-                            )
-                          }
+                              updateField(
+                                selectedForm,
+                                selectedField.id,
+                                labelPatchWithAutoVariable(
+                                  selectedField,
+                                  event.target.value,
+                                  siblingVariableNames,
+                                ),
+                              ),
+                            );
+                          }}
                         />
                       </label>
                       <label className="block text-sm font-medium">

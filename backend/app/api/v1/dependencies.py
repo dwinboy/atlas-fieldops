@@ -13,6 +13,7 @@ from app.core.permissions import (
     has_permission,
     menu_views_for_roles,
     permissions_for_roles,
+    normalize_permission,
     workflow_actions_for_roles,
 )
 from app.schemas.auth import CurrentPrincipal
@@ -28,7 +29,12 @@ async def get_current_principal(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
     roles = list(payload.get("roles", []))
-    permissions = sorted(permission.value for permission in permissions_for_roles(roles))
+    token_permissions = {
+        normalized
+        for permission in payload.get("permissions", [])
+        if (normalized := normalize_permission(str(permission))) is not None
+    }
+    permissions = sorted(permission.value for permission in permissions_for_roles(roles) | token_permissions)
     scope_type = str(payload.get("scope_type") or default_scope_for_roles(roles).value)
     return CurrentPrincipal(
         user_id=str(payload["sub"]),
@@ -66,7 +72,7 @@ def require_permission(
     async def dependency(
         principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
     ) -> CurrentPrincipal:
-        if not has_permission(principal.roles, required_permission):
+        if not has_permission(principal.roles, required_permission) and required_permission.value not in set(principal.permissions):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
         return principal
 

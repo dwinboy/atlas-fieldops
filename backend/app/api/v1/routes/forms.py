@@ -12,6 +12,7 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import (
     DataFormCreate,
     DataFormRead,
+    DataFormSchemaRead,
     FormCollectionCompatibility,
     FormControlsSettings,
     FormTemplateDetail,
@@ -129,6 +130,18 @@ async def get_form_controls(
         return await FormService(session).get_controls(organization_id=UUID(principal.organization_id), form_id=form_id)
     except CollectionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found") from exc
+
+
+@router.get("/{form_id}/schema", response_model=DataFormSchemaRead, summary="Read the current form version schema")
+async def get_form_schema(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataFormSchemaRead:
+    try:
+        return await FormService(session).get_current_schema(organization_id=UUID(principal.organization_id), form_id=form_id)
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form version not found") from exc
 
 
 @router.patch("/{form_id}/controls", response_model=DataFormRead, summary="Update form governance controls")

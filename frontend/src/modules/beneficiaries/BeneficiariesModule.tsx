@@ -12,7 +12,7 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -27,6 +27,7 @@ import {
   type EntityStatus,
 } from "@/modules/beneficiaries/data";
 import { formatEntityDate } from "@/modules/beneficiaries/utils";
+import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 type BeneficiariesModuleProps = {
@@ -58,7 +59,10 @@ export function BeneficiariesModule({
     null,
   );
   const router = useRouter();
+  const pathname = usePathname();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const isImportRoute =
+    (pathname ?? "").replace(/\/+$/, "") === "/beneficiaries/import";
   const entitiesQuery = useQuery({
     enabled: Boolean(token && !preview),
     queryFn: () => listBeneficiaries(token ?? ""),
@@ -89,6 +93,35 @@ export function BeneficiariesModule({
   function openWorkspace(view: WorkspaceView, path?: string): void {
     setActiveView(view);
     if (path) router.push(path);
+  }
+
+  if (isImportRoute) {
+    return (
+      <section className="space-y-3">
+        <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <Badge tone="collect">BENEFICIARIES</Badge>
+              <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+                Import beneficiaries
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Import farmer, household, beneficiary, facility, school, or
+                custom entity registries into a selected project with duplicate
+                review and audit tracking.
+              </p>
+            </div>
+            <Button
+              onClick={() => openWorkspace("beneficiaries", "/beneficiaries")}
+              variant="secondary"
+            >
+              Back to registry
+            </Button>
+          </div>
+        </div>
+        <ImportsMigrationModule mode="administration" token={token} />
+      </section>
+    );
   }
 
   const columns: TableColumn<BeneficiaryEntity>[] = [
@@ -181,7 +214,7 @@ export function BeneficiariesModule({
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!managerAccess}
-              onClick={() => openWorkspace("administration", "/administration/imports-migration")}
+              onClick={() => openWorkspace("beneficiaries", "/beneficiaries/import")}
               variant="primary"
             >
               <FileUp aria-hidden="true" />

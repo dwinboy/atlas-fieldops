@@ -305,6 +305,7 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         ScopeType.OWN,
         _p(
             Permission.ORGANIZATION_READ,
+            Permission.OFFICER_READ,
             Permission.PROGRAM_READ,
             Permission.SURVEY_READ,
             Permission.FORM_READ,
@@ -411,11 +412,17 @@ ROLE_ALIASES = {
     "manager": "project_manager",
     "supervisor": "district_supervisor",
     "collector": "field_officer",
+    "enumerator": "field_officer",
+    "field officer": "field_officer",
+    "field-officer": "field_officer",
+    "field officer / enumerator": "field_officer",
 }
 
 
 def canonical_role(role: str) -> str:
-    return ROLE_ALIASES.get(role, role)
+    normalized = role.strip().lower().replace("-", "_")
+    normalized = " ".join(normalized.replace("_", " ").split())
+    return ROLE_ALIASES.get(normalized, normalized.replace(" ", "_"))
 
 
 def normalize_permission(permission: str | Permission) -> Permission | None:

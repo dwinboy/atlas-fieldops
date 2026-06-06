@@ -16,6 +16,7 @@ from app.schemas.projects import (
     ProjectRelatedRecordRead,
     ProjectSummaryRead,
     ProjectTemplateRead,
+    ProjectUpdate,
 )
 
 
@@ -97,6 +98,37 @@ class ProjectsService:
                 "country": payload.country,
                 "program_type": payload.program_type,
             },
+        )
+        await self.session.commit()
+        return await self.get_project_item(organization_id, project.id)
+
+    async def update_project(self, organization_id: UUID, actor_user_id: UUID, project_id: UUID, payload: ProjectUpdate) -> ProjectListItemRead:
+        project = await self._get_project(organization_id, project_id)
+        if payload.project_code and payload.project_code != project.slug:
+            existing = await self.session.execute(
+                select(Project).where(
+                    Project.organization_id == organization_id,
+                    Project.slug == payload.project_code,
+                    Project.id != project_id,
+                    Project.deleted_at.is_(None),
+                )
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise ProjectConflictError("Project code already exists")
+            project.slug = payload.project_code
+        if payload.name is not None:
+            project.name = payload.name
+        if payload.country is not None or payload.region is not None:
+            project.region = payload.region or payload.country
+        if payload.status is not None:
+            project.is_active = payload.status in {"approved", "active"}
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="project.updated",
+            resource_type="project",
+            resource_id=str(project.id),
+            metadata=payload.model_dump(exclude_none=True, mode="json"),
         )
         await self.session.commit()
         return await self.get_project_item(organization_id, project.id)

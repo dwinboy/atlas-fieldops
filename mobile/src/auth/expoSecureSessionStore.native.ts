@@ -7,7 +7,15 @@ const SESSION_KEY = "atlas_fieldops_mobile_session";
 export class ExpoSecureSessionStore implements SecureSessionStore {
   async load(): Promise<MobileSession | null> {
     const raw = await SecureStore.getItemAsync(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as MobileSession) : null;
+    if (!raw) {
+      return null;
+    }
+    try {
+      return JSON.parse(raw) as MobileSession;
+    } catch {
+      await SecureStore.deleteItemAsync(SESSION_KEY);
+      return null;
+    }
   }
 
   async save(session: MobileSession): Promise<void> {

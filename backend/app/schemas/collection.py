@@ -518,6 +518,12 @@ class DataFormRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DataFormSchemaRead(BaseModel):
+    form_id: UUID
+    version: int
+    schema: dict[str, Any]
+
+
 class XlsFormSurveyRow(BaseModel):
     type: str
     name: str
@@ -626,6 +632,25 @@ class FieldOfficerRead(BaseModel):
     last_longitude: float | None
     device_id: str | None
     is_active: bool
+
+
+class OfficerAssignmentCreate(BaseModel):
+    officer_id: UUID
+    project_id: UUID
+    form_id: UUID | None = None
+    region: str | None = Field(default=None, max_length=160)
+    is_active: bool = True
+
+
+class OfficerAssignmentRead(BaseModel):
+    id: UUID
+    officer_id: UUID
+    project_id: UUID
+    form_id: UUID | None = None
+    region: str | None = None
+    is_active: bool
+
+    model_config = {"from_attributes": True}
 
 
 class FieldOfficerImportIssue(BaseModel):
