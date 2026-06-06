@@ -14,6 +14,12 @@ import {
   reviewSubmission
 } from "@/lib/api";
 
+type FetchCall = [string, RequestInit];
+
+function fetchCalls(fetchMock: { mock: { calls: unknown[] } }): FetchCall[] {
+  return fetchMock.mock.calls as unknown as FetchCall[];
+}
+
 describe("api config", () => {
   beforeEach(() => {
     vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.com");
@@ -44,7 +50,7 @@ describe("api config", () => {
       login({ email: "admin@example.com", password: "ChangeMe12345!", organization_slug: "acme" })
     ).resolves.toEqual({ access_token: "abc", token_type: "bearer" });
 
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, options] = fetchCalls(fetchMock)[0];
     expect(options.method).toBe("POST");
     expect(options.body).toContain("admin@example.com");
   });
@@ -61,8 +67,9 @@ describe("api config", () => {
 
     await listSubmissions("token", "under_review");
 
-    expect(fetchMock.mock.calls[0][0]).toContain("/submissions?status=under_review");
-    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toBeInstanceOf(Headers);
+    const calls = fetchCalls(fetchMock);
+    expect(calls[0][0]).toContain("/submissions?status=under_review");
+    expect(calls[0][1].headers).toBeInstanceOf(Headers);
   });
 
   it("sends review and field officer management payloads", async () => {
@@ -76,10 +83,11 @@ describe("api config", () => {
       temporary_password: "ChangeMe12345!"
     });
 
-    expect(fetchMock.mock.calls[0][0]).toContain("/submissions/sub-1/review");
-    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toContain("approve");
-    expect(fetchMock.mock.calls[1][0]).toContain("/field-officers");
-    expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain("officer@example.com");
+    const calls = fetchCalls(fetchMock);
+    expect(calls[0][0]).toContain("/submissions/sub-1/review");
+    expect(calls[0][1].body).toContain("approve");
+    expect(calls[1][0]).toContain("/field-officers");
+    expect(calls[1][1].body).toContain("officer@example.com");
   });
 
   it("uses platform organization support endpoints", async () => {
@@ -91,10 +99,11 @@ describe("api config", () => {
     await createOrganizationSupportSession("token", "org-1");
     await returnToPlatformSession("token");
 
-    expect(fetchMock.mock.calls[0][0]).toContain("/organizations/platform");
-    expect(fetchMock.mock.calls[1][0]).toContain("/organizations/platform/org-1");
-    expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain("false");
-    expect(fetchMock.mock.calls[2][0]).toContain("/organizations/platform/org-1/support-session");
-    expect(fetchMock.mock.calls[3][0]).toContain("/organizations/platform/session/return");
+    const calls = fetchCalls(fetchMock);
+    expect(calls[0][0]).toContain("/organizations/platform");
+    expect(calls[1][0]).toContain("/organizations/platform/org-1");
+    expect(calls[1][1].body).toContain("false");
+    expect(calls[2][0]).toContain("/organizations/platform/org-1/support-session");
+    expect(calls[3][0]).toContain("/organizations/platform/session/return");
   });
 });

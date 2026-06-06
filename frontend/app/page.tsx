@@ -53,7 +53,7 @@ export default function HomePage() {
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/book-demo">
                 Book demo
               </Link>
-              <Link className="inline-flex h-11 items-center rounded-md border border-[#0f766e]/25 bg-[#0f766e]/10 px-5 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/15" href="/book-demo?trial=true">
+              <Link className="inline-flex h-11 items-center rounded-md border border-[#0f766e]/25 bg-[#0f766e]/10 px-5 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/15" href="/signup">
                 Start free trial
               </Link>
               <Link className="inline-flex h-11 items-center rounded-md border border-black/10 bg-white px-5 text-sm font-semibold text-[#10201c] transition hover:bg-black/[0.03]" href="/features">

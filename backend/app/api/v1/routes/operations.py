@@ -19,15 +19,26 @@ from app.schemas.operations import (
     DataRouteRead,
     DonorReportCreate,
     DonorReportRead,
+    EntityDuplicateCandidateRead,
+    EntityDuplicateCheckRequest,
+    EntityPrefillRead,
     ExportJobCreate,
     ExportJobRead,
+    ImportAnalysisRequest,
+    ImportAnalysisResponse,
     ImportApplyResponse,
+    ImportConfirmRequest,
+    ImportErrorReportRead,
     ImportJobCreate,
     ImportJobRead,
+    ImportMigrationOverviewRead,
     ImportRowRead,
     ImportRowUpdate,
+    ImportRollbackRead,
+    ImportRollbackRequest,
     ImportPreviewRequest,
     ImportPreviewResponse,
+    ImportSupportedSourceRead,
     ImportUploadResponse,
     IndicatorCreate,
     IndicatorRead,
@@ -38,6 +49,7 @@ from app.schemas.operations import (
     MappingTemplateCreate,
     MediaEvidenceCreate,
     MediaEvidenceRead,
+    MobileSyncPackageRead,
     OperationalAssetCreate,
     OperationalAssetRead,
     OperationalEcosystemRead,
@@ -236,6 +248,29 @@ async def list_beneficiaries(
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
+@router.get("/beneficiaries/search", response_model=list[BeneficiaryRead], summary="Search beneficiary and entity registry")
+async def search_beneficiaries(
+    q: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BeneficiaryRead]:
+    beneficiaries = await OperationsService(session).search_beneficiaries(organization_uuid(principal), q)
+    return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
+
+
+@router.post(
+    "/beneficiaries/duplicate-check",
+    response_model=list[EntityDuplicateCandidateRead],
+    summary="Check possible duplicate entities before registration or submission",
+)
+async def check_entity_duplicates(
+    payload: EntityDuplicateCheckRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[EntityDuplicateCandidateRead]:
+    return await OperationsService(session).check_entity_duplicates(organization_uuid(principal), payload)
+
+
 @router.post(
     "/beneficiaries",
     response_model=BeneficiaryRead,
@@ -249,6 +284,48 @@ async def create_beneficiary(
 ) -> BeneficiaryRead:
     beneficiary = await OperationsService(session).create_beneficiary(organization_uuid(principal), payload, user_uuid(principal))
     return BeneficiaryRead.model_validate(beneficiary)
+
+
+@router.get(
+    "/beneficiaries/{entity_id}/prefill",
+    response_model=EntityPrefillRead,
+    summary="Get entity profile values for form prefill",
+)
+async def entity_prefill(
+    entity_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    form_id: UUID | None = None,
+) -> EntityPrefillRead:
+    try:
+        return await OperationsService(session).entity_prefill(organization_uuid(principal), entity_id, form_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/mobile/assigned-entities",
+    response_model=list[BeneficiaryRead],
+    summary="Mobile-ready assigned entities API placeholder",
+)
+async def mobile_assigned_entities(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BeneficiaryRead]:
+    beneficiaries = await OperationsService(session).list_beneficiaries(organization_uuid(principal))
+    return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
+
+
+@router.get(
+    "/mobile/sync-package",
+    response_model=MobileSyncPackageRead,
+    summary="Mobile-ready sync package placeholder",
+)
+async def mobile_sync_package(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MobileSyncPackageRead:
+    return await OperationsService(session).mobile_sync_package(organization_uuid(principal))
 
 
 @router.get("/indicators", response_model=list[IndicatorRead], summary="List indicators")
@@ -316,12 +393,43 @@ async def preview_import(
     return await OperationsService(session).preview_import(payload)
 
 
+@router.post("/data/imports/analyze", response_model=ImportAnalysisResponse, summary="Analyze migration data and detect import risks")
+async def analyze_import(
+    payload: ImportAnalysisRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportAnalysisResponse:
+    _ = principal
+    return await OperationsService(session).analyze_import(payload)
+
+
+@router.get("/data/migration/overview", response_model=ImportMigrationOverviewRead, summary="Get import and migration overview")
+async def migration_overview(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportMigrationOverviewRead:
+    return await OperationsService(session).migration_overview(organization_uuid(principal))
+
+
+@router.get("/data/migration/sources", response_model=list[ImportSupportedSourceRead], summary="List supported import sources")
+async def list_supported_import_sources(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportSupportedSourceRead]:
+    _ = principal
+    return await OperationsService(session).list_supported_import_sources()
+
+
 @router.post("/data/imports/upload", response_model=ImportUploadResponse, status_code=status.HTTP_201_CREATED, summary="Upload and parse an editable import file")
 async def upload_import_file(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
     dataset_type: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
+    target_project_id: Annotated[UUID | None, Form()] = None,
+    target_mode: Annotated[str, Form()] = "existing_project",
+    source_system: Annotated[str, Form()] = "Uploaded File",
+    import_reason: Annotated[str | None, Form()] = None,
 ) -> ImportUploadResponse:
     try:
         content = await file.read()
@@ -331,6 +439,10 @@ async def upload_import_file(
             dataset_type=dataset_type,
             filename=file.filename or "upload.csv",
             content=content,
+            target_project_id=target_project_id,
+            target_mode=target_mode,
+            source_system=source_system,
+            import_reason=import_reason,
         )
     except ValueError as exc:
         await session.rollback()
@@ -342,6 +454,14 @@ async def upload_import_file(
 
 @router.get("/data/imports", response_model=list[ImportJobRead], summary="List import jobs")
 async def list_import_jobs(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportJobRead]:
+    return await OperationsService(session).list_import_jobs(organization_uuid(principal))
+
+
+@router.get("/data/migration/history", response_model=list[ImportJobRead], summary="List migration import history")
+async def list_migration_history(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ImportJobRead]:
@@ -384,6 +504,62 @@ async def update_import_row(
     except KeyError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import row not found") from exc
+
+
+@router.get("/data/imports/{import_job_id}/error-report", response_model=ImportErrorReportRead, summary="Download import error report data")
+async def import_error_report(
+    import_job_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportErrorReportRead:
+    try:
+        return await OperationsService(session).import_error_report(organization_uuid(principal), import_job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found") from exc
+
+
+@router.post("/data/imports/{import_job_id}/confirm", response_model=ImportApplyResponse, summary="Confirm and process a migration import")
+async def confirm_import_job(
+    import_job_id: UUID,
+    payload: ImportConfirmRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportApplyResponse:
+    try:
+        return await OperationsService(session).confirm_import_job(
+            organization_uuid(principal),
+            user_uuid(principal),
+            import_job_id,
+            payload,
+        )
+    except KeyError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found") from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/data/imports/{import_job_id}/rollback", response_model=ImportRollbackRead, summary="Rollback an import batch where safe")
+async def rollback_import_job(
+    import_job_id: UUID,
+    payload: ImportRollbackRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportRollbackRead:
+    try:
+        return await OperationsService(session).rollback_import_job(
+            organization_uuid(principal),
+            user_uuid(principal),
+            import_job_id,
+            payload,
+        )
+    except KeyError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found") from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/data/imports/{import_job_id}/apply", response_model=ImportApplyResponse, summary="Apply a validated import to live operational records")

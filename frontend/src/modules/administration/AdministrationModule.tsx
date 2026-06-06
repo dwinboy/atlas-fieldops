@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   UploadCloud,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -77,6 +78,7 @@ import {
   type PlatformSummaryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import {
   administrationPages,
   initialApiKeys,
@@ -620,6 +622,8 @@ export function AdministrationModule({
   principal,
   token,
 }: AdministrationModuleProps) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [activeSection, setActiveSection] =
     useState<AdministrationSection>("dashboard");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -672,6 +676,15 @@ export function AdministrationModule({
     token && token !== "preview-token" && principal?.platform_admin,
   );
   const administrationDataEnabled = hasPlatformAccess;
+
+  function selectAdministrationSection(section: AdministrationSection): void {
+    const page = administrationPages.find((item) => item.id === section);
+    setActiveSection(section);
+    setActionResult("");
+    if (page && page.route !== pathname) {
+      router.push(page.route);
+    }
+  }
 
   const summaryQuery = useQuery({
     queryKey: ["administration-platform-summary", token],
@@ -743,6 +756,14 @@ export function AdministrationModule({
     queryFn: () => listAdministrationBackups(token ?? ""),
     enabled: administrationDataEnabled,
   });
+
+  useEffect(() => {
+    const normalizedPath = (pathname ?? "").replace(/\/+$/, "") || "/administration";
+    const nextSection = administrationPages.find((page) => page.route === normalizedPath)?.id;
+    if (nextSection && nextSection !== activeSection) {
+      setActiveSection(nextSection);
+    }
+  }, [activeSection, pathname]);
 
   useEffect(() => {
     if (administrationLocationsQuery.data) {
@@ -862,6 +883,7 @@ export function AdministrationModule({
       "backup-recovery": "backup",
       dashboard: null,
       integrations: "integration",
+      "imports-migration": null,
       "location-hierarchy": "location",
       "notification-settings": "notification",
       "reference-data": "reference-list",
@@ -876,6 +898,10 @@ export function AdministrationModule({
     }
     if (activeSection === "system-settings") {
       saveSystemSettings();
+      return;
+    }
+    if (activeSection === "imports-migration") {
+      setActionResult("Start from Upload / Select Source below. You can upload a file or use sample migration data to test the assistant.");
       return;
     }
     setModalMode(modalBySection[activeSection]);
@@ -1946,7 +1972,7 @@ export function AdministrationModule({
       {activeSection !== "dashboard" ? (
         <AdministrationModuleSelector
           activeSection={activeSection}
-          onSelect={setActiveSection}
+          onSelect={selectAdministrationSection}
         />
       ) : null}
 
@@ -1965,7 +1991,7 @@ export function AdministrationModule({
         </section>
       ) : null}
 
-      {activeSection !== "dashboard" ? (
+      {activeSection !== "dashboard" && activeSection !== "imports-migration" ? (
         <FilterBar
           category={categoryFilter}
           environment={environmentFilter}
@@ -1997,7 +2023,7 @@ export function AdministrationModule({
           />
           <AdministrationModuleSelector
             activeSection={activeSection}
-            onSelect={setActiveSection}
+            onSelect={selectAdministrationSection}
           />
         </>
       ) : null}
@@ -2108,6 +2134,10 @@ export function AdministrationModule({
           onCreate={() => setModalMode("backup")}
           tableColumns={backupColumns}
         />
+      ) : null}
+
+      {activeSection === "imports-migration" ? (
+        <ImportsMigrationModule token={token} />
       ) : null}
 
       <AdministrationModal

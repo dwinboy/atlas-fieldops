@@ -74,6 +74,8 @@ type FieldOperationsModuleProps = {
 type ModalMode = "assignment" | "invite" | "work-plan" | "target" | null;
 
 const defaultAssignmentDraft: Omit<FieldAssignment, "id" | "completedCount"> = {
+  assignedEntityIds: [],
+  assignmentType: "Form + Location",
   description: "",
   endDate: "",
   fieldOfficers: [],
@@ -378,11 +380,24 @@ export function FieldOperationsModule({
       render: (assignment) => (
         <div>
           <p className="font-medium">{assignment.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {assignment.project} · {assignment.form}
+      <p className="text-xs text-muted-foreground">
+            {assignment.project} · {assignment.form} · {assignment.assignmentType}
           </p>
         </div>
       ),
+    },
+    {
+      key: "entities",
+      header: "Entities",
+      value: (assignment) => (assignment.assignedEntityIds ?? []).join(" "),
+      render: (assignment) =>
+        assignment.assignedEntityIds?.length ? (
+          <Badge tone="collect">
+            {assignment.assignedEntityIds.length} assigned
+          </Badge>
+        ) : (
+          <span className="text-muted-foreground">By location</span>
+        ),
     },
     {
       key: "status",

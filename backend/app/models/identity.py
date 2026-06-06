@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -21,6 +22,12 @@ class User(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class Role(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):

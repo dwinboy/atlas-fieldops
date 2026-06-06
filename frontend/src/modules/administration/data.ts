@@ -7,6 +7,7 @@ import {
   KeyRound,
   Layers3,
   Settings,
+  UploadCloud,
 } from "lucide-react";
 
 import type {
@@ -94,6 +95,15 @@ export const administrationPages: AdministrationPageConfig[] = [
     primaryAction: "Create backup",
     route: "/administration/backup-recovery",
     title: "Backup & Recovery",
+  },
+  {
+    description:
+      "Import projects, forms, beneficiaries, submissions, indicators, locations, users, and historical records from other M&E tools.",
+    icon: UploadCloud,
+    id: "imports-migration",
+    primaryAction: "Start import",
+    route: "/administration/imports-migration",
+    title: "Imports & Migration",
   },
 ];
 
@@ -275,4 +285,3 @@ export const initialConfigurationChanges: ConfigurationChange[] = [
     type: "Module initialized",
   },
 ];
-

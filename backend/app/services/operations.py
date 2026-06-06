@@ -1,4 +1,7 @@
 import csv
+import re
+from difflib import SequenceMatcher
+from datetime import UTC, datetime
 from io import StringIO
 from uuid import UUID
 from typing import cast
@@ -25,6 +28,10 @@ from app.repositories.operations import OperationsRepository
 from app.repositories.identity import IdentityRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.operations import (
     BeneficiaryCreate,
+    EntityDuplicateCandidateRead,
+    EntityDuplicateCheckRequest,
+    EntityPrefillRead,
+    MobileSyncPackageRead,
     BulkEditRead,
     BulkEditRequest,
     CaseCreate,
@@ -33,11 +40,26 @@ from app.schemas.operations import (
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
+    ImportAnalysisRequest,
+    ImportAnalysisResponse,
     ImportApplyResponse,
+    ImportConfirmRequest,
+    ImportDateFormatRead,
+    ImportDuplicateGroupRead,
+    ImportDuplicateRecordRead,
+    ImportErrorReportRead,
+    ImportGeneratedIdRead,
     ImportJobCreate,
     ImportJobRead,
+    ImportMatchSuggestionRead,
+    ImportMigrationOverviewRead,
+    ImportQualityReportRead,
     ImportRowRead,
     ImportRowUpdate,
+    ImportReadinessScoreRead,
+    ImportRollbackRead,
+    ImportRollbackRequest,
+    ImportSupportedSourceRead,
     ImportUploadResponse,
     ImportPreviewRequest,
     ImportPreviewResponse,
@@ -96,6 +118,33 @@ FIELD_ALIASES = {
         "region": ["region", "state", "province"],
         "community": ["community", "village", "town"],
     },
+    "entity_registry": {
+        "beneficiary_uid": ["entity id", "farmer id", "beneficiary id", "household id", "id"],
+        "beneficiary_type": ["entity type", "type", "beneficiary type"],
+        "display_name": ["name", "full name", "farmer name", "beneficiary name"],
+        "phone_number": ["phone", "phone number", "mobile", "contact"],
+        "region": ["region", "province", "state"],
+        "district": ["district"],
+        "community": ["community", "village", "town"],
+        "latitude": ["latitude", "lat", "gps latitude"],
+        "longitude": ["longitude", "lon", "lng", "gps longitude"],
+    },
+    "submissions": {
+        "client_submission_id": ["submission id", "instance id", "_id", "uuid", "id"],
+        "form_id": ["form id", "form", "survey id"],
+        "entity_id": ["entity id", "beneficiary id", "farmer id"],
+        "captured_at": ["submission date", "submitted at", "date", "start"],
+        "latitude": ["latitude", "lat", "gps latitude"],
+        "longitude": ["longitude", "lon", "lng", "gps longitude"],
+    },
+    "form_definitions": {
+        "name": ["form name", "survey name", "title"],
+        "question_name": ["question name", "name", "variable", "variable name"],
+        "question_label": ["label", "question", "question label"],
+        "question_type": ["type", "question type", "response type"],
+        "required": ["required", "mandatory"],
+        "choices": ["choices", "options", "select choices"],
+    },
     "indicators": {
         "code": ["code", "indicator code", "kpi code"],
         "name": ["indicator", "indicator name", "kpi", "metric"],
@@ -107,6 +156,38 @@ FIELD_ALIASES = {
         "name": ["name", "program", "program name", "project", "project name"],
         "slug": ["slug", "code", "program code", "project code"],
         "region": ["region", "area", "location"],
+    },
+    "projects": {
+        "name": ["project", "project name", "program", "program name"],
+        "slug": ["project code", "code", "slug", "id"],
+        "region": ["region", "country", "location"],
+    },
+    "locations": {
+        "name": ["location", "name", "location name"],
+        "code": ["code", "location code", "id"],
+        "unit_type": ["type", "level", "location type"],
+        "region": ["region", "parent", "country"],
+    },
+    "boundaries": {
+        "name": ["boundary", "name", "location name"],
+        "code": ["code", "location code", "id"],
+        "geometry": ["geometry", "geojson", "boundary"],
+    },
+    "baselines": {
+        "code": ["indicator code", "code"],
+        "baseline_value": ["baseline", "baseline value", "value"],
+        "region": ["region", "location"],
+    },
+    "targets": {
+        "code": ["indicator code", "code"],
+        "target_value": ["target", "target value", "value"],
+        "region": ["region", "location"],
+    },
+    "users_teams": {
+        "name": ["name", "full name", "user", "member"],
+        "email": ["email", "email address"],
+        "role": ["role", "role name"],
+        "team": ["team", "team name"],
     },
     "cases": {
         "case_number": ["case number", "case no", "case id", "id"],
@@ -223,6 +304,318 @@ def validate_sample_rows(dataset_type: str, rows: list[dict[str, object]], mappi
     return issues
 
 
+KNOWN_LOCATION_NAMES = {
+    "north west": "North West Region",
+    "northwest": "North West Region",
+    "north-west region": "North West Region",
+    "mbalmayo": "Mbalmayo District",
+    "mbalmayo district": "Mbalmayo District",
+    "mezam": "Mezam District",
+    "mezam district": "Mezam District",
+    "wouri": "Wouri District",
+    "wouri district": "Wouri District",
+    "bonaberi": "Bonaberi Community",
+}
+
+
+KNOWN_INDICATORS = {
+    "farmers trained": "Number of farmers receiving training",
+    "improved seed": "% of farmers using improved seeds",
+    "households with clean water": "% of households with access to clean water",
+    "beneficiaries reached": "Total beneficiaries reached",
+}
+
+
+def simplified_value(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def name_similarity(left: str, right: str) -> int:
+    return int(round(SequenceMatcher(None, simplified_value(left), simplified_value(right)).ratio() * 100))
+
+
+def mapped_rows(rows: list[dict[str, object]], mapping: list[ColumnMapping]) -> list[dict[str, object]]:
+    by_source = {item.source_column: item.target_field for item in mapping}
+    return [mapped_row_values(row, by_source) for row in rows]
+
+
+def row_display_name(row: dict[str, object]) -> str:
+    return str(row.get("display_name") or row.get("name") or row.get("full_name") or row.get("farmer_name") or "Unnamed record")
+
+
+def row_location(row: dict[str, object]) -> str | None:
+    value = row.get("community") or row.get("district") or row.get("region") or row.get("village")
+    return str(value).strip() if value not in (None, "") else None
+
+
+def detect_import_duplicate_groups(rows: list[dict[str, object]]) -> list[ImportDuplicateGroupRead]:
+    groups: list[ImportDuplicateGroupRead] = []
+    used_pairs: set[tuple[int, int]] = set()
+    for left_index, left in enumerate(rows, start=1):
+        left_phone = normalized_phone(optional_text(left.get("phone_number")))
+        left_id = simplified_value(left.get("beneficiary_uid") or left.get("entity_id") or left.get("household_id"))
+        left_name = row_display_name(left)
+        left_location = row_location(left)
+        for right_index, right in enumerate(rows[left_index:], start=left_index + 1):
+            pair = (left_index, right_index)
+            if pair in used_pairs:
+                continue
+            right_phone = normalized_phone(optional_text(right.get("phone_number")))
+            right_id = simplified_value(right.get("beneficiary_uid") or right.get("entity_id") or right.get("household_id"))
+            right_name = row_display_name(right)
+            right_location = row_location(right)
+            score = 0
+            reasons: list[str] = []
+            if left_id and right_id and left_id == right_id:
+                score += 90
+                reasons.append("same legacy or household ID")
+            if left_phone and right_phone and left_phone == right_phone:
+                score += 80
+                reasons.append("same normalized phone number")
+            similarity = name_similarity(left_name, right_name)
+            if similarity >= 82:
+                score += 35
+                reasons.append("similar names")
+            if left_location and right_location and simplified_value(left_location) == simplified_value(right_location):
+                score += 20
+                reasons.append("same village or district")
+            confidence = min(score, 100)
+            if confidence < 60:
+                continue
+            used_pairs.add(pair)
+            groups.append(
+                ImportDuplicateGroupRead(
+                    group_id=f"duplicate-group-{len(groups) + 1}",
+                    confidence=confidence,
+                    reason=", ".join(reasons) or "similar beneficiary details",
+                    recommended_action="Use existing beneficiary when the same person already exists; otherwise keep separate with a reason.",
+                    actions=["Merge now", "Use existing beneficiary", "Keep separate", "Review later"],
+                    records=[
+                        ImportDuplicateRecordRead(
+                            row_number=left_index,
+                            display_name=left_name,
+                            phone_number=optional_text(left.get("phone_number")),
+                            location=left_location,
+                            legacy_id=optional_text(left.get("beneficiary_uid") or left.get("entity_id")),
+                        ),
+                        ImportDuplicateRecordRead(
+                            row_number=right_index,
+                            display_name=right_name,
+                            phone_number=optional_text(right.get("phone_number")),
+                            location=right_location,
+                            legacy_id=optional_text(right.get("beneficiary_uid") or right.get("entity_id")),
+                        ),
+                    ],
+                )
+            )
+    return groups
+
+
+def detect_location_matches(rows: list[dict[str, object]]) -> list[ImportMatchSuggestionRead]:
+    seen: dict[str, list[int]] = {}
+    for index, row in enumerate(rows, start=1):
+        location = row_location(row)
+        if not location:
+            continue
+        seen.setdefault(location, []).append(index)
+    matches: list[ImportMatchSuggestionRead] = []
+    for source_value, row_numbers in seen.items():
+        normalized = simplified_value(source_value).replace("-", " ")
+        suggestion = KNOWN_LOCATION_NAMES.get(normalized)
+        if suggestion is None:
+            suggestion = next((target for key, target in KNOWN_LOCATION_NAMES.items() if name_similarity(normalized, key) >= 80), "Create new platform location")
+        confidence = 98 if suggestion != "Create new platform location" else 54
+        matches.append(
+            ImportMatchSuggestionRead(
+                source_value=source_value,
+                suggested_value=suggestion,
+                confidence=confidence,
+                match_type="location",
+                row_numbers=row_numbers,
+                actions=["Accept match", "Choose different location", "Create new location", "Skip records"],
+            )
+        )
+    return matches
+
+
+def detect_entity_matches(rows: list[dict[str, object]]) -> list[ImportMatchSuggestionRead]:
+    matches: list[ImportMatchSuggestionRead] = []
+    if not rows:
+        return matches
+    for index, row in enumerate(rows, start=1):
+        if optional_text(row.get("entity_id") or row.get("beneficiary_uid")):
+            continue
+        name = row_display_name(row)
+        phone = optional_text(row.get("phone_number"))
+        location = row_location(row)
+        confidence = 91 if phone else 74 if location else 62
+        matches.append(
+            ImportMatchSuggestionRead(
+                source_value=f"Row {index}: {name}",
+                suggested_value=f"{name} - existing beneficiary candidate",
+                confidence=confidence,
+                match_type="entity",
+                row_numbers=[index],
+                actions=["Link submission", "Create new beneficiary", "Leave unlinked", "Review later"],
+            )
+        )
+    return matches[:6]
+
+
+def detect_indicator_matches(rows: list[dict[str, object]]) -> list[ImportMatchSuggestionRead]:
+    matches: list[ImportMatchSuggestionRead] = []
+    for index, row in enumerate(rows, start=1):
+        source = optional_text(row.get("name") or row.get("indicator") or row.get("question_label") or row.get("improved_seed"))
+        if source is None:
+            continue
+        normalized = simplified_value(source)
+        suggestion = KNOWN_INDICATORS.get(normalized)
+        if suggestion is None:
+            suggestion = next((target for key, target in KNOWN_INDICATORS.items() if name_similarity(normalized, key) >= 60), None)
+        if suggestion is None:
+            continue
+        matches.append(
+            ImportMatchSuggestionRead(
+                source_value=source,
+                suggested_value=suggestion,
+                confidence=95 if KNOWN_INDICATORS.get(normalized) else 78,
+                match_type="indicator",
+                row_numbers=[index],
+                actions=["Accept match", "Choose different indicator", "Create new indicator", "Store as legacy indicator"],
+            )
+        )
+    return matches[:8]
+
+
+def detect_missing_ids(rows: list[dict[str, object]], dataset_type: str) -> list[ImportGeneratedIdRead]:
+    if dataset_type not in {"beneficiaries", "entity_registry", "submissions"}:
+        return []
+    prefix = "BEN"
+    if dataset_type == "entity_registry":
+        prefix = "FRM"
+    if dataset_type == "submissions":
+        prefix = "BEN"
+    generated: list[ImportGeneratedIdRead] = []
+    for index, row in enumerate(rows, start=1):
+        legacy = optional_text(row.get("beneficiary_uid") or row.get("entity_id") or row.get("household_id"))
+        if legacy:
+            continue
+        generated.append(
+            ImportGeneratedIdRead(
+                row_number=index,
+                generated_id=f"{prefix}-2026-{index:06d}",
+                entity_type=optional_text(row.get("beneficiary_type")) or "Farmer",
+                legacy_id=None,
+            )
+        )
+    return generated
+
+
+def detect_date_formats(rows: list[dict[str, object]]) -> list[ImportDateFormatRead]:
+    candidates = ("date", "captured_at", "submitted_at", "submission_date", "registration_date", "start_date", "end_date")
+    detected: list[ImportDateFormatRead] = []
+    for field_name in candidates:
+        values = [(index, str(row.get(field_name))) for index, row in enumerate(rows, start=1) if row.get(field_name) not in (None, "")]
+        if not values:
+            continue
+        invalid_rows: list[int] = []
+        preview: list[str] = []
+        detected_format = "YYYY-MM-DD"
+        for row_number, value in values[:10]:
+            stripped = value.strip()
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", stripped):
+                preview.append(stripped)
+                detected_format = "YYYY-MM-DD"
+            elif re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", stripped):
+                parts = stripped.split("/")
+                year = parts[2] if len(parts[2]) == 4 else f"20{parts[2]}"
+                preview.append(f"{year}-{int(parts[1]):02d}-{int(parts[0]):02d}")
+                detected_format = "DD/MM/YYYY"
+            elif re.fullmatch(r"\d{1,2}-\d{1,2}-\d{4}", stripped):
+                parts = stripped.split("-")
+                preview.append(f"{parts[2]}-{int(parts[1]):02d}-{int(parts[0]):02d}")
+                detected_format = "DD-MM-YYYY"
+            else:
+                invalid_rows.append(row_number)
+        detected.append(ImportDateFormatRead(field_name=field_name, detected_format=detected_format, normalized_preview=preview[:3], invalid_rows=invalid_rows))
+    return detected
+
+
+def detect_gps_warnings(rows: list[dict[str, object]]) -> list[ImportValidationIssue]:
+    warnings: list[ImportValidationIssue] = []
+    for index, row in enumerate(rows, start=1):
+        latitude = row.get("latitude")
+        longitude = row.get("longitude")
+        if latitude in (None, "") and longitude in (None, ""):
+            warnings.append(
+                ImportValidationIssue(
+                    row_number=index,
+                    field_name="gps",
+                    issue_type="gps_missing",
+                    severity="warning",
+                    message="GPS is missing, so this historical record will have lower location precision.",
+                    suggested_fix="Import the record and collect GPS in future field visits.",
+                )
+            )
+    return warnings[:20]
+
+
+def calculate_readiness(
+    *,
+    total_rows: int,
+    issues: list[ImportValidationIssue],
+    duplicate_groups: list[ImportDuplicateGroupRead],
+    location_matches: list[ImportMatchSuggestionRead],
+    mapping: list[ColumnMapping],
+    generated_ids: list[ImportGeneratedIdRead],
+    gps_warnings: list[ImportValidationIssue],
+) -> ImportReadinessScoreRead:
+    errors = len([issue for issue in issues if issue.severity == "error"])
+    warnings = len([issue for issue in issues if issue.severity != "error"]) + len(gps_warnings)
+    unknown_locations = len([item for item in location_matches if item.confidence < 70])
+    required_mapped = len([item for item in mapping if item.required and item.source_column])
+    score = 100 - (errors * 12) - (warnings * 2) - (len(duplicate_groups) * 6) - (unknown_locations * 7)
+    if required_mapped == 0:
+        score -= 15
+    if generated_ids:
+        score -= min(10, len(generated_ids) * 2)
+    score = max(0, min(100, score))
+    if score >= 90:
+        category = "Ready to Import"
+        recommended_action = "Confirm mappings, preview records, then import."
+    elif score >= 70:
+        category = "Needs Review"
+        recommended_action = "Review duplicates and low-confidence matches before importing."
+    elif score >= 50:
+        category = "High Risk"
+        recommended_action = "Fix blocking errors and unknown locations before confirming import."
+    else:
+        category = "Not Ready"
+        recommended_action = "Save this draft, correct the source file, and re-run analysis."
+    issue_text = [
+        f"{len(duplicate_groups)} possible duplicate group(s)",
+        f"{unknown_locations} unknown or low-confidence location match(es)",
+        f"{errors} blocking validation error(s)",
+        f"{warnings} warning(s)",
+    ]
+    if generated_ids:
+        issue_text.append(f"{len(generated_ids)} platform ID(s) will be generated")
+    return ImportReadinessScoreRead(
+        score=score,
+        category=category,
+        issues=issue_text,
+        recommended_action=recommended_action,
+        factors={
+            "required_fields_present": 100 if required_mapped else 40,
+            "duplicate_rate": round((len(duplicate_groups) / max(total_rows, 1)) * 100, 1),
+            "valid_locations": max(0, 100 - (unknown_locations * 20)),
+            "valid_gps": max(0, 100 - (len(gps_warnings) * 10)),
+            "error_count": errors,
+            "warning_count": warnings,
+        },
+    )
+
+
 def import_mapping_by_source(job_mapping: dict[str, object]) -> dict[str, str]:
     raw_columns = job_mapping.get("columns", [])
     if not isinstance(raw_columns, list):
@@ -258,6 +651,14 @@ def optional_int(value: object) -> int | None:
     if value in (None, ""):
         return None
     return int(float(str(value)))
+
+
+def normalized_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def normalized_phone(value: str | None) -> str:
+    return "".join(character for character in (value or "") if character.isdigit())
 
 
 def beneficiary_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
@@ -383,6 +784,71 @@ def organization_unit_values_from_import_row(row: dict[str, object]) -> dict[str
     }
 
 
+def supported_import_sources() -> list[ImportSupportedSourceRead]:
+    return [
+        ImportSupportedSourceRead(
+            id="upload_file",
+            label="Upload File",
+            phase="Phase 1",
+            supported_formats=["CSV", "Excel", "JSON", "XLSForm", "GeoJSON", "KML"],
+            status="available",
+            description="Upload an export from KoboToolbox, ODK, SurveyCTO, Excel, Google Forms, or a custom database.",
+        ),
+        ImportSupportedSourceRead(
+            id="kobotoolbox",
+            label="KoboToolbox",
+            phase="Phase 2",
+            supported_formats=["API", "XLSForm", "CSV"],
+            status="connector-ready",
+            description="Connector placeholder for pulling forms and submissions directly from KoboToolbox.",
+        ),
+        ImportSupportedSourceRead(
+            id="odk_central",
+            label="ODK Central",
+            phase="Phase 2",
+            supported_formats=["API", "XLSForm", "CSV"],
+            status="connector-ready",
+            description="Connector placeholder for ODK projects, forms, and historical submissions.",
+        ),
+        ImportSupportedSourceRead(
+            id="surveycto",
+            label="SurveyCTO",
+            phase="Phase 2",
+            supported_formats=["API", "XLSForm", "CSV"],
+            status="connector-ready",
+            description="Connector placeholder for SurveyCTO form definitions and case data.",
+        ),
+        ImportSupportedSourceRead(
+            id="dhis2",
+            label="DHIS2",
+            phase="Phase 2",
+            supported_formats=["API", "CSV", "JSON"],
+            status="connector-ready",
+            description="Connector placeholder for DHIS2 organization units, indicators, and event data.",
+        ),
+        ImportSupportedSourceRead(
+            id="google_sheets",
+            label="Google Sheets",
+            phase="Phase 2",
+            supported_formats=["API", "CSV"],
+            status="connector-ready",
+            description="Connector placeholder for recurring spreadsheet imports.",
+        ),
+    ]
+
+
+def mark_record_as_imported(record: object, *, job: object, user_id: UUID, row_number: int) -> None:
+    now = datetime.now(UTC)
+    setattr(record, "is_imported", True)
+    setattr(record, "source_system", getattr(job, "source_system", None) or getattr(job, "source_name", "Imported File"))
+    setattr(record, "source_record_id", f"{getattr(job, 'id')}:{row_number}")
+    if hasattr(record, "source_project_id") and getattr(job, "target_project_id", None):
+        setattr(record, "source_project_id", str(getattr(job, "target_project_id")))
+    setattr(record, "import_batch_id", getattr(job, "id"))
+    setattr(record, "imported_at", now)
+    setattr(record, "imported_by_user_id", user_id)
+
+
 class OperationsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -453,6 +919,150 @@ class OperationsService:
 
     async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
         return await self.repository.list_beneficiaries(organization_id)
+
+    async def search_beneficiaries(self, organization_id: UUID, query: str) -> list[Beneficiary]:
+        query_text = normalized_text(query)
+        query_phone = normalized_phone(query)
+        beneficiaries = await self.repository.list_beneficiaries(organization_id)
+        if not query_text:
+            return beneficiaries[:50]
+        return [
+            beneficiary
+            for beneficiary in beneficiaries
+            if query_text in normalized_text(beneficiary.beneficiary_uid)
+            or query_text in normalized_text(beneficiary.display_name)
+            or query_text in normalized_text(beneficiary.community)
+            or query_text in normalized_text(beneficiary.district)
+            or query_text in normalized_text(beneficiary.region)
+            or (query_phone and query_phone in normalized_phone(beneficiary.phone_number))
+        ][:50]
+
+    async def check_entity_duplicates(
+        self,
+        organization_id: UUID,
+        payload: EntityDuplicateCheckRequest,
+    ) -> list[EntityDuplicateCandidateRead]:
+        candidates: list[EntityDuplicateCandidateRead] = []
+        full_name = normalized_text(payload.full_name)
+        phone = normalized_phone(payload.phone_number)
+        household_id = normalized_text(payload.household_id)
+        national_id = normalized_text(payload.national_id)
+        village = normalized_text(payload.village)
+
+        for beneficiary in await self.repository.list_beneficiaries(organization_id):
+            score = 0
+            matched_fields: list[str] = []
+            profile = beneficiary.profile_json or {}
+            profile_national_id = normalized_text(str(profile.get("nationalId") or profile.get("national_id") or ""))
+            profile_household_id = normalized_text(str(profile.get("householdId") or profile.get("household_id") or ""))
+            beneficiary_phone = normalized_phone(beneficiary.phone_number)
+
+            if national_id and national_id == profile_national_id:
+                score += 100
+                matched_fields.append("National ID")
+            if phone and phone == beneficiary_phone:
+                score += 80
+                matched_fields.append("Phone number")
+            if household_id and household_id == profile_household_id:
+                score += 90
+                matched_fields.append("Household ID")
+            if full_name and full_name == normalized_text(beneficiary.display_name):
+                score += 45
+                matched_fields.append("Full name")
+            if full_name and village and village == normalized_text(beneficiary.community):
+                score += 60
+                matched_fields.append("Name + village")
+            if (
+                payload.latitude is not None
+                and payload.longitude is not None
+                and beneficiary.latitude is not None
+                and beneficiary.longitude is not None
+            ):
+                latitude_delta = (payload.latitude - beneficiary.latitude) * 111_320
+                longitude_delta = (payload.longitude - beneficiary.longitude) * 111_320
+                distance_meters = (latitude_delta**2 + longitude_delta**2) ** 0.5
+                if distance_meters <= 50:
+                    score += 40
+                    matched_fields.append("GPS within 50m")
+
+            capped_score = min(score, 100)
+            if capped_score < 40:
+                continue
+            candidates.append(
+                EntityDuplicateCandidateRead(
+                    entity_id=beneficiary.id,
+                    entity_uid=beneficiary.beneficiary_uid,
+                    display_name=beneficiary.display_name,
+                    level="Likely duplicate" if capped_score >= 90 else "Possible duplicate",
+                    matched_fields=matched_fields,
+                    score=capped_score,
+                )
+            )
+
+        return sorted(candidates, key=lambda item: item.score, reverse=True)
+
+    async def entity_prefill(self, organization_id: UUID, entity_id: UUID, form_id: UUID | None = None) -> EntityPrefillRead:
+        _ = form_id
+        beneficiaries = await self.repository.list_beneficiaries(organization_id)
+        beneficiary = next((item for item in beneficiaries if item.id == entity_id), None)
+        if beneficiary is None:
+            raise ValueError("Entity not found")
+        profile = beneficiary.profile_json or {}
+        return EntityPrefillRead(
+            entity_id=beneficiary.id,
+            locked_fields=["beneficiary_uid", "display_name", "phone_number", "community"],
+            update_requires_reason=True,
+            values={
+                "beneficiary_uid": beneficiary.beneficiary_uid,
+                "full_name": beneficiary.display_name,
+                "entity_type": beneficiary.beneficiary_type,
+                "gender": beneficiary.sex,
+                "phone_number": beneficiary.phone_number,
+                "region": beneficiary.region,
+                "district": beneficiary.district,
+                "community": beneficiary.community,
+                "latitude": beneficiary.latitude,
+                "longitude": beneficiary.longitude,
+                "national_id": profile.get("nationalId") or profile.get("national_id"),
+                "household_id": profile.get("householdId") or profile.get("household_id"),
+            },
+        )
+
+    async def mobile_sync_package(self, organization_id: UUID) -> MobileSyncPackageRead:
+        beneficiaries = await self.repository.list_beneficiaries(organization_id)
+        return MobileSyncPackageRead(
+            assigned_entities=beneficiaries,
+            assigned_forms=[],
+            published_form_versions=[],
+            reference_data=[],
+            duplicate_rules=[
+                {
+                    "name": "Default weighted entity duplicate rule",
+                    "weights": {
+                        "national_id": 100,
+                        "phone_number": 80,
+                        "household_id": 90,
+                        "name_date_of_birth": 75,
+                        "name_village": 60,
+                        "gps_50m": 40,
+                    },
+                    "likely_duplicate_threshold": 90,
+                    "possible_duplicate_threshold": 60,
+                }
+            ],
+            frequency_rules=[
+                "once_ever",
+                "once_per_project",
+                "once_per_year",
+                "once_per_season",
+                "once_per_quarter",
+                "once_per_month",
+                "once_per_event",
+                "unlimited",
+            ],
+            returned_submissions=[],
+            sync_conflicts=[],
+        )
 
     async def create_indicator(self, organization_id: UUID, payload: IndicatorCreate, actor_user_id: UUID | None = None) -> IndicatorRead:
         indicator = await self.repository.create_indicator(organization_id=organization_id, values=payload.model_dump())
@@ -816,6 +1426,38 @@ class OperationsService:
             offline_ready=True,
         )
 
+    async def migration_overview(self, organization_id: UUID) -> ImportMigrationOverviewRead:
+        recent_batches = await self.list_import_jobs(organization_id)
+        return ImportMigrationOverviewRead(
+            supported_types=[
+                "projects",
+                "entity_registry",
+                "form_definitions",
+                "submissions",
+                "indicators",
+                "baselines",
+                "targets",
+                "locations",
+                "boundaries",
+                "users_teams",
+            ],
+            supported_sources=supported_import_sources(),
+            recent_batches=recent_batches[:10],
+            mobile_ready_outputs=[
+                "assignedEntities",
+                "assignedForms",
+                "publishedFormVersions",
+                "referenceData",
+                "locations",
+                "prefillData",
+                "duplicateRules",
+                "submissionUpload",
+            ],
+        )
+
+    async def list_supported_import_sources(self) -> list[ImportSupportedSourceRead]:
+        return supported_import_sources()
+
     async def preview_import(self, payload: ImportPreviewRequest) -> ImportPreviewResponse:
         mapping = infer_mapping(payload.dataset_type, payload.columns)
         issues = validate_sample_rows(payload.dataset_type, payload.sample_rows, mapping)
@@ -827,6 +1469,84 @@ class OperationsService:
             valid_rows=max(0, len(payload.sample_rows) - error_rows),
             error_rows=error_rows,
             duplicate_rows=duplicate_rows,
+        )
+
+    async def analyze_import(self, payload: ImportAnalysisRequest) -> ImportAnalysisResponse:
+        mapping = infer_mapping(payload.dataset_type, payload.columns)
+        rows = mapped_rows(payload.sample_rows, mapping)
+        issues = validate_sample_rows(payload.dataset_type, payload.sample_rows, mapping)
+        duplicate_groups = detect_import_duplicate_groups(rows)
+        location_matches = detect_location_matches(rows)
+        entity_matches = detect_entity_matches(rows) if payload.dataset_type in {"submissions", "entity_registry", "beneficiaries"} else []
+        indicator_matches = detect_indicator_matches(rows) if payload.dataset_type in {"indicators", "baselines", "targets", "submissions", "form_definitions"} else []
+        generated_ids = detect_missing_ids(rows, payload.dataset_type)
+        date_formats = detect_date_formats(rows)
+        gps_warnings = detect_gps_warnings(rows)
+        known_targets = {item.target_field for item in mapping}
+        legacy_fields = [
+            item.source_column
+            for item in mapping
+            if item.target_field == item.source_column.replace(" ", "_")
+            and item.target_field not in known_targets.intersection(FIELD_ALIASES.get(payload.dataset_type, {}).keys())
+        ][:20]
+        readiness = calculate_readiness(
+            total_rows=len(payload.sample_rows),
+            issues=issues,
+            duplicate_groups=duplicate_groups,
+            location_matches=location_matches,
+            mapping=mapping,
+            generated_ids=generated_ids,
+            gps_warnings=gps_warnings,
+        )
+        error_rows = len({issue.row_number for issue in issues if issue.severity == "error"})
+        warning_rows = len({issue.row_number for issue in issues if issue.severity != "error"} | {issue.row_number for issue in gps_warnings})
+        preview_counts = {
+            "create": max(0, len(payload.sample_rows) - error_rows - len(duplicate_groups)),
+            "update": len([item for item in entity_matches if item.confidence >= 85]),
+            "skip": error_rows,
+            "warnings": warning_rows,
+            "errors": error_rows,
+        }
+        recommendations: list[str] = []
+        if duplicate_groups:
+            recommendations.append("Review duplicate groups before importing farmers or beneficiaries.")
+        if any(item.confidence < 70 for item in location_matches):
+            recommendations.append("Confirm unknown villages or create approved locations before continuing.")
+        if generated_ids:
+            recommendations.append("Atlas will generate platform IDs and keep legacy IDs nullable for traceability.")
+        if gps_warnings:
+            recommendations.append("GPS is missing for some historical records; future forms can collect GPS going forward.")
+        if not recommendations:
+            recommendations.append("Import is ready after final preview and confirmation.")
+        quality_report = ImportQualityReportRead(
+            import_batch_id="analysis-draft",
+            source_system=payload.source_system,
+            records_created=preview_counts["create"],
+            records_updated=preview_counts["update"],
+            records_skipped=preview_counts["skip"],
+            errors=preview_counts["errors"],
+            warnings=preview_counts["warnings"],
+            duplicate_candidates=len(duplicate_groups),
+            location_issues=len([item for item in location_matches if item.confidence < 70]),
+            unlinked_submissions=len([item for item in entity_matches if item.confidence < 80]),
+            data_quality_score=readiness.score,
+            recommendations=recommendations,
+        )
+        return ImportAnalysisResponse(
+            readiness=readiness,
+            suggested_mapping=mapping,
+            validation_issues=issues,
+            duplicate_groups=duplicate_groups,
+            location_matches=location_matches,
+            entity_matches=entity_matches,
+            indicator_matches=indicator_matches,
+            generated_ids=generated_ids,
+            legacy_fields=legacy_fields,
+            date_formats=date_formats,
+            gps_warnings=gps_warnings,
+            preview_counts=preview_counts,
+            quality_report=quality_report,
+            progress_percent=100,
         )
 
     async def create_import_job(self, organization_id: UUID, user_id: UUID, payload: ImportJobCreate) -> ImportJobRead:
@@ -846,6 +1566,10 @@ class OperationsService:
             total_rows=payload.total_rows,
             mapping_json=mapping_json,
             summary_json=summary_json,
+            target_project_id=payload.target_project_id,
+            target_mode=payload.target_mode,
+            source_system=payload.source_system,
+            import_reason=payload.import_reason,
         )
         await self.record_operational_event(
             organization_id=organization_id,
@@ -870,6 +1594,10 @@ class OperationsService:
         dataset_type: str,
         filename: str,
         content: bytes,
+        target_project_id: UUID | None = None,
+        target_mode: str = "existing_project",
+        source_system: str = "Uploaded File",
+        import_reason: str | None = None,
     ) -> ImportUploadResponse:
         source_format, columns, rows = parse_uploaded_dataset(filename, content)
         mapping = infer_mapping(dataset_type, columns)
@@ -885,6 +1613,10 @@ class OperationsService:
             source_format=source_format,
             total_rows=len(rows),
             mapping=mapping,
+            target_project_id=target_project_id,
+            target_mode=target_mode,
+            source_system=source_system,
+            import_reason=import_reason,
         )
         job = await self.repository.create_import_job(
             organization_id=organization_id,
@@ -899,7 +1631,13 @@ class OperationsService:
                 "error_rows": error_rows,
                 "duplicate_rows": duplicate_rows,
                 "partial_import_supported": True,
+                "target_mode": target_mode,
+                "source_system": source_system,
             },
+            target_project_id=target_project_id,
+            target_mode=target_mode,
+            source_system=source_system,
+            import_reason=import_reason,
         )
         await self.repository.create_import_rows(
             organization_id=organization_id,
@@ -929,6 +1667,36 @@ class OperationsService:
     async def list_import_jobs(self, organization_id: UUID) -> list[ImportJobRead]:
         jobs = await self.repository.list_import_jobs(organization_id)
         return [ImportJobRead.model_validate(job) for job in jobs]
+
+    async def import_error_report(self, organization_id: UUID, import_job_id: UUID) -> ImportErrorReportRead:
+        job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
+        if job is None:
+            raise KeyError("Import job not found")
+        rows = await self.repository.list_import_rows(organization_id=organization_id, import_job_id=import_job_id)
+        errors: list[ImportValidationIssue] = []
+        warnings: list[ImportValidationIssue] = []
+        for row in rows:
+            if row.issue_count <= 0:
+                continue
+            issue = ImportValidationIssue(
+                row_number=row.row_number,
+                field_name=None,
+                issue_type="row_validation",
+                severity="error" if row.validation_status == "needs_fixes" else "warning",
+                message="This row needs review before it can be imported.",
+                suggested_fix="Open the row, correct mapped values, then re-run validation.",
+            )
+            if issue.severity == "error":
+                errors.append(issue)
+            else:
+                warnings.append(issue)
+        return ImportErrorReportRead(
+            import_batch_id=job.id,
+            file_name=job.source_name,
+            status=job.status,
+            errors=errors,
+            warnings=warnings,
+        )
 
     async def list_import_rows(self, organization_id: UUID, import_job_id: UUID) -> list[ImportRowRead]:
         rows = await self.repository.list_import_rows(organization_id=organization_id, import_job_id=import_job_id)
@@ -974,11 +1742,75 @@ class OperationsService:
             version=row.version,
         )
 
+    async def confirm_import_job(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        import_job_id: UUID,
+        payload: ImportConfirmRequest,
+    ) -> ImportApplyResponse:
+        job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
+        if job is None:
+            raise KeyError("Import job not found")
+        if job.error_rows > 0 and not payload.acknowledge_warnings:
+            raise ValueError("Review import errors or acknowledge warnings before confirming this import.")
+        job.import_reason = payload.reason
+        job.confirmation_json = {
+            "confirmed_by_user_id": str(user_id),
+            "confirmed_at": datetime.now(UTC).isoformat(),
+            "acknowledge_warnings": payload.acknowledge_warnings,
+        }
+        job.status = "processing"
+        await self.session.flush()
+        return await self.apply_import_job(organization_id, user_id, import_job_id)
+
+    async def rollback_import_job(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        import_job_id: UUID,
+        payload: ImportRollbackRequest,
+    ) -> ImportRollbackRead:
+        job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
+        if job is None:
+            raise KeyError("Import job not found")
+        if not payload.confirm:
+            raise ValueError("Rollback requires confirmation.")
+        rolled_back_records = int(job.successful_records or 0)
+        skipped_records = int(job.skipped_records or 0)
+        job.status = "rolled_back"
+        job.rollback_available = False
+        job.summary_json = {
+            **job.summary_json,
+            "rollback_reason": payload.reason,
+            "rolled_back_by_user_id": str(user_id),
+            "rolled_back_at": datetime.now(UTC).isoformat(),
+            "rollback_mode": "safe_status_only",
+        }
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=user_id,
+            payload=OperationalEventCreate(
+                event_type="data_import.rolled_back",
+                source_module="data",
+                summary=f"Import batch {job.source_name} was marked rolled back.",
+                priority="high",
+                payload={"import_job_id": str(job.id), "reason": payload.reason},
+            ),
+        )
+        await self.session.commit()
+        return ImportRollbackRead(
+            job=ImportJobRead.model_validate(job),
+            rolled_back_records=rolled_back_records,
+            skipped_records=skipped_records,
+            message="Rollback recorded. Imported records are preserved for audit; follow-up cleanup can be reviewed from Governance audit trail.",
+        )
+
     async def apply_import_job(self, organization_id: UUID, user_id: UUID, import_job_id: UUID) -> ImportApplyResponse:
         job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
         if job is None:
             raise KeyError("Import job not found")
-        supported_apply_types = {"beneficiaries", "programs", "indicators", "cases", "assets", "organization_units"}
+        supported_apply_types = {"beneficiaries", "entity_registry", "programs", "projects", "indicators", "cases", "assets", "organization_units"}
         if job.dataset_type not in supported_apply_types:
             raise ValueError(f"{job.dataset_type.replace('_', ' ').title()} imports can be previewed and cleaned, but cannot be applied to live records yet")
 
@@ -998,7 +1830,7 @@ class OperationsService:
             project_id: UUID | None = None
             values: dict[str, object] | None = None
 
-            if job.dataset_type == "beneficiaries":
+            if job.dataset_type in {"beneficiaries", "entity_registry"}:
                 values = beneficiary_values_from_import_row(mapped)
                 if values is None:
                     skipped_rows += 1
@@ -1013,10 +1845,11 @@ class OperationsService:
                 else:
                     beneficiary = await self.repository.update_beneficiary(existing_beneficiary, values)
                     updated_records += 1
+                mark_record_as_imported(beneficiary, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "beneficiary"
                 target_id = str(beneficiary.id)
                 project_id = beneficiary.project_id
-            elif job.dataset_type == "programs":
+            elif job.dataset_type in {"programs", "projects"}:
                 values = program_values_from_import_row(mapped)
                 if values is None:
                     skipped_rows += 1
@@ -1036,6 +1869,7 @@ class OperationsService:
                 else:
                     program = await self.repository.update_program(existing_program, values)
                     updated_records += 1
+                mark_record_as_imported(program, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "program"
                 target_id = str(program.id)
                 project_id = program.id
@@ -1054,6 +1888,7 @@ class OperationsService:
                 else:
                     indicator = await self.repository.update_indicator(existing_indicator, values)
                     updated_records += 1
+                mark_record_as_imported(indicator, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "indicator"
                 target_id = str(indicator.id)
                 project_id = indicator.project_id
@@ -1072,6 +1907,7 @@ class OperationsService:
                 else:
                     case = await self.repository.update_case(existing_case, values)
                     updated_records += 1
+                mark_record_as_imported(case, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "case"
                 target_id = str(case.id)
                 project_id = case.project_id
@@ -1094,6 +1930,7 @@ class OperationsService:
                 else:
                     asset = await self.repository.update_asset(existing_asset, values)
                     updated_records += 1
+                mark_record_as_imported(asset, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "asset"
                 target_id = str(asset.id)
                 project_id = asset.project_id
@@ -1116,6 +1953,7 @@ class OperationsService:
                 else:
                     unit = await self.repository.update_organizational_unit(existing_unit, values)
                     updated_records += 1
+                mark_record_as_imported(unit, job=job, user_id=user_id, row_number=row.row_number)
                 target_type = "organization_unit"
                 target_id = str(unit.id)
 
@@ -1137,14 +1975,16 @@ class OperationsService:
         status = "applied" if created_records or updated_records else "needs_fixes"
         job = await self.repository.update_import_job_summary(
             job,
-            status=status,
+            status="completed" if status == "applied" and skipped_rows == 0 else ("completed_with_errors" if status == "applied" else status),
             summary_updates={
                 "created_records": created_records,
                 "updated_records": updated_records,
                 "skipped_rows": skipped_rows,
                 "applied_by_user_id": str(user_id),
+                "completed_at": datetime.now(UTC).isoformat(),
             },
         )
+        job.completed_at = datetime.now(UTC)
         await self.record_operational_event(
             organization_id=organization_id,
             actor_user_id=user_id,

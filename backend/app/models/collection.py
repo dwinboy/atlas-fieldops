@@ -21,6 +21,13 @@ class Project(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(120), nullable=False)
     region: Mapped[str | None] = mapped_column(String(160), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -140,6 +147,14 @@ class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     controls_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_form_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -152,6 +167,13 @@ class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
     offline_compatible: Mapped[bool] = mapped_column(Boolean, default=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_form_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -163,6 +185,12 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     survey_id: Mapped[UUID | None] = mapped_column(ForeignKey("surveys.id"), index=True, nullable=True)
     form_id: Mapped[UUID] = mapped_column(ForeignKey("data_forms.id"), index=True)
     form_version_id: Mapped[UUID] = mapped_column(ForeignKey("data_form_versions.id"), index=True)
+    entity_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    entity_type: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
+    assignment_id: Mapped[UUID | None] = mapped_column(ForeignKey("officer_assignments.id"), index=True, nullable=True)
+    supervisor_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    frequency_period: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
+    event_id: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
     field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
     client_submission_id: Mapped[str] = mapped_column(String(160), nullable=False)
     server_sequence: Mapped[int] = mapped_column(Integer, default=1)
@@ -178,6 +206,15 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     altitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     location_captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_form_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_submission_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class SubmissionVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):

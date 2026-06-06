@@ -8,7 +8,9 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
+from app.schemas.operations import BeneficiaryRead, ImportJobRead
 from app.schemas.projects import ProjectCreate, ProjectDetailRead, ProjectListItemRead, ProjectSummaryRead, ProjectTemplateRead
+from app.services.operations import OperationsService
 from app.services.projects import ProjectConflictError, ProjectNotFoundError, ProjectsService
 
 router = APIRouter()
@@ -60,6 +62,30 @@ async def templates(
     return await ProjectsService(session).templates()
 
 
+@router.get("/{project_id}/beneficiaries", response_model=list[BeneficiaryRead], summary="List project beneficiaries and entities")
+async def project_beneficiaries(
+    project_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BeneficiaryRead]:
+    beneficiaries = await OperationsService(session).list_beneficiaries(organization_uuid(principal))
+    return [
+        BeneficiaryRead.model_validate(beneficiary)
+        for beneficiary in beneficiaries
+        if beneficiary.project_id == project_id
+    ]
+
+
+@router.get("/{project_id}/data-imports", response_model=list[ImportJobRead], summary="List project import batches")
+async def project_data_imports(
+    project_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportJobRead]:
+    jobs = await OperationsService(session).list_import_jobs(organization_uuid(principal))
+    return [job for job in jobs if job.target_project_id == project_id]
+
+
 @router.get("/{project_id}", response_model=ProjectDetailRead, summary="Get project detail workspace")
 async def project_detail(
     project_id: UUID,
@@ -70,4 +96,3 @@ async def project_detail(
         return await ProjectsService(session).get_project_detail(organization_uuid(principal), project_id)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-

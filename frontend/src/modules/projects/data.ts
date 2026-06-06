@@ -13,6 +13,8 @@ export type ProjectSection = (typeof projectSections)[number]["id"];
 
 export const projectTabs = [
   "Overview",
+  "Beneficiaries",
+  "Data Import",
   "Forms",
   "Indicators",
   "Locations",
@@ -174,4 +176,3 @@ export const previewTemplates: ProjectTemplateRead[] = [
     template_type: "Evaluation Program",
   },
 ];
-

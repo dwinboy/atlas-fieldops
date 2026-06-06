@@ -11,13 +11,14 @@ Atlas FieldOps organizes operational work in this order:
 ```text
 Organization
   -> Project
-    -> Form
-      -> Submission
-        -> Indicators
-          -> Reports
+    -> Beneficiary / Entity
+      -> Form
+        -> Submission
+          -> Indicators
+            -> Reports
 ```
 
-Forms are the field data collection instrument. Projects own the program context. Submissions are reviewed evidence. Indicators and reports are generated from approved, governed data.
+Forms are the field data collection instrument. Projects own the program context. Beneficiaries/entities are the longitudinal M&E anchor. Submissions are reviewed evidence. Indicators and reports are generated from approved, governed data.
 
 ## Public Website & SEO Architecture
 
@@ -33,6 +34,12 @@ Public website routes:
 
 - `/`
 - `/features`
+- `/demo`
+- `/signup`
+- `/create-organization`
+- `/onboarding`
+- `/donor`
+- `/templates`
 - `/solutions`
 - `/solutions/ngos`
 - `/solutions/government`
@@ -96,6 +103,46 @@ Lead generation architecture:
 - Leads are stored through `/api/v1/public/leads` with name, organization, country, email, phone, organization size, interest area, source, message, and metadata.
 - Future CRM integration should consume the dedicated marketing lead model and must not mix with tenant user accounts or application submissions.
 
+## Startup Readiness Features
+
+Atlas FieldOps must operate as a multi-tenant SaaS platform, not only as a single-organization M&E application. Startup-readiness features must reuse the approved Public Website, Secure Application Workspace, Platform Console, Administration, Reports, Data Quality, Beneficiaries, and Projects boundaries.
+
+**Rule:** Do not create duplicate startup modules. Growth, onboarding, templates, API access, integrations, subscription readiness, donor access, and usage tracking must extend the existing domain that owns the concept.
+
+Startup feature ownership:
+
+| Startup Capability | Status Classification Rule | Approved Owner / Route |
+| --- | --- | --- |
+| Multi-tenant organizations | Complete only when tenant-owned data has `organization_id`, backend scopes, and route guards. | Platform Console `/platform/organizations` plus tenant-scoped repositories. |
+| Organization self-onboarding | Complete only when public signup captures an organization request and secure creation provisions an organization and first admin. | Public `/signup`, `/create-organization`, `/onboarding`; provisioning remains Platform Console or approved backend onboarding API. |
+| Startup onboarding wizard | Complete only when new organizations can follow project, import, form, beneficiary, team, and collection setup steps. | Public `/onboarding` for education; authenticated guided setup belongs in Dashboard / Administration. |
+| Template library | Complete only when project, form, dashboard, and indicator templates can be discovered and installed without duplicating builders. | Public `/templates`; operational templates remain `/projects/templates`, `/forms/templates`, Reports, and Indicators. |
+| Demo environment | Complete only when prospects can explore safe sample projects, forms, beneficiaries, submissions, reports, and dashboards without customer data. | Public `/demo` and seeded non-customer demo data. |
+| Public API foundation | Complete only when API keys, scopes, rate limits, audit logs, and versioned OpenAPI endpoints exist. | Administration `/administration/api-settings`; APIs remain under `/api/v1/*`. |
+| Webhook framework | Complete only when event subscriptions, retry status, delivery audit, and secret-safe configuration exist. | Administration `/administration/integrations` and `/administration/api-settings`. |
+| Data migration system | Complete only when import batches, smart assistant, validation, duplicate review, rollback readiness, and audit events exist. | `/administration/imports-migration` and `/projects/:projectId/data-import`. |
+| Donor portal | Complete only when donor users have read-only access to approved dashboards, reports, indicators, and aggregated maps. | Public `/donor` for product education; authenticated donor access uses Reports, Indicators, Mapping, and Viewer/Donor permissions. |
+| White labeling | Complete only when logo, brand color, platform name, timezone, language, and public-link settings are tenant-scoped. | Administration `/administration/system-settings`. |
+| Usage tracking | Complete only when users, projects, forms, submissions, storage, imports, exports, and API usage are measurable per organization. | Platform Console `/platform/organizations`, `/platform/system-health`, and `/platform/settings`. |
+| Subscription readiness | Complete only when plan, status, limits, enabled modules, and usage percentage are tracked without requiring payment processing. | Platform Console organization plans and feature flags. |
+| Organization settings | Complete only when tenant branding, localization, timezone, security, defaults, and feature toggles are managed by System Admins. | Administration `/administration/system-settings`. |
+| Integration framework | Complete only when connector metadata, health, status, environment, test actions, and secret references exist. | Administration `/administration/integrations`; platform-wide providers belong in `/platform/integrations`. |
+| Lead capture system | Complete only when public contact, book-demo, signup, and resource forms store leads separately from tenant users. | Public website and `/api/v1/public/leads`. |
+| Public website SEO foundation | Complete only when public pages have metadata, sitemap inclusion, robots rules, and structured data where useful. | Public Website routes and `frontend/app/sitemap.ts`. |
+| Beneficiary 360 | Complete only when profiles show profile, forms/records, visits, trainings, distributions, indicators, submissions, map, history, and audit. | Beneficiaries `/beneficiaries/:entityId` and project tab `/projects/:projectId/beneficiaries`. |
+| Follow-up scheduling | Complete only when workflows can create future operational tasks from baseline, training, review, or quality events. | Field Operations / operational tasks. |
+| Task management | Complete only when lightweight tasks have owner, due date, status, priority, beneficiary/project context, and auditability. | Field Operations / operational tasks, not a new top-level module. |
+| Communication foundation | Complete only when notification templates, rules, channels, recipients, and integration-ready providers exist. | Administration `/administration/notification-settings` and `/administration/integrations`. |
+
+Implementation guidance:
+
+- Public startup pages explain and capture demand. Secure operational work stays in authenticated modules.
+- Super Admin manages SaaS-wide tenants, plans, feature flags, platform audit, platform integrations, health, and backups under `/platform`.
+- System Admin manages organization settings, APIs, integrations, notifications, imports, backups, and reference data under `/administration`.
+- Donor users are organization/project-scoped read-only users. Do not expose donor data through public pages.
+- Subscription and billing architecture may exist before payment processing, but payment providers must be added through the Integration framework and audited.
+- All startup features must preserve tenant isolation, role-based access, audit logging, and noindex rules for secure routes.
+
 ## Super Admin / Platform Console
 
 The Platform Console is a separate global Super Admin workspace. It is not part of the normal organization M&E app sidebar and must never be treated as an organization Administration screen.
@@ -156,6 +203,7 @@ The sidebar is grouped by business domain. Do not create new top-level sidebar i
 | Operations | Forms | Create, publish, version, govern, and manage survey/data collection forms. |
 | Operations | Field Operations | Manage assignments, supervisors, field officers, targets, work plans, and monitoring. |
 | Operations | Submissions | View, review, approve, reject, return, archive, and manage collected records. |
+| Operations | Beneficiaries | Register, search, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time. |
 | Analytics | Mapping | GIS maps, boundaries, GPS validation, coverage monitoring, and spatial analysis. |
 | Analytics | Indicators | Indicator library, logframes, baselines, targets, results frameworks, and progress tracking. |
 | Analytics | Reports | Standard reports, custom reports, dashboards, scheduled outputs, and exports. |
@@ -196,6 +244,8 @@ The production route model must use clean domain prefixes. The current web app i
 - `/projects/closed`
 - `/projects/templates`
 - `/projects/:projectId/overview`
+- `/projects/:projectId/beneficiaries`
+- `/projects/:projectId/data-import`
 - `/projects/:projectId/forms`
 - `/projects/:projectId/indicators`
 - `/projects/:projectId/locations`
@@ -245,6 +295,14 @@ The production route model must use clean domain prefixes. The current web app i
 - `/submissions/rejected`
 - `/submissions/returned`
 - `/submissions/archived`
+
+### Beneficiaries / Entities
+
+- `/beneficiaries`
+- `/beneficiaries/register`
+- `/beneficiaries/import`
+- `/beneficiaries/duplicates`
+- `/beneficiaries/:entityId`
 
 ### Mapping
 
@@ -321,6 +379,65 @@ The production route model must use clean domain prefixes. The current web app i
 - `/administration/integrations`
 - `/administration/system-settings`
 - `/administration/backup-recovery`
+- `/administration/imports-migration`
+
+## Data Migration, Import, And Project Continuity
+
+Atlas FieldOps must support organizations that started M&E work in KoboToolbox, ODK, SurveyCTO, Excel, Google Forms, DHIS2, CommCare, Google Sheets, or custom databases and need to continue that same project inside Atlas FieldOps.
+
+Placement:
+
+- Organization-wide import governance, source connectors, batch history, rollback readiness, and reusable mapping rules belong under `/administration/imports-migration`.
+- Project-level continuity imports belong under `/projects/:projectId/data-import`.
+- Beneficiary-only registry imports may also be initiated from `/beneficiaries/import`, but must use the shared import batch, duplicate detection, validation, and audit architecture.
+
+Import wizard rules:
+
+- The required smart migration assistant flow is: upload/select source, analyze data, show import readiness score, map fields, match locations, match entities/beneficiaries, review duplicates, review validation issues, preview import, confirm with reason, review results, and generate a post-import quality report.
+- Phase 1 sources are file-based: CSV, Excel, JSON, XLSForm, GeoJSON, KML, and shapefile metadata-ready support.
+- Phase 2 connectors are architecture-ready placeholders: KoboToolbox, ODK Central, SurveyCTO, CommCare, DHIS2, Google Sheets, and API imports.
+- Imports must create an import batch with status, total records, successful records, failed records, skipped records, imported by, imported at, reason, validation issues, and error-report readiness.
+- Errors block import. Warnings require explicit confirmation.
+- Imports must show create, update, skip, warning, and error counts before confirmation.
+- Imports must never overwrite automatically. Updates require before/after preview, explicit confirmation, a reason, source traceability, and Governance audit logging.
+- Rollback must be audit-safe. Do not hard-delete imported records silently if they may have been edited or used after import.
+
+Field mapping and validation:
+
+- Source columns must be mapped to approved platform targets such as `Entity.FullName`, `Location.District`, `FormQuestion.variable_name`, `Indicator.Code`, or `Submission.Payload`.
+- The field mapping tool should suggest mappings, show required fields, show data types, and support transformations such as split/combine names, date conversion, phone normalization, yes/no conversion, reference value mapping, whitespace trimming, and location standardization.
+- Validation must check required fields, data types, reference data, locations, duplicates, entity links, form/question mappings, submission frequency, and GPS.
+- Legacy questions or fields without platform matches should default to preserved legacy fields so historical records are not lost.
+- Missing beneficiary/entity IDs should generate human-readable platform IDs while storing nullable legacy IDs and the import batch ID.
+
+Smart problem detection:
+
+- The import system must calculate an Import Readiness Score from 0-100 using required fields, duplicate rate, valid locations, valid dates, valid GPS, mapping completeness, entity matching confidence, indicator matching confidence, errors, and warnings.
+- Readiness categories are: 90-100 Ready to Import, 70-89 Needs Review, 50-69 High Risk, and below 50 Not Ready.
+- The assistant must detect duplicate beneficiaries using normalized phone numbers, national ID, household ID, name similarity, name plus date of birth, name plus village, and GPS proximity where available.
+- The assistant must detect location name mismatches and offer accept match, choose different location, create new location, or skip records.
+- Historical submissions without beneficiary links must go through entity matching before import and may be linked, used to create a new beneficiary, left unlinked, or sent for review.
+- Indicator imports and submission fields should receive deterministic suggested matches first, with AI-assist-ready architecture for future mapping recommendations.
+- Bad date formats should be detected, confirmed, and normalized to ISO format internally.
+- Missing GPS in historical records should create warnings, not automatic blocking errors, unless project governance requires GPS.
+- Large imports must be background-job ready with progress tracking, resumable draft imports, and row-level error reports.
+- After import, the system must generate an import quality report with batch ID, source system, imported by, date, created/updated/skipped counts, errors, warnings, duplicate candidates, location issues, unlinked submissions, and a data quality score.
+
+Source traceability:
+
+- Imported records must keep legacy source information where appropriate: `isImported`, `sourceSystem`, `sourceRecordId`, source project/form/submission IDs, import batch ID, imported at, and imported by.
+- Legacy record links must preserve source-to-platform relationships for audit, reporting, and future mobile sync.
+- Imported historical submissions must be marked as imported source data, not newly collected web/mobile data.
+
+Mobile-ready continuity:
+
+- Imported entities, forms, published form versions, reference data, locations, duplicate rules, prefill data, and historical summaries must remain compatible with future offline-first mobile sync APIs.
+- Do not build mobile screens in the web app. Provide clean backend/API extension points for later mobile download, upload, and conflict resolution.
+
+Governance and Data Quality:
+
+- Import actions must write Governance audit events: batch created, file uploaded, mapping changed, validation run, duplicate detected, import confirmed, import completed, import failed, rollback requested, and record updated by import.
+- Duplicate checks must integrate with Data Quality. Do not create a competing duplicate-review system outside Data Quality.
 
 ## Folder Ownership
 
@@ -335,6 +452,7 @@ frontend/src/
     forms/
     field-operations/
     submissions/
+    beneficiaries/
     mapping/
     indicators/
     reports/
@@ -366,6 +484,7 @@ frontend/src/
 | `DynamicForms`, `FormTemplateLibrary`, public collection form tools | Operations | Forms |
 | `FieldOfficerOperations`, assignment and sync tools | Operations | Field Operations |
 | `SubmissionReview` | Operations | Submissions |
+| Beneficiary, farmer, household, facility, school, training participant, village, or custom entity registry | Operations | Beneficiaries |
 | `GeospatialIntelligence` | Analytics | Mapping |
 | `IndicatorTracking` | Analytics | Indicators |
 | `ReportingCenter`, report/export views | Analytics | Reports |
@@ -383,11 +502,11 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 | Role | Visible modules |
 | --- | --- |
 | Super Admin / Platform Owner | Platform Console only by default; organization work only through explicit Support Access Mode. |
-| System Admin | Organization-level Dashboard, Projects, Forms, Field Operations, Submissions, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance, and Administration. No `/platform` access. |
-| M&E Manager | Dashboard, Projects, Forms, Field Operations, Submissions, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance. |
-| Data Manager | Forms, Submissions, Mapping, Indicators, Reports, Data Quality. |
-| Supervisor | Dashboard, Field Operations, Submissions, Mapping, Data Quality for assigned teams/locations. |
-| Field Officer | Assigned forms, assignments, field operations tasks, and own submissions only. |
+| System Admin | Organization-level Dashboard, Projects, Forms, Field Operations, Submissions, Beneficiaries, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance, and Administration. No `/platform` access. |
+| M&E Manager | Dashboard, Projects, Forms, Field Operations, Submissions, Beneficiaries, Mapping, Indicators, Reports, Data Quality, Users & Teams, Governance. |
+| Data Manager | Forms, Submissions, Beneficiaries, Mapping, Indicators, Reports, Data Quality. |
+| Supervisor | Dashboard, Field Operations, Submissions, Beneficiaries, Mapping, Data Quality for assigned teams/locations. |
+| Field Officer | Assigned forms, assignments, assigned beneficiaries/entities, field operations tasks, and own submissions only. |
 | Viewer/Donor | Dashboard, Reports, Indicators, and aggregated Mapping only. |
 
 ## Boundary Rules
@@ -399,7 +518,8 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 - Platform Console contains SaaS platform ownership: organizations/tenants, global users, global role templates, feature flags, platform health, platform audit/security, platform-wide integrations, backups, and global runtime settings.
 - Administration contains organization/system configuration inside the normal app: location hierarchy, reference data, notification settings, API settings, integrations, system settings, backups, and recovery. It must not contain tenant lifecycle or Super Admin support controls.
 - Forms contains question design, form templates, validation, publishing, versioning, reference bindings, form-level permissions, workflow, data quality settings, and form governance.
-- Projects contains project setup, donor/program details, project teams, project locations, project assignments, project submissions, project reports, and project-level settings.
+- Projects contains project setup, donor/program details, project teams, project locations, beneficiary scope, project assignments, project submissions, project reports, and project-level settings.
+- Beneficiaries contains the central registry for farmers, households, beneficiaries, facilities, schools, villages, groups, training participants, health workers, and custom entities. It owns profile records, project enrollment, duplicate prevention, longitudinal history, entity assignment, and entity-level audit history.
 - Mapping contains GIS visualization, boundaries, layers, GPS validation, coverage monitoring, and spatial analysis.
 - Field Operations contains assignments, field teams, supervisors, targets, work plans, sync readiness, and field monitoring.
 - Submissions contains collected records, review, approval, rejection, correction, and submission history.
@@ -410,6 +530,60 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 - Use project-level settings for project team assignment, locations, objectives, indicators, donor metadata, beneficiary scope, and project-wide reporting.
 - Never allow orphan forms. A form must belong to a project context.
 - Never allow orphan submissions. A submission must retain organization, project, form, enumerator, timestamp, and GPS metadata when applicable.
+
+## Entity-Centric Data Collection
+
+**Rule:** Forms collect records, but beneficiaries/entities are the anchor for longitudinal M&E tracking.
+
+Purpose:
+
+- Register each farmer, household, beneficiary, facility, school, village, group, training participant, health worker, or custom entity once.
+- Link many forms and submissions to the same entity over time: registration, baseline, monitoring visits, training attendance, distributions, endline, follow-up, and case history.
+- Prevent duplicate farmers/beneficiaries and reduce repeated profile data entry.
+- Prepare the backend contract for a future offline-first mobile app without building mobile screens now.
+
+Canonical ownership:
+
+- Beneficiaries owns entity profile, entity ID, project enrollment, duplicate checks, merge workflow, entity assignment, profile history, and entity audit events.
+- Projects exposes `/projects/:projectId/beneficiaries` as the project-specific entity scope and coverage view.
+- Forms owns form-level entity controls: whether a form creates, updates, requires, or allows anonymous entity records; duplicate controls; frequency rules; and prefill mappings.
+- Submissions owns collected records and must support nullable `entity_id`, `entity_type`, `frequency_period`, and `event_id` so older non-entity submissions remain valid.
+- Data Quality owns duplicate resolution, investigations, merge reason, quality issue lifecycle, and confirmed duplicate signals.
+- Governance owns immutable audit visibility for entity creation, profile change, duplicate override, merge, frequency block, prefill rule change, and entity-linked submission events.
+
+Entity registry requirements:
+
+- Entity IDs must be unique and human-readable, such as `FRM-2026-000001`, `HH-2026-000001`, `BEN-2026-000001`, and `FAC-2026-000001`.
+- Supported entity types include Farmer, Household, Beneficiary, Facility, School, Village, Group, Training Participant, Health Worker, and Custom Entity.
+- Status values include Active, Inactive, Deceased, Moved, Duplicate, and Archived.
+- Registration must run duplicate checks before save and show possible matches when phone, national ID, household ID, name/date of birth, name/village, or GPS proximity indicates risk.
+- Duplicate creation must never be silent. Users must use the existing record, cancel, send for supervisor review, or continue only with a reason and sufficient permission.
+
+Entity-linked form behavior:
+
+- Registration forms may create a new entity and should usually be once ever per entity.
+- Baseline and endline forms require an existing entity and should usually be once per project per entity.
+- Monitoring forms require an existing entity and may be once per month, once per quarter, once per season, or unlimited depending on the form settings.
+- Training attendance and distribution forms may be once per event or once per distribution cycle.
+- Entity-linked submissions must start with Search Existing Entity unless the form explicitly allows anonymous submissions.
+
+Submission frequency rules:
+
+- Frequency validation must run on the frontend for user guidance and on the backend as final authority.
+- Supported rules include once ever per entity, once per project per entity, once per year, once per season, once per quarter, once per month, once per event, and unlimited repeat submissions.
+- Frequency blocks and overrides must write immutable governance audit events and may create Data Quality issues.
+
+Prefill engine:
+
+- Forms can prefill question values from entity profile fields such as farmer name, gender, phone, village, household ID, GPS, and date of birth.
+- Prefilled fields may be read-only, editable, editable with reason, editable only by supervisor, or configured to update the profile after submission.
+- Profile updates from submissions require audit logging and may require supervisor approval when sensitive fields change.
+
+Mobile-ready architecture placeholders:
+
+- Future mobile apps should consume assigned projects, assigned entities, assigned forms, published form versions, reference data, locations, duplicate rules, frequency rules, prefill data, returned submissions, and sync-ready upload APIs.
+- Required API contracts include assigned entities, assigned forms, sync package, prefill data, duplicate rule package, frequency rule package, submission upload package, and sync conflict responses.
+- Do not create mobile screens in the web app. Web work should expose typed backend/data contracts that can later be consumed by offline-first mobile sync.
 
 ## Mapping and GIS Rules
 

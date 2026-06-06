@@ -431,6 +431,10 @@ class OperationsRepository:
         total_rows: int,
         mapping_json: dict[str, object],
         summary_json: dict[str, object],
+        target_project_id: UUID | None = None,
+        target_mode: str | None = None,
+        source_system: str | None = None,
+        import_reason: str | None = None,
     ) -> DataImportJob:
         job = DataImportJob(
             organization_id=organization_id,
@@ -439,6 +443,10 @@ class OperationsRepository:
             source_name=source_name,
             source_format=source_format,
             total_rows=total_rows,
+            target_project_id=target_project_id,
+            target_mode=target_mode,
+            source_system=source_system,
+            import_reason=import_reason,
             valid_rows=summary_int(summary_json, "valid_rows"),
             error_rows=summary_int(summary_json, "error_rows"),
             duplicate_rows=summary_int(summary_json, "duplicate_rows"),
@@ -535,6 +543,10 @@ class OperationsRepository:
     ) -> DataImportJob:
         job.status = status
         job.summary_json = {**job.summary_json, **summary_updates}
+        if "created_records" in summary_updates or "updated_records" in summary_updates:
+            job.successful_records = int(summary_updates.get("created_records", 0) or 0) + int(summary_updates.get("updated_records", 0) or 0)
+        if "skipped_rows" in summary_updates:
+            job.skipped_records = int(summary_updates.get("skipped_rows", 0) or 0)
         await self.session.flush()
         return job
 

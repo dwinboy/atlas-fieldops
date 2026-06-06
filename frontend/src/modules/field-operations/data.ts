@@ -15,6 +15,7 @@ export type Priority = "Low" | "Normal" | "High" | "Urgent";
 export type FieldAssignment = {
   id: string;
   name: string;
+  assignmentType: "Form only" | "Form + Location" | "Form + Entity list" | "Form + Target group" | "Form + Event";
   project: string;
   form: string;
   supervisor: string;
@@ -24,6 +25,7 @@ export type FieldAssignment = {
   endDate: string;
   targetCount: number;
   completedCount: number;
+  assignedEntityIds?: string[];
   priority: Priority;
   status: AssignmentStatus;
   description: string;
@@ -165,6 +167,8 @@ export const previewAssignments: FieldAssignment[] = [
     completedCount: 86,
     description: "Register farmers and confirm GPS evidence before baseline analysis.",
     endDate: nextWeekIso,
+    assignedEntityIds: ["FRM-2026-000001", "BEN-2026-000044", "FRM-2026-000137"],
+    assignmentType: "Form + Entity list",
     fieldOfficers: ["Amina Diallo", "Joseph Mbarga"],
     form: "Farmer Registration Form",
     id: "assignment-farmer-registration",
@@ -181,6 +185,8 @@ export const previewAssignments: FieldAssignment[] = [
     completedCount: 42,
     description: "Collect school facility readiness data for district review.",
     endDate: tomorrowIso,
+    assignedEntityIds: ["SCH-2026-000005"],
+    assignmentType: "Form + Entity list",
     fieldOfficers: ["Nora Talla"],
     form: "School Facility Assessment",
     id: "assignment-school-facility",
@@ -197,6 +203,8 @@ export const previewAssignments: FieldAssignment[] = [
     completedCount: 60,
     description: "Verify beneficiary household status before transfer release.",
     endDate: nextWeekIso,
+    assignedEntityIds: ["HH-2026-000001", "BEN-2026-000044"],
+    assignmentType: "Form + Entity list",
     fieldOfficers: ["Amina Diallo"],
     form: "Household Verification Form",
     id: "assignment-household-verification",

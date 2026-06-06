@@ -34,6 +34,13 @@ class Beneficiary(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_visit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     profile_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -54,6 +61,13 @@ class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     sdg_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     formula: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class CaseRecord(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -114,6 +128,12 @@ class OrganizationalUnit(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, B
     region: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
     manager_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class Department(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -144,6 +164,12 @@ class OperationalTeam(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base
     project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
 class WorkforceProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -468,9 +494,73 @@ class DataImportJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     valid_rows: Mapped[int] = mapped_column(Integer, default=0)
     error_rows: Mapped[int] = mapped_column(Integer, default=0)
     duplicate_rows: Mapped[int] = mapped_column(Integer, default=0)
+    target_project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    target_mode: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    import_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    successful_records: Mapped[int] = mapped_column(Integer, default=0)
+    failed_records: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_records: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_report_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    confirmation_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     mapping_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     summary_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     rollback_available: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class LegacyRecordLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "legacy_record_links"
+    __table_args__ = (UniqueConstraint("organization_id", "source_system", "source_record_id", "target_type"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    import_job_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
+    source_system: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    source_record_id: Mapped[str] = mapped_column(String(180), nullable=False, index=True)
+    source_project_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_form_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    source_submission_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    target_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    target_id: Mapped[str] = mapped_column(String(180), nullable=False, index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class ImportRollbackLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "import_rollback_logs"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    import_job_id: Mapped[UUID] = mapped_column(ForeignKey("data_import_jobs.id"), index=True)
+    requested_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    rolled_back_records: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_records: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="completed", index=True)
+    details_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class SourceConnector(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "source_connectors"
+    __table_args__ = (UniqueConstraint("organization_id", "connector_key"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    connector_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="placeholder", index=True)
+    supported_formats_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    config_schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class SourceConnection(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "source_connections"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    connector_id: Mapped[UUID | None] = mapped_column(ForeignKey("source_connectors.id"), index=True, nullable=True)
+    connector_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="not_connected", index=True)
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
 class DataImportIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):

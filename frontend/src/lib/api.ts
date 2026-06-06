@@ -860,6 +860,12 @@ export type SubmissionRead = {
   project_id: string | null;
   survey_id: string | null;
   form_id: string;
+  entity_id?: string | null;
+  entity_type?: string | null;
+  assignment_id?: string | null;
+  supervisor_id?: string | null;
+  frequency_period?: string | null;
+  event_id?: string | null;
   field_officer_id: string;
   status: string;
   server_sequence: number;
@@ -939,6 +945,81 @@ export type BeneficiaryRead = {
   latitude: number | null;
   longitude: number | null;
   last_visit_at: string | null;
+  profile_json?: Record<string, unknown>;
+};
+
+export type BeneficiaryCreate = {
+  beneficiary_uid: string;
+  beneficiary_type: string;
+  display_name: string;
+  project_id?: string | null;
+  sex?: string | null;
+  birth_year?: number | null;
+  phone_number?: string | null;
+  region?: string | null;
+  district?: string | null;
+  community?: string | null;
+  vulnerability_score?: number;
+  latitude?: number | null;
+  longitude?: number | null;
+  profile_json?: Record<string, unknown>;
+};
+
+export type DuplicateCheckRequest = {
+  entity_id?: string;
+  entity_type?: string;
+  full_name?: string;
+  phone_number?: string;
+  national_id?: string;
+  household_id?: string;
+  village?: string;
+  date_of_birth?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  project_id?: string | null;
+};
+
+export type DuplicateCandidateRead = {
+  entity_id: string;
+  entity_uid: string;
+  display_name: string;
+  score: number;
+  level: string;
+  matched_fields: string[];
+};
+
+export type EntityPrefillRead = {
+  entity_id: string;
+  values: Record<string, unknown>;
+  locked_fields: string[];
+  update_requires_reason: boolean;
+};
+
+export type FrequencyValidationRequest = {
+  form_id: string;
+  entity_id?: string | null;
+  project_id?: string | null;
+  frequency_rule: string;
+  frequency_period?: string | null;
+  event_id?: string | null;
+};
+
+export type FrequencyValidationRead = {
+  allowed: boolean;
+  decision: "allowed" | "warn" | "blocked";
+  reason: string;
+  existing_submission_id?: string | null;
+};
+
+export type MobileSyncPackageRead = {
+  assigned_entities: BeneficiaryRead[];
+  assigned_forms: DataFormRead[];
+  published_form_versions: Record<string, unknown>[];
+  reference_data: Record<string, unknown>[];
+  duplicate_rules: Record<string, unknown>[];
+  frequency_rules: Record<string, unknown>[];
+  returned_submissions: SubmissionRead[];
+  sync_conflicts: Record<string, unknown>[];
 };
 
 export type ProgramRead = {
@@ -1125,12 +1206,100 @@ export type ImportPreviewResponse = {
   duplicate_rows: number;
 };
 
+export type ImportReadinessScoreRead = {
+  score: number;
+  category: string;
+  issues: string[];
+  recommended_action: string;
+  factors: Record<string, number>;
+};
+
+export type ImportDuplicateGroupRead = {
+  group_id: string;
+  confidence: number;
+  reason: string;
+  recommended_action: string;
+  actions: string[];
+  records: {
+    row_number: number;
+    display_name: string;
+    phone_number?: string | null;
+    location?: string | null;
+    legacy_id?: string | null;
+  }[];
+};
+
+export type ImportMatchSuggestionRead = {
+  source_value: string;
+  suggested_value: string;
+  confidence: number;
+  match_type: string;
+  row_numbers: number[];
+  actions: string[];
+};
+
+export type ImportGeneratedIdRead = {
+  row_number: number;
+  generated_id: string;
+  entity_type: string;
+  legacy_id?: string | null;
+  generated_by_import: boolean;
+};
+
+export type ImportDateFormatRead = {
+  field_name: string;
+  detected_format: string;
+  normalized_preview: string[];
+  invalid_rows: number[];
+};
+
+export type ImportQualityReportRead = {
+  import_batch_id: string;
+  source_system: string;
+  records_created: number;
+  records_updated: number;
+  records_skipped: number;
+  errors: number;
+  warnings: number;
+  duplicate_candidates: number;
+  location_issues: number;
+  unlinked_submissions: number;
+  data_quality_score: number;
+  recommendations: string[];
+};
+
+export type ImportAnalysisRequest = ImportPreviewRequest & {
+  source_system?: string;
+  target_project_id?: string | null;
+};
+
+export type ImportAnalysisResponse = {
+  readiness: ImportReadinessScoreRead;
+  suggested_mapping: ImportPreviewResponse["suggested_mapping"];
+  validation_issues: ImportPreviewResponse["issues"];
+  duplicate_groups: ImportDuplicateGroupRead[];
+  location_matches: ImportMatchSuggestionRead[];
+  entity_matches: ImportMatchSuggestionRead[];
+  indicator_matches: ImportMatchSuggestionRead[];
+  generated_ids: ImportGeneratedIdRead[];
+  legacy_fields: string[];
+  date_formats: ImportDateFormatRead[];
+  gps_warnings: ImportPreviewResponse["issues"];
+  preview_counts: Record<string, number>;
+  quality_report: ImportQualityReportRead;
+  progress_percent: number;
+};
+
 export type ImportJobCreate = {
   dataset_type: string;
   source_name: string;
   source_format: string;
   total_rows: number;
   mapping?: { source_column: string; target_field: string; required?: boolean; transform?: string | null }[];
+  target_project_id?: string | null;
+  target_mode?: string;
+  source_system?: string;
+  import_reason?: string | null;
 };
 
 export type ImportJobRead = {
@@ -1144,6 +1313,14 @@ export type ImportJobRead = {
   error_rows: number;
   duplicate_rows: number;
   rollback_available: boolean;
+  target_project_id?: string | null;
+  target_mode?: string | null;
+  source_system?: string | null;
+  import_reason?: string | null;
+  successful_records?: number;
+  failed_records?: number;
+  skipped_records?: number;
+  completed_at?: string | null;
 };
 
 export type ImportRowRead = {
@@ -1170,6 +1347,38 @@ export type ImportApplyResponse = {
   updated_records: number;
   skipped_rows: number;
   dataset_type: string;
+  message: string;
+};
+
+export type ImportSupportedSourceRead = {
+  id: string;
+  label: string;
+  phase: string;
+  supported_formats: string[];
+  status: string;
+  description: string;
+};
+
+export type ImportMigrationOverviewRead = {
+  supported_types: string[];
+  supported_sources: ImportSupportedSourceRead[];
+  recent_batches: ImportJobRead[];
+  mobile_ready_outputs: string[];
+};
+
+export type ImportErrorReportRead = {
+  import_batch_id: string;
+  file_name: string;
+  status: string;
+  errors: ImportPreviewResponse["issues"];
+  warnings: ImportPreviewResponse["issues"];
+  downloadable: boolean;
+};
+
+export type ImportRollbackRead = {
+  job: ImportJobRead;
+  rolled_back_records: number;
+  skipped_records: number;
   message: string;
 };
 
@@ -1383,11 +1592,31 @@ export type FormVersioningSettings = {
   archived_versions_viewable: boolean;
 };
 
+export type FormEntityControlSettings = {
+  linked_to_entity: boolean;
+  entity_type: string;
+  creates_new_entity: boolean;
+  updates_existing_entity: boolean;
+  requires_existing_entity: boolean;
+  allows_anonymous: boolean;
+  submission_frequency: string;
+  unique_fields: string[];
+  matching_fields: string[];
+  duplicate_mode: string;
+  duplicate_threshold: number;
+  duplicate_action: "block" | "warn" | "review";
+  prefill_profile: boolean;
+  lock_prefilled_fields: boolean;
+  editable_with_reason: boolean;
+  profile_update_mode: string;
+};
+
 export type FormControlsSettings = {
   reference_bindings: FormReferenceBinding[];
   permission_rules: FormPermissionRule[];
   workflow_stages: FormWorkflowStage[];
   data_quality_rules: FormDataQualityRule[];
+  entity_controls?: FormEntityControlSettings;
   governance: FormGovernancePolicy;
   audit: FormAuditSettings;
   versioning: FormVersioningSettings;
@@ -2193,6 +2422,38 @@ export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
 
+export async function createBeneficiary(token: string, payload: BeneficiaryCreate): Promise<BeneficiaryRead> {
+  return request<BeneficiaryRead>("/operations/beneficiaries", { method: "POST", token, bodyJson: payload });
+}
+
+export async function searchEntities(token: string, query: string): Promise<BeneficiaryRead[]> {
+  return request<BeneficiaryRead[]>(`/operations/beneficiaries/search?q=${encodeURIComponent(query)}`, { token });
+}
+
+export async function checkEntityDuplicates(token: string, payload: DuplicateCheckRequest): Promise<DuplicateCandidateRead[]> {
+  return request<DuplicateCandidateRead[]>("/operations/beneficiaries/duplicate-check", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getProjectEntities(token: string, projectId: string): Promise<BeneficiaryRead[]> {
+  return request<BeneficiaryRead[]>(`/projects/${projectId}/beneficiaries`, { token });
+}
+
+export async function getEntityPrefillData(token: string, entityId: string, formId: string): Promise<EntityPrefillRead> {
+  return request<EntityPrefillRead>(`/operations/beneficiaries/${entityId}/prefill?form_id=${encodeURIComponent(formId)}`, { token });
+}
+
+export async function validateEntityFrequencyRule(token: string, payload: FrequencyValidationRequest): Promise<FrequencyValidationRead> {
+  return request<FrequencyValidationRead>("/submissions/entity-frequency/validate", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getAssignedEntitiesForMobile(token: string): Promise<BeneficiaryRead[]> {
+  return request<BeneficiaryRead[]>("/operations/mobile/assigned-entities", { token });
+}
+
+export async function getMobileSyncPackage(token: string): Promise<MobileSyncPackageRead> {
+  return request<MobileSyncPackageRead>("/operations/mobile/sync-package", { token });
+}
+
 export async function listPrograms(token: string): Promise<ProgramRead[]> {
   return request<ProgramRead[]>("/operations/programs", { token });
 }
@@ -2211,6 +2472,10 @@ export async function createProject(token: string, payload: ProjectCreate): Prom
 
 export async function getProjectDetail(token: string, projectId: string): Promise<ProjectDetailRead> {
   return request<ProjectDetailRead>(`/projects/${projectId}`, { token });
+}
+
+export async function listProjectImportJobs(token: string, projectId: string): Promise<ImportJobRead[]> {
+  return request<ImportJobRead[]>(`/projects/${projectId}/data-imports`, { token });
 }
 
 export async function listProjectTemplates(token: string): Promise<ProjectTemplateRead[]> {
@@ -2266,6 +2531,18 @@ export async function previewImport(token: string, payload: ImportPreviewRequest
   return request<ImportPreviewResponse>("/operations/data/imports/preview", { method: "POST", token, bodyJson: payload });
 }
 
+export async function analyzeImport(token: string, payload: ImportAnalysisRequest): Promise<ImportAnalysisResponse> {
+  return request<ImportAnalysisResponse>("/operations/data/imports/analyze", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getImportMigrationOverview(token: string): Promise<ImportMigrationOverviewRead> {
+  return request<ImportMigrationOverviewRead>("/operations/data/migration/overview", { token });
+}
+
+export async function listImportSupportedSources(token: string): Promise<ImportSupportedSourceRead[]> {
+  return request<ImportSupportedSourceRead[]>("/operations/data/migration/sources", { token });
+}
+
 export async function createImportJob(token: string, payload: ImportJobCreate): Promise<ImportJobRead> {
   return request<ImportJobRead>("/operations/data/imports", { method: "POST", token, bodyJson: payload });
 }
@@ -2274,10 +2551,24 @@ export async function listImportJobs(token: string): Promise<ImportJobRead[]> {
   return request<ImportJobRead[]>("/operations/data/imports", { token });
 }
 
-export async function uploadImportFile(token: string, datasetType: string, file: File): Promise<ImportUploadResponse> {
+export async function uploadImportFile(
+  token: string,
+  datasetType: string,
+  file: File,
+  options?: {
+    importReason?: string | null;
+    sourceSystem?: string;
+    targetMode?: string;
+    targetProjectId?: string | null;
+  }
+): Promise<ImportUploadResponse> {
   const body = new FormData();
   body.set("dataset_type", datasetType);
   body.set("file", file);
+  if (options?.targetProjectId) body.set("target_project_id", options.targetProjectId);
+  if (options?.targetMode) body.set("target_mode", options.targetMode);
+  if (options?.sourceSystem) body.set("source_system", options.sourceSystem);
+  if (options?.importReason) body.set("import_reason", options.importReason);
   const response = await fetch(`${getApiBaseUrl()}/operations/data/imports/upload`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, accept: "application/json" },
@@ -2305,6 +2596,26 @@ export async function updateImportRow(
 
 export async function applyImportJob(token: string, importJobId: string): Promise<ImportApplyResponse> {
   return request<ImportApplyResponse>(`/operations/data/imports/${importJobId}/apply`, { method: "POST", token });
+}
+
+export async function confirmImportJob(
+  token: string,
+  importJobId: string,
+  payload: { acknowledge_warnings?: boolean; reason: string }
+): Promise<ImportApplyResponse> {
+  return request<ImportApplyResponse>(`/operations/data/imports/${importJobId}/confirm`, { method: "POST", token, bodyJson: payload });
+}
+
+export async function rollbackImportJob(
+  token: string,
+  importJobId: string,
+  payload: { confirm: boolean; reason: string }
+): Promise<ImportRollbackRead> {
+  return request<ImportRollbackRead>(`/operations/data/imports/${importJobId}/rollback`, { method: "POST", token, bodyJson: payload });
+}
+
+export async function getImportErrorReport(token: string, importJobId: string): Promise<ImportErrorReportRead> {
+  return request<ImportErrorReportRead>(`/operations/data/imports/${importJobId}/error-report`, { token });
 }
 
 export async function createExportJob(token: string, payload: ExportJobCreate): Promise<ExportJobRead> {
@@ -2382,7 +2693,9 @@ export async function duplicateFormTemplate(
 }
 
 export const api = {
+  analyzeImport,
   applyImportJob,
+  confirmImportJob,
   createAdministrationApiKey,
   createAdministrationBackup,
   createAdministrationIntegration,
@@ -2409,6 +2722,8 @@ export const api = {
   exportFormXlsForm,
   createForm,
   getFormControls,
+  getImportErrorReport,
+  getImportMigrationOverview,
   createGovernancePolicy,
   createImportJob,
   createSurvey,
@@ -2466,6 +2781,7 @@ export const api = {
   listIndicators,
   listImportJobs,
   listImportRows,
+  listImportSupportedSources,
   listLineageEvents,
   listMasterDataEntries,
   listOperationalZones,
@@ -2479,6 +2795,7 @@ export const api = {
   listPlatformSecurityEvents,
   listPlatformSupportSessions,
   listPrograms,
+  listProjectImportJobs,
   listProjects,
   listProjectTemplates,
   listSurveyTeam,
@@ -2498,6 +2815,7 @@ export const api = {
   login,
   previewImport,
   requestAdministrationRecovery,
+  rollbackImportJob,
   reviewSubmission,
   addSurveyTeamMember,
   revokeAdministrationApiKey,

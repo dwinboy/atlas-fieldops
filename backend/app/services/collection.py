@@ -669,6 +669,12 @@ class SubmissionService:
             survey_id=payload.survey_id,
             form_id=payload.form_id,
             form_version_id=form_version.id,
+            entity_id=payload.entity_id,
+            entity_type=payload.entity_type,
+            assignment_id=payload.assignment_id,
+            supervisor_id=payload.supervisor_id,
+            frequency_period=payload.frequency_period,
+            event_id=payload.event_id,
             field_officer_id=officer.id,
             actor_user_id=actor_user_id,
             client_submission_id=payload.client_submission_id,
@@ -700,6 +706,8 @@ class SubmissionService:
                 "project_id": str(payload.project_id),
                 "survey_id": str(payload.survey_id),
                 "offline": payload.offline_created,
+                "entity_id": str(payload.entity_id) if payload.entity_id else None,
+                "entity_type": payload.entity_type,
             },
         )
         return submission

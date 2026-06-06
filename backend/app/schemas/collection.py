@@ -412,6 +412,28 @@ class FormVersioningSettings(BaseModel):
     archived_versions_viewable: bool = True
 
 
+class FormEntityControlSettings(BaseModel):
+    linked_to_entity: bool = False
+    entity_type: str = Field(default="Farmer", max_length=80)
+    creates_new_entity: bool = False
+    updates_existing_entity: bool = False
+    requires_existing_entity: bool = False
+    allows_anonymous: bool = True
+    submission_frequency: str = Field(
+        default="unlimited",
+        pattern=r"^(once_ever|once_per_project|once_per_year|once_per_season|once_per_quarter|once_per_month|once_per_event|unlimited)$",
+    )
+    unique_fields: list[str] = Field(default_factory=list, max_length=20)
+    matching_fields: list[str] = Field(default_factory=lambda: ["phone_number", "household_id", "full_name", "village"], max_length=30)
+    duplicate_mode: str = Field(default="weighted", pattern=r"^(exact|fuzzy|weighted)$")
+    duplicate_threshold: int = Field(default=90, ge=0, le=100)
+    duplicate_action: str = Field(default="block", pattern=r"^(block|warn|review)$")
+    prefill_profile: bool = True
+    lock_prefilled_fields: bool = True
+    editable_with_reason: bool = True
+    profile_update_mode: str = Field(default="with_supervisor_approval", pattern=r"^(never|after_submission|with_supervisor_approval)$")
+
+
 class FormControlsSettings(BaseModel):
     reference_bindings: list[FormReferenceBinding] = Field(default_factory=list, max_length=100)
     permission_rules: list[FormPermissionRule] = Field(
@@ -462,6 +484,7 @@ class FormControlsSettings(BaseModel):
         ],
         max_length=100,
     )
+    entity_controls: FormEntityControlSettings = Field(default_factory=FormEntityControlSettings)
     governance: FormGovernancePolicy = Field(default_factory=FormGovernancePolicy)
     audit: FormAuditSettings = Field(default_factory=FormAuditSettings)
     versioning: FormVersioningSettings = Field(default_factory=FormVersioningSettings)
@@ -624,6 +647,12 @@ class SubmissionCreate(BaseModel):
     survey_id: UUID
     form_id: UUID
     form_version: int
+    entity_id: UUID | None = None
+    entity_type: str | None = Field(default=None, max_length=80)
+    assignment_id: UUID | None = None
+    supervisor_id: UUID | None = None
+    frequency_period: str | None = Field(default=None, max_length=80)
+    event_id: str | None = Field(default=None, max_length=160)
     payload: dict[str, Any]
     captured_at: datetime
     submitted_at: datetime
@@ -644,6 +673,12 @@ class SubmissionRead(BaseModel):
     project_id: UUID | None = None
     survey_id: UUID | None = None
     form_id: UUID
+    entity_id: UUID | None = None
+    entity_type: str | None = None
+    assignment_id: UUID | None = None
+    supervisor_id: UUID | None = None
+    frequency_period: str | None = None
+    event_id: str | None = None
     field_officer_id: UUID
     status: str
     server_sequence: int
@@ -657,6 +692,22 @@ class SubmissionRead(BaseModel):
     payload_json: dict[str, Any]
 
     model_config = {"from_attributes": True}
+
+
+class EntityFrequencyValidationRequest(BaseModel):
+    form_id: UUID
+    entity_id: UUID | None = None
+    project_id: UUID | None = None
+    frequency_rule: str = Field(pattern=r"^(once_ever|once_per_project|once_per_year|once_per_season|once_per_quarter|once_per_month|once_per_event|unlimited)$")
+    frequency_period: str | None = Field(default=None, max_length=80)
+    event_id: str | None = Field(default=None, max_length=160)
+
+
+class EntityFrequencyValidationRead(BaseModel):
+    allowed: bool
+    decision: str
+    reason: str
+    existing_submission_id: UUID | None = None
 
 
 class SubmissionReviewAction(BaseModel):

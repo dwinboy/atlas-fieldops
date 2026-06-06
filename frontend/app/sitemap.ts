@@ -5,6 +5,12 @@ import { site, solutionPages, useCasePages } from "@/lib/marketing/content";
 const publicRoutes = [
   "",
   "features",
+  "demo",
+  "signup",
+  "create-organization",
+  "onboarding",
+  "donor",
+  "templates",
   "solutions",
   "use-cases",
   "pricing",

@@ -14,7 +14,7 @@ import {
   Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -167,6 +167,7 @@ export function AppShell({
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const collapsedSidebar = useWorkspaceStore((state) => state.collapsedSidebar);
@@ -179,11 +180,9 @@ export function AppShell({
   const isSupportMode = principal?.support_mode ?? false;
   const visibleNavSections = getVisibleNavigationSections(principal);
   const visibleNavItems = getVisibleNavigationItems(principal);
-  const activeItem = (
-    getNavigationItemByView(activeView) ??
+  const activeItem = (getNavigationItemByView(activeView) ??
     visibleNavItems.find((item) => !item.hiddenFromSidebar) ??
-    getNavigationItemByView("dashboard")
-  )!;
+    getNavigationItemByView("dashboard"))!;
   const activeBreadcrumbs = getBreadcrumbsForView(activeItem.id);
   const activeTone = viewToneStyles[activeItem.tone];
   const ActiveIcon = activeItem.icon;
@@ -201,6 +200,7 @@ export function AppShell({
   const accountScope = principal?.scope_type
     ? `${principal.scope_type.replace("_", " ")} access`
     : "Workspace access";
+  const focusedEditorRoute = pathname?.replace(/\/+$/, "") === "/forms/create";
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1">
@@ -261,7 +261,10 @@ export function AppShell({
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="block truncate">{item.label}</span>
-                      <HelpHint label={`About ${item.label}`} title={item.label}>
+                      <HelpHint
+                        label={`About ${item.label}`}
+                        title={item.label}
+                      >
                         {item.hint}
                       </HelpHint>
                     </span>
@@ -345,8 +348,12 @@ export function AppShell({
             </div>
             <p className="mt-1.5 text-[13px] font-semibold">Workspace ready</p>
             <div className="mt-1">
-              <HelpHint label="About workspace navigation" title="Workspace ready">
-                Navigation follows the M&E architecture: projects, forms, fieldwork, quality, reports, governance, and system controls.
+              <HelpHint
+                label="About workspace navigation"
+                title="Workspace ready"
+              >
+                Navigation follows the M&E architecture: projects, forms,
+                fieldwork, quality, reports, governance, and system controls.
               </HelpHint>
             </div>
           </div>
@@ -424,8 +431,15 @@ export function AppShell({
                   Signed in as {accountName}
                 </p>
                 <div className="hidden items-center gap-1.5 md:flex">
-                  {organizationSlug ? <span className="truncate text-xs text-muted-foreground">{organizationSlug}</span> : null}
-                  <HelpHint label="About workspace scope" title="Workspace scope">
+                  {organizationSlug ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {organizationSlug}
+                    </span>
+                  ) : null}
+                  <HelpHint
+                    label="About workspace scope"
+                    title="Workspace scope"
+                  >
                     {principal?.scope_type
                       ? `${principal.scope_type.replace("_", " ")} scoped access`
                       : "Forms, teams, reviews, and reports"}
@@ -509,115 +523,127 @@ export function AppShell({
           <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>
         ) : null}
 
-        <section
-          className={cn(
-            "sticky top-14 z-10 border-b px-3 py-2 shadow-sm backdrop-blur-xl sm:px-4 lg:px-5",
-            activeTone.header,
-          )}
-        >
-          <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-2">
-            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className={cn("section-icon h-8 w-8", activeTone.icon)}>
-                  <ActiveIcon aria-hidden="true" size={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <nav
-                      aria-label="Breadcrumb"
-                      className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
-                    >
-                      {activeBreadcrumbs.map((breadcrumb, index) => (
-                        <span
-                          className="inline-flex items-center gap-1"
-                          key={`${breadcrumb.label}-${index}`}
-                        >
-                          {index ? (
-                            <ChevronRight aria-hidden="true" size={12} />
-                          ) : null}
-                          {breadcrumb.label}
-                        </span>
-                      ))}
-                    </nav>
-                    <Badge tone={activeTone.badge}>{activeItem.route}</Badge>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <h1 className="text-lg font-semibold tracking-tight">
-                      {activeItem.label}
-                    </h1>
-                    <HelpHint label={`About ${activeItem.label}`} title={activeItem.label}>
-                      {guidance.outcome}
-                    </HelpHint>
-                    <Badge tone={activeTone.badge}>{guidance.step}</Badge>
-                  </div>
-                </div>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-line">
-                  <CheckCircle2 aria-hidden="true" className="text-success" size={13} />
-                  Workspace healthy
-                </span>
-                <Button
-                  onClick={() => setCommandOpen(true)}
-                  type="button"
-                  variant="secondary"
-                >
-                  <Command aria-hidden="true" />
-                  Search actions
-                </Button>
-                {nextActionItem ? (
-                  <Button
-                    onClick={() => {
-                      setActiveView(nextActionItem.id);
-                      router.push(nextActionItem.route);
-                    }}
-                    type="button"
-                    variant="primary"
-                  >
-                    {guidance.nextLabel ?? nextActionItem.label}
-                    <ArrowRight aria-hidden="true" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            {headerQuickLinks.length ? (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 product-scrollbar">
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Quick links
-                </span>
-                {headerQuickLinks.map((child) => (
-                  <span
-                    className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/70 px-2 text-[11px] font-medium text-muted-foreground shadow-line"
-                    key={child.route}
-                  >
-                    <a
-                      className="transition hover:text-primary"
-                      href={child.route}
-                    >
-                      {child.label}
-                    </a>
-                    <HelpHint label={`About ${child.label}`} title={child.label}>
-                      {child.description}
-                    </HelpHint>
+        {!focusedEditorRoute ? (
+          <section
+            className={cn(
+              "sticky top-14 z-10 border-b px-3 py-2 shadow-sm backdrop-blur-xl sm:px-4 lg:px-5",
+              activeTone.header,
+            )}
+          >
+            <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-2">
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className={cn("section-icon h-8 w-8", activeTone.icon)}>
+                    <ActiveIcon aria-hidden="true" size={16} />
                   </span>
-                ))}
-              </div>
-            ) : null}
-            {lastActionResult ? (
-              <section
-                className="rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5"
-                aria-live="polite"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-semibold">Last action</p>
-                  <HelpHint label="About last action" title="Last action">
-                    {lastActionResult}
-                  </HelpHint>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <nav
+                        aria-label="Breadcrumb"
+                        className="flex min-w-0 flex-wrap items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+                      >
+                        {activeBreadcrumbs.map((breadcrumb, index) => (
+                          <span
+                            className="inline-flex items-center gap-1"
+                            key={`${breadcrumb.label}-${index}`}
+                          >
+                            {index ? (
+                              <ChevronRight aria-hidden="true" size={12} />
+                            ) : null}
+                            {breadcrumb.label}
+                          </span>
+                        ))}
+                      </nav>
+                      <Badge tone={activeTone.badge}>{activeItem.route}</Badge>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <h1 className="text-lg font-semibold tracking-tight">
+                        {activeItem.label}
+                      </h1>
+                      <HelpHint
+                        label={`About ${activeItem.label}`}
+                        title={activeItem.label}
+                      >
+                        {guidance.outcome}
+                      </HelpHint>
+                      <Badge tone={activeTone.badge}>{guidance.step}</Badge>
+                    </div>
+                  </div>
                 </div>
-              </section>
-            ) : null}
-          </div>
-        </section>
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-line">
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="text-success"
+                      size={13}
+                    />
+                    Workspace healthy
+                  </span>
+                  <Button
+                    onClick={() => setCommandOpen(true)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Command aria-hidden="true" />
+                    Search actions
+                  </Button>
+                  {nextActionItem ? (
+                    <Button
+                      onClick={() => {
+                        setActiveView(nextActionItem.id);
+                        router.push(nextActionItem.route);
+                      }}
+                      type="button"
+                      variant="primary"
+                    >
+                      {guidance.nextLabel ?? nextActionItem.label}
+                      <ArrowRight aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              {headerQuickLinks.length ? (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 product-scrollbar">
+                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Quick links
+                  </span>
+                  {headerQuickLinks.map((child) => (
+                    <span
+                      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/70 px-2 text-[11px] font-medium text-muted-foreground shadow-line"
+                      key={child.route}
+                    >
+                      <a
+                        className="transition hover:text-primary"
+                        href={child.route}
+                      >
+                        {child.label}
+                      </a>
+                      <HelpHint
+                        label={`About ${child.label}`}
+                        title={child.label}
+                      >
+                        {child.description}
+                      </HelpHint>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {lastActionResult ? (
+                <section
+                  className="rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5"
+                  aria-live="polite"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-semibold">Last action</p>
+                    <HelpHint label="About last action" title="Last action">
+                      {lastActionResult}
+                    </HelpHint>
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <main className="mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
           {children}

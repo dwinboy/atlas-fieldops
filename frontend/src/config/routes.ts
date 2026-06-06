@@ -8,6 +8,8 @@ export const canonicalRoutes = {
     "/projects/closed",
     "/projects/templates",
     "/projects/:projectId/overview",
+    "/projects/:projectId/beneficiaries",
+    "/projects/:projectId/data-import",
     "/projects/:projectId/forms",
     "/projects/:projectId/indicators",
     "/projects/:projectId/locations",
@@ -54,6 +56,13 @@ export const canonicalRoutes = {
     "/submissions/rejected",
     "/submissions/returned",
     "/submissions/archived",
+  ],
+  beneficiaries: [
+    "/beneficiaries",
+    "/beneficiaries/register",
+    "/beneficiaries/import",
+    "/beneficiaries/duplicates",
+    "/beneficiaries/:entityId",
   ],
   mapping: [
     "/mapping",
@@ -123,8 +132,8 @@ export const canonicalRoutes = {
     "/administration/integrations",
     "/administration/system-settings",
     "/administration/backup-recovery",
+    "/administration/imports-migration",
   ],
 } as const;
 
 export type CanonicalRouteModule = keyof typeof canonicalRoutes;
-

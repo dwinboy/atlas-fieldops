@@ -19,7 +19,8 @@ import {
   Target,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,8 @@ import {
   type ProjectSummaryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
+import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import {
   projectSections,
   projectTabs,
@@ -197,6 +200,7 @@ function downloadCsv(
 }
 
 export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
+  const pathname = usePathname();
   const [activeSection, setActiveSection] =
     useState<ProjectSection>("dashboard");
   const [activeTab, setActiveTab] = useState<ProjectTab>("Overview");
@@ -262,6 +266,14 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     () => filterProjects(projects, activeSection),
     [activeSection, projects],
   );
+
+  useEffect(() => {
+    const match = pathname?.match(/^\/projects\/([^/]+)\/data-import\/?$/);
+    if (!match?.[1]) return;
+    setSelectedProjectId(match[1]);
+    setActiveSection("all");
+    setActiveTab("Data Import");
+  }, [pathname]);
 
   const createProjectMutation = useMutation({
     mutationFn: () =>
@@ -500,17 +512,19 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         </div>
       </div>
 
-      {selectedProject && detail ? (
+      {selectedProjectId && detail ? (
         <ProjectDetailWorkspace
           detail={detail}
           onClose={() => setSelectedProjectId(null)}
           onOpenForms={() => setActiveView("forms")}
+          onOpenBeneficiaries={() => setActiveView("beneficiaries")}
           onOpenIndicators={() => setActiveView("indicators")}
           onOpenReports={() => setActiveView("analytics")}
           onOpenSubmissions={() => setActiveView("submissions")}
           onOpenTeams={() => setActiveView("organizations")}
           tab={activeTab}
           setTab={setActiveTab}
+          token={token}
         />
       ) : null}
 
@@ -746,22 +760,26 @@ function ProjectDetailWorkspace({
   detail,
   onClose,
   onOpenForms,
+  onOpenBeneficiaries,
   onOpenIndicators,
   onOpenReports,
   onOpenSubmissions,
   onOpenTeams,
   setTab,
   tab,
+  token,
 }: {
   detail: ProjectDetailRead;
   onClose: () => void;
   onOpenForms: () => void;
+  onOpenBeneficiaries: () => void;
   onOpenIndicators: () => void;
   onOpenReports: () => void;
   onOpenSubmissions: () => void;
   onOpenTeams: () => void;
   setTab: (tab: ProjectTab) => void;
   tab: ProjectTab;
+  token: string | null;
 }) {
   return (
     <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
@@ -801,6 +819,15 @@ function ProjectDetailWorkspace({
         ))}
       </div>
       {tab === "Overview" ? <ProjectOverview detail={detail} /> : null}
+      {tab === "Beneficiaries" ? (
+        <ProjectBeneficiariesPanel
+          onOpenRegistry={onOpenBeneficiaries}
+          projectId={detail.id}
+        />
+      ) : null}
+      {tab === "Data Import" ? (
+        <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+      ) : null}
       {tab === "Forms" ? (
         <RelatedTab
           actionLabel="Open Forms"

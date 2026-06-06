@@ -12,7 +12,6 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { Dashboard } from "@/components/Dashboard";
 import { FormTemplateLibrary } from "@/components/FormTemplateLibrary";
 import {
-  BeneficiaryRegistry,
   CaseManagement,
   ConnectivityCenter,
   DataInteroperabilityCenter,
@@ -43,6 +42,7 @@ import {
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
 import { AdministrationModule } from "@/modules/administration/AdministrationModule";
+import { BeneficiariesModule } from "@/modules/beneficiaries/BeneficiariesModule";
 import { DataQualityModule } from "@/modules/data-quality/DataQualityModule";
 import { FieldOperationsModule } from "@/modules/field-operations/FieldOperationsModule";
 import { FormsModule } from "@/modules/forms/FormsModule";
@@ -63,6 +63,7 @@ function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
   if (path.startsWith("/forms")) return "forms";
   if (path.startsWith("/field-operations")) return "officers";
   if (path.startsWith("/submissions")) return "submissions";
+  if (path.startsWith("/beneficiaries")) return "beneficiaries";
   if (path.startsWith("/mapping")) return "map";
   if (path.startsWith("/indicators")) return "indicators";
   if (path.startsWith("/reports")) return "analytics";
@@ -340,7 +341,7 @@ export function WorkspaceApp() {
     dataQuality: <DataQualityModule token={token} principal={principalQuery.data} />,
     programs: <ProjectsModule token={token} principal={principalQuery.data} />,
     surveys: <SurveyManagement token={token} />,
-    beneficiaries: <BeneficiaryRegistry token={token} />,
+    beneficiaries: <BeneficiariesModule token={token} principal={principalQuery.data} />,
     indicators: <IndicatorsModule token={token} principal={principalQuery.data} />,
     organizations: moduleWorkspace(
       "organizations",

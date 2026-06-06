@@ -281,6 +281,7 @@ export const previewQualityIssues: QualityIssue[] = [
 ];
 
 export const previewDuplicateGroups: DuplicateGroup[] = [
+  { confidence: 96, fields: ["Phone Number", "Household ID", "Name + Village", "GPS within 50m"], id: "dup-entity-frm-2026-000001", matchingMethod: "Rule-Based Match", records: ["FRM-2026-000001", "FRM-2026-000137"], severity: "Critical", status: "Assigned" },
   { confidence: 94, fields: ["Beneficiary ID", "Phone Number", "GPS Coordinates"], id: "dup-hh-2409", matchingMethod: "Rule-Based Match", records: ["SUB-2409", "SUB-2411"], severity: "High", status: "Assigned" },
   { confidence: 88, fields: ["Household ID", "National ID"], id: "dup-hh-1981", matchingMethod: "Exact Match", records: ["SUB-1981", "SUB-1984"], severity: "Medium", status: "Detected" },
   { confidence: 76, fields: ["Custom Fields", "Phone Number"], id: "dup-beneficiary-55", matchingMethod: "Fuzzy Match", records: ["SUB-1660", "SUB-1668", "SUB-1672"], severity: "Low", status: "Under Investigation" },

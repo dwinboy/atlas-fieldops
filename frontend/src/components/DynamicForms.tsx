@@ -33,6 +33,7 @@ import {
   EyeOff,
   FileDown,
   FileUp,
+  Fingerprint,
   GitBranch,
   GripVertical,
   Grid3X3,
@@ -330,6 +331,7 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
 }
 
 type DynamicFormsProps = {
+  compactBuilder?: boolean;
   contextProjectName?: string;
   initialDraft?: DynamicForm;
   onFormChange?: (form: DynamicForm) => void;
@@ -357,6 +359,13 @@ type BuilderAssistantMode =
   | "readiness"
   | "logic";
 type BuilderFocusPanel = "build" | "structure" | "preview";
+type FocusSettingsTab =
+  | "common"
+  | "response"
+  | "logic"
+  | "validation"
+  | "data"
+  | "appearance";
 type DistributionChannel =
   | "survey_app"
   | "web_link"
@@ -370,6 +379,12 @@ type FieldPreset = {
   required?: boolean;
   options?: string[];
   validation?: FormField["validation"];
+  repeat?: FormField["repeat"];
+};
+type QuestionSuggestion = FieldPreset & {
+  confidence: "Best match" | "Good option" | "Alternative";
+  reason: string;
+  settings: string[];
 };
 type SectionTemplate = {
   id: string;
@@ -493,6 +508,142 @@ const quickFieldPresets: FieldPreset[] = [
     label: "Consent signature",
     type: "signature",
     hint: "Respondent consent or acknowledgement.",
+  },
+  {
+    id: "consent-yes-no",
+    label: "Consent yes/no",
+    type: "radio",
+    hint: "Confirm consent before continuing data collection.",
+    options: ["Yes", "No"],
+    required: true,
+  },
+  {
+    id: "household-id",
+    label: "Household ID",
+    type: "text",
+    hint: "Unique household identifier.",
+    required: true,
+    validation: { pattern: "^[A-Z0-9-]{3,30}$" },
+  },
+  {
+    id: "beneficiary-id",
+    label: "Beneficiary ID",
+    type: "barcode",
+    hint: "Scan or enter the beneficiary registration code.",
+    required: true,
+  },
+  {
+    id: "national-id",
+    label: "National ID",
+    type: "text",
+    hint: "Government-issued identification number.",
+    validation: { minLength: 6, maxLength: 30 },
+  },
+  {
+    id: "district-list",
+    label: "District",
+    type: "dropdown",
+    hint: "Select the official district from controlled reference data.",
+    options: ["District A", "District B", "District C"],
+    required: true,
+  },
+  {
+    id: "community-list",
+    label: "Community",
+    type: "dropdown",
+    hint: "Select the official community under the selected district.",
+    options: ["Community 1", "Community 2", "Community 3"],
+    required: true,
+  },
+  {
+    id: "facility-list",
+    label: "Facility",
+    type: "dropdown",
+    hint: "Select the school, clinic, water point, or service facility.",
+    options: ["Facility 1", "Facility 2", "Facility 3"],
+  },
+  {
+    id: "household-size",
+    label: "Household size",
+    type: "number",
+    hint: "Total number of people living in the household.",
+    required: true,
+    validation: { min: 1, max: 50 },
+  },
+  {
+    id: "currency-amount",
+    label: "Amount spent",
+    type: "currency",
+    hint: "Validated currency amount.",
+    validation: { min: 0 },
+  },
+  {
+    id: "crop-quantity",
+    label: "Crop quantity",
+    type: "decimal",
+    hint: "Quantity produced, sold, or received.",
+    validation: { min: 0 },
+  },
+  {
+    id: "visit-date",
+    label: "Visit date",
+    type: "date",
+    hint: "Date when the field visit happened.",
+    required: true,
+  },
+  {
+    id: "interview-start",
+    label: "Interview start time",
+    type: "time",
+    hint: "Start time used for duration quality checks.",
+  },
+  {
+    id: "interview-duration",
+    label: "Interview duration",
+    type: "calculated",
+    hint: "Calculated or entered duration for quality review.",
+    validation: { min: 3, max: 240 },
+  },
+  {
+    id: "gps-boundary-check",
+    label: "GPS boundary check",
+    type: "geofence",
+    hint: "Capture GPS and validate it against the assigned collection area.",
+    required: true,
+    validation: { accuracyMax: 20 },
+  },
+  {
+    id: "household-members",
+    label: "Household members repeat group",
+    type: "repeat_group",
+    hint: "Repeat for each household member.",
+    repeat: { min: 1, max: 20 },
+  },
+  {
+    id: "likert-satisfaction",
+    label: "Satisfaction scale",
+    type: "likert",
+    hint: "Measure agreement or satisfaction consistently.",
+    options: [
+      "Strongly disagree",
+      "Disagree",
+      "Neutral",
+      "Agree",
+      "Strongly agree",
+    ],
+  },
+  {
+    id: "risk-rating",
+    label: "Risk rating",
+    type: "rating",
+    hint: "Score risk, quality, or performance.",
+    validation: { min: 1, max: 5 },
+  },
+  {
+    id: "qr-registration",
+    label: "QR registration code",
+    type: "qr",
+    hint: "Scan a QR code for registration, attendance, or asset tracking.",
   },
 ];
 
@@ -647,6 +798,374 @@ function slugify(value: string): string {
   );
 }
 
+function variableNameFromQuestion(
+  question: string,
+  existingNames: string[],
+): string {
+  const stopWords = new Set([
+    "a",
+    "an",
+    "and",
+    "are",
+    "can",
+    "did",
+    "do",
+    "does",
+    "for",
+    "has",
+    "have",
+    "how",
+    "is",
+    "of",
+    "please",
+    "respondent",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "your",
+  ]);
+  const base =
+    question
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word && !stopWords.has(word))
+      .slice(0, 5)
+      .join("_") || `question_${Date.now().toString(36)}`;
+  let candidate = base;
+  let suffix = 2;
+  while (existingNames.includes(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function hasFieldTag(field: FormField, tag: string): boolean {
+  return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
+}
+
+function fieldAppearanceWithTag(
+  field: FormField,
+  tag: string,
+  enabled: boolean,
+): FormField["appearance"] {
+  const token = `[${tag}]`;
+  const current = field.appearance?.helpText ?? "";
+  const cleaned = current.replace(token, "").replace(/\s+/g, " ").trim();
+  return {
+    ...field.appearance,
+    helpText: enabled ? `${cleaned} ${token}`.trim() : cleaned,
+  };
+}
+
+function inferQuestionSuggestions(question: string): QuestionSuggestion[] {
+  const normalized = question.trim().toLowerCase();
+  const addDefaults = (suggestions: QuestionSuggestion[]) => {
+    const unique = suggestions.filter(
+      (suggestion, index, all) =>
+        all.findIndex((candidate) => candidate.type === suggestion.type) ===
+        index,
+    );
+    return unique.slice(0, 4);
+  };
+
+  if (!normalized) {
+    return [
+      {
+        confidence: "Best match",
+        id: "question-text",
+        label: "Short answer",
+        type: "text",
+        hint: "Best for names, IDs, and short responses.",
+        reason: "Start by typing the question and Atlas will refine this.",
+        settings: ["Required optional", "Auto variable name"],
+      },
+      {
+        confidence: "Good option",
+        id: "question-choice",
+        label: "Single choice",
+        type: "radio",
+        hint: "Best when the respondent must choose one answer.",
+        options: ["Yes", "No"],
+        reason: "Useful for eligibility, confirmation, and status questions.",
+        settings: ["Choice options", "Mobile friendly"],
+      },
+      {
+        confidence: "Alternative",
+        id: "question-number",
+        label: "Number",
+        type: "number",
+        hint: "Best for age, counts, quantities, and scores.",
+        validation: { min: 0 },
+        reason: "Use when the answer should be calculated or validated.",
+        settings: ["Min value 0", "Range ready"],
+      },
+    ];
+  }
+
+  const suggestions: QuestionSuggestion[] = [];
+  const includesAny = (words: string[]) =>
+    words.some((word) => normalized.includes(word));
+
+  if (includesAny(["age", "years old"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-age",
+      label: "Age question",
+      type: "number",
+      hint: "Age in completed years.",
+      required: true,
+      validation: { min: 0, max: 120 },
+      reason: "Age should be numeric and range checked.",
+      settings: ["Required", "Min 0", "Max 120"],
+    });
+  }
+
+  if (includesAny(["gender", "sex"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-gender",
+      label: "Gender question",
+      type: "radio",
+      hint: "Choose one demographic category.",
+      options: ["Female", "Male", "Prefer not to say"],
+      reason: "Gender is usually a single-choice response.",
+      settings: ["3 options", "Disaggregation ready"],
+    });
+  }
+
+  if (includesAny(["consent", "agree", "permission", "participate"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-consent",
+      label: "Consent question",
+      type: "radio",
+      hint: "Confirm respondent consent before continuing.",
+      required: true,
+      options: ["Yes", "No"],
+      reason: "Consent should be explicit and required.",
+      settings: ["Required", "Yes / No", "Logic ready"],
+    });
+  }
+
+  if (
+    includesAny([
+      "district",
+      "region",
+      "community",
+      "village",
+      "country",
+      "facility",
+      "school",
+    ])
+  ) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-reference-location",
+      label: "Controlled location list",
+      type: "dropdown",
+      hint: "Bind this to official reference data after adding.",
+      required: true,
+      reason: "Locations should use controlled reference lists.",
+      settings: ["Dropdown", "Reference data suggested"],
+    });
+  }
+
+  if (includesAny(["gps", "coordinates", "geolocation", "location point"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-gps",
+      label: "GPS location",
+      type: "gps",
+      hint: "Capture field coordinates with accuracy control.",
+      required: true,
+      validation: { accuracyMax: 25 },
+      reason: "This question asks for field location evidence.",
+      settings: ["Required", "Accuracy <= 25m"],
+    });
+  }
+
+  if (includesAny(["photo", "picture", "image", "evidence"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-photo",
+      label: "Photo evidence",
+      type: "image",
+      hint: "Capture or upload proof from the field.",
+      reason: "Evidence questions usually need image capture.",
+      settings: ["Media upload", "Offline retry ready"],
+    });
+  }
+
+  if (includesAny(["signature", "sign"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-signature",
+      label: "Signature",
+      type: "signature",
+      hint: "Capture respondent acknowledgement.",
+      reason: "Signature questions need a signature capture field.",
+      settings: ["Consent proof", "Attachment ready"],
+    });
+  }
+
+  if (includesAny(["phone", "mobile", "telephone", "contact number"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-phone",
+      label: "Phone number",
+      type: "phone",
+      hint: "Enter a valid phone number.",
+      validation: { pattern: "^[0-9+\\-\\s()]{7,}$" },
+      reason: "Phone numbers need phone formatting validation.",
+      settings: ["Phone format", "Validation ready"],
+    });
+  }
+
+  if (includesAny(["email", "e-mail"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-email",
+      label: "Email address",
+      type: "email",
+      hint: "Enter a valid email address.",
+      validation: { pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
+      reason: "Email questions should validate email format.",
+      settings: ["Email format", "Validation ready"],
+    });
+  }
+
+  if (includesAny(["date", "birthday", "birth date", "when"])) {
+    suggestions.push({
+      confidence: "Good option",
+      id: "inferred-date",
+      label: "Date",
+      type: "date",
+      hint: "Select a date.",
+      reason: "This question appears to ask for a date.",
+      settings: ["Calendar input", "Mobile friendly"],
+    });
+  }
+
+  if (
+    includesAny([
+      "amount",
+      "cost",
+      "price",
+      "income",
+      "budget",
+      "money",
+      "currency",
+    ])
+  ) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-currency",
+      label: "Currency amount",
+      type: "currency",
+      hint: "Enter a money amount.",
+      validation: { min: 0 },
+      reason: "Money questions should use a currency field.",
+      settings: ["Min 0", "Numeric validation"],
+    });
+  }
+
+  if (includesAny(["how many", "count", "number of", "quantity", "total"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-count",
+      label: "Number",
+      type: "number",
+      hint: "Enter a count or quantity.",
+      validation: { min: 0 },
+      reason: "Counts should be numeric.",
+      settings: ["Min 0", "Numeric validation"],
+    });
+  }
+
+  if (includesAny(["score", "rating", "satisfaction", "quality level"])) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-rating",
+      label: "Rating",
+      type: "rating",
+      hint: "Select a score or rating.",
+      validation: { min: 1, max: 5 },
+      reason: "Scores work best as rating fields.",
+      settings: ["1 to 5", "Quality scoring ready"],
+    });
+  }
+
+  if (
+    includesAny([
+      "list all",
+      "household members",
+      "children",
+      "assets",
+      "repeat",
+      "each member",
+    ])
+  ) {
+    suggestions.push({
+      confidence: "Best match",
+      id: "inferred-repeat-group",
+      label: "Repeat group",
+      type: "repeat_group",
+      hint: "Collect the same questions for multiple records.",
+      reason: "This sounds like a roster or repeating list.",
+      repeat: { min: 0, max: 20 },
+      settings: ["Repeatable", "Max 20 records"],
+    });
+  }
+
+  if (/^(is|are|do|does|did|has|have|can|will|was|were)\b/.test(normalized)) {
+    suggestions.push({
+      confidence: suggestions.length ? "Good option" : "Best match",
+      id: "inferred-yes-no",
+      label: "Yes / No",
+      type: "radio",
+      hint: "Choose one response.",
+      options: ["Yes", "No"],
+      reason: "This question reads like a confirmation question.",
+      settings: ["Yes / No", "Logic ready"],
+    });
+  }
+
+  if (
+    includesAny(["describe", "explain", "comments", "notes", "details", "why"])
+  ) {
+    suggestions.push({
+      confidence: suggestions.length ? "Alternative" : "Best match",
+      id: "inferred-long-text",
+      label: "Long answer",
+      type: "textarea",
+      hint: "Enter detailed notes.",
+      reason: "Open-ended questions need space for longer answers.",
+      settings: ["Long text", "Enumerator notes"],
+    });
+  }
+
+  suggestions.push({
+    confidence: suggestions.length ? "Alternative" : "Best match",
+    id: "inferred-short-text",
+    label: "Short answer",
+    type: "text",
+    hint: "Enter a short response.",
+    reason: "Safe default for open text responses.",
+    settings: ["Short text", "Auto variable name"],
+  });
+
+  return addDefaults(suggestions);
+}
+
 function persistedFormToLocal(form: DataFormRead): DynamicForm {
   const pageId = `${form.id}-page-1`;
   const sectionId = `${form.id}-summary`;
@@ -709,6 +1228,7 @@ function persistedFormToLocal(form: DataFormRead): DynamicForm {
 
 type FormControlsTab =
   | "overview"
+  | "entity"
   | "reference"
   | "permissions"
   | "workflow"
@@ -766,6 +1286,7 @@ type ReviewAction =
 
 const formControlsTabs = [
   ["overview", ShieldCheck, "Overview"],
+  ["entity", Fingerprint, "Entity Controls"],
   ["reference", Database, "Reference Data"],
   ["permissions", ShieldCheck, "Permissions"],
   ["workflow", Workflow, "Workflow"],
@@ -1071,6 +1592,31 @@ function createDefaultFormControls(form?: DynamicForm): FormControlsSettings {
 
   return {
     reference_bindings: [],
+    entity_controls: {
+      linked_to_entity: true,
+      entity_type: "Farmer",
+      creates_new_entity: false,
+      updates_existing_entity: false,
+      requires_existing_entity: true,
+      allows_anonymous: false,
+      submission_frequency: "once_per_project",
+      unique_fields: ["beneficiary_uid", "national_id"],
+      matching_fields: [
+        "phone_number",
+        "household_id",
+        "full_name",
+        "date_of_birth",
+        "village",
+        "gps",
+      ],
+      duplicate_mode: "weighted",
+      duplicate_threshold: 90,
+      duplicate_action: "block",
+      prefill_profile: true,
+      lock_prefilled_fields: true,
+      editable_with_reason: true,
+      profile_update_mode: "with_supervisor_approval",
+    },
     permission_rules: [
       {
         subject_type: "role",
@@ -1229,6 +1775,10 @@ function normalizeFormControls(
     return defaults;
   }
   const record = value as Partial<FormControlsSettings>;
+  const defaultEntityControls =
+    defaults.entity_controls as NonNullable<
+      FormControlsSettings["entity_controls"]
+    >;
 
   return {
     reference_bindings: Array.isArray(record.reference_bindings)
@@ -1243,6 +1793,10 @@ function normalizeFormControls(
     data_quality_rules: Array.isArray(record.data_quality_rules)
       ? record.data_quality_rules
       : defaults.data_quality_rules,
+    entity_controls: {
+      ...defaultEntityControls,
+      ...(record.entity_controls ?? {}),
+    },
     governance: { ...defaults.governance, ...(record.governance ?? {}) },
     audit: { ...defaults.audit, ...(record.audit ?? {}) },
     versioning: { ...defaults.versioning, ...(record.versioning ?? {}) },
@@ -1532,23 +2086,113 @@ function SortableField({
   );
 }
 
+function FocusQuestionRow({
+  field,
+  index,
+  selected,
+  onDelete,
+  onSelect,
+}: {
+  field: FormField;
+  index: number;
+  selected: boolean;
+  onDelete: () => void;
+  onSelect: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+  const Icon = fieldTypeIcons[field.type] ?? Type;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "group flex min-h-16 w-full items-center gap-2 border-b px-4 py-3 transition hover:bg-muted/60",
+        selected && "bg-primary/5 text-primary",
+        isDragging && "relative z-20 bg-panel shadow-elevated",
+      )}
+    >
+      <button
+        aria-label={`Drag ${field.label} to reorder`}
+        className="flex h-8 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        onClick={(event) => event.stopPropagation()}
+        title="Drag to reorder"
+        type="button"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" size={15} />
+      </button>
+      <button
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        onClick={onSelect}
+        type="button"
+      >
+        <span className="w-7 shrink-0 text-sm font-semibold">{index + 1}.</span>
+        <span className="min-w-0 flex-1">
+          <span className="line-clamp-2 text-sm font-semibold text-foreground">
+            {field.label}
+          </span>
+          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Icon aria-hidden="true" size={12} />
+            {field.type.replace("_", " ")}
+            {field.required ? " · mandatory" : ""}
+          </span>
+        </span>
+      </button>
+      <Button
+        aria-label={`Delete ${field.label}`}
+        className="opacity-70 group-hover:opacity-100"
+        onClick={onDelete}
+        size="icon"
+        title="Delete question"
+        type="button"
+        variant="ghost"
+      >
+        <Trash2 aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
+
 function FieldPropertiesPanel({
   field,
   form,
+  logicActionKind,
+  logicConditionFieldId,
+  logicConditionValue,
   onApplySmartSetup,
   onBindReference,
+  onAddVisualLogicRule,
   onTabChange,
   onUpdateForm,
+  setLogicActionKind,
+  setLogicConditionFieldId,
+  setLogicConditionValue,
   tab,
 }: {
   field?: FormField;
   form?: DynamicForm;
+  logicActionKind: LogicRule["kind"];
+  logicConditionFieldId: string;
+  logicConditionValue: string;
   onApplySmartSetup: (
     kind: "required" | "email" | "phone" | "gps" | "yes_no" | "skip_rule",
   ) => void;
+  onAddVisualLogicRule: () => void;
   onBindReference: (field?: FormField) => void;
   onTabChange: (tab: RightPanelTab) => void;
   onUpdateForm: (form: DynamicForm) => void;
+  setLogicActionKind: (kind: LogicRule["kind"]) => void;
+  setLogicConditionFieldId: (fieldId: string) => void;
+  setLogicConditionValue: (value: string) => void;
   tab: RightPanelTab;
 }) {
   if (!form || !field) {
@@ -1902,6 +2546,70 @@ function FieldPropertiesPanel({
 
       {tab === "logic" ? (
         <div className="mt-4 space-y-3">
+          <div className="rounded-md border bg-primary/5 p-3">
+            <div className="flex items-center gap-2">
+              <Sparkles aria-hidden="true" className="text-primary" size={15} />
+              <p className="text-sm font-semibold">Build logic as a sentence</p>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Choose a condition. Atlas converts it into a form logic rule.
+            </p>
+            <div className="mt-3 grid gap-2">
+              <Select
+                value={
+                  logicActionKind === "hide" ||
+                  logicActionKind === "required" ||
+                  logicActionKind === "skip"
+                    ? logicActionKind
+                    : "show"
+                }
+                onChange={(event) =>
+                  setLogicActionKind(event.target.value as LogicRule["kind"])
+                }
+              >
+                <option value="show">Show this question when</option>
+                <option value="hide">Hide this question when</option>
+                <option value="required">Require this question when</option>
+                <option value="skip">Skip to this question when</option>
+              </Select>
+              <Select
+                value={
+                  logicConditionFieldId ||
+                  form.fields.find((candidate) => candidate.id !== field.id)
+                    ?.id ||
+                  ""
+                }
+                onChange={(event) =>
+                  setLogicConditionFieldId(event.target.value)
+                }
+              >
+                {form.fields
+                  .filter((candidate) => candidate.id !== field.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.label}
+                    </option>
+                  ))}
+              </Select>
+              <Input
+                onChange={(event) => setLogicConditionValue(event.target.value)}
+                placeholder="Answer value, for example Yes, Female, or High"
+                value={logicConditionValue}
+              />
+              <Button
+                disabled={
+                  form.fields.filter((candidate) => candidate.id !== field.id)
+                    .length === 0
+                }
+                onClick={onAddVisualLogicRule}
+                type="button"
+                variant="primary"
+              >
+                <Plus aria-hidden="true" />
+                Add sentence logic
+              </Button>
+            </div>
+          </div>
           <div className="rounded-md border bg-background p-3">
             <p className="text-sm font-semibold">Visual logic builder</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -2191,6 +2899,7 @@ function FieldPropertiesPanel({
 }
 
 export function DynamicForms({
+  compactBuilder = false,
   contextProjectName,
   initialDraft,
   onFormChange,
@@ -2213,6 +2922,7 @@ export function DynamicForms({
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>("field");
   const [builderFocusPanel, setBuilderFocusPanel] =
     useState<BuilderFocusPanel>("build");
+  const [builderFocusMode, setBuilderFocusMode] = useState(true);
   const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
     Record<string, boolean>
   >({});
@@ -2242,6 +2952,17 @@ export function DynamicForms({
   const [builderAssistantMode, setBuilderAssistantMode] =
     useState<BuilderAssistantMode>("question");
   const [smartFieldQuery, setSmartFieldQuery] = useState("");
+  const [questionComposerText, setQuestionComposerText] = useState("");
+  const [logicConditionFieldId, setLogicConditionFieldId] = useState("");
+  const [logicConditionValue, setLogicConditionValue] = useState("");
+  const [logicActionKind, setLogicActionKind] =
+    useState<LogicRule["kind"]>("show");
+  const [advancedLogicKind, setAdvancedLogicKind] =
+    useState<LogicRule["kind"]>("validation");
+  const [advancedLogicExpression, setAdvancedLogicExpression] = useState("");
+  const [advancedLogicMessage, setAdvancedLogicMessage] = useState("");
+  const [focusSettingsTab, setFocusSettingsTab] =
+    useState<FocusSettingsTab>("common");
   const [newFormDialogOpen, setNewFormDialogOpen] = useState(false);
   const [newFormName, setNewFormName] = useState("New survey form");
   const [newFormDescription, setNewFormDescription] = useState("");
@@ -2828,6 +3549,16 @@ export function DynamicForms({
         label: field.label,
         type: field.type,
         hint: field.description,
+        options: [
+          "select",
+          "dropdown",
+          "multiselect",
+          "radio",
+          "checkbox",
+        ].includes(field.type)
+          ? ["Yes", "No"]
+          : undefined,
+        required: true,
       })),
     );
     const deduped = [...quickFieldPresets, ...catalogPresets].filter(
@@ -2837,7 +3568,7 @@ export function DynamicForms({
     );
     const needle = smartFieldQuery.trim().toLowerCase();
     if (!needle) {
-      return quickFieldPresets.slice(0, 8);
+      return deduped;
     }
     return deduped
       .filter((preset) =>
@@ -2846,8 +3577,13 @@ export function DynamicForms({
           .toLowerCase()
           .includes(needle),
       )
-      .slice(0, 8);
+      .slice(0, 24);
   }, [smartFieldQuery]);
+  const questionTypeSuggestions = useMemo(
+    () => inferQuestionSuggestions(questionComposerText),
+    [questionComposerText],
+  );
+  const recommendedQuestionSuggestion = questionTypeSuggestions[0];
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
@@ -3438,6 +4174,34 @@ export function DynamicForms({
     });
   }
 
+  function deleteQuestion(fieldId: string) {
+    if (!selectedForm) {
+      return;
+    }
+    const fieldIndex = selectedForm.fields.findIndex(
+      (field) => field.id === fieldId,
+    );
+    const field = selectedForm.fields[fieldIndex];
+    if (!field) {
+      return;
+    }
+    const remainingFields = selectedForm.fields.filter(
+      (candidate) => candidate.id !== fieldId,
+    );
+    const nextSelectedField =
+      remainingFields[fieldIndex] ??
+      remainingFields[fieldIndex - 1] ??
+      remainingFields[0];
+    updateSelectedForm(removeField(selectedForm, fieldId));
+    setSelectedFieldId(nextSelectedField?.id ?? "");
+    setBuilderResult(`${field.label} was removed from this draft form.`);
+    pushToast({
+      title: "Question deleted",
+      description: `${field.label} was removed from the form canvas.`,
+      tone: "success",
+    });
+  }
+
   function saveSelectedForm(publish: boolean) {
     if (!selectedForm) {
       return;
@@ -3771,7 +4535,10 @@ export function DynamicForms({
   function openFieldSettings(fieldId: string, tab: RightPanelTab = "field") {
     setSelectedFieldId(fieldId);
     setRightPanelTab(tab);
-    if (typeof window !== "undefined" && window.innerWidth < 1280) {
+    if (
+      builderFocusMode ||
+      (typeof window !== "undefined" && window.innerWidth < 1280)
+    ) {
       setFieldSettingsDialogOpen(true);
     }
   }
@@ -3802,12 +4569,104 @@ export function DynamicForms({
     }
     const field = fieldFromPreset(preset, section);
     updateSelectedForm(addField(selectedForm, field));
-    openFieldSettings(field.id);
+    setSelectedFieldId(field.id);
+    setRightPanelTab("field");
+    if (!builderFocusMode) {
+      openFieldSettings(field.id);
+    }
     setBuilderResult(
       `${preset.label} was added with beginner-friendly defaults.`,
     );
     setBuilderAssistantOpen(true);
     setBuilderActionDialogOpen(false);
+  }
+
+  function addTypedQuestionFromPreset(preset: FieldPreset) {
+    if (!selectedForm) {
+      return;
+    }
+    const question = questionComposerText.trim();
+    if (!question) {
+      addPresetField(preset);
+      return;
+    }
+    const section = activeSection ?? selectedForm.sections[0];
+    if (!section) {
+      return;
+    }
+    const field = fieldFromPreset(preset, section);
+    const existingNames = selectedForm.fields
+      .map((candidate) => candidate.variableName)
+      .filter((name): name is string => Boolean(name));
+    const nextField: FormField = {
+      ...field,
+      label: question,
+      variableName: variableNameFromQuestion(question, existingNames),
+    };
+    updateSelectedForm(addField(selectedForm, nextField));
+    setQuestionComposerText("");
+    setSelectedFieldId(nextField.id);
+    setRightPanelTab("field");
+    setFocusSettingsTab("common");
+    setBuilderActionDialogOpen(false);
+    setBuilderAssistantOpen(true);
+    setBuilderResult(
+      `${question} was added as ${preset.label}. Default settings are ready and can be edited on the right.`,
+    );
+    pushToast({
+      title: "Question added",
+      description: `${preset.label} defaults were applied.`,
+      tone: "success",
+    });
+  }
+
+  function addQuestionFromComposer(suggestion: QuestionSuggestion) {
+    if (!selectedForm) {
+      return;
+    }
+    const question = questionComposerText.trim();
+    if (!question) {
+      pushToast({
+        title: "Write the question first",
+        description:
+          "Type the question you want field officers to ask, then choose the response type.",
+        tone: "warning",
+      });
+      return;
+    }
+    const section = activeSection ?? selectedForm.sections[0];
+    if (!section) {
+      return;
+    }
+    const field = createField(suggestion.type, section.id, section.pageId);
+    const existingNames = selectedForm.fields
+      .map((candidate) => candidate.variableName)
+      .filter((name): name is string => Boolean(name));
+    const nextField: FormField = {
+      ...field,
+      label: question,
+      hint: suggestion.hint,
+      options: suggestion.options ?? field.options,
+      required: suggestion.required ?? field.required,
+      validation: { ...field.validation, ...suggestion.validation },
+      variableName: variableNameFromQuestion(question, existingNames),
+      repeat: suggestion.repeat ?? field.repeat,
+    };
+    updateSelectedForm(addField(selectedForm, nextField));
+    setQuestionComposerText("");
+    setSelectedFieldId(nextField.id);
+    setRightPanelTab("field");
+    if (!builderFocusMode) {
+      openFieldSettings(nextField.id);
+    }
+    setBuilderResult(
+      `${question} was added as ${suggestion.type.replace("_", " ")}. Atlas suggested ${suggestion.settings.join(", ").toLowerCase()}.`,
+    );
+    pushToast({
+      title: "Question added",
+      description: `${suggestion.confidence}: ${suggestion.reason}`,
+      tone: "success",
+    });
   }
 
   function addSectionTemplate(template: SectionTemplate) {
@@ -3897,6 +4756,93 @@ export function DynamicForms({
     setBuilderResult("Smart setup was applied to the selected field.");
     setBuilderAssistantOpen(true);
     setBuilderActionDialogOpen(false);
+  }
+
+  function addVisualLogicRule() {
+    if (!selectedForm || !selectedField) {
+      return;
+    }
+    const sourceField =
+      selectedForm.fields.find((field) => field.id === logicConditionFieldId) ??
+      selectedForm.fields.find((field) => field.id !== selectedField.id);
+    if (!sourceField) {
+      pushToast({
+        title: "Add another question first",
+        description:
+          "Logic needs at least one previous question to use as the condition.",
+        tone: "warning",
+      });
+      return;
+    }
+    const variable = sourceField.variableName ?? sourceField.id;
+    const value = logicConditionValue.trim() || "Yes";
+    const expression = `\${${variable}} = '${value.replaceAll("'", "\\'")}'`;
+    updateSelectedForm(
+      updateField(selectedForm, selectedField.id, {
+        logic: [
+          ...(selectedField.logic ?? []),
+          {
+            id: `${selectedField.id}-${logicActionKind}-${Date.now()}`,
+            kind: logicActionKind,
+            expression,
+            message: `${logicActionKind.replace("_", " ")} this question when ${sourceField.label} is ${value}.`,
+            targetId: selectedField.id,
+          },
+        ],
+      }),
+    );
+    setRightPanelTab("logic");
+    setBuilderResult(
+      `Logic added: ${logicActionKind.replace("_", " ")} "${selectedField.label}" when "${sourceField.label}" is "${value}".`,
+    );
+    pushToast({
+      title: "Logic rule added",
+      description:
+        "Atlas converted the sentence rule into a form logic expression.",
+      tone: "success",
+    });
+  }
+
+  function addAdvancedLogicRule() {
+    if (!selectedForm || !selectedField) {
+      return;
+    }
+    const expression = advancedLogicExpression.trim();
+    if (!expression) {
+      pushToast({
+        title: "Logic expression required",
+        description:
+          "Enter the condition or formula that should control this question.",
+        tone: "warning",
+      });
+      return;
+    }
+    updateSelectedForm(
+      updateField(selectedForm, selectedField.id, {
+        logic: [
+          ...(selectedField.logic ?? []),
+          {
+            id: `${selectedField.id}-${advancedLogicKind}-${Date.now()}`,
+            kind: advancedLogicKind,
+            expression,
+            message:
+              advancedLogicMessage.trim() ||
+              `${advancedLogicKind.replace("_", " ")} rule for exact data collection.`,
+            targetId: selectedField.id,
+          },
+        ],
+      }),
+    );
+    setAdvancedLogicExpression("");
+    setAdvancedLogicMessage("");
+    setBuilderResult(
+      `Advanced ${advancedLogicKind.replace("_", " ")} logic was added to "${selectedField.label}".`,
+    );
+    pushToast({
+      title: "Advanced logic added",
+      description: "The expression is now attached to the selected question.",
+      tone: "success",
+    });
   }
 
   function addBuilderPage() {
@@ -4111,6 +5057,9 @@ export function DynamicForms({
     };
   }, [activeSections.length, selectedForm]);
   const formBuilderFocused = builderMode === "builder" && Boolean(selectedForm);
+  const createFlowBuilder =
+    compactBuilder || Boolean(initialDraft && onFormChange);
+  const questionFirstMode = createFlowBuilder && builderMode === "builder";
 
   useEffect(() => {
     if (formBuilderFocused) {
@@ -4118,100 +5067,123 @@ export function DynamicForms({
     }
   }, [formBuilderFocused, setSidebarCollapsed]);
 
+  useEffect(() => {
+    if (questionFirstMode) {
+      setBuilderFocusMode(true);
+      setBuilderFocusPanel("build");
+    }
+  }, [questionFirstMode]);
+
   return (
     <section
       aria-labelledby="forms-title"
-      className={cn("space-y-5", formBuilderFocused && "space-y-3")}
+      className={cn(
+        "space-y-5",
+        formBuilderFocused && "space-y-3",
+        questionFirstMode && "space-y-0",
+      )}
     >
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Forms
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <h1
-              id="forms-title"
-              className={cn(
-                "font-semibold tracking-tight",
-                formBuilderFocused ? "text-xl" : "text-2xl",
-              )}
-            >
-              Survey form builder
-            </h1>
-            <HelpHint
-              label="About survey form builder"
-              title="Survey form builder"
-            >
-              Select the project and survey first, then build clear,
-              offline-ready forms your field team can use confidently on mobile
-              devices.
-            </HelpHint>
+      {!questionFirstMode ? (
+        <div
+          className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"
+          data-builder-global-header
+        >
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Forms
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h1
+                id="forms-title"
+                className={cn(
+                  "font-semibold tracking-tight",
+                  formBuilderFocused ? "text-xl" : "text-2xl",
+                )}
+              >
+                Survey form builder
+              </h1>
+              <HelpHint
+                label="About survey form builder"
+                title="Survey form builder"
+              >
+                Select the project and survey first, then build clear,
+                offline-ready forms your field team can use confidently on
+                mobile devices.
+              </HelpHint>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => {
-              if (token && !isPreview && !isPersistedSelectedForm) {
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                if (token && !isPreview && !isPersistedSelectedForm) {
+                  setBuilderResult(
+                    "Save this form to the backend before requesting a backend XLSForm export. Draft-only forms can still be reviewed in the on-screen preview.",
+                  );
+                  pushToast({
+                    title: "Save form first",
+                    description:
+                      "Backend export is available after the form is saved.",
+                    tone: "warning",
+                  });
+                  return;
+                }
+                const surveyRows = selectedFormWorkbook?.survey.length ?? 0;
                 setBuilderResult(
-                  "Save this form to the backend before requesting a backend XLSForm export. Draft-only forms can still be reviewed in the on-screen preview.",
+                  `${selectedForm?.name ?? "Form"} is ready to export with ${surveyRows} survey rows, ${selectedFormWorkbook?.choices.length ?? 0} choices, and XLSForm-compatible settings.`,
                 );
                 pushToast({
-                  title: "Save form first",
-                  description:
-                    "Backend export is available after the form is saved.",
-                  tone: "warning",
+                  title: "Export prepared",
+                  description: `${selectedForm?.name ?? "Form"} is ready as JSON and XLSForm with ${surveyRows} survey rows.`,
+                  tone: "success",
                 });
-                return;
-              }
-              const surveyRows = selectedFormWorkbook?.survey.length ?? 0;
-              setBuilderResult(
-                `${selectedForm?.name ?? "Form"} is ready to export with ${surveyRows} survey rows, ${selectedFormWorkbook?.choices.length ?? 0} choices, and XLSForm-compatible settings.`,
-              );
-              pushToast({
-                title: "Export prepared",
-                description: `${selectedForm?.name ?? "Form"} is ready as JSON and XLSForm with ${surveyRows} survey rows.`,
-                tone: "success",
-              });
-              if (isPersistedSelectedForm && token && !isPreview) {
-                void xlsFormQuery.refetch();
-              }
-            }}
-            type="button"
-          >
-            <FileDown aria-hidden="true" />
-            Export
-          </Button>
-          <Button
-            onClick={() => {
-              setBuilderResult(
-                "Opening the form import workspace for template download, column mapping, validation, and governed import.",
-              );
-              pushToast({
-                title: "Opening import workspace",
-                description:
-                  "Download the form template, map spreadsheet columns, validate rows, and import clean data.",
-                tone: "neutral",
-              });
-              openImportWorkspace();
-            }}
-            type="button"
-          >
-            <FileUp aria-hidden="true" />
-            Import
-          </Button>
-          <Button onClick={() => setBuilderMode("templates")} type="button">
-            <Star aria-hidden="true" />
-            Template
-          </Button>
-          <Button onClick={openNewFormDialog} type="button" variant="primary">
-            <Plus aria-hidden="true" />
-            New form
-          </Button>
+                if (isPersistedSelectedForm && token && !isPreview) {
+                  void xlsFormQuery.refetch();
+                }
+              }}
+              type="button"
+            >
+              <FileDown aria-hidden="true" />
+              Export
+            </Button>
+            <Button
+              onClick={() => {
+                setBuilderResult(
+                  "Opening the form import workspace for template download, column mapping, validation, and governed import.",
+                );
+                pushToast({
+                  title: "Opening import workspace",
+                  description:
+                    "Download the form template, map spreadsheet columns, validate rows, and import clean data.",
+                  tone: "neutral",
+                });
+                openImportWorkspace();
+              }}
+              type="button"
+            >
+              <FileUp aria-hidden="true" />
+              Import
+            </Button>
+            <Button onClick={() => setBuilderMode("templates")} type="button">
+              <Star aria-hidden="true" />
+              Template
+            </Button>
+            <Button onClick={openNewFormDialog} type="button" variant="primary">
+              <Plus aria-hidden="true" />
+              New form
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <h1 id="forms-title" className="sr-only">
+          Survey form builder
+        </h1>
+      )}
 
-      {formBuilderFocused ? (
-        <section className="sticky top-0 z-30 rounded-lg border bg-panel/98 px-3 py-2 shadow-line backdrop-blur">
+      {formBuilderFocused && !questionFirstMode ? (
+        <section
+          className="sticky top-0 z-30 rounded-lg border bg-panel/98 px-3 py-2 shadow-line backdrop-blur"
+          data-builder-sticky-header
+        >
           <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto] xl:items-center">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -4343,8 +5315,8 @@ export function DynamicForms({
             </div>
           </div>
         </section>
-      ) : (
-        <section className="surface-premium rounded-2xl p-4">
+      ) : !formBuilderFocused ? (
+        <section className="surface-premium rounded-2xl p-4" data-builder-flow>
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -4438,15 +5410,16 @@ export function DynamicForms({
             </div>
           ) : null}
         </section>
-      )}
+      ) : null}
 
-      {builderResult ? (
+      {builderResult && !questionFirstMode ? (
         <section
           className={cn(
             "border border-success/30 bg-success/10",
             formBuilderFocused ? "rounded-lg px-3 py-2" : "rounded-2xl p-4",
           )}
           aria-live="polite"
+          data-builder-result
         >
           <div className="flex items-start gap-2">
             <Check
@@ -6054,6 +7027,237 @@ export function DynamicForms({
             </div>
           ) : null}
 
+          {formControlsTab === "entity" ? (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <section className="rounded-lg border bg-background p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">
+                      Entity & duplicate controls
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Decide whether this form creates, updates, or requires a
+                      beneficiary/entity record before collection starts.
+                    </p>
+                  </div>
+                  <Badge
+                    tone={
+                      selectedFormControls.entity_controls?.linked_to_entity
+                        ? "success"
+                        : "neutral"
+                    }
+                  >
+                    {selectedFormControls.entity_controls?.linked_to_entity
+                      ? "Entity-linked"
+                      : "Optional"}
+                  </Badge>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <Select
+                    value={
+                      selectedFormControls.entity_controls?.entity_type ??
+                      "Farmer"
+                    }
+                    onChange={(event) =>
+                      updateSelectedFormControls((controls) => ({
+                        ...controls,
+                        entity_controls: {
+                          ...controls.entity_controls!,
+                          entity_type: event.target.value,
+                        },
+                      }))
+                    }
+                  >
+                    {[
+                      "Farmer",
+                      "Household",
+                      "Beneficiary",
+                      "Facility",
+                      "School",
+                      "Village",
+                      "Group",
+                      "Training Participant",
+                      "Health Worker",
+                      "Custom Entity",
+                    ].map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </Select>
+                  <Select
+                    value={
+                      selectedFormControls.entity_controls
+                        ?.submission_frequency ?? "once_per_project"
+                    }
+                    onChange={(event) =>
+                      updateSelectedFormControls((controls) => ({
+                        ...controls,
+                        entity_controls: {
+                          ...controls.entity_controls!,
+                          submission_frequency: event.target.value,
+                        },
+                      }))
+                    }
+                  >
+                    <option value="once_ever">Once ever per entity</option>
+                    <option value="once_per_project">
+                      Once per project per entity
+                    </option>
+                    <option value="once_per_year">Once per year</option>
+                    <option value="once_per_season">Once per season</option>
+                    <option value="once_per_quarter">Once per quarter</option>
+                    <option value="once_per_month">Once per month</option>
+                    <option value="once_per_event">Once per event</option>
+                    <option value="unlimited">Unlimited repeat submissions</option>
+                  </Select>
+                  <Select
+                    value={
+                      selectedFormControls.entity_controls?.duplicate_action ??
+                      "block"
+                    }
+                    onChange={(event) =>
+                      updateSelectedFormControls((controls) => ({
+                        ...controls,
+                        entity_controls: {
+                          ...controls.entity_controls!,
+                          duplicate_action: event.target
+                            .value as NonNullable<
+                            FormControlsSettings["entity_controls"]
+                          >["duplicate_action"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="block">Block likely duplicates</option>
+                    <option value="warn">Warn only</option>
+                    <option value="review">Send to supervisor review</option>
+                  </Select>
+                  <Input
+                    max={100}
+                    min={0}
+                    type="number"
+                    value={
+                      selectedFormControls.entity_controls
+                        ?.duplicate_threshold ?? 90
+                    }
+                    onChange={(event) =>
+                      updateSelectedFormControls((controls) => ({
+                        ...controls,
+                        entity_controls: {
+                          ...controls.entity_controls!,
+                          duplicate_threshold: Number(event.target.value) || 0,
+                        },
+                      }))
+                    }
+                  />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {[
+                    [
+                      "linked_to_entity",
+                      "Link this form to an entity",
+                      "Start collection by selecting or creating an entity.",
+                    ],
+                    [
+                      "creates_new_entity",
+                      "Creates new entity",
+                      "Use for farmer, household, facility, or school registration.",
+                    ],
+                    [
+                      "requires_existing_entity",
+                      "Requires existing entity",
+                      "Use for baseline, monitoring, endline, attendance, or distribution forms.",
+                    ],
+                    [
+                      "updates_existing_entity",
+                      "Updates profile after submission",
+                      "Apply approved changes back to the entity profile.",
+                    ],
+                    [
+                      "allows_anonymous",
+                      "Allow anonymous submissions",
+                      "Only use where no entity history is needed.",
+                    ],
+                    [
+                      "prefill_profile",
+                      "Pre-fill from profile",
+                      "Load known name, phone, village, household ID, and GPS.",
+                    ],
+                    [
+                      "lock_prefilled_fields",
+                      "Lock pre-filled fields",
+                      "Prevent field officers from changing trusted profile values.",
+                    ],
+                    [
+                      "editable_with_reason",
+                      "Edits require reason",
+                      "Require a note when profile values are corrected.",
+                    ],
+                  ].map(([key, label, helper]) => (
+                    <label
+                      className="flex items-start gap-3 rounded-lg border bg-panel p-3 text-sm"
+                      key={key}
+                    >
+                      <input
+                        checked={Boolean(
+                          selectedFormControls.entity_controls?.[
+                            key as keyof NonNullable<
+                              FormControlsSettings["entity_controls"]
+                            >
+                          ],
+                        )}
+                        className="mt-1"
+                        onChange={(event) =>
+                          updateSelectedFormControls((controls) => ({
+                            ...controls,
+                            entity_controls: {
+                              ...controls.entity_controls!,
+                              [key]: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      <span>
+                        <span className="block font-medium">{label}</span>
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                          {helper}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+              <aside className="space-y-3">
+                <div className="rounded-lg border bg-background p-4">
+                  <h3 className="text-sm font-semibold">Duplicate scoring</h3>
+                  <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                    {[
+                      "National ID match: 100",
+                      "Phone match: 80",
+                      "Household ID match: 90",
+                      "Name + DOB match: 75",
+                      "Name + village match: 60",
+                      "GPS within 50m: 40",
+                    ].map((line) => (
+                      <p className="rounded-md border bg-panel px-3 py-2" key={line}>
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-background p-4">
+                  <h3 className="text-sm font-semibold">Mobile-ready sync</h3>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    Future mobile sync will receive assigned entities,
+                    published form versions, duplicate rules, frequency rules,
+                    prefill mappings, returned submissions, and sync conflict
+                    placeholders.
+                  </p>
+                </div>
+              </aside>
+            </div>
+          ) : null}
+
           {formControlsTab === "reference" ? (
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
               <section className="rounded-lg border bg-background p-4">
@@ -7038,11 +8242,26 @@ export function DynamicForms({
       ) : (
         <div
           className={cn(
-            "grid gap-4 xl:h-[calc(100vh-190px)] xl:min-h-[680px] xl:grid-cols-[300px_minmax(0,1fr)_360px] xl:overflow-hidden",
+            "grid gap-4 xl:overflow-hidden",
+            questionFirstMode
+              ? "xl:h-[calc(100vh-132px)] xl:min-h-[610px]"
+              : "xl:h-[calc(100vh-190px)] xl:min-h-[680px]",
+            questionFirstMode
+              ? "xl:grid-cols-[minmax(0,1fr)]"
+              : builderFocusMode
+                ? "xl:grid-cols-[minmax(0,1fr)]"
+                : "xl:grid-cols-[300px_minmax(0,1fr)_360px]",
             builderMode === "templates" && "hidden",
           )}
+          data-builder-grid
         >
-          <section className="rounded-lg border bg-panel p-2 xl:hidden">
+          <section
+            className={cn(
+              "rounded-lg border bg-panel p-2 xl:hidden",
+              questionFirstMode && "hidden",
+            )}
+            data-builder-mobile-tabs
+          >
             <p className="px-1 pb-2 text-xs font-medium text-muted-foreground">
               Builder view
             </p>
@@ -7084,8 +8303,11 @@ export function DynamicForms({
           <aside
             className={cn(
               "min-h-0 space-y-4 xl:block xl:overflow-y-auto xl:pr-1 product-scrollbar",
+              questionFirstMode && "hidden",
+              builderFocusMode && "xl:hidden",
               builderFocusPanel !== "structure" && "hidden xl:block",
             )}
+            data-builder-workspace
           >
             <section className="rounded-lg border bg-panel p-3">
               <div className="flex items-center gap-2">
@@ -8029,7 +9251,11 @@ export function DynamicForms({
                             <button
                               className="rounded-lg border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/10"
                               key={`${preset.id}-${preset.type}`}
-                              onClick={() => addPresetField(preset)}
+                              onClick={() =>
+                                questionFirstMode
+                                  ? addTypedQuestionFromPreset(preset)
+                                  : addPresetField(preset)
+                              }
                               type="button"
                             >
                               <span className="flex items-center gap-2 text-sm font-semibold">
@@ -8409,373 +9635,2389 @@ export function DynamicForms({
                 className="overflow-hidden rounded-lg border bg-panel"
                 aria-labelledby="canvas-title"
               >
-                <div className="border-b px-3 py-2">
-                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h2 id="canvas-title" className="text-sm font-semibold">
-                        Build the form
-                      </h2>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Button
-                        onClick={() => openBuilderAssistant("question")}
-                        size="sm"
-                        type="button"
-                        variant="primary"
-                      >
-                        <MousePointer2 aria-hidden="true" />
-                        Add question
-                      </Button>
-                      <Button
-                        onClick={() => openBuilderAssistant("section")}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        <Plus aria-hidden="true" />
-                        Add section
-                      </Button>
-                      <Button
-                        onClick={() => openBuilderAssistant("preview")}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        <Smartphone aria-hidden="true" />
-                        Preview
-                      </Button>
-                      <Button
-                        onClick={() => openBuilderAssistant("readiness")}
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Check aria-hidden="true" />
-                        Readiness
-                      </Button>
-                      <Badge tone="accent">
-                        {activePageFields.length} on page
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
-                    {selectedPages.map((page) => (
-                      <button
-                        className={cn(
-                          "inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
-                          activePage?.id === page.id
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "bg-background text-muted-foreground hover:text-foreground",
-                        )}
-                        key={page.id}
-                        onClick={() => setSelectedPageId(page.id)}
-                        type="button"
-                      >
-                        {page.title}
-                        <span
-                          className={cn(
-                            "rounded bg-muted px-1.5 py-0.5 text-[10px]",
-                            activePage?.id === page.id &&
-                              "bg-primary-foreground/20",
-                          )}
-                        >
-                          {
-                            selectedForm.fields.filter(
-                              (field) => field.pageId === page.id,
-                            ).length
-                          }
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-2 rounded-md border px-3 py-2",
-                      criticalValidationCount
-                        ? "border-danger/25 bg-danger/10"
-                        : warningValidationCount
-                          ? "border-warning/25 bg-warning/10"
-                          : "border-success/25 bg-success/10",
-                    )}
-                  >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-start gap-2">
-                        {criticalValidationCount ? (
-                          <XCircle
-                            aria-hidden="true"
-                            className="mt-0.5 shrink-0 text-danger"
-                            size={16}
-                          />
-                        ) : (
-                          <Check
-                            aria-hidden="true"
-                            className="mt-0.5 shrink-0 text-success"
-                            size={16}
-                          />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">
-                            Validation center
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {criticalValidationCount
-                              ? `${criticalValidationCount} critical issue(s) block publishing.`
-                              : warningValidationCount
-                                ? `${warningValidationCount} warning(s) should be reviewed.`
-                                : "No critical form structure issues detected."}
-                          </p>
+                {!builderFocusMode ? (
+                  <div className="border-b px-3 py-2">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2
+                            id="canvas-title"
+                            className="text-sm font-semibold"
+                          >
+                            Advanced builder tools
+                          </h2>
+                          <Badge tone="neutral">Full tools</Badge>
                         </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Question library, outline, canvas, and properties are
+                          all visible.
+                        </p>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {builderValidationItems
-                          .filter((item) => item.count > 0)
-                          .slice(0, 3)
-                          .map((item) => (
-                            <Badge
-                              key={item.id}
-                              tone={
-                                item.severity === "critical"
-                                  ? "danger"
-                                  : "warning"
-                              }
-                            >
-                              {item.count} {item.label}
-                            </Badge>
-                          ))}
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Button
-                          onClick={() => {
-                            setBuilderResult(
-                              builderValidationItems
-                                .filter((item) => item.count > 0)
-                                .map((item) => `${item.label}: ${item.count}`)
-                                .join(" · ") ||
-                                "Validation passed. No critical builder issues found.",
-                            );
-                          }}
+                          onClick={() =>
+                            setBuilderFocusMode((current) => !current)
+                          }
+                          size="sm"
+                          type="button"
+                          variant="primary"
+                        >
+                          <PanelsTopLeft aria-hidden="true" />
+                          Focus builder
+                        </Button>
+                        <Button
+                          onClick={() => openBuilderAssistant("question")}
+                          size="sm"
+                          type="button"
+                          variant="primary"
+                        >
+                          <MousePointer2 aria-hidden="true" />
+                          Types
+                        </Button>
+                        <Button
+                          onClick={() => openBuilderAssistant("section")}
                           size="sm"
                           type="button"
                           variant="secondary"
                         >
-                          Validate form
+                          <Plus aria-hidden="true" />
+                          Add section
                         </Button>
+                        <Button
+                          onClick={() => openBuilderAssistant("preview")}
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                        >
+                          <Smartphone aria-hidden="true" />
+                          Preview
+                        </Button>
+                        <Button
+                          onClick={() => openBuilderAssistant("readiness")}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Check aria-hidden="true" />
+                          Check
+                        </Button>
+                        <Badge tone="accent">
+                          {activePageFields.length} on page
+                        </Badge>
                       </div>
                     </div>
-                  </div>
-                </div>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={onDragEnd}
-                >
-                  <SortableContext
-                    items={activePageFields.map((field) => field.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="max-h-[56vh] space-y-2 overflow-y-auto bg-muted/20 p-3 product-scrollbar">
-                      {activeSections.map((section, sectionIndex) => {
-                        const sectionFields = selectedForm.fields.filter(
-                          (field) => field.sectionId === section.id,
-                        );
-                        const tone = getSectionTone(sectionIndex);
-                        return (
-                          <section
+                    <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
+                      {selectedPages.map((page) => (
+                        <button
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
+                            activePage?.id === page.id
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "bg-background text-muted-foreground hover:text-foreground",
+                          )}
+                          key={page.id}
+                          onClick={() => setSelectedPageId(page.id)}
+                          type="button"
+                        >
+                          {page.title}
+                          <span
                             className={cn(
-                              "overflow-hidden rounded-lg border bg-background shadow-line",
-                              tone.border,
+                              "rounded bg-muted px-1.5 py-0.5 text-[10px]",
+                              activePage?.id === page.id &&
+                                "bg-primary-foreground/20",
                             )}
-                            key={section.id}
                           >
-                            <div
-                              className={cn(
-                                "flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
-                                tone.header,
-                              )}
+                            {
+                              selectedForm.fields.filter(
+                                (field) => field.pageId === page.id,
+                              ).length
+                            }
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {builderFocusMode ? (
+                  <div
+                    className={cn(
+                      "grid min-h-[560px] bg-background lg:grid-cols-[minmax(260px,37%)_minmax(0,1fr)]",
+                      !questionFirstMode && "border-t",
+                    )}
+                    data-question-first-canvas
+                  >
+                    <div className="grid grid-cols-[48px_minmax(0,1fr)] border-r bg-panel/60">
+                      <div className="row-span-2 border-r bg-muted/50 py-3">
+                        <button
+                          aria-label="Add question"
+                          title="Add question"
+                          className="mx-auto flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => openBuilderAssistant("question")}
+                          type="button"
+                        >
+                          <Plus aria-hidden="true" size={18} />
+                        </button>
+                        <button
+                          aria-label="Add section"
+                          title="Add section"
+                          className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => openBuilderAssistant("section")}
+                          type="button"
+                        >
+                          <Layers3 aria-hidden="true" size={18} />
+                        </button>
+                        <button
+                          aria-label="Choose template"
+                          title="Choose template"
+                          className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => setBuilderMode("templates")}
+                          type="button"
+                        >
+                          <Star aria-hidden="true" size={18} />
+                        </button>
+                        <button
+                          aria-label="Logic tools"
+                          title="Logic tools"
+                          className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => openBuilderAssistant("logic")}
+                          type="button"
+                        >
+                          <Workflow aria-hidden="true" size={18} />
+                        </button>
+                        <button
+                          aria-label="Preview form"
+                          title="Preview form"
+                          className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => openBuilderAssistant("preview")}
+                          type="button"
+                        >
+                          <Eye aria-hidden="true" size={18} />
+                        </button>
+                        <button
+                          aria-label="Publish checklist"
+                          title="Publish checklist"
+                          className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-primary"
+                          onClick={() => openBuilderAssistant("readiness")}
+                          type="button"
+                        >
+                          <ClipboardList aria-hidden="true" size={18} />
+                        </button>
+                      </div>
+                      <div className="border-b bg-background px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold">Questions</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {activePageFields.length} on this page
+                            </p>
+                          </div>
+                          {!questionFirstMode ? (
+                            <Button
+                              aria-label="Show advanced builder tools"
+                              onClick={() => setBuilderFocusMode(false)}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
                             >
+                              <PanelsTopLeft aria-hidden="true" />
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 rounded-md border bg-panel p-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold">
+                            <Sparkles
+                              aria-hidden="true"
+                              className="text-primary"
+                              size={13}
+                            />
+                            Ask a question
+                          </div>
+                          <div className="mt-2 grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <Textarea
+                              className="min-h-14 bg-background text-xs"
+                              onChange={(event) =>
+                                setQuestionComposerText(event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  (event.metaKey || event.ctrlKey) &&
+                                  event.key === "Enter" &&
+                                  questionComposerText.trim()
+                                ) {
+                                  event.preventDefault();
+                                  if (recommendedQuestionSuggestion) {
+                                    addQuestionFromComposer(
+                                      recommendedQuestionSuggestion,
+                                    );
+                                  }
+                                }
+                              }}
+                              placeholder="Type a question, e.g. Farmer name"
+                              value={questionComposerText}
+                            />
+                            <Button
+                              aria-label="Choose response type"
+                              className="self-stretch"
+                              onClick={() => {
+                                setSmartFieldQuery("");
+                                openBuilderAssistant("question");
+                              }}
+                              title="Choose response type"
+                              type="button"
+                              variant="secondary"
+                            >
+                              <ListFilter aria-hidden="true" />
+                              Type
+                            </Button>
+                          </div>
+                          <div className="mt-2 grid gap-1.5">
+                            {questionTypeSuggestions
+                              .slice(0, 2)
+                              .map((suggestion) => {
+                                const Icon = fieldTypeIcons[suggestion.type];
+                                return (
+                                  <button
+                                    className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1.5 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
+                                    disabled={!questionComposerText.trim()}
+                                    key={`${suggestion.id}-${suggestion.type}`}
+                                    onClick={() =>
+                                      addQuestionFromComposer(suggestion)
+                                    }
+                                    type="button"
+                                  >
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <Icon
+                                        aria-hidden="true"
+                                        className="shrink-0 text-primary"
+                                        size={13}
+                                      />
+                                      <span className="truncate font-medium">
+                                        {suggestion.label}
+                                      </span>
+                                    </span>
+                                    <Badge
+                                      tone={
+                                        suggestion.confidence === "Best match"
+                                          ? "success"
+                                          : "neutral"
+                                      }
+                                    >
+                                      {suggestion.confidence}
+                                    </Badge>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="max-h-[56vh] overflow-y-auto product-scrollbar">
+                        {activePageFields.length ? (
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={onDragEnd}
+                          >
+                            <SortableContext
+                              items={activePageFields.map((field) => field.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {activePageFields.map((field, index) => (
+                                <FocusQuestionRow
+                                  field={field}
+                                  index={index}
+                                  key={field.id}
+                                  onDelete={() => deleteQuestion(field.id)}
+                                  onSelect={() => setSelectedFieldId(field.id)}
+                                  selected={selectedField?.id === field.id}
+                                />
+                              ))}
+                            </SortableContext>
+                          </DndContext>
+                        ) : (
+                          <div className="p-4">
+                            <div className="rounded-lg border border-dashed bg-background p-5 text-center">
+                              <Plus
+                                aria-hidden="true"
+                                className="mx-auto text-primary"
+                                size={20}
+                              />
+                              <p className="mt-2 text-sm font-semibold">
+                                Start with one question
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Write the question above, then add the
+                                recommended response type.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="min-h-[560px] bg-background p-4">
+                      {selectedField ? (
+                        <div className="mx-auto max-w-5xl">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-lg font-bold text-foreground">
+                                Q
+                                {Math.max(
+                                  1,
+                                  activePageFields.findIndex(
+                                    (field) => field.id === selectedField.id,
+                                  ) + 1,
+                                )}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                                Question settings
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              <Badge tone="neutral">
+                                {selectedField.type.replace("_", " ")}
+                              </Badge>
+                              {selectedField.required ? (
+                                <Badge tone="warning">Mandatory</Badge>
+                              ) : (
+                                <Badge tone="neutral">Optional</Badge>
+                              )}
+                              {selectedField.logic?.length ? (
+                                <Badge tone="accent">Logic</Badge>
+                              ) : null}
+                              {Object.keys(selectedField.validation ?? {})
+                                .length ? (
+                                <Badge tone="warning">Validation</Badge>
+                              ) : null}
+                            </div>
+                            <Button
+                              aria-label="Delete selected question"
+                              onClick={() => deleteQuestion(selectedField.id)}
+                              size="icon"
+                              title="Delete question"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Button>
+                            <Button
+                              aria-label="Open full question settings"
+                              onClick={() =>
+                                openFieldSettings(selectedField.id)
+                              }
+                              size="icon"
+                              type="button"
+                              variant="secondary"
+                            >
+                              <Settings2 aria-hidden="true" />
+                            </Button>
+                          </div>
+
+                          <Textarea
+                            className="mt-3 min-h-20 border-x-0 border-t-0 bg-transparent px-0 text-base shadow-none focus:ring-0"
+                            onChange={(event) =>
+                              updateSelectedForm(
+                                updateField(selectedForm, selectedField.id, {
+                                  label: event.target.value,
+                                }),
+                              )
+                            }
+                            value={selectedField.label}
+                          />
+
+                          <div className="mt-4 grid gap-1 rounded-md border bg-panel p-1 sm:grid-cols-6">
+                            {(
+                              [
+                                ["common", Settings2, "Common"],
+                                ["response", ListFilter, "Response"],
+                                ["logic", Workflow, "Logic"],
+                                ["validation", Check, "Validation"],
+                                ["data", Database, "Data"],
+                                ["appearance", Palette, "Advanced"],
+                              ] satisfies [
+                                FocusSettingsTab,
+                                typeof Type,
+                                string,
+                              ][]
+                            ).map(([tab, Icon, label]) => (
                               <button
-                                className="flex items-start gap-2 text-left"
-                                onClick={() => {
-                                  setSelectedSectionId(section.id);
-                                  setCollapsedSectionIds((current) => ({
-                                    ...current,
-                                    [section.id]: !current[section.id],
-                                  }));
-                                }}
+                                className={cn(
+                                  "flex h-9 items-center justify-center gap-1.5 rounded px-2 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground",
+                                  focusSettingsTab === tab &&
+                                    "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                                )}
+                                key={tab}
+                                onClick={() => setFocusSettingsTab(tab)}
                                 type="button"
                               >
-                                <span
-                                  className={cn(
-                                    "mt-1 h-8 w-1.5 rounded-full",
-                                    tone.rail,
-                                  )}
-                                />
-                                <span>
-                                  <h3 className="text-sm font-semibold">
-                                    {section.title}
-                                  </h3>
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {section.description ??
-                                      "No section description"}{" "}
-                                    · {sectionFields.length} questions
-                                  </p>
-                                </span>
+                                <Icon aria-hidden="true" size={14} />
+                                {label}
                               </button>
-                              <div className="flex gap-1">
-                                <Button
-                                  aria-label={`Duplicate ${section.title}`}
-                                  onClick={() =>
-                                    duplicateBuilderSection(section.id)
+                            ))}
+                          </div>
+
+                          {focusSettingsTab === "common" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Settings2
+                                  aria-hidden="true"
+                                  className="text-primary"
+                                  size={16}
+                                />
+                                <h3 className="text-sm font-semibold">
+                                  Common settings
+                                </h3>
+                              </div>
+                              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
+                                <label className="block text-sm font-semibold">
+                                  Question label
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            label: event.target.value,
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder="Question shown to field officers"
+                                    value={selectedField.label}
+                                  />
+                                </label>
+                                <label className="block text-sm font-semibold">
+                                  Variable name
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            variableName: event.target.value,
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    value={
+                                      selectedField.variableName ??
+                                      selectedField.id
+                                    }
+                                  />
+                                </label>
+
+                                <div className="grid content-end gap-3 sm:grid-cols-2">
+                                  <label className="flex min-h-10 items-center gap-3 text-sm font-semibold">
+                                    <input
+                                      checked={selectedField.required}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              required: event.target.checked,
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Mandatory
+                                  </label>
+                                  <label className="flex min-h-10 items-center gap-3 text-sm font-semibold">
+                                    <input
+                                      checked={hasFieldTag(
+                                        selectedField,
+                                        "completion-rate",
+                                      )}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              appearance: {
+                                                ...fieldAppearanceWithTag(
+                                                  selectedField,
+                                                  "completion-rate",
+                                                  event.target.checked,
+                                                ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Required for completion rate
+                                  </label>
+                                  <label className="flex min-h-10 items-center gap-3 text-sm font-semibold">
+                                    <input
+                                      checked={hasFieldTag(
+                                        selectedField,
+                                        "readonly",
+                                      )}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              appearance: {
+                                                ...fieldAppearanceWithTag(
+                                                  selectedField,
+                                                  "readonly",
+                                                  event.target.checked,
+                                                ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Readonly
+                                  </label>
+                                </div>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                                <label className="text-sm font-semibold">
+                                  Section
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            pageId:
+                                              selectedForm.sections.find(
+                                                (section) =>
+                                                  section.id ===
+                                                  event.target.value,
+                                              )?.pageId ?? selectedField.pageId,
+                                            sectionId: event.target.value,
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    value={selectedField.sectionId}
+                                  >
+                                    {selectedForm.sections.map((section) => (
+                                      <option
+                                        key={section.id}
+                                        value={section.id}
+                                      >
+                                        {section.title}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </label>
+                                <div className="flex flex-wrap items-end gap-1.5">
+                                  <Button
+                                    aria-label="Move selected question up"
+                                    disabled={
+                                      selectedForm.fields.findIndex(
+                                        (field) =>
+                                          field.id === selectedField.id,
+                                      ) === 0
+                                    }
+                                    onClick={() =>
+                                      moveField(selectedField.id, -1)
+                                    }
+                                    size="sm"
+                                    type="button"
+                                    variant="secondary"
+                                  >
+                                    <ArrowUp aria-hidden="true" />
+                                    Up
+                                  </Button>
+                                  <Button
+                                    aria-label="Move selected question down"
+                                    disabled={
+                                      selectedForm.fields.findIndex(
+                                        (field) =>
+                                          field.id === selectedField.id,
+                                      ) ===
+                                      selectedForm.fields.length - 1
+                                    }
+                                    onClick={() =>
+                                      moveField(selectedField.id, 1)
+                                    }
+                                    size="sm"
+                                    type="button"
+                                    variant="secondary"
+                                  >
+                                    <ArrowDown aria-hidden="true" />
+                                    Down
+                                  </Button>
+                                  <Button
+                                    onClick={() =>
+                                      updateSelectedForm(
+                                        duplicateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                        ),
+                                      )
+                                    }
+                                    size="sm"
+                                    type="button"
+                                    variant="secondary"
+                                  >
+                                    <Copy aria-hidden="true" />
+                                    Duplicate
+                                  </Button>
+                                  <Button
+                                    onClick={() =>
+                                      deleteQuestion(selectedField.id)
+                                    }
+                                    size="sm"
+                                    type="button"
+                                    variant="danger"
+                                  >
+                                    <Trash2 aria-hidden="true" />
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "response" ? (
+                            <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                              <label className="block text-sm font-semibold">
+                                Response Type
+                                <div className="mt-2 grid gap-2 rounded-md border bg-panel p-1 sm:grid-cols-[minmax(0,1fr)_220px]">
+                                  <Select
+                                    className="border-0 bg-transparent shadow-none"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            type: event.target
+                                              .value as FieldType,
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    value={selectedField.type}
+                                  >
+                                    {!fieldCatalog
+                                      .flatMap((group) => group.fields)
+                                      .some(
+                                        (catalogField) =>
+                                          catalogField.type ===
+                                          selectedField.type,
+                                      ) ? (
+                                      <option value={selectedField.type}>
+                                        {selectedField.type}
+                                      </option>
+                                    ) : null}
+                                    {fieldCatalog
+                                      .flatMap((group) => group.fields)
+                                      .map((catalogField) => (
+                                        <option
+                                          key={catalogField.type}
+                                          value={catalogField.type}
+                                        >
+                                          {catalogField.label}
+                                        </option>
+                                      ))}
+                                  </Select>
+                                  <Button
+                                    onClick={() =>
+                                      openBuilderAssistant("question")
+                                    }
+                                    type="button"
+                                    variant="secondary"
+                                  >
+                                    Change Response Type
+                                  </Button>
+                                </div>
+                              </label>
+
+                              <label className="block text-sm font-semibold">
+                                Question Mandatory Status
+                                <Select
+                                  className="mt-2"
+                                  onChange={(event) =>
+                                    updateSelectedForm(
+                                      updateField(
+                                        selectedForm,
+                                        selectedField.id,
+                                        {
+                                          required:
+                                            event.target.value === "true",
+                                        },
+                                      ),
+                                    )
                                   }
-                                  size="icon"
-                                  type="button"
-                                  variant="ghost"
+                                  value={String(selectedField.required)}
                                 >
-                                  <Copy aria-hidden="true" />
-                                </Button>
+                                  <option value="true">Is Mandatory</option>
+                                  <option value="false">Not Mandatory</option>
+                                </Select>
+                              </label>
+                            </div>
+                          ) : null}
+
+                          {focusSettingsTab === "logic" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Workflow
+                                    aria-hidden="true"
+                                    className="text-primary"
+                                    size={16}
+                                  />
+                                  <h3 className="text-sm font-semibold">
+                                    Logic
+                                  </h3>
+                                </div>
+                                <Badge tone="neutral">
+                                  {selectedField.logic?.length ?? 0} rule
+                                  {(selectedField.logic?.length ?? 0) === 1
+                                    ? ""
+                                    : "s"}
+                                </Badge>
+                              </div>
+                              <div className="mt-3 grid gap-2 lg:grid-cols-[170px_minmax(0,1fr)_minmax(160px,220px)_auto]">
+                                <Select
+                                  value={
+                                    logicActionKind === "hide" ||
+                                    logicActionKind === "required" ||
+                                    logicActionKind === "skip"
+                                      ? logicActionKind
+                                      : "show"
+                                  }
+                                  onChange={(event) =>
+                                    setLogicActionKind(
+                                      event.target.value as LogicRule["kind"],
+                                    )
+                                  }
+                                >
+                                  <option value="show">Show when</option>
+                                  <option value="hide">Hide when</option>
+                                  <option value="required">Require when</option>
+                                  <option value="skip">Skip to when</option>
+                                </Select>
+                                <Select
+                                  value={
+                                    logicConditionFieldId ||
+                                    selectedForm.fields.find(
+                                      (field) => field.id !== selectedField.id,
+                                    )?.id ||
+                                    ""
+                                  }
+                                  onChange={(event) =>
+                                    setLogicConditionFieldId(event.target.value)
+                                  }
+                                >
+                                  {selectedForm.fields
+                                    .filter(
+                                      (field) => field.id !== selectedField.id,
+                                    )
+                                    .map((field) => (
+                                      <option key={field.id} value={field.id}>
+                                        {field.label}
+                                      </option>
+                                    ))}
+                                </Select>
+                                <Input
+                                  onChange={(event) =>
+                                    setLogicConditionValue(event.target.value)
+                                  }
+                                  placeholder="Answer value"
+                                  value={logicConditionValue}
+                                />
                                 <Button
-                                  onClick={() => {
-                                    setSelectedSectionId(section.id);
-                                    openBuilderAssistant("question");
-                                  }}
+                                  disabled={
+                                    selectedForm.fields.filter(
+                                      (field) => field.id !== selectedField.id,
+                                    ).length === 0
+                                  }
+                                  onClick={addVisualLogicRule}
+                                  type="button"
+                                  variant="primary"
+                                >
+                                  <Plus aria-hidden="true" />
+                                  Add logic
+                                </Button>
+                              </div>
+                              <div className="mt-4 rounded-md border bg-background p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold">
+                                      Advanced logic expression
+                                    </p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Use field variables like {"${age}"} or{" "}
+                                      {"${consent}"} to require exact responses,
+                                      block invalid answers, calculate values,
+                                      or control branching.
+                                    </p>
+                                  </div>
+                                  <Badge tone="accent">Exact data</Badge>
+                                </div>
+                                <div className="mt-3 grid gap-2 lg:grid-cols-[180px_minmax(0,1fr)]">
+                                  <Select
+                                    value={advancedLogicKind}
+                                    onChange={(event) =>
+                                      setAdvancedLogicKind(
+                                        event.target.value as LogicRule["kind"],
+                                      )
+                                    }
+                                  >
+                                    <option value="validation">
+                                      Block invalid answer
+                                    </option>
+                                    <option value="show">Show question</option>
+                                    <option value="hide">Hide question</option>
+                                    <option value="required">
+                                      Require answer
+                                    </option>
+                                    <option value="skip">Skip flow</option>
+                                    <option value="calculation">
+                                      Calculate value
+                                    </option>
+                                    <option value="default">
+                                      Default value
+                                    </option>
+                                    <option value="dynamic_choices">
+                                      Dynamic choices
+                                    </option>
+                                  </Select>
+                                  <Input
+                                    className="font-mono"
+                                    onChange={(event) =>
+                                      setAdvancedLogicExpression(
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="${age} >= 18 and ${consent} = 'Yes'"
+                                    value={advancedLogicExpression}
+                                  />
+                                </div>
+                                <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                                  <Input
+                                    onChange={(event) =>
+                                      setAdvancedLogicMessage(
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Message shown when the rule fails or controls this question"
+                                    value={advancedLogicMessage}
+                                  />
+                                  <Button
+                                    onClick={addAdvancedLogicRule}
+                                    type="button"
+                                    variant="primary"
+                                  >
+                                    <Plus aria-hidden="true" />
+                                    Add advanced rule
+                                  </Button>
+                                </div>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                  {[
+                                    ["Consent gate", "${consent} = 'Yes'"],
+                                    ["Adult only", "${age} >= 18"],
+                                    [
+                                      "Female 12-49",
+                                      "${gender} = 'Female' and ${age} >= 12 and ${age} <= 49",
+                                    ],
+                                    ["Positive value", ". >= 0"],
+                                    ["GPS required", "${gps_accuracy} <= 20"],
+                                    [
+                                      "Household members",
+                                      "${household_size} > 0",
+                                    ],
+                                  ].map(([label, expression]) => (
+                                    <button
+                                      className="rounded-md border bg-panel px-2.5 py-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/10"
+                                      key={label}
+                                      onClick={() =>
+                                        setAdvancedLogicExpression(expression)
+                                      }
+                                      type="button"
+                                    >
+                                      <span className="block font-semibold">
+                                        {label}
+                                      </span>
+                                      <span className="mt-1 block truncate font-mono text-muted-foreground">
+                                        {expression}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {selectedField.logic?.length ? (
+                                <div className="mt-3 space-y-2">
+                                  {selectedField.logic.map((rule) => (
+                                    <div
+                                      className="flex items-start justify-between gap-3 rounded-md border bg-background px-3 py-2"
+                                      key={rule.id}
+                                    >
+                                      <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                          {rule.kind.replace("_", " ")}
+                                        </p>
+                                        <p className="mt-1 font-mono text-xs text-foreground">
+                                          {rule.expression}
+                                        </p>
+                                        {rule.message ? (
+                                          <p className="mt-1 text-xs text-muted-foreground">
+                                            {rule.message}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                      <Button
+                                        aria-label="Remove logic rule"
+                                        onClick={() =>
+                                          updateSelectedForm(
+                                            updateField(
+                                              selectedForm,
+                                              selectedField.id,
+                                              {
+                                                logic: (
+                                                  selectedField.logic ?? []
+                                                ).filter(
+                                                  (candidate) =>
+                                                    candidate.id !== rule.id,
+                                                ),
+                                              },
+                                            ),
+                                          )
+                                        }
+                                        size="icon"
+                                        type="button"
+                                        variant="ghost"
+                                      >
+                                        <Trash2 aria-hidden="true" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "common" ? (
+                            <div className="mt-4 grid gap-4 rounded-lg border bg-panel p-4 lg:grid-cols-[minmax(0,1fr)_1fr]">
+                              <label className="block text-sm font-semibold">
+                                Help Text
+                                <Input
+                                  className="mt-2"
+                                  onChange={(event) =>
+                                    updateSelectedForm(
+                                      updateField(
+                                        selectedForm,
+                                        selectedField.id,
+                                        {
+                                          hint: event.target.value,
+                                        },
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Optional guidance for field officers"
+                                  value={selectedField.hint ?? ""}
+                                />
+                              </label>
+                              <label className="block text-sm font-semibold">
+                                Placeholder
+                                <Input
+                                  className="mt-2"
+                                  onChange={(event) =>
+                                    updateSelectedForm(
+                                      updateField(
+                                        selectedForm,
+                                        selectedField.id,
+                                        {
+                                          appearance: {
+                                            ...selectedField.appearance,
+                                            placeholder: event.target.value,
+                                          },
+                                        },
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Answer hint"
+                                  value={
+                                    selectedField.appearance?.placeholder ?? ""
+                                  }
+                                />
+                              </label>
+                            </div>
+                          ) : null}
+
+                          {focusSettingsTab === "response" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="text-sm font-semibold">
+                                  Response configuration
+                                </h3>
+                                <Badge tone="neutral">
+                                  {selectedField.type.replace("_", " ")}
+                                </Badge>
+                              </div>
+                              {[
+                                "select",
+                                "dropdown",
+                                "multiselect",
+                                "radio",
+                                "checkbox",
+                                "ranking",
+                                "likert",
+                              ].includes(selectedField.type) ||
+                              selectedField.options ? (
+                                <label className="mt-4 block text-sm font-semibold">
+                                  Options
+                                  <Textarea
+                                    className="mt-2 min-h-28"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            options: event.target.value
+                                              .split("\n")
+                                              .map((option) => option.trim())
+                                              .filter(Boolean),
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder={"Yes\nNo\nNot applicable"}
+                                    value={(selectedField.options ?? []).join(
+                                      "\n",
+                                    )}
+                                  />
+                                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                    Enter one option per line. These values are
+                                    used by web and mobile collection.
+                                  </span>
+                                </label>
+                              ) : (
+                                <div className="mt-4 rounded-md border bg-background p-3 text-xs text-muted-foreground">
+                                  This response type does not need a manual
+                                  option list. Use Validation, Logic, Data, and
+                                  Advanced for the rest of its behavior.
+                                </div>
+                              )}
+                              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                {[
+                                  ["allow-other", "Allow Other option"],
+                                  ["searchable", "Searchable choices"],
+                                  ["randomize-options", "Randomize choices"],
+                                ].map(([tag, label]) => (
+                                  <label
+                                    className="flex items-center gap-2 text-sm font-semibold"
+                                    key={tag}
+                                  >
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              appearance:
+                                                fieldAppearanceWithTag(
+                                                  selectedField,
+                                                  tag,
+                                                  event.target.checked,
+                                                ),
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "validation" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center gap-2">
+                                <Check
+                                  aria-hidden="true"
+                                  className="text-primary"
+                                  size={16}
+                                />
+                                <h3 className="text-sm font-semibold">
+                                  Validation
+                                </h3>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                                <label className="text-sm font-semibold">
+                                  Minimum value
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              min:
+                                                event.target.value === ""
+                                                  ? undefined
+                                                  : Number(event.target.value),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    type="number"
+                                    value={selectedField.validation?.min ?? ""}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Maximum value
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              max:
+                                                event.target.value === ""
+                                                  ? undefined
+                                                  : Number(event.target.value),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    type="number"
+                                    value={selectedField.validation?.max ?? ""}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Minimum length
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              minLength:
+                                                event.target.value === ""
+                                                  ? undefined
+                                                  : Number(event.target.value),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    type="number"
+                                    value={
+                                      selectedField.validation?.minLength ?? ""
+                                    }
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Maximum length
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              maxLength:
+                                                event.target.value === ""
+                                                  ? undefined
+                                                  : Number(event.target.value),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    type="number"
+                                    value={
+                                      selectedField.validation?.maxLength ?? ""
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <label className="text-sm font-semibold">
+                                  Regex pattern
+                                  <Input
+                                    className="mt-2 font-mono"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              pattern: event.target.value,
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder="^[A-Z0-9-]+$"
+                                    value={
+                                      selectedField.validation?.pattern ?? ""
+                                    }
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Custom validation expression
+                                  <Input
+                                    className="mt-2 font-mono"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            validation: {
+                                              ...selectedField.validation,
+                                              expression: event.target.value,
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder="${age} >= 18"
+                                    value={
+                                      selectedField.validation?.expression ?? ""
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <div className="mt-4 rounded-md border bg-background p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold">
+                                      Exact data presets
+                                    </p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Apply common rules that stop wrong entries
+                                      before field officers submit the form.
+                                    </p>
+                                  </div>
+                                  <Badge tone="success">Recommended</Badge>
+                                </div>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                  {[
+                                    {
+                                      label: "Phone format",
+                                      patch: {
+                                        pattern: "^\\\\+?[0-9 ()-]{7,20}$",
+                                      },
+                                    },
+                                    {
+                                      label: "Email format",
+                                      patch: {
+                                        pattern:
+                                          "^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$",
+                                      },
+                                    },
+                                    {
+                                      label: "ID code",
+                                      patch: {
+                                        minLength: 3,
+                                        maxLength: 30,
+                                        pattern: "^[A-Z0-9-]+$",
+                                      },
+                                    },
+                                    {
+                                      label: "Positive number",
+                                      patch: { min: 0 },
+                                    },
+                                    {
+                                      label: "Age 0-120",
+                                      patch: { min: 0, max: 120 },
+                                    },
+                                    {
+                                      label: "Required choice",
+                                      patch: {
+                                        expression: ". != ''",
+                                      },
+                                    },
+                                    {
+                                      label: "GPS <= 20m",
+                                      patch: { accuracyMax: 20 },
+                                    },
+                                    {
+                                      label: "No future date",
+                                      patch: {
+                                        expression: ". <= today()",
+                                      },
+                                    },
+                                  ].map(({ label, patch }) => (
+                                    <button
+                                      className="rounded-md border bg-panel px-2.5 py-2 text-left text-xs transition hover:border-primary/40 hover:bg-primary/10"
+                                      key={label}
+                                      onClick={() =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              validation: {
+                                                ...selectedField.validation,
+                                                ...patch,
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="button"
+                                    >
+                                      <span className="font-semibold">
+                                        {label}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {[
+                                "text",
+                                "textarea",
+                                "phone",
+                                "email",
+                                "url",
+                              ].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-3 rounded-md border bg-background p-3 sm:grid-cols-3">
+                                  {[
+                                    ["uppercase", "Force uppercase"],
+                                    ["trim-spaces", "Trim spaces"],
+                                    ["unique-value", "Must be unique"],
+                                  ].map(([tag, label]) => (
+                                    <label
+                                      className="flex items-center gap-2 text-sm font-semibold"
+                                      key={tag}
+                                    >
+                                      <input
+                                        checked={hasFieldTag(
+                                          selectedField,
+                                          tag,
+                                        )}
+                                        className="h-4 w-4"
+                                        onChange={(event) =>
+                                          updateSelectedForm(
+                                            updateField(
+                                              selectedForm,
+                                              selectedField.id,
+                                              {
+                                                appearance:
+                                                  fieldAppearanceWithTag(
+                                                    selectedField,
+                                                    tag,
+                                                    event.target.checked,
+                                                  ),
+                                              },
+                                            ),
+                                          )
+                                        }
+                                        type="checkbox"
+                                      />
+                                      {label}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {[
+                                "number",
+                                "decimal",
+                                "currency",
+                                "rating",
+                                "nps",
+                              ].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-3 rounded-md border bg-background p-3 sm:grid-cols-3">
+                                  {[
+                                    ["integer-only", "Whole number only"],
+                                    ["no-negative", "No negative values"],
+                                    ["outlier-flag", "Flag outliers"],
+                                  ].map(([tag, label]) => (
+                                    <label
+                                      className="flex items-center gap-2 text-sm font-semibold"
+                                      key={tag}
+                                    >
+                                      <input
+                                        checked={hasFieldTag(
+                                          selectedField,
+                                          tag,
+                                        )}
+                                        className="h-4 w-4"
+                                        onChange={(event) =>
+                                          updateSelectedForm(
+                                            updateField(
+                                              selectedForm,
+                                              selectedField.id,
+                                              {
+                                                appearance:
+                                                  fieldAppearanceWithTag(
+                                                    selectedField,
+                                                    tag,
+                                                    event.target.checked,
+                                                  ),
+                                                validation:
+                                                  tag === "no-negative" &&
+                                                  event.target.checked
+                                                    ? {
+                                                        ...selectedField.validation,
+                                                        min: 0,
+                                                      }
+                                                    : selectedField.validation,
+                                              },
+                                            ),
+                                          )
+                                        }
+                                        type="checkbox"
+                                      />
+                                      {label}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "data" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Database
+                                    aria-hidden="true"
+                                    className="text-primary"
+                                    size={16}
+                                  />
+                                  <h3 className="text-sm font-semibold">
+                                    Data and reference
+                                  </h3>
+                                </div>
+                                <Button
+                                  onClick={() =>
+                                    addReferenceBinding(selectedField)
+                                  }
                                   size="sm"
                                   type="button"
                                   variant="secondary"
                                 >
-                                  <Plus aria-hidden="true" />
-                                  Question
+                                  <Database aria-hidden="true" />
+                                  Bind reference list
                                 </Button>
                               </div>
-                            </div>
-                            {collapsedSectionIds[section.id] ? (
-                              <div className="px-4 py-3 text-xs text-muted-foreground">
-                                Section collapsed · {sectionFields.length}{" "}
-                                question{sectionFields.length === 1 ? "" : "s"}
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Sensitive data
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) => {
+                                      const current =
+                                        selectedField.appearance?.helpText ??
+                                        "";
+                                      const cleaned = current
+                                        .replace("[internal]", "")
+                                        .replace("[confidential]", "")
+                                        .replace("[restricted]", "")
+                                        .replace("[pii]", "")
+                                        .trim();
+                                      const next = event.target.value
+                                        ? `${cleaned} [${event.target.value}]`.trim()
+                                        : cleaned;
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText: next,
+                                            },
+                                          },
+                                        ),
+                                      );
+                                    }}
+                                    value={
+                                      selectedField.appearance?.helpText?.includes(
+                                        "[pii]",
+                                      )
+                                        ? "pii"
+                                        : selectedField.appearance?.helpText?.includes(
+                                              "[restricted]",
+                                            )
+                                          ? "restricted"
+                                          : selectedField.appearance?.helpText?.includes(
+                                                "[confidential]",
+                                              )
+                                            ? "confidential"
+                                            : selectedField.appearance?.helpText?.includes(
+                                                  "[internal]",
+                                                )
+                                              ? "internal"
+                                              : ""
+                                    }
+                                  >
+                                    <option value="">None</option>
+                                    <option value="internal">Internal</option>
+                                    <option value="confidential">
+                                      Confidential
+                                    </option>
+                                    <option value="restricted">
+                                      Restricted
+                                    </option>
+                                    <option value="pii">PII</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Display width
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              width: event.target.value as
+                                                | "full"
+                                                | "half"
+                                                | "third",
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    value={
+                                      selectedField.appearance?.width ?? "full"
+                                    }
+                                  >
+                                    <option value="full">Full width</option>
+                                    <option value="half">Half width</option>
+                                    <option value="third">Third width</option>
+                                  </Select>
+                                </label>
+                                <label className="flex min-h-10 items-end gap-3 text-sm font-semibold">
+                                  <input
+                                    checked={Boolean(
+                                      selectedField.appearance?.helpText?.includes(
+                                        "[web-only]",
+                                      ),
+                                    )}
+                                    className="mb-2 h-4 w-4"
+                                    onChange={(event) => {
+                                      const current =
+                                        selectedField.appearance?.helpText ??
+                                        "";
+                                      const next = event.target.checked
+                                        ? `${current} [web-only]`.trim()
+                                        : current
+                                            .replace("[web-only]", "")
+                                            .trim();
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText: next,
+                                            },
+                                          },
+                                        ),
+                                      );
+                                    }}
+                                    type="checkbox"
+                                  />
+                                  <span className="pb-1.5">
+                                    Show on web only
+                                  </span>
+                                </label>
                               </div>
-                            ) : sectionFields.length ? (
-                              sectionFields.map((field) => {
-                                const globalIndex =
-                                  selectedForm.fields.findIndex(
-                                    (candidate) => candidate.id === field.id,
-                                  );
-                                return (
-                                  <SortableField
-                                    key={field.id}
-                                    field={field}
-                                    index={globalIndex}
-                                    selected={selectedField?.id === field.id}
-                                    canMoveDown={
-                                      globalIndex <
-                                      selectedForm.fields.length - 1
-                                    }
-                                    canMoveUp={globalIndex > 0}
-                                    onDuplicate={() =>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Indicator mapping
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
                                       updateSelectedForm(
-                                        duplicateField(selectedForm, field.id),
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText:
+                                                `${(selectedField.appearance?.helpText ?? "").replace(/\[indicator:[^\]]+\]/g, "").trim()} ${event.target.value ? `[indicator:${event.target.value}]` : ""}`.trim(),
+                                            },
+                                          },
+                                        ),
                                       )
                                     }
-                                    onEditSettings={() =>
-                                      openFieldSettings(field.id)
+                                    placeholder="Indicator code or result ID"
+                                    value={
+                                      selectedField.appearance?.helpText?.match(
+                                        /\[indicator:([^\]]+)\]/,
+                                      )?.[1] ?? ""
                                     }
-                                    onLabelChange={(label) =>
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Data source
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
                                       updateSelectedForm(
-                                        updateField(selectedForm, field.id, {
-                                          label,
-                                        }),
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText:
+                                                `${(selectedField.appearance?.helpText ?? "").replace(/\[source:[^\]]+\]/g, "").trim()} ${event.target.value ? `[source:${event.target.value}]` : ""}`.trim(),
+                                            },
+                                          },
+                                        ),
                                       )
                                     }
-                                    onMoveDown={() => moveField(field.id, 1)}
-                                    onMoveUp={() => moveField(field.id, -1)}
-                                    onRemove={() =>
+                                    value={
+                                      selectedField.appearance?.helpText?.match(
+                                        /\[source:([^\]]+)\]/,
+                                      )?.[1] ?? ""
+                                    }
+                                  >
+                                    <option value="">Field entry</option>
+                                    <option value="reference">
+                                      Reference list
+                                    </option>
+                                    <option value="calculated">
+                                      Calculated
+                                    </option>
+                                    <option value="system">System value</option>
+                                  </Select>
+                                </label>
+                                <label className="flex min-h-10 items-end gap-3 text-sm font-semibold">
+                                  <input
+                                    checked={hasFieldTag(
+                                      selectedField,
+                                      "mask-on-export",
+                                    )}
+                                    className="mb-2 h-4 w-4"
+                                    onChange={(event) =>
                                       updateSelectedForm(
-                                        removeField(selectedForm, field.id),
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: fieldAppearanceWithTag(
+                                              selectedField,
+                                              "mask-on-export",
+                                              event.target.checked,
+                                            ),
+                                          },
+                                        ),
                                       )
                                     }
-                                    onSelect={() => openFieldSettings(field.id)}
-                                    onToggleRequired={(required) =>
+                                    type="checkbox"
+                                  />
+                                  <span className="pb-1.5">Mask on export</span>
+                                </label>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "appearance" ? (
+                            <section className="mt-4 space-y-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center gap-2">
+                                <Palette
+                                  aria-hidden="true"
+                                  className="text-primary"
+                                  size={16}
+                                />
+                                <h3 className="text-sm font-semibold">
+                                  Advanced question settings
+                                </h3>
+                              </div>
+                              <div className="grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Display width
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
                                       updateSelectedForm(
-                                        updateField(selectedForm, field.id, {
-                                          required,
-                                        }),
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              width: event.target.value as
+                                                | "full"
+                                                | "half"
+                                                | "third",
+                                            },
+                                          },
+                                        ),
                                       )
                                     }
-                                    referenceBound={selectedFormControls.reference_bindings.some(
-                                      (binding) =>
-                                        binding.question_id === field.id,
+                                    value={
+                                      selectedField.appearance?.width ?? "full"
+                                    }
+                                  >
+                                    <option value="full">Full width</option>
+                                    <option value="half">Half width</option>
+                                    <option value="third">Third width</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Mobile display hint
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText:
+                                                `${(selectedField.appearance?.helpText ?? "").replace(/\[mobile:[^\]]+\]/g, "").trim()} ${event.target.value ? `[mobile:${event.target.value}]` : ""}`.trim(),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    value={
+                                      selectedField.appearance?.helpText?.match(
+                                        /\[mobile:([^\]]+)\]/,
+                                      )?.[1] ?? ""
+                                    }
+                                  >
+                                    <option value="">Default</option>
+                                    <option value="compact">Compact</option>
+                                    <option value="large-tap">
+                                      Large tap area
+                                    </option>
+                                    <option value="full-screen">
+                                      Full-screen capture
+                                    </option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Custom style token
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            appearance: {
+                                              ...selectedField.appearance,
+                                              helpText:
+                                                `${(selectedField.appearance?.helpText ?? "").replace(/\[style:[^\]]+\]/g, "").trim()} ${event.target.value ? `[style:${event.target.value}]` : ""}`.trim(),
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder="for example compact-card"
+                                    value={
+                                      selectedField.appearance?.helpText?.match(
+                                        /\[style:([^\]]+)\]/,
+                                      )?.[1] ?? ""
+                                    }
+                                  />
+                                </label>
+                              </div>
+
+                              {selectedField.type === "repeat_group" ? (
+                                <div className="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-3">
+                                  <label className="text-sm font-semibold">
+                                    Minimum repeats
+                                    <Input
+                                      className="mt-2"
+                                      min={0}
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              repeat: {
+                                                ...selectedField.repeat,
+                                                min:
+                                                  event.target.value === ""
+                                                    ? undefined
+                                                    : Number(
+                                                        event.target.value,
+                                                      ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="number"
+                                      value={selectedField.repeat?.min ?? ""}
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Maximum repeats
+                                    <Input
+                                      className="mt-2"
+                                      min={0}
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              repeat: {
+                                                ...selectedField.repeat,
+                                                max:
+                                                  event.target.value === ""
+                                                    ? undefined
+                                                    : Number(
+                                                        event.target.value,
+                                                      ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="number"
+                                      value={selectedField.repeat?.max ?? ""}
+                                    />
+                                  </label>
+                                  <label className="flex items-center gap-2 pt-6 text-sm font-semibold">
+                                    <input
+                                      checked={Boolean(
+                                        selectedField.repeat?.allowNested,
+                                      )}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              repeat: {
+                                                ...selectedField.repeat,
+                                                allowNested:
+                                                  event.target.checked,
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Allow nested groups
+                                  </label>
+                                </div>
+                              ) : null}
+
+                              {[
+                                "gps",
+                                "geolocation",
+                                "map",
+                                "geofence",
+                              ].includes(selectedField.type) ? (
+                                <div className="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-4">
+                                  {[
+                                    ["latitude", "Latitude"],
+                                    ["longitude", "Longitude"],
+                                    ["accuracy", "Accuracy"],
+                                    ["timestamp", "Timestamp"],
+                                  ].map(([key, label]) => (
+                                    <label
+                                      className="flex items-center gap-2 text-sm font-semibold"
+                                      key={key}
+                                    >
+                                      <input
+                                        checked={Boolean(
+                                          selectedField.gps?.[
+                                            key as keyof NonNullable<
+                                              FormField["gps"]
+                                            >
+                                          ] ?? true,
+                                        )}
+                                        className="h-4 w-4"
+                                        onChange={(event) =>
+                                          updateSelectedForm(
+                                            updateField(
+                                              selectedForm,
+                                              selectedField.id,
+                                              {
+                                                gps: {
+                                                  ...selectedField.gps,
+                                                  [key]: event.target.checked,
+                                                },
+                                              },
+                                            ),
+                                          )
+                                        }
+                                        type="checkbox"
+                                      />
+                                      {label}
+                                    </label>
+                                  ))}
+                                  <label className="text-sm font-semibold lg:col-span-2">
+                                    Geofence radius meters
+                                    <Input
+                                      className="mt-2"
+                                      min={0}
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              gps: {
+                                                ...selectedField.gps,
+                                                geofenceRadius:
+                                                  event.target.value === ""
+                                                    ? undefined
+                                                    : Number(
+                                                        event.target.value,
+                                                      ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="number"
+                                      value={
+                                        selectedField.gps?.geofenceRadius ?? ""
+                                      }
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold lg:col-span-2">
+                                    Max GPS accuracy meters
+                                    <Input
+                                      className="mt-2"
+                                      min={0}
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              validation: {
+                                                ...selectedField.validation,
+                                                accuracyMax:
+                                                  event.target.value === ""
+                                                    ? undefined
+                                                    : Number(
+                                                        event.target.value,
+                                                      ),
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="number"
+                                      value={
+                                        selectedField.validation?.accuracyMax ??
+                                        ""
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                              ) : null}
+
+                              {[
+                                "photo",
+                                "image",
+                                "audio",
+                                "video",
+                                "file",
+                                "signature",
+                              ].includes(selectedField.type) ? (
+                                <div className="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-2">
+                                  <label className="text-sm font-semibold">
+                                    Media compression
+                                    <Select
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              media: {
+                                                ...selectedField.media,
+                                                compression: event.target
+                                                  .value as "standard" | "high",
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      value={
+                                        selectedField.media?.compression ??
+                                        "standard"
+                                      }
+                                    >
+                                      <option value="standard">Standard</option>
+                                      <option value="high">
+                                        High compression
+                                      </option>
+                                    </Select>
+                                  </label>
+                                  <label className="flex items-center gap-2 pt-6 text-sm font-semibold">
+                                    <input
+                                      checked={Boolean(
+                                        selectedField.media?.metadata,
+                                      )}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(
+                                            selectedForm,
+                                            selectedField.id,
+                                            {
+                                              media: {
+                                                ...selectedField.media,
+                                                metadata: event.target.checked,
+                                              },
+                                            },
+                                          ),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    Capture metadata
+                                  </label>
+                                </div>
+                              ) : null}
+
+                              {selectedField.type === "calculated" ? (
+                                <label className="block rounded-md border bg-background p-3 text-sm font-semibold">
+                                  Calculation formula
+                                  <Input
+                                    className="mt-2 font-mono"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(
+                                          selectedForm,
+                                          selectedField.id,
+                                          {
+                                            calculation: {
+                                              ...selectedField.calculation,
+                                              expression: event.target.value,
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }
+                                    placeholder="${income} - ${expense}"
+                                    value={
+                                      selectedField.calculation?.expression ??
+                                      ""
+                                    }
+                                  />
+                                </label>
+                              ) : null}
+                            </section>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="flex min-h-[420px] items-center justify-center rounded-lg border border-dashed bg-panel/60 p-6 text-center">
+                          <div>
+                            <Plus
+                              aria-hidden="true"
+                              className="mx-auto text-primary"
+                              size={26}
+                            />
+                            <p className="mt-3 text-base font-semibold">
+                              Add a question to begin
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Type a question above and Atlas will suggest the
+                              response type.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={onDragEnd}
+                  >
+                    <SortableContext
+                      items={activePageFields.map((field) => field.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div
+                        className={cn(
+                          "space-y-2 overflow-y-auto bg-muted/20 p-3 product-scrollbar",
+                          "max-h-[56vh]",
+                        )}
+                      >
+                        {activeSections.map((section, sectionIndex) => {
+                          const sectionFields = selectedForm.fields.filter(
+                            (field) => field.sectionId === section.id,
+                          );
+                          const tone = getSectionTone(sectionIndex);
+                          return (
+                            <section
+                              className={cn(
+                                "overflow-hidden rounded-lg border bg-background shadow-line",
+                                tone.border,
+                              )}
+                              key={section.id}
+                            >
+                              <div
+                                className={cn(
+                                  "flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                                  tone.header,
+                                )}
+                              >
+                                <button
+                                  className="flex items-start gap-2 text-left"
+                                  onClick={() => {
+                                    setSelectedSectionId(section.id);
+                                    setCollapsedSectionIds((current) => ({
+                                      ...current,
+                                      [section.id]: !current[section.id],
+                                    }));
+                                  }}
+                                  type="button"
+                                >
+                                  <span
+                                    className={cn(
+                                      "mt-1 h-8 w-1.5 rounded-full",
+                                      tone.rail,
                                     )}
                                   />
-                                );
-                              })
-                            ) : (
-                              <div className="p-4">
-                                <div className="rounded-lg border border-dashed bg-panel/60 p-4">
-                                  <div className="text-center text-sm text-muted-foreground">
-                                    <Plus
-                                      aria-hidden="true"
-                                      className="mx-auto mb-2 text-primary"
-                                    />
-                                    Start this section with a common question
-                                  </div>
-                                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                    {quickFieldPresets
-                                      .slice(0, 4)
-                                      .map((preset) => {
-                                        const Icon =
-                                          fieldTypeIcons[preset.type];
-                                        return (
-                                          <button
-                                            className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
-                                            key={preset.id}
-                                            onClick={() => {
-                                              setSelectedSectionId(section.id);
-                                              addPresetField(preset, section);
-                                            }}
-                                            type="button"
-                                          >
-                                            <Icon
-                                              aria-hidden="true"
-                                              className="text-primary"
-                                              size={14}
-                                            />
-                                            <span className="font-medium">
-                                              {preset.label}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                  </div>
+                                  <span>
+                                    <h3 className="text-sm font-semibold">
+                                      {section.title}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {builderFocusMode
+                                        ? "Section"
+                                        : (section.description ??
+                                          "No section description")}{" "}
+                                      · {sectionFields.length} questions
+                                    </p>
+                                  </span>
+                                </button>
+                                <div className="flex gap-1">
                                   <Button
-                                    className="mt-3 w-full"
+                                    aria-label={`Duplicate ${section.title}`}
+                                    onClick={() =>
+                                      duplicateBuilderSection(section.id)
+                                    }
+                                    size="icon"
+                                    type="button"
+                                    variant="ghost"
+                                  >
+                                    <Copy aria-hidden="true" />
+                                  </Button>
+                                  <Button
                                     onClick={() => {
                                       setSelectedSectionId(section.id);
                                       openBuilderAssistant("question");
                                     }}
+                                    size="sm"
                                     type="button"
                                     variant="secondary"
                                   >
                                     <Plus aria-hidden="true" />
-                                    More question types
+                                    Question
                                   </Button>
                                 </div>
                               </div>
-                            )}
-                          </section>
-                        );
-                      })}
-                    </div>
-                  </SortableContext>
-                </DndContext>
+                              {collapsedSectionIds[section.id] ? (
+                                <div className="px-4 py-3 text-xs text-muted-foreground">
+                                  Section collapsed · {sectionFields.length}{" "}
+                                  question
+                                  {sectionFields.length === 1 ? "" : "s"}
+                                </div>
+                              ) : sectionFields.length ? (
+                                sectionFields.map((field) => {
+                                  const globalIndex =
+                                    selectedForm.fields.findIndex(
+                                      (candidate) => candidate.id === field.id,
+                                    );
+                                  return (
+                                    <SortableField
+                                      key={field.id}
+                                      field={field}
+                                      index={globalIndex}
+                                      selected={selectedField?.id === field.id}
+                                      canMoveDown={
+                                        globalIndex <
+                                        selectedForm.fields.length - 1
+                                      }
+                                      canMoveUp={globalIndex > 0}
+                                      onDuplicate={() =>
+                                        updateSelectedForm(
+                                          duplicateField(
+                                            selectedForm,
+                                            field.id,
+                                          ),
+                                        )
+                                      }
+                                      onEditSettings={() =>
+                                        openFieldSettings(field.id)
+                                      }
+                                      onLabelChange={(label) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, field.id, {
+                                            label,
+                                          }),
+                                        )
+                                      }
+                                      onMoveDown={() => moveField(field.id, 1)}
+                                      onMoveUp={() => moveField(field.id, -1)}
+                                      onRemove={() =>
+                                        updateSelectedForm(
+                                          removeField(selectedForm, field.id),
+                                        )
+                                      }
+                                      onSelect={() =>
+                                        openFieldSettings(field.id)
+                                      }
+                                      onToggleRequired={(required) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, field.id, {
+                                            required,
+                                          }),
+                                        )
+                                      }
+                                      referenceBound={selectedFormControls.reference_bindings.some(
+                                        (binding) =>
+                                          binding.question_id === field.id,
+                                      )}
+                                    />
+                                  );
+                                })
+                              ) : (
+                                <div className="p-4">
+                                  <div className="rounded-lg border border-dashed bg-panel/60 p-4">
+                                    <div className="text-center text-sm text-muted-foreground">
+                                      <Plus
+                                        aria-hidden="true"
+                                        className="mx-auto mb-2 text-primary"
+                                      />
+                                      Start this section with a common question
+                                    </div>
+                                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                                      {quickFieldPresets
+                                        .slice(0, 4)
+                                        .map((preset) => {
+                                          const Icon =
+                                            fieldTypeIcons[preset.type];
+                                          return (
+                                            <button
+                                              className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
+                                              key={preset.id}
+                                              onClick={() => {
+                                                setSelectedSectionId(
+                                                  section.id,
+                                                );
+                                                addPresetField(preset, section);
+                                              }}
+                                              type="button"
+                                            >
+                                              <Icon
+                                                aria-hidden="true"
+                                                className="text-primary"
+                                                size={14}
+                                              />
+                                              <span className="font-medium">
+                                                {preset.label}
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                    </div>
+                                    <Button
+                                      className="mt-3 w-full"
+                                      onClick={() => {
+                                        setSelectedSectionId(section.id);
+                                        openBuilderAssistant("question");
+                                      }}
+                                      type="button"
+                                      variant="secondary"
+                                    >
+                                      <Plus aria-hidden="true" />
+                                      More question types
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </section>
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                )}
               </section>
             </div>
           ) : null}
 
           {selectedForm ? (
-            <aside className="hidden min-h-0 xl:block xl:overflow-y-auto xl:pr-1 product-scrollbar">
+            <aside
+              className={cn(
+                "hidden min-h-0 xl:block xl:overflow-y-auto xl:pr-1 product-scrollbar",
+                builderFocusMode && "xl:hidden",
+              )}
+            >
               <FieldPropertiesPanel
                 field={selectedField}
                 form={selectedForm}
+                logicActionKind={logicActionKind}
+                logicConditionFieldId={logicConditionFieldId}
+                logicConditionValue={logicConditionValue}
                 onApplySmartSetup={applySmartFieldSetup}
+                onAddVisualLogicRule={addVisualLogicRule}
                 onBindReference={addReferenceBinding}
                 onTabChange={setRightPanelTab}
                 onUpdateForm={updateSelectedForm}
+                setLogicActionKind={setLogicActionKind}
+                setLogicConditionFieldId={setLogicConditionFieldId}
+                setLogicConditionValue={setLogicConditionValue}
                 tab={rightPanelTab}
               />
             </aside>
@@ -9188,9 +12430,94 @@ export function DynamicForms({
 
                   {rightPanelTab === "logic" ? (
                     <div className="mt-4 space-y-3">
+                      <div className="rounded-md border bg-primary/5 p-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles
+                            aria-hidden="true"
+                            className="text-primary"
+                            size={15}
+                          />
+                          <p className="text-sm font-semibold">
+                            Build logic as a sentence
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          Choose the condition and Atlas will create the form
+                          logic expression for this question.
+                        </p>
+                        <div className="mt-3 grid gap-2">
+                          <Select
+                            value={
+                              logicActionKind === "hide" ||
+                              logicActionKind === "required" ||
+                              logicActionKind === "skip"
+                                ? logicActionKind
+                                : "show"
+                            }
+                            onChange={(event) =>
+                              setLogicActionKind(
+                                event.target.value as LogicRule["kind"],
+                              )
+                            }
+                          >
+                            <option value="show">
+                              Show this question when
+                            </option>
+                            <option value="hide">
+                              Hide this question when
+                            </option>
+                            <option value="required">
+                              Require this question when
+                            </option>
+                            <option value="skip">
+                              Skip to this question when
+                            </option>
+                          </Select>
+                          <Select
+                            value={
+                              logicConditionFieldId ||
+                              selectedForm.fields.find(
+                                (field) => field.id !== selectedField.id,
+                              )?.id ||
+                              ""
+                            }
+                            onChange={(event) =>
+                              setLogicConditionFieldId(event.target.value)
+                            }
+                          >
+                            {selectedForm.fields
+                              .filter((field) => field.id !== selectedField.id)
+                              .map((field) => (
+                                <option key={field.id} value={field.id}>
+                                  {field.label}
+                                </option>
+                              ))}
+                          </Select>
+                          <Input
+                            value={logicConditionValue}
+                            onChange={(event) =>
+                              setLogicConditionValue(event.target.value)
+                            }
+                            placeholder="Answer value, for example Yes, Female, or High"
+                          />
+                          <Button
+                            onClick={addVisualLogicRule}
+                            disabled={
+                              selectedForm.fields.filter(
+                                (field) => field.id !== selectedField.id,
+                              ).length === 0
+                            }
+                            type="button"
+                            variant="primary"
+                          >
+                            <Plus aria-hidden="true" />
+                            Add sentence logic
+                          </Button>
+                        </div>
+                      </div>
                       <div className="rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
-                        Build no-code logic with XLSForm-style expressions. Use
-                        AND/OR groups in expressions for complex branching.
+                        Existing rules remain editable below for advanced
+                        XLSForm-style expressions.
                       </div>
                       {(selectedField.logic ?? []).map((rule) => (
                         <div

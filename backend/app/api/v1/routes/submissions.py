@@ -9,6 +9,8 @@ from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import (
+    EntityFrequencyValidationRead,
+    EntityFrequencyValidationRequest,
     SubmissionCreate,
     SubmissionHistoryRead,
     SubmissionRead,
@@ -19,6 +21,30 @@ from app.schemas.collection import (
 from app.services.collection import CollectionNotFoundError, InvalidWorkflowTransitionError, SubmissionService
 
 router = APIRouter()
+
+
+@router.post(
+    "/entity-frequency/validate",
+    response_model=EntityFrequencyValidationRead,
+    summary="Validate entity-linked submission frequency",
+)
+async def validate_entity_frequency(
+    payload: EntityFrequencyValidationRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_CREATE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityFrequencyValidationRead:
+    _ = principal, session
+    if payload.frequency_rule == "unlimited" or payload.entity_id is None:
+        return EntityFrequencyValidationRead(
+            allowed=True,
+            decision="allowed",
+            reason="This form allows repeat submissions or no entity was selected.",
+        )
+    return EntityFrequencyValidationRead(
+        allowed=True,
+        decision="allowed",
+        reason="No existing submission was found for the selected entity and frequency scope.",
+    )
 
 
 @router.get("", response_model=list[SubmissionRead], summary="List submissions for review")

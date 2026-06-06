@@ -7,6 +7,7 @@ import {
   ClipboardList,
   FileSpreadsheet,
   FileText,
+  Fingerprint,
   GitBranch,
   Layers3,
   ListChecks,
@@ -29,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   createField,
   createPage,
@@ -102,6 +104,137 @@ const setupDefaults: FormSetupDraft = {
   owner: "M&E Manager",
   projectName: projectOptions[0] ?? "Project",
 };
+
+function MobileFormPreview({ form }: { form: DynamicForm }) {
+  const pages = form.pages?.length
+    ? form.pages
+    : [{ id: "default-page", title: "Page 1" }];
+
+  return (
+    <div className="w-[320px] overflow-hidden rounded-[2rem] border-[10px] border-foreground bg-background shadow-elevated">
+      <div className="flex items-center justify-between border-b bg-foreground px-4 py-2 text-[11px] font-semibold text-background">
+        <span>Atlas FieldOps</span>
+        <span>Preview</span>
+      </div>
+      <div className="max-h-[72vh] overflow-y-auto bg-muted/30 p-3 product-scrollbar">
+        <div className="rounded-xl border bg-panel p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+            Draft form
+          </p>
+          <h3 className="mt-1 text-base font-semibold">{form.name}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {form.fields.length} question{form.fields.length === 1 ? "" : "s"}{" "}
+            ready for mobile testing.
+          </p>
+        </div>
+        <div className="mt-3 space-y-3">
+          {pages.map((page) => {
+            const pageSections = form.sections.filter(
+              (section) => section.pageId === page.id,
+            );
+            return (
+              <section className="space-y-3" key={page.id}>
+                {pageSections.map((section) => {
+                  const fields = form.fields.filter(
+                    (field) => field.sectionId === section.id,
+                  );
+                  return (
+                    <div
+                      className="rounded-xl border bg-panel p-3"
+                      key={section.id}
+                    >
+                      <h4 className="text-sm font-semibold">{section.title}</h4>
+                      <div className="mt-3 space-y-3">
+                        {fields.map((field, index) => (
+                          <label
+                            className="block rounded-lg border bg-background p-3 text-xs"
+                            key={field.id}
+                          >
+                            <span className="flex items-start gap-1.5 font-semibold">
+                              <span className="text-muted-foreground">
+                                {index + 1}.
+                              </span>
+                              <span>{field.label}</span>
+                              {field.required ? (
+                                <span className="text-danger">*</span>
+                              ) : null}
+                            </span>
+                            {field.hint ? (
+                              <span className="mt-1 block text-[11px] text-muted-foreground">
+                                {field.hint}
+                              </span>
+                            ) : null}
+                            <MobilePreviewInput field={field} />
+                          </label>
+                        ))}
+                        {!fields.length ? (
+                          <div className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
+                            No questions in this section yet.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+            );
+          })}
+          {!form.fields.length ? (
+            <div className="rounded-xl border border-dashed bg-panel p-5 text-center text-xs text-muted-foreground">
+              Add a question to see it in mobile preview.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobilePreviewInput({ field }: { field: FormField }) {
+  if (field.options?.length) {
+    return (
+      <div className="mt-2 space-y-1.5">
+        {field.options.slice(0, 4).map((option) => (
+          <span
+            className="block rounded-lg border bg-panel px-3 py-2 text-[11px]"
+            key={option}
+          >
+            {option}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (
+    ["photo", "image", "audio", "video", "file", "signature"].includes(
+      field.type,
+    )
+  ) {
+    return (
+      <div className="mt-2 rounded-lg border border-dashed bg-panel px-3 py-3 text-center text-[11px] text-muted-foreground">
+        Capture {field.type.replace("_", " ")}
+      </div>
+    );
+  }
+
+  if (["gps", "geolocation", "map", "geofence"].includes(field.type)) {
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px] text-muted-foreground">
+        <span className="rounded-lg border bg-panel px-2 py-2">Latitude</span>
+        <span className="rounded-lg border bg-panel px-2 py-2">Longitude</span>
+        <span className="rounded-lg border bg-panel px-2 py-2">Accuracy</span>
+        <span className="rounded-lg border bg-panel px-2 py-2">Timestamp</span>
+      </div>
+    );
+  }
+
+  return (
+    <span className="mt-2 block rounded-lg border bg-panel px-3 py-2 text-[11px] text-muted-foreground">
+      {field.appearance?.placeholder ?? field.hint ?? "Answer"}
+    </span>
+  );
+}
 
 function slugifyFormName(value: string): string {
   return (
@@ -579,29 +712,34 @@ export function FormCreationWorkspace({
     () => (initialForm ? createEditableDraftFromListItem(initialForm) : null),
     [initialForm],
   );
+  const initialSetup = useMemo<FormSetupDraft>(
+    () =>
+      initialForm
+        ? {
+            collectionMethod: "web_mobile",
+            description: initialForm.description ?? "",
+            durationMinutes: 25,
+            formName: initialForm.name,
+            formType: initialForm.form_type,
+            language: "English",
+            owner: initialForm.owner,
+            projectName: initialForm.project_name,
+          }
+        : {
+            ...setupDefaults,
+            formName: "New data collection form",
+            projectName: localProjects[0]?.name ?? setupDefaults.projectName,
+          },
+    [initialForm, localProjects],
+  );
+  const [setup, setSetup] = useState<FormSetupDraft>(initialSetup);
   const [stage, setStage] = useState<CreationStage>(
     initialDraft ? "builder" : "setup",
-  );
-  const [setup, setSetup] = useState<FormSetupDraft>(() =>
-    initialForm
-      ? {
-          collectionMethod: "web_mobile",
-          description: initialForm.description ?? "",
-          durationMinutes: 25,
-          formName: initialForm.name,
-          formType: initialForm.form_type,
-          language: "English",
-          owner: initialForm.owner,
-          projectName: initialForm.project_name,
-        }
-      : {
-          ...setupDefaults,
-          projectName: localProjects[0]?.name ?? setupDefaults.projectName,
-        },
   );
   const [startMethod, setStartMethod] = useState<StartMethod>("blank");
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const checklist = useMemo(
     () => validateFormForPublish(draftForm, setup),
     [draftForm, setup],
@@ -670,36 +808,101 @@ export function FormCreationWorkspace({
   const currentRoute =
     flowSteps.find((step) => step.id === stage)?.route ?? "/forms/create";
   const status = publishedForm?.status ?? draftForm?.status ?? "draft";
+  const compactBuilderMode = stage === "builder" && Boolean(draftForm);
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-xl border bg-panel p-3 shadow-line">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <section className={cn("space-y-3", compactBuilderMode && "space-y-1.5")}>
+      <div
+        className={cn(
+          "rounded-xl border bg-panel p-3 shadow-line",
+          compactBuilderMode && "rounded-lg px-2 py-1.5",
+        )}
+      >
+        <div
+          className={cn(
+            "flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between",
+            compactBuilderMode && "gap-2 xl:items-center",
+          )}
+        >
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="collect">FORMS</Badge>
+              {compactBuilderMode ? (
+                <span className="text-sm font-semibold">Create Form</span>
+              ) : null}
               <Badge tone={statusTone(status)}>{status}</Badge>
-              <Badge tone="neutral">{currentRoute}</Badge>
+              {!compactBuilderMode ? (
+                <Badge tone="neutral">{currentRoute}</Badge>
+              ) : null}
               <span className="text-xs text-muted-foreground">
                 Autosave: Saved
               </span>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2",
+                compactBuilderMode ? "sr-only" : "mt-3",
+              )}
+            >
+              <h1
+                className={cn(
+                  "font-semibold tracking-tight",
+                  compactBuilderMode ? "text-base" : "text-2xl",
+                )}
+              >
                 Create Form
               </h1>
-              <HelpHint label="About create form" title="Create Form">
-                Create the draft shell first, then build questions, configure
-                controls, test the form, review readiness, and publish a
-                governed version for field operations.
-              </HelpHint>
+              {!compactBuilderMode ? (
+                <HelpHint label="About create form" title="Create Form">
+                  Create the draft shell first, then build questions, configure
+                  controls, test the form, review readiness, and publish a
+                  governed version for field operations.
+                </HelpHint>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onBack} variant="secondary">
+            <Button
+              onClick={onBack}
+              size={compactBuilderMode ? "sm" : undefined}
+              variant="secondary"
+            >
               <ArrowLeft aria-hidden="true" />
               Back to forms
             </Button>
+            {compactBuilderMode ? (
+              <>
+                <Button
+                  onClick={() => setStage("setup")}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Setup
+                </Button>
+                <Button
+                  onClick={() => setStage("controls")}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Controls
+                </Button>
+                <Button
+                  onClick={() => setMobilePreviewOpen(true)}
+                  size="sm"
+                  variant="primary"
+                >
+                  <MonitorSmartphone aria-hidden="true" />
+                  Preview
+                </Button>
+                <Button
+                  onClick={() => setStage("review")}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Review
+                </Button>
+              </>
+            ) : null}
             {stage === "review" ? (
               <Button
                 disabled={!draftForm || criticalFailures.length > 0}
@@ -712,43 +915,45 @@ export function FormCreationWorkspace({
             ) : null}
           </div>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-5">
-          {flowSteps.map((step) => {
-            const Icon = step.icon;
-            const active = step.id === stage;
-            const available = step.id === "setup" || Boolean(draftForm);
-            return (
-              <button
-                className={cn(
-                  "rounded-xl border px-3 py-2 text-left transition",
-                  active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-background/60 hover:bg-muted/60",
-                  !available && "cursor-not-allowed opacity-50",
-                )}
-                disabled={!available}
-                key={step.id}
-                onClick={() => setStage(step.id)}
-                type="button"
-              >
-                <span className="flex items-center gap-2 text-sm font-semibold">
-                  <Icon aria-hidden="true" size={15} />
-                  {step.label}
-                </span>
-                <span
+        {!compactBuilderMode ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-5">
+            {flowSteps.map((step) => {
+              const Icon = step.icon;
+              const active = step.id === stage;
+              const available = step.id === "setup" || Boolean(draftForm);
+              return (
+                <button
                   className={cn(
-                    "mt-1 block truncate text-xs",
+                    "rounded-xl border px-3 py-2 text-left transition",
                     active
-                      ? "text-primary-foreground/75"
-                      : "text-muted-foreground",
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "bg-background/60 hover:bg-muted/60",
+                    !available && "cursor-not-allowed opacity-50",
                   )}
+                  disabled={!available}
+                  key={step.id}
+                  onClick={() => setStage(step.id)}
+                  type="button"
                 >
-                  {step.route}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <Icon aria-hidden="true" size={15} />
+                    {step.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "mt-1 block truncate text-xs",
+                      active
+                        ? "text-primary-foreground/75"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {step.route}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       {stage === "setup" ? (
@@ -948,22 +1153,36 @@ export function FormCreationWorkspace({
       ) : null}
 
       {stage === "builder" && draftForm ? (
-        <section className="space-y-3">
-          <StagePanel
-            action={
-              <Button onClick={() => setStage("controls")} variant="primary">
-                Continue to controls
-              </Button>
-            }
-            icon={Layers3}
-            title="Builder"
-            route="/forms/:formId/builder"
-            lines={[
-              "Use the canonical builder below for question library, sections, repeat groups, validation, logic, templates, import, preview, and mobile deployment.",
-              "The left panel contains the question library, the center is the form canvas, and field settings open where users can configure the selected question.",
-            ]}
-          />
+        <section className="form-create-builder">
+          <style>
+            {`
+              .form-create-builder [data-builder-global-header],
+              .form-create-builder [data-builder-sticky-header],
+              .form-create-builder [data-builder-flow],
+              .form-create-builder [data-builder-result],
+              .form-create-builder [data-builder-mobile-tabs],
+              .form-create-builder [data-builder-workspace] {
+                display: none !important;
+              }
+
+              .form-create-builder [data-builder-grid] {
+                grid-template-columns: minmax(0, 1fr) !important;
+              }
+
+              .form-create-builder [data-question-first-canvas] {
+                border-top: 0 !important;
+              }
+
+              @media (min-width: 1280px) {
+                .form-create-builder [data-builder-grid] {
+                  height: calc(100vh - 132px) !important;
+                  min-height: 610px !important;
+                }
+              }
+            `}
+          </style>
           <DynamicForms
+            compactBuilder
             contextProjectName={setup.projectName}
             initialDraft={draftForm}
             onFormChange={handleBuilderFormChange}
@@ -971,6 +1190,17 @@ export function FormCreationWorkspace({
           />
         </section>
       ) : null}
+
+      <Modal
+        description="Mobile view opens as a test-only preview. It does not create a real submission."
+        onOpenChange={setMobilePreviewOpen}
+        open={mobilePreviewOpen}
+        title="Mobile form preview"
+      >
+        <div className="flex justify-center p-5">
+          {draftForm ? <MobileFormPreview form={draftForm} /> : null}
+        </div>
+      </Modal>
 
       {stage === "controls" ? (
         <section className="space-y-3">
@@ -1005,6 +1235,11 @@ export function FormCreationWorkspace({
                   "Data Quality",
                   "Required fields, duplicates, outliers, GPS validation, consent, and blocking rules.",
                   ClipboardCheck,
+                ],
+                [
+                  "Entity & Duplicate Controls",
+                  "Entity linking, create/update behavior, duplicate thresholds, frequency rules, and prefill profile data.",
+                  Fingerprint,
                 ],
                 [
                   "Governance",

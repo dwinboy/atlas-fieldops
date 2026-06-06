@@ -6,14 +6,22 @@ from pydantic import BaseModel, Field, model_validator
 
 SUPPORTED_DATASET_TYPES = {
     "beneficiaries",
+    "entity_registry",
     "submissions",
+    "form_definitions",
     "geospatial",
+    "locations",
+    "boundaries",
     "media",
     "indicators",
+    "baselines",
+    "targets",
     "programs",
+    "projects",
     "cases",
     "assets",
     "organization_units",
+    "users_teams",
     "field_officers",
     "historical_migration",
 }
@@ -80,8 +88,50 @@ class BeneficiaryRead(BaseModel):
     latitude: float | None
     longitude: float | None
     last_visit_at: datetime | None
+    profile_json: dict[str, object] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
+
+
+class EntityDuplicateCheckRequest(BaseModel):
+    entity_id: str | None = Field(default=None, max_length=120)
+    entity_type: str | None = Field(default=None, max_length=80)
+    full_name: str | None = Field(default=None, max_length=220)
+    phone_number: str | None = Field(default=None, max_length=40)
+    national_id: str | None = Field(default=None, max_length=120)
+    household_id: str | None = Field(default=None, max_length=120)
+    village: str | None = Field(default=None, max_length=180)
+    date_of_birth: date | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    project_id: UUID | None = None
+
+
+class EntityDuplicateCandidateRead(BaseModel):
+    entity_id: UUID
+    entity_uid: str
+    display_name: str
+    score: int
+    level: str
+    matched_fields: list[str]
+
+
+class EntityPrefillRead(BaseModel):
+    entity_id: UUID
+    values: dict[str, object]
+    locked_fields: list[str] = Field(default_factory=list)
+    update_requires_reason: bool = True
+
+
+class MobileSyncPackageRead(BaseModel):
+    assigned_entities: list[BeneficiaryRead] = Field(default_factory=list)
+    assigned_forms: list[dict[str, object]] = Field(default_factory=list)
+    published_form_versions: list[dict[str, object]] = Field(default_factory=list)
+    reference_data: list[dict[str, object]] = Field(default_factory=list)
+    duplicate_rules: list[dict[str, object]] = Field(default_factory=list)
+    frequency_rules: list[dict[str, object]] = Field(default_factory=list)
+    returned_submissions: list[dict[str, object]] = Field(default_factory=list)
+    sync_conflicts: list[dict[str, object]] = Field(default_factory=list)
 
 
 class IndicatorCreate(BaseModel):
@@ -436,6 +486,10 @@ class ImportJobCreate(BaseModel):
     source_format: str = Field(min_length=2, max_length=40)
     total_rows: int = Field(default=0, ge=0)
     mapping: list[ColumnMapping] = Field(default_factory=list)
+    target_project_id: UUID | None = None
+    target_mode: str = Field(default="existing_project", max_length=80)
+    source_system: str = Field(default="Uploaded File", max_length=120)
+    import_reason: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def supported_import(self) -> "ImportJobCreate":
@@ -457,6 +511,14 @@ class ImportJobRead(BaseModel):
     error_rows: int
     duplicate_rows: int
     rollback_available: bool
+    target_project_id: UUID | None = None
+    target_mode: str | None = None
+    source_system: str | None = None
+    import_reason: str | None = None
+    successful_records: int = 0
+    failed_records: int = 0
+    skipped_records: int = 0
+    completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -520,6 +582,134 @@ class ImportPreviewResponse(BaseModel):
     valid_rows: int
     error_rows: int
     duplicate_rows: int
+
+
+class ImportReadinessScoreRead(BaseModel):
+    score: int = Field(ge=0, le=100)
+    category: str
+    issues: list[str] = Field(default_factory=list)
+    recommended_action: str
+    factors: dict[str, int | float] = Field(default_factory=dict)
+
+
+class ImportDuplicateRecordRead(BaseModel):
+    row_number: int
+    display_name: str
+    phone_number: str | None = None
+    location: str | None = None
+    legacy_id: str | None = None
+
+
+class ImportDuplicateGroupRead(BaseModel):
+    group_id: str
+    confidence: int = Field(ge=0, le=100)
+    reason: str
+    records: list[ImportDuplicateRecordRead]
+    recommended_action: str
+    actions: list[str] = Field(default_factory=list)
+
+
+class ImportMatchSuggestionRead(BaseModel):
+    source_value: str
+    suggested_value: str
+    confidence: int = Field(ge=0, le=100)
+    match_type: str
+    row_numbers: list[int] = Field(default_factory=list)
+    actions: list[str] = Field(default_factory=list)
+
+
+class ImportGeneratedIdRead(BaseModel):
+    row_number: int
+    generated_id: str
+    entity_type: str
+    legacy_id: str | None = None
+    generated_by_import: bool = True
+
+
+class ImportDateFormatRead(BaseModel):
+    field_name: str
+    detected_format: str
+    normalized_preview: list[str] = Field(default_factory=list)
+    invalid_rows: list[int] = Field(default_factory=list)
+
+
+class ImportQualityReportRead(BaseModel):
+    import_batch_id: str
+    source_system: str
+    records_created: int
+    records_updated: int
+    records_skipped: int
+    errors: int
+    warnings: int
+    duplicate_candidates: int
+    location_issues: int
+    unlinked_submissions: int
+    data_quality_score: int = Field(ge=0, le=100)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class ImportAnalysisRequest(ImportPreviewRequest):
+    source_system: str = Field(default="Uploaded File", max_length=120)
+    target_project_id: UUID | None = None
+
+
+class ImportAnalysisResponse(BaseModel):
+    readiness: ImportReadinessScoreRead
+    suggested_mapping: list[ColumnMapping]
+    validation_issues: list[ImportValidationIssue]
+    duplicate_groups: list[ImportDuplicateGroupRead] = Field(default_factory=list)
+    location_matches: list[ImportMatchSuggestionRead] = Field(default_factory=list)
+    entity_matches: list[ImportMatchSuggestionRead] = Field(default_factory=list)
+    indicator_matches: list[ImportMatchSuggestionRead] = Field(default_factory=list)
+    generated_ids: list[ImportGeneratedIdRead] = Field(default_factory=list)
+    legacy_fields: list[str] = Field(default_factory=list)
+    date_formats: list[ImportDateFormatRead] = Field(default_factory=list)
+    gps_warnings: list[ImportValidationIssue] = Field(default_factory=list)
+    preview_counts: dict[str, int] = Field(default_factory=dict)
+    quality_report: ImportQualityReportRead
+    progress_percent: int = Field(default=100, ge=0, le=100)
+
+
+class ImportSupportedSourceRead(BaseModel):
+    id: str
+    label: str
+    phase: str
+    supported_formats: list[str] = Field(default_factory=list)
+    status: str = "available"
+    description: str
+
+
+class ImportConfirmRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    acknowledge_warnings: bool = False
+
+
+class ImportRollbackRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    confirm: bool = False
+
+
+class ImportRollbackRead(BaseModel):
+    job: ImportJobRead
+    rolled_back_records: int
+    skipped_records: int
+    message: str
+
+
+class ImportErrorReportRead(BaseModel):
+    import_batch_id: UUID
+    file_name: str
+    status: str
+    errors: list[ImportValidationIssue] = Field(default_factory=list)
+    warnings: list[ImportValidationIssue] = Field(default_factory=list)
+    downloadable: bool = True
+
+
+class ImportMigrationOverviewRead(BaseModel):
+    supported_types: list[str]
+    supported_sources: list[ImportSupportedSourceRead]
+    recent_batches: list[ImportJobRead]
+    mobile_ready_outputs: list[str]
 
 
 class MappingTemplateCreate(BaseModel):

@@ -19,8 +19,9 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +87,7 @@ function downloadCsv(
 }
 
 export function FormsModule({ principal, token }: FormsModuleProps) {
+  const pathname = usePathname();
   const [activeSection, setActiveSection] = useState<FormsSection>("dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
@@ -131,6 +133,17 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     [activeSection, forms],
   );
   const selectedForm = forms.find((form) => form.id === selectedFormId) ?? null;
+  const isCreateRoute =
+    (pathname ?? "").replace(/\/+$/, "") === "/forms/create";
+
+  useEffect(() => {
+    if (!isCreateRoute) {
+      return;
+    }
+    setSelectedFormId(null);
+    setBuilderFormId(null);
+    setCreationOpen(true);
+  }, [isCreateRoute]);
 
   function openForm(form: FormListItem, tab: FormDetailTab = "Overview"): void {
     setSelectedFormId(form.id);
@@ -233,6 +246,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         existingForms={forms}
         initialForm={builderForm}
         onBack={() => {
+          if (
+            typeof window !== "undefined" &&
+            window.location.pathname.replace(/\/+$/, "") === "/forms/create"
+          ) {
+            window.history.replaceState(null, "", "/forms");
+          }
           setCreationOpen(false);
           setBuilderFormId(null);
         }}
@@ -1050,10 +1069,10 @@ function InsightCard({
       </div>
       <div className="mt-4 space-y-2">
         {lines.length ? (
-          lines.map((line) => (
+          lines.map((line, index) => (
             <p
               className="rounded-xl border bg-background/50 px-3 py-2 text-sm text-muted-foreground"
-              key={line}
+              key={`${line}-${index}`}
             >
               {line}
             </p>

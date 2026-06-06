@@ -8,7 +8,8 @@ export type AdministrationSection =
   | "api-settings"
   | "integrations"
   | "system-settings"
-  | "backup-recovery";
+  | "backup-recovery"
+  | "imports-migration";
 
 export type AdminStatus =
   | "active"
@@ -150,4 +151,3 @@ export type AdministrationPageConfig = {
   route: string;
   title: string;
 };
-
