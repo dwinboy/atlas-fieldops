@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -39,6 +39,8 @@ import {
   previewMapLayers,
   previewSpatialIssues,
   type BoundaryRecord,
+  type CoverageRecord,
+  type IndicatorGeography,
   type LayerVisibility,
   type MapBasemap,
   type MapFeatureRecord,
@@ -96,32 +98,42 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
-export function MappingModule({ principal }: MappingModuleProps) {
+export function MappingModule({ principal, token }: MappingModuleProps) {
   const [activeSection, setActiveSection] = useState<MappingSection>("dashboard");
   const [basemap, setBasemap] = useState<MapBasemap>("Light");
-  const [selectedFeature, setSelectedFeature] = useState<MapFeatureRecord | null>(previewMapFeatures[0] ?? null);
+  const [selectedFeature, setSelectedFeature] = useState<MapFeatureRecord | null>(null);
   const [mapResult, setMapResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const preview = !token || token === "preview-token";
+  const mapFeatures = useMemo(() => (preview ? previewMapFeatures : []), [preview]);
+  const mapLayers = useMemo(() => (preview ? previewMapLayers : []), [preview]);
+  const boundaries = useMemo(() => (preview ? previewBoundaries : []), [preview]);
+  const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
+  const indicatorGeography = useMemo(() => (preview ? previewIndicatorGeography : []), [preview]);
   const restricted = isRestrictedMapViewer(principal);
   const privacyVisibility: LayerVisibility = restricted ? "Aggregated" : "Internal";
 
   const visibleFeatures = useMemo(
-    () => filterFeaturesBySection(previewMapFeatures, activeSection),
-    [activeSection],
+    () => filterFeaturesBySection(mapFeatures, activeSection),
+    [activeSection, mapFeatures],
   );
   const summary = useMemo(
     () =>
       computeMappingSummary({
-        boundaries: previewBoundaries,
-        features: previewMapFeatures,
-        layers: previewMapLayers,
+        boundaries,
+        features: mapFeatures,
+        layers: mapLayers,
       }),
-    [],
+    [boundaries, mapFeatures, mapLayers],
   );
+
+  useEffect(() => {
+    setSelectedFeature(visibleFeatures[0] ?? null);
+  }, [visibleFeatures]);
 
   function selectSection(section: MappingSection): void {
     setActiveSection(section);
-    setSelectedFeature(filterFeaturesBySection(previewMapFeatures, section)[0] ?? null);
+    setSelectedFeature(filterFeaturesBySection(mapFeatures, section)[0] ?? null);
   }
 
   function exportCurrentView(): void {
@@ -217,7 +229,7 @@ export function MappingModule({ principal }: MappingModuleProps) {
         activeSection={activeSection}
         basemap={basemap}
         features={visibleFeatures}
-        layers={previewMapLayers}
+        layers={mapLayers}
         onBasemapChange={setBasemap}
         onFeatureSelect={setSelectedFeature}
         privacyVisibility={privacyVisibility}
@@ -226,6 +238,11 @@ export function MappingModule({ principal }: MappingModuleProps) {
 
       <SectionContent
         activeSection={activeSection}
+        boundaries={boundaries}
+        coverage={coverage}
+        indicatorGeography={indicatorGeography}
+        mapFeatures={mapFeatures}
+        mapLayers={mapLayers}
         privacyVisibility={privacyVisibility}
         selectedFeature={selectedFeature}
         setActiveSection={setActiveSection}
@@ -427,22 +444,32 @@ function EnterpriseMapViewer({
 
 function SectionContent({
   activeSection,
+  boundaries,
+  coverage,
+  indicatorGeography,
+  mapFeatures,
+  mapLayers,
   privacyVisibility,
   selectedFeature,
   setActiveSection,
 }: {
   activeSection: MappingSection;
+  boundaries: BoundaryRecord[];
+  coverage: CoverageRecord[];
+  indicatorGeography: IndicatorGeography[];
+  mapFeatures: MapFeatureRecord[];
+  mapLayers: MapLayerRecord[];
   privacyVisibility: LayerVisibility;
   selectedFeature: MapFeatureRecord | null;
   setActiveSection: (section: MappingSection) => void;
 }) {
-  if (activeSection === "layers") return <LayersTable />;
-  if (activeSection === "boundaries") return <BoundariesTable />;
-  if (activeSection === "coverage-maps") return <CoverageWorkspace />;
-  if (activeSection === "indicator-maps") return <IndicatorWorkspace />;
+  if (activeSection === "layers") return <LayersTable layers={mapLayers} />;
+  if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} />;
+  if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} />;
+  if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} />;
   if (activeSection === "data-quality-maps") return <SpatialQualityWorkspace />;
 
-  const features = filterFeaturesBySection(previewMapFeatures, activeSection);
+  const features = filterFeaturesBySection(mapFeatures, activeSection);
   const columns: TableColumn<MapFeatureRecord>[] = [
     { key: "label", header: "Map Feature", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -476,7 +503,7 @@ function SectionContent({
   );
 }
 
-function LayersTable() {
+function LayersTable({ layers }: { layers: MapLayerRecord[] }) {
   const columns: TableColumn<MapLayerRecord>[] = [
     { key: "name", header: "Layer", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -494,12 +521,12 @@ function LayersTable() {
         route="/mapping/layers"
         title="Map Layers"
       />
-      <DataTable columns={columns} emptyLabel="No spatial layers yet" rows={previewMapLayers} searchLabel="Search layers, owners, sources" title="Spatial layer registry" />
+      <DataTable columns={columns} emptyLabel="No spatial layers yet" rows={layers} searchLabel="Search layers, owners, sources" title="Spatial layer registry" />
     </section>
   );
 }
 
-function BoundariesTable() {
+function BoundariesTable({ boundaries }: { boundaries: BoundaryRecord[] }) {
   const columns: TableColumn<BoundaryRecord>[] = [
     { key: "name", header: "Boundary", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -517,17 +544,17 @@ function BoundariesTable() {
         route="/mapping/boundaries"
         title="Boundaries"
       />
-      <DataTable columns={columns} emptyLabel="No boundaries configured yet" rows={previewBoundaries} searchLabel="Search boundaries, codes, hierarchy" title="Boundary registry" />
+      <DataTable columns={columns} emptyLabel="No boundaries configured yet" rows={boundaries} searchLabel="Search boundaries, codes, hierarchy" title="Boundary registry" />
     </section>
   );
 }
 
-function CoverageWorkspace() {
+function CoverageWorkspace({ coverage }: { coverage: CoverageRecord[] }) {
   return (
     <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
       <Panel title="Coverage Summary">
         <div className="space-y-3">
-          {previewCoverage.map((item) => (
+          {coverage.map((item) => (
             <div className="rounded-xl border bg-background/70 p-3" key={item.id}>
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{item.location}</p>
@@ -551,10 +578,10 @@ function CoverageWorkspace() {
   );
 }
 
-function IndicatorWorkspace() {
+function IndicatorWorkspace({ indicatorGeography }: { indicatorGeography: IndicatorGeography[] }) {
   return (
     <section className="grid gap-4 xl:grid-cols-3">
-      {previewIndicatorGeography.map((item) => (
+      {indicatorGeography.map((item) => (
         <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
           <Badge tone={coverageTone(item.achievementPercent)}>Achievement {item.achievementPercent}%</Badge>
           <h2 className="mt-3 text-sm font-semibold">{item.indicator}</h2>

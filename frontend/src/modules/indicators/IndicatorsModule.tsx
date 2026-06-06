@@ -34,16 +34,17 @@ import { ApiError, createIndicator, listIndicators, type CurrentPrincipal, type 
 import { cn } from "@/lib/utils";
 import {
   indicatorSections,
-  previewAuditEvents,
-  previewBaselines,
-  previewDataSources,
+  previewAuditEvents as sampleIndicatorAuditEvents,
+  previewBaselines as sampleIndicatorBaselines,
+  previewDataSources as sampleIndicatorDataSources,
   previewIndicators,
   previewLogframeRows,
   previewReports,
-  previewResultsFramework,
-  previewTargets,
+  previewResultsFramework as sampleResultFramework,
+  previewTargets as sampleIndicatorTargets,
   type IndicatorAuditEvent,
   type IndicatorBaseline,
+  type IndicatorDataSource,
   type IndicatorRecord,
   type IndicatorReport,
   type IndicatorSection,
@@ -231,10 +232,17 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
     enabled: Boolean(token && !preview),
   });
 
-  const indicators = useMemo(
-    () => [...localIndicators, ...(preview ? previewIndicators : (indicatorsQuery.data ?? []).map(mapApiIndicator))],
-    [indicatorsQuery.data, localIndicators, preview],
-  );
+  const indicators = useMemo(() => {
+    const backendIndicators = preview ? previewIndicators : (indicatorsQuery.data ?? []).map(mapApiIndicator);
+    const merged = [...localIndicators, ...backendIndicators];
+    return merged.filter((indicator, index, rows) => rows.findIndex((row) => row.id === indicator.id) === index);
+  }, [indicatorsQuery.data, localIndicators, preview]);
+  const indicatorTargets = preview ? sampleIndicatorTargets : [];
+  const indicatorBaselines = preview ? sampleIndicatorBaselines : [];
+  const resultFramework = preview ? sampleResultFramework : [];
+  const indicatorAuditEvents = preview ? sampleIndicatorAuditEvents : [];
+  const indicatorDataSources = preview ? sampleIndicatorDataSources : [];
+  const logframeRows = preview ? previewLogframeRows : [];
   const summary = useMemo(() => computeIndicatorSummary(indicators), [indicators]);
   const visibleIndicators = useMemo(() => filterIndicatorsBySection(indicators, activeSection), [activeSection, indicators]);
   const selectedIndicator = indicators.find((indicator) => indicator.id === selectedIndicatorId) ?? null;
@@ -420,29 +428,36 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 
       {selectedIndicator ? (
         <IndicatorDetailWorkspace
+          auditEvents={indicatorAuditEvents}
+          baselines={indicatorBaselines}
+          dataSources={indicatorDataSources}
           indicator={selectedIndicator}
           onClose={() => setSelectedIndicatorId(null)}
           setTab={setActiveDetailTab}
           tab={activeDetailTab}
+          targets={indicatorTargets}
         />
       ) : null}
 
       {!selectedIndicator && activeSection === "dashboard" ? (
         <IndicatorsDashboard
+          auditEvents={indicatorAuditEvents}
           indicators={indicators}
           onOpenAttention={() => setActiveSection("library")}
           onOpenReports={() => setActiveView("analytics")}
+          resultFramework={resultFramework}
           summary={summary}
+          targets={indicatorTargets}
         />
       ) : null}
 
       {!selectedIndicator && activeSection === "library" ? (
         <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Indicator import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
-      {!selectedIndicator && activeSection === "results-framework" ? <ResultsFramework /> : null}
-      {!selectedIndicator && activeSection === "logframes" ? <Logframes /> : null}
-      {!selectedIndicator && activeSection === "targets" ? <Targets /> : null}
-      {!selectedIndicator && activeSection === "baselines" ? <Baselines /> : null}
+      {!selectedIndicator && activeSection === "results-framework" ? <ResultsFramework resultFramework={resultFramework} /> : null}
+      {!selectedIndicator && activeSection === "logframes" ? <Logframes rows={logframeRows} /> : null}
+      {!selectedIndicator && activeSection === "targets" ? <Targets targets={indicatorTargets} /> : null}
+      {!selectedIndicator && activeSection === "baselines" ? <Baselines baselines={indicatorBaselines} /> : null}
       {!selectedIndicator && activeSection === "reports" ? <IndicatorReports onOpenReports={() => setActiveView("analytics")} /> : null}
       <CreateIndicatorModal
         canSubmit={canManageIndicators && !createIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
@@ -458,17 +473,23 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 }
 
 function IndicatorsDashboard({
+  auditEvents,
   indicators,
   onOpenAttention,
   onOpenReports,
+  resultFramework,
   summary,
+  targets,
 }: {
+  auditEvents: IndicatorAuditEvent[];
   indicators: IndicatorRecord[];
   onOpenAttention: () => void;
   onOpenReports: () => void;
+  resultFramework: ResultsFrameworkNode[];
   summary: ReturnType<typeof computeIndicatorSummary>;
+  targets: IndicatorTarget[];
 }) {
-  const targetSummary = summarizeTargets(previewTargets);
+  const targetSummary = summarizeTargets(targets);
   const cards: { icon: LucideIcon; label: string; tone?: BadgeProps["tone"]; value: string | number }[] = [
     { icon: BarChart3, label: "Total Indicators", value: summary.totalIndicators },
     { icon: ListChecks, label: "Output Indicators", value: summary.outputIndicators },
@@ -486,14 +507,14 @@ function IndicatorsDashboard({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <article className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
+          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-primary/5" key={card.label} onClick={onOpenAttention} type="button">
             <div className="flex items-center justify-between gap-3">
               <card.icon aria-hidden="true" className="text-primary" size={18} />
               {card.tone ? <Badge tone={card.tone}>RBM</Badge> : null}
             </div>
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
-          </article>
+          </button>
         ))}
       </div>
 
@@ -529,7 +550,7 @@ function IndicatorsDashboard({
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Panel title="Results Framework Progress">
-          <TimelineRows rows={previewResultsFramework.slice(0, 5).map((node) => ({ label: `${node.level}: ${node.title}`, meta: `${node.progress}% · ${node.indicators.join(", ")}`, tone: progressTone(node.progress) }))} />
+          <TimelineRows rows={resultFramework.slice(0, 5).map((node) => ({ label: `${node.level}: ${node.title}`, meta: `${node.progress}% · ${node.indicators.join(", ")}`, tone: progressTone(node.progress) }))} />
         </Panel>
         <Panel title="Indicators Requiring Attention">
           <TimelineRows rows={attention.map((indicator) => ({ label: indicator.name, meta: `${indicator.status} · ${validateFormQuestionLink(indicator).join(", ") || "Calculation current"}`, tone: indicatorTone(indicator.status) }))} />
@@ -537,7 +558,7 @@ function IndicatorsDashboard({
         <Panel title="Upcoming Reporting Deadlines">
           <Signal label="Monthly indicators" value="2 due this week" tone="warning" />
           <Signal label="Quarterly indicators" value="2 due this month" tone="accent" />
-          <Signal label="Recent update" value={previewAuditEvents[0]?.action ?? "No updates"} />
+          <Signal label="Recent update" value={auditEvents[0]?.action ?? "No updates"} />
         </Panel>
       </div>
     </div>
@@ -634,7 +655,7 @@ function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubm
   );
 }
 
-function ResultsFramework() {
+function ResultsFramework({ resultFramework }: { resultFramework: ResultsFrameworkNode[] }) {
   return (
     <section className="space-y-4">
       <SectionHeader
@@ -646,7 +667,7 @@ function ResultsFramework() {
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel title="Tree View">
           <div className="space-y-3">
-            {previewResultsFramework.map((node) => (
+            {resultFramework.map((node) => (
               <div className={cn("rounded-xl border bg-background/70 p-3", node.level !== "Goal" && "ml-4")} key={node.id}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -662,7 +683,7 @@ function ResultsFramework() {
         </Panel>
         <Panel title="Matrix / Card View">
           <div className="grid gap-3 md:grid-cols-2">
-            {previewResultsFramework.map((node) => (
+            {resultFramework.map((node) => (
               <article className="rounded-xl border bg-background/70 p-3" key={node.id}>
                 <div className="flex items-center justify-between">
                   <Badge tone="neutral">{node.level}</Badge>
@@ -679,7 +700,7 @@ function ResultsFramework() {
   );
 }
 
-function Logframes() {
+function Logframes({ rows }: { rows: LogframeRow[] }) {
   const columns: TableColumn<LogframeRow>[] = [
     { key: "summary", header: "Narrative Summary", value: (row) => row.narrativeSummary, render: (row) => <span className="font-medium">{row.narrativeSummary}</span> },
     { key: "indicators", header: "Indicators", value: (row) => row.indicators.join(" "), render: (row) => row.indicators.join(", ") },
@@ -692,12 +713,12 @@ function Logframes() {
   return (
     <section className="space-y-4">
       <SectionHeader action={<Button variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage donor-style logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
-      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={previewLogframeRows} searchLabel="Search logframe rows, projects, indicators" title="Logframe rows" />
+      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, indicators" title="Logframe rows" />
     </section>
   );
 }
 
-function Targets() {
+function Targets({ targets }: { targets: IndicatorTarget[] }) {
   const columns: TableColumn<IndicatorTarget>[] = [
     { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -710,12 +731,12 @@ function Targets() {
   return (
     <section className="space-y-4">
       <SectionHeader action={<Button variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
-      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={previewTargets} searchLabel="Search targets, locations, projects" title="Indicator targets" />
+      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={targets} searchLabel="Search targets, locations, projects" title="Indicator targets" />
     </section>
   );
 }
 
-function Baselines() {
+function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   const columns: TableColumn<IndicatorBaseline>[] = [
     { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -728,7 +749,7 @@ function Baselines() {
   return (
     <section className="space-y-4">
       <SectionHeader action={<Button variant="primary"><Database aria-hidden="true" /> Add baseline</Button>} description="Add, import, version, compare, and lock approved baseline values with methodology, source, confidence level, and notes." route="/indicators/baselines" title="Baselines" />
-      <DataTable columns={columns} emptyLabel="No baselines configured yet" rows={previewBaselines} searchLabel="Search baselines, projects, locations" title="Baseline values" />
+      <DataTable columns={columns} emptyLabel="No baselines configured yet" rows={baselines} searchLabel="Search baselines, projects, locations" title="Baseline values" />
     </section>
   );
 }
@@ -750,7 +771,25 @@ function IndicatorReports({ onOpenReports }: { onOpenReports: () => void }) {
   );
 }
 
-function IndicatorDetailWorkspace({ indicator, onClose, setTab, tab }: { indicator: IndicatorRecord; onClose: () => void; setTab: (tab: IndicatorDetailTab) => void; tab: IndicatorDetailTab }) {
+function IndicatorDetailWorkspace({
+  auditEvents,
+  baselines,
+  dataSources,
+  indicator,
+  onClose,
+  setTab,
+  tab,
+  targets,
+}: {
+  auditEvents: IndicatorAuditEvent[];
+  baselines: IndicatorBaseline[];
+  dataSources: IndicatorDataSource[];
+  indicator: IndicatorRecord;
+  onClose: () => void;
+  setTab: (tab: IndicatorDetailTab) => void;
+  tab: IndicatorDetailTab;
+  targets: IndicatorTarget[];
+}) {
   return (
     <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -773,15 +812,15 @@ function IndicatorDetailWorkspace({ indicator, onClose, setTab, tab }: { indicat
         ))}
       </div>
       {tab === "Overview" ? <OverviewTab indicator={indicator} /> : null}
-      {tab === "Data Sources" ? <DataSourcesTab indicator={indicator} /> : null}
-      {tab === "Targets" ? <TargetRows indicator={indicator} /> : null}
-      {tab === "Baselines" ? <BaselineRows indicator={indicator} /> : null}
+      {tab === "Data Sources" ? <DataSourcesTab dataSources={dataSources} indicator={indicator} /> : null}
+      {tab === "Targets" ? <TargetRows indicator={indicator} targets={targets} /> : null}
+      {tab === "Baselines" ? <BaselineRows baselines={baselines} indicator={indicator} /> : null}
       {tab === "Disaggregation" ? <DisaggregationTab indicator={indicator} /> : null}
       {tab === "Projects" ? <ProjectTab indicator={indicator} /> : null}
       {tab === "Forms" ? <FormsTab indicator={indicator} /> : null}
       {tab === "Progress" ? <ProgressTab indicator={indicator} /> : null}
-      {tab === "History" ? <TimelineRows rows={previewAuditEvents.filter((event) => event.indicatorId === indicator.id).map((event) => ({ label: event.action, meta: `${event.actor} · ${event.reason}`, tone: "accent" }))} /> : null}
-      {tab === "Audit Trail" ? <AuditRows indicator={indicator} /> : null}
+      {tab === "History" ? <TimelineRows rows={auditEvents.filter((event) => event.indicatorId === indicator.id).map((event) => ({ label: event.action, meta: `${event.actor} · ${event.reason}`, tone: "accent" }))} /> : null}
+      {tab === "Audit Trail" ? <AuditRows auditEvents={auditEvents} indicator={indicator} /> : null}
     </section>
   );
 }
@@ -815,8 +854,8 @@ function OverviewTab({ indicator }: { indicator: IndicatorRecord }) {
   );
 }
 
-function DataSourcesTab({ indicator }: { indicator: IndicatorRecord }) {
-  const links = previewDataSources.filter((source) => source.indicatorId === indicator.id);
+function DataSourcesTab({ dataSources, indicator }: { dataSources: IndicatorDataSource[]; indicator: IndicatorRecord }) {
+  const links = dataSources.filter((source) => source.indicatorId === indicator.id);
   const issues = validateFormQuestionLink(indicator);
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
@@ -842,13 +881,13 @@ function DataSourcesTab({ indicator }: { indicator: IndicatorRecord }) {
   );
 }
 
-function TargetRows({ indicator }: { indicator: IndicatorRecord }) {
-  const rows = previewTargets.filter((target) => target.indicatorId === indicator.id);
+function TargetRows({ indicator, targets }: { indicator: IndicatorRecord; targets: IndicatorTarget[] }) {
+  const rows = targets.filter((target) => target.indicatorId === indicator.id);
   return <TimelineRows rows={(rows.length ? rows : [{ period: "No configured target", location: indicator.project, actualValue: 0, targetValue: indicator.target, status: indicator.status }]).map((row) => ({ label: `${row.period} · ${row.location}`, meta: `${row.actualValue} / ${row.targetValue} · ${targetAchievement(row.actualValue, row.targetValue)}%`, tone: progressTone(targetAchievement(row.actualValue, row.targetValue)) }))} />;
 }
 
-function BaselineRows({ indicator }: { indicator: IndicatorRecord }) {
-  const rows = previewBaselines.filter((baseline) => baseline.indicatorId === indicator.id);
+function BaselineRows({ baselines, indicator }: { baselines: IndicatorBaseline[]; indicator: IndicatorRecord }) {
+  const rows = baselines.filter((baseline) => baseline.indicatorId === indicator.id);
   return <TimelineRows rows={(rows.length ? rows : []).map((row) => ({ label: `${row.indicatorCode} · ${row.location}`, meta: `${row.value} · ${row.methodology} · ${row.locked ? "Locked" : "Draft"}`, tone: row.locked ? "success" : "warning" }))} emptyLabel="No baseline has been approved for this indicator." />;
 }
 
@@ -911,8 +950,8 @@ function ProgressTab({ indicator }: { indicator: IndicatorRecord }) {
   );
 }
 
-function AuditRows({ indicator }: { indicator: IndicatorRecord }) {
-  const rows: IndicatorAuditEvent[] = previewAuditEvents.filter((event) => event.indicatorId === indicator.id);
+function AuditRows({ auditEvents, indicator }: { auditEvents: IndicatorAuditEvent[]; indicator: IndicatorRecord }) {
+  const rows: IndicatorAuditEvent[] = auditEvents.filter((event) => event.indicatorId === indicator.id);
   return <TimelineRows rows={rows.map((event) => ({ label: event.action, meta: `${event.actor} · ${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} emptyLabel="No audit events for this indicator yet." />;
 }
 

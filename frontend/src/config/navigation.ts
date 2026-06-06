@@ -245,7 +245,7 @@ const sidebarSections: NavigationSection[] = [
         label: "Beneficiaries",
         hint: "Registry & history",
         description:
-          "Register, search, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time.",
+          "Search, import, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time.",
         route: "/beneficiaries",
         domain: "OPERATIONS",
         icon: HeartHandshake,
@@ -261,8 +261,8 @@ const sidebarSections: NavigationSection[] = [
         keywords: ["beneficiary", "entity", "farmer", "household", "registry", "duplicate"],
         children: [
           { label: "Registry", route: "/beneficiaries", description: "Search and manage entity profiles." },
-          { label: "Register Entity", route: "/beneficiaries/register", description: "Create an entity after duplicate checks." },
-          { label: "Import Entities", route: "/beneficiaries/import", description: "CSV and Excel import with duplicate review." },
+          { label: "Import Entities", route: "/beneficiaries/import", description: "CSV and Excel import into a selected project with duplicate review." },
+          { label: "Mobile Registration Forms", route: "/forms/create", description: "Create project-linked registration forms for field officers." },
           { label: "Duplicate Review", route: "/beneficiaries/duplicates", description: "Review and resolve possible duplicate entities." },
         ],
       },
@@ -461,6 +461,12 @@ const sidebarSections: NavigationSection[] = [
           { label: "System Settings", route: "/administration/system-settings", description: "Global platform configuration." },
           { label: "Backup & Recovery", route: "/administration/backup-recovery", description: "Data backup, restore, and recovery settings." },
           { label: "Imports & Migration", route: "/administration/imports-migration", description: "Migration batches, field mapping, validation, history, and rollback." },
+          { label: "Mobile Devices", route: "/administration/mobile-devices", description: "Registered Android devices, status, and remote logout controls." },
+          { label: "Mobile Versions", route: "/administration/mobile-versions", description: "Production, staging, and minimum supported mobile versions." },
+          { label: "Mobile Pilots", route: "/administration/mobile-pilots", description: "Pilot programs, field officers, supervisors, devices, and rollout status." },
+          { label: "Mobile Monitoring", route: "/administration/mobile-monitoring", description: "Sync health, crashes, offline devices, and app version distribution." },
+          { label: "Mobile Feedback", route: "/administration/mobile-feedback", description: "Field feedback and diagnostics from mobile users." },
+          { label: "Mobile Testing", route: "/administration/mobile-testing", description: "Offline, GPS, attachment, sync, and large-form field test records." },
         ],
       },
       {

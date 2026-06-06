@@ -16,4 +16,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .expo/
+*.keystore
+*.jks
+key.properties
+mobile/android/key.properties
+mobile/android/app/*.keystore
+mobile/android/app/*.jks
 .DS_Store

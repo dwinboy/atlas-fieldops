@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -23,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { listProjects } from "@/lib/api";
 import {
   createField,
   createPage,
@@ -585,6 +587,7 @@ export function createEnterpriseDraftForm(
 export function validateFormForPublish(
   form: DynamicForm | null | undefined,
   setup: FormSetupDraft,
+  projectLinked = Boolean(setup.projectName.trim()),
 ): FormReadinessItem[] {
   const fields = form?.fields ?? [];
   const sections = form?.sections ?? [];
@@ -605,7 +608,7 @@ export function validateFormForPublish(
       required: true,
     },
     {
-      complete: Boolean(setup.projectName.trim()),
+      complete: projectLinked,
       description:
         "Every form must belong to a project so submissions remain traceable.",
       id: "project",
@@ -698,15 +701,23 @@ export function FormCreationWorkspace({
 }: FormCreationWorkspaceProps) {
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const upsertLocalForm = useWorkspaceStore((state) => state.upsertLocalForm);
+  const preview = !token || token === "preview-token";
+  const projectsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listProjects(token ?? ""),
+    queryKey: ["form-builder-projects", token],
+  });
+  const tenantProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const availableProjectOptions = useMemo(
     () =>
       Array.from(
-        new Set([
-          ...localProjects.map((project) => project.name),
-          ...projectOptions,
-        ]),
+        new Set(
+          preview
+            ? [...localProjects.map((project) => project.name), ...projectOptions]
+            : tenantProjects.map((project) => project.name),
+        ),
       ),
-    [localProjects],
+    [localProjects, preview, tenantProjects],
   );
   const initialDraft = useMemo(
     () => (initialForm ? createEditableDraftFromListItem(initialForm) : null),
@@ -740,9 +751,20 @@ export function FormCreationWorkspace({
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const selectedProject = useMemo(
+    () =>
+      preview
+        ? localProjects.find((project) => project.name === setup.projectName)
+        : tenantProjects.find((project) => project.name === setup.projectName),
+    [localProjects, preview, setup.projectName, tenantProjects],
+  );
+  const selectedProjectId = selectedProject?.id ?? null;
+  const projectLinked = preview
+    ? Boolean(setup.projectName.trim())
+    : Boolean(selectedProjectId);
   const checklist = useMemo(
-    () => validateFormForPublish(draftForm, setup),
-    [draftForm, setup],
+    () => validateFormForPublish(draftForm, setup, projectLinked),
+    [draftForm, projectLinked, setup],
   );
   const criticalFailures = checklist.filter(
     (item) => item.required && !item.complete,
@@ -752,14 +774,21 @@ export function FormCreationWorkspace({
     setSetup((current) => ({ ...current, ...patch }));
   }
 
+  useEffect(() => {
+    if (preview || !tenantProjects.length) return;
+    if (tenantProjects.some((project) => project.name === setup.projectName)) return;
+    setSetup((current) => ({ ...current, projectName: tenantProjects[0]?.name ?? "" }));
+  }, [preview, setup.projectName, tenantProjects]);
+
   function createDraftAndOpenBuilder(method = startMethod): void {
+    if (!projectLinked) return;
     const nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
     setDraftForm(nextDraft);
     upsertLocalForm(
       workspaceFormFromDraft(
         nextDraft,
         setup,
-        localProjects.find((project) => project.name === setup.projectName)?.id,
+        selectedProjectId,
       ),
     );
     setPublishedForm(null);
@@ -789,7 +818,7 @@ export function FormCreationWorkspace({
       workspaceFormFromDraft(
         nextPublishedForm,
         setup,
-        localProjects.find((project) => project.name === setup.projectName)?.id,
+        selectedProjectId,
       ),
     );
   }
@@ -800,7 +829,7 @@ export function FormCreationWorkspace({
       workspaceFormFromDraft(
         nextForm,
         setup,
-        localProjects.find((project) => project.name === setup.projectName)?.id,
+        selectedProjectId,
       ),
     );
   }
@@ -982,12 +1011,20 @@ export function FormCreationWorkspace({
                   }
                   value={setup.projectName}
                 >
+                  {!availableProjectOptions.length ? (
+                    <option value="">Create or select a project first</option>
+                  ) : null}
                   {availableProjectOptions.map((project) => (
                     <option key={project} value={project}>
                       {project}
                     </option>
                   ))}
                 </Select>
+                {!preview && !projectsQuery.isLoading && !availableProjectOptions.length ? (
+                  <span className="mt-1 block text-xs text-danger">
+                    Create a project before building a data collection form.
+                  </span>
+                ) : null}
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Form Type</span>
@@ -1082,7 +1119,7 @@ export function FormCreationWorkspace({
             </div>
             <div className="mt-3 flex justify-end">
               <Button
-                disabled={!setup.formName.trim()}
+                disabled={!setup.formName.trim() || !projectLinked}
                 onClick={() => setStage("start")}
                 variant="primary"
               >

@@ -1,4 +1,5 @@
 import csv
+import re
 from datetime import UTC, datetime
 from io import StringIO
 from uuid import UUID
@@ -186,6 +187,133 @@ def form_schema_compatibility(*, form_id: UUID, version: int, schema: FormSchema
         media_field_count=media_count,
         warnings=warnings,
     )
+
+
+def _is_blank(value: object) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _response_map(payload: dict[str, object]) -> dict[str, object]:
+    responses = payload.get("responses")
+    if isinstance(responses, list):
+        mapped: dict[str, object] = {}
+        for item in responses:
+            if not isinstance(item, dict):
+                continue
+            value = item.get("value")
+            for key_name in ("question_id", "questionId", "variable_name", "variableName"):
+                key = item.get(key_name)
+                if isinstance(key, str) and key:
+                    mapped[key] = value
+        return mapped
+    return dict(payload)
+
+
+def _field_response(responses: dict[str, object], field: object) -> object:
+    field_id = getattr(field, "id", "")
+    variable_name = str(getattr(field, "variable_name", "") or "")
+    keys = [
+        field_id,
+        field_id.replace("-", "_").lower(),
+        variable_name,
+    ]
+    for key in keys:
+        if key and key in responses:
+            return responses[key]
+    return None
+
+
+def _parse_number(value: object) -> float | None:
+    if _is_blank(value):
+        return None
+    try:
+        return float(str(value).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if _is_blank(value):
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object], location_accuracy: float | None) -> list[str]:
+    responses = _response_map(payload)
+    issues: list[str] = []
+    now = datetime.now(UTC)
+    for section in schema.sections:
+        for field in section.fields:
+            value = _field_response(responses, field)
+            label = field.label
+            rules = field.validation or {}
+            if field.required and _is_blank(value):
+                issues.append(f"{label} is required.")
+                continue
+            if _is_blank(value):
+                continue
+
+            if field.type in {"number", "decimal", "currency", "nps", "rating"}:
+                number = _parse_number(value)
+                if number is None:
+                    issues.append(f"{label} must be a valid number.")
+                    continue
+                if isinstance(rules.get("min"), int | float) and number < float(rules["min"]):
+                    issues.append(f"{label} must be at least {rules['min']}.")
+                if isinstance(rules.get("max"), int | float) and number > float(rules["max"]):
+                    issues.append(f"{label} must be at most {rules['max']}.")
+
+            if field.type in {"date", "datetime"}:
+                parsed = _parse_datetime(value)
+                if parsed is None:
+                    issues.append(f"{label} must be a valid date.")
+                    continue
+                allow_future = bool(rules.get("allowFuture"))
+                if not allow_future and parsed > now:
+                    issues.append(f"{label} cannot be in the future.")
+
+            if field.type in {"text", "textarea", "phone", "email", "url", "password", "barcode", "qr"}:
+                text = str(value)
+                if isinstance(rules.get("minLength"), int) and len(text) < int(rules["minLength"]):
+                    issues.append(f"{label} must have at least {rules['minLength']} characters.")
+                if isinstance(rules.get("maxLength"), int) and len(text) > int(rules["maxLength"]):
+                    issues.append(f"{label} must have at most {rules['maxLength']} characters.")
+                pattern = rules.get("pattern")
+                if isinstance(pattern, str) and pattern and re.fullmatch(pattern, text) is None:
+                    issues.append(f"{label} has an invalid format.")
+                if field.type == "email" and re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", text) is None:
+                    issues.append(f"{label} must be a valid email address.")
+                if field.type == "phone" and re.fullmatch(r"^[0-9+\-\s()]{7,}$", text) is None:
+                    issues.append(f"{label} must be a valid phone number.")
+                if field.type == "url" and re.fullmatch(r"https?://.+", text) is None:
+                    issues.append(f"{label} must be a valid URL.")
+
+            if field.type in {"select", "dropdown", "radio", "likert"} and field.options:
+                allowed = {str(option.get("value") or option.get("label") or option) for option in field.options}
+                if str(value) not in allowed:
+                    issues.append(f"{label} must use one of the approved option values.")
+
+            if field.type in {"multiselect", "checkbox", "ranking"} and field.options:
+                values = value if isinstance(value, list) else [value]
+                allowed = {str(option.get("value") or option.get("label") or option) for option in field.options}
+                invalid = [str(item) for item in values if str(item) not in allowed]
+                if invalid:
+                    issues.append(f"{label} includes values outside the approved option list.")
+
+            if field.type in {"gps", "geolocation", "map", "geofence"}:
+                accuracy_limit = rules.get("accuracyMax")
+                if isinstance(accuracy_limit, int | float) and location_accuracy is not None and location_accuracy > float(accuracy_limit):
+                    issues.append(f"{label} GPS accuracy must be {accuracy_limit} meters or better.")
+    return issues
 
 
 class FieldOfficerService:
@@ -663,6 +791,17 @@ class SubmissionService:
             survey_id=payload.survey_id,
         ) is None:
             raise CollectionNotFoundError("Survey not found for the selected project")
+        schema = FormSchema.model_validate(form_version.schema_json)
+        validation_issues = validate_submission_payload(
+            schema=schema,
+            payload=payload.payload,
+            location_accuracy=payload.location.accuracy,
+        )
+        submission_payload = dict(payload.payload)
+        if validation_issues:
+            submission_payload["_validation_issues"] = validation_issues
+            submission_payload["_quality_status"] = "needs_review"
+            submission_payload["_review_required"] = True
         submission = await self.submissions.create(
             organization_id=organization_id,
             project_id=payload.project_id,
@@ -678,7 +817,7 @@ class SubmissionService:
             field_officer_id=officer.id,
             actor_user_id=actor_user_id,
             client_submission_id=payload.client_submission_id,
-            payload_json=payload.payload,
+            payload_json=submission_payload,
             device_id=payload.device.device_id,
             captured_at=payload.captured_at,
             submitted_at=payload.submitted_at,
@@ -708,8 +847,26 @@ class SubmissionService:
                 "offline": payload.offline_created,
                 "entity_id": str(payload.entity_id) if payload.entity_id else None,
                 "entity_type": payload.entity_type,
+                "review_required": True,
+                "validation_issue_count": len(validation_issues),
             },
         )
+        if validation_issues:
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="submission.validation_flagged",
+                resource_type="submission",
+                resource_id=str(submission.id),
+                metadata={
+                    "client_submission_id": payload.client_submission_id,
+                    "project_id": str(payload.project_id),
+                    "survey_id": str(payload.survey_id),
+                    "form_id": str(payload.form_id),
+                    "issues": validation_issues,
+                    "review_decision": "pending_human_review",
+                },
+            )
         return submission
 
     async def list_submissions(self, *, organization_id: UUID, status: str | None = None) -> list[Submission]:

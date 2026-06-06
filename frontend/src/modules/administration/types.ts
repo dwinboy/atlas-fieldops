@@ -9,7 +9,13 @@ export type AdministrationSection =
   | "integrations"
   | "system-settings"
   | "backup-recovery"
-  | "imports-migration";
+  | "imports-migration"
+  | "mobile-devices"
+  | "mobile-versions"
+  | "mobile-pilots"
+  | "mobile-monitoring"
+  | "mobile-feedback"
+  | "mobile-testing";
 
 export type AdminStatus =
   | "active"

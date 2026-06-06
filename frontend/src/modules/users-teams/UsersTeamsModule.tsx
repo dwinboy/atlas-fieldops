@@ -117,6 +117,16 @@ const defaultAccessDraft = {
   user_id: "",
 };
 
+const fallbackAssignableRoles: [string, string][] = [
+  ["organization_owner", "Organization Owner"],
+  ["me_manager", "M&E Manager"],
+  ["data_analyst", "Data Analyst"],
+  ["district_supervisor", "District Supervisor"],
+  ["field_officer", "Field Officer"],
+];
+
+const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
+
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
@@ -168,17 +178,24 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const activityQuery = useQuery({ queryKey: ["users-teams", "activity", token], queryFn: () => listUsersTeamsActivityLogs(token ?? ""), enabled });
   const organizationQuery = useQuery({ queryKey: ["users-teams", "organization", token], queryFn: () => getOrganizationContext(token ?? ""), enabled });
 
-  const users = [...localUsers, ...(usersQuery.data ?? previewUsers)];
-  const roles = rolesQuery.data ?? previewRoles;
-  const teams = teamsQuery.data ?? previewTeams;
-  const profiles = profilesQuery.data ?? previewProfiles;
-  const units = unitsQuery.data ?? previewUnits;
-  const sessions = sessionsQuery.data ?? previewSessions;
-  const catalog = catalogQuery.data ?? previewAccessCatalog;
-  const organizationSummary = organizationSummaryQuery.data ?? previewOrganizationSummary;
-  const activityLogs = activityQuery.data ?? previewActivityLogs;
+  const users = preview ? [...localUsers, ...previewUsers] : (usersQuery.data ?? []);
+  const roles = useMemo(() => (preview ? previewRoles : (rolesQuery.data ?? [])), [preview, rolesQuery.data]);
+  const teams = preview ? previewTeams : (teamsQuery.data ?? []);
+  const profiles = preview ? previewProfiles : (profilesQuery.data ?? []);
+  const units = preview ? previewUnits : (unitsQuery.data ?? []);
+  const sessions = preview ? previewSessions : (sessionsQuery.data ?? []);
+  const catalog = useMemo(
+    () => (preview ? previewAccessCatalog : (catalogQuery.data ?? emptyAccessCatalog)),
+    [catalogQuery.data, preview],
+  );
+  const organizationSummary = preview
+    ? previewOrganizationSummary
+    : (organizationSummaryQuery.data ?? { governance_score: 100, pending_access_requests: 0, high_risk_sessions: 0, attention_items: [] });
+  const activityLogs = preview ? previewActivityLogs : (activityQuery.data ?? []);
   const summary: UsersTeamsSummaryRead =
-    summaryQuery.data ?? computeSummaryFromRecords(users, roles, teams) ?? previewSummary;
+    preview
+      ? (summaryQuery.data ?? computeSummaryFromRecords(users, roles, teams) ?? previewSummary)
+      : (summaryQuery.data ?? computeSummaryFromRecords(users, roles, teams));
 
   const permissionGroups = useMemo(() => groupPermissions(catalog), [catalog]);
   const roleOptions = useMemo(() => {
@@ -189,8 +206,13 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     for (const role of catalog.roles) {
       roleNames.set(role.name, role.label || normalizeRoleLabel(role.name));
     }
+    if (!roleNames.size && !preview) {
+      for (const [value, label] of fallbackAssignableRoles) {
+        roleNames.set(value, label);
+      }
+    }
     return [...roleNames.entries()].sort((left, right) => left[1].localeCompare(right[1]));
-  }, [catalog.roles, roles]);
+  }, [catalog.roles, preview, roles]);
 
   const defaultAssignableRole = roleOptions.find(([value]) => value === defaultUserDraft.role_name)?.[0] ?? roleOptions[0]?.[0] ?? defaultUserDraft.role_name;
 
@@ -577,8 +599,13 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
       <CreateUserModal
         canSubmit={canManageUsers && Boolean(roleOptions.length) && !createUserMutation.isPending}
+        canManageRoles={canManageRoles}
         draft={userDraft}
         onChange={setUserDraft}
+        onCreateCustomRole={() => {
+          setRoleDraft(defaultRoleDraft);
+          setModalMode("role");
+        }}
         onSubmit={submitUser}
         onOpenChange={(open) => setModalMode(open ? "user" : null)}
         open={modalMode === "user"}
@@ -842,10 +869,12 @@ function PermissionsSection({ catalogGroups, onOpenAccessTest, roles, users }: {
   );
 }
 
-function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, roleOptions, saving }: {
+function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateCustomRole, onOpenChange, onSubmit, open, roleOptions, saving }: {
+  canManageRoles: boolean;
   canSubmit: boolean;
   draft: typeof defaultUserDraft;
   onChange: (draft: typeof defaultUserDraft) => void;
+  onCreateCustomRole: () => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
@@ -858,13 +887,33 @@ function CreateUserModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, o
         <Input placeholder="Full name" value={draft.full_name} onChange={(event) => onChange({ ...draft, full_name: event.target.value })} />
         <Input placeholder="Email address" type="email" value={draft.email} onChange={(event) => onChange({ ...draft, email: event.target.value })} />
         <Input placeholder="Temporary password (minimum 12 characters)" type="password" value={draft.password} onChange={(event) => onChange({ ...draft, password: event.target.value })} />
-        <div className="grid gap-3 md:grid-cols-2">
-          <Select value={draft.role_name} onChange={(event) => onChange({ ...draft, role_name: event.target.value })}>
-            {roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </Select>
-          <Select value={draft.scope_type} onChange={(event) => onChange({ ...draft, scope_type: event.target.value })}>
-            {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
-          </Select>
+        <div className="rounded-xl border bg-muted/25 p-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Role and permissions</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose an existing role, or create a custom role first when this user needs a specific permission set.
+              </p>
+            </div>
+            <Button disabled={!canManageRoles} onClick={onCreateCustomRole} size="sm" type="button" variant="secondary">
+              <ShieldCheck aria-hidden="true" />
+              Create custom role
+            </Button>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Role
+              <Select value={draft.role_name} onChange={(event) => onChange({ ...draft, role_name: event.target.value })}>
+                {roleOptions.length ? roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>) : <option value="">No roles available</option>}
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Access scope
+              <Select value={draft.scope_type} onChange={(event) => onChange({ ...draft, scope_type: event.target.value })}>
+                {["organization", "region", "district", "field_team", "project", "own"].map((scope) => <option key={scope} value={scope}>{scope.replace("_", " ")}</option>)}
+              </Select>
+            </label>
+          </div>
         </div>
         {!roleOptions.length ? (
           <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-warning">

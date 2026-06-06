@@ -229,14 +229,15 @@ export function FieldOperationsModule({
   principal,
   token,
 }: FieldOperationsModuleProps) {
+  const preview = isPreview(token);
   const [activeSection, setActiveSection] =
     useState<FieldOperationsSection>("dashboard");
   const [assignments, setAssignments] =
-    useState<FieldAssignment[]>(previewAssignments);
-  const [workPlans, setWorkPlans] = useState<WorkPlan[]>(previewWorkPlans);
-  const [targets, setTargets] = useState<OperationalTarget[]>(previewTargets);
+    useState<FieldAssignment[]>(() => (preview ? previewAssignments : []));
+  const [workPlans, setWorkPlans] = useState<WorkPlan[]>(() => (preview ? previewWorkPlans : []));
+  const [targets, setTargets] = useState<OperationalTarget[]>(() => (preview ? previewTargets : []));
   const [officerPreviewRows, setOfficerPreviewRows] =
-    useState<FieldOfficerRead[]>(previewOfficers);
+    useState<FieldOfficerRead[]>(() => (preview ? previewOfficers : []));
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [assignmentDraft, setAssignmentDraft] = useState(
     defaultAssignmentDraft,
@@ -253,7 +254,6 @@ export function FieldOperationsModule({
   const upsertLocalAssignment = useWorkspaceStore(
     (state) => state.upsertLocalAssignment,
   );
-  const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageFieldOperations =
     preview ||
@@ -276,13 +276,27 @@ export function FieldOperationsModule({
     queryFn: () => getOperationsSummary(token ?? ""),
     enabled,
   });
-  const officers = officersQuery.data?.length
-    ? officersQuery.data
-    : officerPreviewRows;
+  useEffect(() => {
+    if (preview) return;
+    setAssignments([]);
+    setWorkPlans([]);
+    setTargets([]);
+    setOfficerPreviewRows([]);
+  }, [preview]);
+
+  const officers = preview ? officerPreviewRows : (officersQuery.data ?? []);
   const operationsSummary: OperationsSummary =
-    summaryQuery.data ?? previewOperationsSummary;
-  const supervisors = previewSupervisors;
-  const activities = previewActivities;
+    preview ? (summaryQuery.data ?? previewOperationsSummary) : (summaryQuery.data ?? {
+      active_programs: 0,
+      beneficiaries: 0,
+      indicators: 0,
+      offline_ready: false,
+      open_cases: 0,
+      quality_flags: 0,
+      sync_health_percent: 0,
+    });
+  const supervisors = preview ? previewSupervisors : [];
+  const activities = preview ? previewActivities : [];
   const summary = computeFieldOperationsSummary({
     assignments,
     officers,
@@ -295,26 +309,26 @@ export function FieldOperationsModule({
       Array.from(
         new Set(
           [
-            ...localProjects.map((project) => project.name),
+            ...(preview ? localProjects.map((project) => project.name) : []),
             ...assignments.map((assignment) => assignment.project),
             ...workPlans.map((plan) => plan.project),
             ...targets.map((target) => target.project),
           ].filter(Boolean),
         ),
       ),
-    [assignments, localProjects, targets, workPlans],
+    [assignments, localProjects, preview, targets, workPlans],
   );
   const formOptions = useMemo(
     () =>
       Array.from(
         new Set(
           [
-            ...localForms.map((form) => form.name),
+            ...(preview ? localForms.map((form) => form.name) : []),
             ...assignments.map((assignment) => assignment.form),
           ].filter(Boolean),
         ),
       ),
-    [assignments, localForms],
+    [assignments, localForms, preview],
   );
 
   useEffect(() => {

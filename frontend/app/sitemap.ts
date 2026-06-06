@@ -24,6 +24,7 @@ const publicRoutes = [
   "privacy",
   "terms",
   "help",
+  "help/mobile",
   "documentation",
   "status",
   "careers",

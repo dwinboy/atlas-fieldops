@@ -30,15 +30,15 @@ import type { CurrentPrincipal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   dataQualitySections,
-  previewDuplicateGroups,
-  previewGpsIssues,
-  previewOutliers,
-  previewQualityAuditEvents,
-  previewQualityIssues,
-  previewQualityRules,
-  previewQualityScores,
-  previewRiskAlerts,
-  previewValidationFailures,
+  previewDuplicateGroups as sampleDuplicateGroups,
+  previewGpsIssues as sampleGpsIssues,
+  previewOutliers as sampleOutliers,
+  previewQualityAuditEvents as sampleQualityAuditEvents,
+  previewQualityIssues as sampleQualityIssues,
+  previewQualityRules as sampleQualityRules,
+  previewQualityScores as sampleQualityScores,
+  previewRiskAlerts as sampleRiskAlerts,
+  previewValidationFailures as sampleValidationFailures,
   type DataQualitySection,
   type DuplicateGroup,
   type GPSIssueRecord,
@@ -46,6 +46,8 @@ import {
   type QualityAuditEvent,
   type QualityIssue,
   type QualityRuleRecord,
+  type QualityScore,
+  type QualityScope,
   type RiskAlertRecord,
   type ValidationFailureRecord,
 } from "@/modules/data-quality/data";
@@ -85,17 +87,38 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
-export function DataQualityModule({ principal }: DataQualityModuleProps) {
+export function DataQualityModule({ principal, token }: DataQualityModuleProps) {
   const [activeSection, setActiveSection] = useState<DataQualitySection>("dashboard");
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [activeIssueTab, setActiveIssueTab] = useState<IssueDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const organizationScore = previewQualityScores.Organization;
-  const summary = useMemo(() => computeQualitySummary(previewQualityIssues, organizationScore), [organizationScore]);
-  const visibleIssues = useMemo(() => filterIssuesBySection(previewQualityIssues, activeSection), [activeSection]);
-  const selectedIssue = previewQualityIssues.find((issue) => issue.id === selectedIssueId) ?? null;
+  const preview = !token || token === "preview-token";
+  const qualityIssues = useMemo(() => (preview ? sampleQualityIssues : []), [preview]);
+  const qualityAuditEvents = useMemo(() => (preview ? sampleQualityAuditEvents : []), [preview]);
+  const gpsIssues = useMemo(() => (preview ? sampleGpsIssues : []), [preview]);
+  const riskAlerts = useMemo(() => (preview ? sampleRiskAlerts : []), [preview]);
+  const qualityRules = useMemo(() => (preview ? sampleQualityRules : []), [preview]);
+  const qualityScores = useMemo(() => (preview ? sampleQualityScores : {
+    Organization: {
+      accuracy: 100,
+      completeness: 100,
+      consistency: 100,
+      consentCompliance: 100,
+      duplicateDetection: 100,
+      gpsCompliance: 100,
+      timeliness: 100,
+      validationSuccess: 100,
+    },
+  }), [preview]);
+  const duplicateGroups = useMemo(() => (preview ? sampleDuplicateGroups : []), [preview]);
+  const outliers = useMemo(() => (preview ? sampleOutliers : []), [preview]);
+  const validationFailures = useMemo(() => (preview ? sampleValidationFailures : []), [preview]);
+  const organizationScore = qualityScores.Organization;
+  const summary = useMemo(() => computeQualitySummary(qualityIssues, organizationScore), [organizationScore, qualityIssues]);
+  const visibleIssues = useMemo(() => filterIssuesBySection(qualityIssues, activeSection), [activeSection, qualityIssues]);
+  const selectedIssue = qualityIssues.find((issue) => issue.id === selectedIssueId) ?? null;
   const roleLabel = principal?.roles?.join(", ") || "Workspace user";
 
   function openIssue(issue: QualityIssue, tab: IssueDetailTab = "Overview"): void {
@@ -107,7 +130,7 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
   function exportIssues(): void {
     downloadCsv(
       "atlas-data-quality-issues.csv",
-      previewQualityIssues.map((issue) => ({
+      qualityIssues.map((issue) => ({
         assignedTo: issue.assignedTo,
         detectedAt: issue.detectedAt,
         enumerator: issue.enumerator,
@@ -189,7 +212,7 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
 
       {selectedIssue ? (
         <IssueDetail
-          auditEvents={previewQualityAuditEvents.filter((event) => event.issueId === selectedIssue.id)}
+          auditEvents={qualityAuditEvents.filter((event) => event.issueId === selectedIssue.id)}
           issue={selectedIssue}
           onBack={() => setSelectedIssueId(null)}
           onOpenGovernance={() => setActiveView("governance")}
@@ -201,19 +224,21 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
 
       {!selectedIssue && activeSection === "dashboard" ? (
         <QualityLanding
+          issues={qualityIssues}
           onOpenIssue={openIssue}
           onOpenSection={setActiveSection}
+          scores={qualityScores}
           summary={summary}
         />
       ) : null}
-      {!selectedIssue && activeSection === "quality-dashboard" ? <QualityDashboard onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={previewDuplicateGroups} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={previewOutliers} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={previewGpsIssues} issues={visibleIssues} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
+      {!selectedIssue && activeSection === "quality-dashboard" ? <QualityDashboard issues={qualityIssues} onOpenIssue={openIssue} scores={qualityScores} /> : null}
+      {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={duplicateGroups} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
       {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
-      {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={previewValidationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={previewRiskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={previewQualityRules} /> : null}
+      {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -241,12 +266,16 @@ export function DataQualityModule({ principal }: DataQualityModuleProps) {
 }
 
 function QualityLanding({
+  issues,
   onOpenIssue,
   onOpenSection,
+  scores,
   summary,
 }: {
+  issues: QualityIssue[];
   onOpenIssue: (issue: QualityIssue) => void;
   onOpenSection: (section: DataQualitySection) => void;
+  scores: Partial<Record<QualityScope, QualityScore>>;
   summary: ReturnType<typeof computeQualitySummary>;
 }) {
   const cards = [
@@ -268,11 +297,20 @@ function QualityLanding({
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel action={<Button onClick={() => onOpenSection("quality-dashboard")} size="sm" variant="secondary">Open dashboard</Button>} title="Quality Trends">
-          <TrendBars scores={previewQualityScores.Organization} />
+          <TrendBars scores={scores.Organization ?? {
+            accuracy: 100,
+            completeness: 100,
+            consistency: 100,
+            consentCompliance: 100,
+            duplicateDetection: 100,
+            gpsCompliance: 100,
+            timeliness: 100,
+            validationSuccess: 100,
+          }} />
         </Panel>
         <Panel title="Open Investigations">
           <Timeline
-            records={previewQualityIssues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed").slice(0, 5).map((issue) => ({
+            records={issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed").slice(0, 5).map((issue) => ({
               badge: issue.severity,
               label: issue.title,
               meta: `${issue.status} · ${issue.project} · ${issue.assignedTo}`,
@@ -288,13 +326,13 @@ function QualityLanding({
         <RankingPanel title="Quality by Enumerator" rows={[["Helen P.", 92], ["Amina D.", 84], ["Jean F.", 75], ["Peter O.", 61]]} />
       </div>
       <Panel title="Top Quality Issues">
-        <IssueCards issues={previewQualityIssues.slice(0, 4)} onOpenIssue={onOpenIssue} />
+        <IssueCards issues={issues.slice(0, 4)} onOpenIssue={onOpenIssue} />
       </Panel>
     </div>
   );
 }
 
-function QualityDashboard({ onOpenIssue }: { onOpenIssue: (issue: QualityIssue) => void }) {
+function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; scores: Partial<Record<QualityScope, QualityScore>> }) {
   return (
     <div className="space-y-3">
       <SectionHeader
@@ -309,7 +347,7 @@ function QualityDashboard({ onOpenIssue }: { onOpenIssue: (issue: QualityIssue) 
             {(["Critical", "High", "Medium", "Low"] as const).map((severity) => (
               <div className="rounded-xl border bg-background p-4" key={severity}>
                 <Badge tone={severityTone(severity)}>{severity}</Badge>
-                <p className="mt-3 text-2xl font-semibold">{previewQualityIssues.filter((issue) => issue.severity === severity).length}</p>
+                <p className="mt-3 text-2xl font-semibold">{issues.filter((issue) => issue.severity === severity).length}</p>
                 <p className="text-xs text-muted-foreground">Open and historical quality issues</p>
               </div>
             ))}
@@ -318,14 +356,14 @@ function QualityDashboard({ onOpenIssue }: { onOpenIssue: (issue: QualityIssue) 
         <Panel title="Resolution Progress">
           <div className="rounded-xl border bg-background p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Average score impact</p>
-            <p className="mt-2 text-3xl font-semibold">{averageResolutionImpact(previewQualityIssues)}</p>
+            <p className="mt-2 text-3xl font-semibold">{averageResolutionImpact(issues)}</p>
             <p className="mt-2 text-sm text-muted-foreground">Potential score recovery if open issues are resolved.</p>
           </div>
         </Panel>
       </div>
       <Panel title="Quality Heatmap">
         <div className="grid gap-3 md:grid-cols-4">
-          {Object.entries(previewQualityScores).map(([scope, score]) => {
+          {Object.entries(scores).map(([scope, score]) => {
             const value = calculateQualityScore(score);
             return (
               <div className="rounded-xl border bg-background p-4" key={scope}>
@@ -340,7 +378,7 @@ function QualityDashboard({ onOpenIssue }: { onOpenIssue: (issue: QualityIssue) 
         </div>
       </Panel>
       <Panel title="Issues Requiring Attention">
-        <IssueCards issues={previewQualityIssues.filter((issue) => issue.severity === "Critical" || issue.severity === "High")} onOpenIssue={onOpenIssue} />
+        <IssueCards issues={issues.filter((issue) => issue.severity === "Critical" || issue.severity === "High")} onOpenIssue={onOpenIssue} />
       </Panel>
     </div>
   );

@@ -275,15 +275,18 @@ async def check_entity_duplicates(
     "/beneficiaries",
     response_model=BeneficiaryRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Register beneficiary",
+    summary="Deprecated direct beneficiary creation",
 )
 async def create_beneficiary(
     payload: BeneficiaryCreate,
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BeneficiaryRead:
-    beneficiary = await OperationsService(session).create_beneficiary(organization_uuid(principal), payload, user_uuid(principal))
-    return BeneficiaryRead.model_validate(beneficiary)
+    _ = payload, principal, session
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Beneficiaries can only be added through a project import or a project-linked mobile registration form.",
+    )
 
 
 @router.get(
@@ -474,7 +477,11 @@ async def create_import_job(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ImportJobRead:
-    return await OperationsService(session).create_import_job(organization_uuid(principal), user_uuid(principal), payload)
+    try:
+        return await OperationsService(session).create_import_job(organization_uuid(principal), user_uuid(principal), payload)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/data/imports/{import_job_id}/rows", response_model=list[ImportRowRead], summary="List editable rows from an import")

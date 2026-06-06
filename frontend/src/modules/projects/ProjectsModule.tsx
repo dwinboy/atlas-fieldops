@@ -249,18 +249,18 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   });
 
   const projects = useMemo(
-    () => [...localProjects, ...(projectsQuery.data ?? previewProjects)],
-    [localProjects, projectsQuery.data],
+    () => (preview ? [...localProjects, ...previewProjects] : (projectsQuery.data ?? [])),
+    [localProjects, preview, projectsQuery.data],
   );
   const summary: ProjectSummaryRead =
-    summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary;
-  const templates = templatesQuery.data ?? previewTemplates;
+    preview ? (summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary) : (summaryQuery.data ?? computeProjectSummary(projects));
+  const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const selectedProject = selectedProjectId
     ? (projects.find((project) => project.id === selectedProjectId) ?? null)
     : null;
   const detail = selectedProjectId
     ? (detailQuery.data ??
-      (selectedProject ? detailFromProject(selectedProject) : previewDetail))
+      (selectedProject ? detailFromProject(selectedProject) : preview ? previewDetail : null))
     : null;
   const visibleProjects = useMemo(
     () => filterProjects(projects, activeSection),
@@ -522,6 +522,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           onOpenReports={() => setActiveView("analytics")}
           onOpenSubmissions={() => setActiveView("submissions")}
           onOpenTeams={() => setActiveView("organizations")}
+          preview={preview}
           tab={activeTab}
           setTab={setActiveTab}
           token={token}
@@ -765,6 +766,7 @@ function ProjectDetailWorkspace({
   onOpenReports,
   onOpenSubmissions,
   onOpenTeams,
+  preview,
   setTab,
   tab,
   token,
@@ -777,6 +779,7 @@ function ProjectDetailWorkspace({
   onOpenReports: () => void;
   onOpenSubmissions: () => void;
   onOpenTeams: () => void;
+  preview: boolean;
   setTab: (tab: ProjectTab) => void;
   tab: ProjectTab;
   token: string | null;
@@ -822,6 +825,7 @@ function ProjectDetailWorkspace({
       {tab === "Beneficiaries" ? (
         <ProjectBeneficiariesPanel
           onOpenRegistry={onOpenBeneficiaries}
+          preview={preview}
           projectId={detail.id}
         />
       ) : null}

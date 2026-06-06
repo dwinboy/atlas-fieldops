@@ -59,7 +59,6 @@ export const canonicalRoutes = {
   ],
   beneficiaries: [
     "/beneficiaries",
-    "/beneficiaries/register",
     "/beneficiaries/import",
     "/beneficiaries/duplicates",
     "/beneficiaries/:entityId",
@@ -133,6 +132,14 @@ export const canonicalRoutes = {
     "/administration/system-settings",
     "/administration/backup-recovery",
     "/administration/imports-migration",
+    "/administration/mobile-devices",
+    "/administration/mobile-devices/:deviceId",
+    "/administration/mobile-versions",
+    "/administration/mobile-pilots",
+    "/administration/mobile-monitoring",
+    "/administration/mobile-monitoring/crashes",
+    "/administration/mobile-feedback",
+    "/administration/mobile-testing",
   ],
 } as const;
 

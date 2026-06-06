@@ -51,7 +51,7 @@ class BeneficiaryCreate(BaseModel):
     beneficiary_uid: str = Field(min_length=2, max_length=120)
     beneficiary_type: str = Field(min_length=2, max_length=60)
     display_name: str = Field(min_length=2, max_length=220)
-    project_id: UUID | None = None
+    project_id: UUID
     sex: str | None = Field(default=None, max_length=30)
     birth_year: int | None = Field(default=None, ge=1900, le=2100)
     phone_number: str | None = Field(default=None, max_length=40)
@@ -497,6 +497,8 @@ class ImportJobCreate(BaseModel):
             raise ValueError(f"Unsupported dataset type: {self.dataset_type}")
         if self.source_format not in SUPPORTED_IMPORT_FORMATS:
             raise ValueError(f"Unsupported import format: {self.source_format}")
+        if self.dataset_type in {"beneficiaries", "entity_registry", "form_definitions", "submissions"} and self.target_project_id is None:
+            raise ValueError("Select a target project before importing beneficiaries, forms, or submissions.")
         return self
 
 

@@ -952,7 +952,7 @@ export type BeneficiaryCreate = {
   beneficiary_uid: string;
   beneficiary_type: string;
   display_name: string;
-  project_id?: string | null;
+  project_id: string;
   sex?: string | null;
   birth_year?: number | null;
   phone_number?: string | null;

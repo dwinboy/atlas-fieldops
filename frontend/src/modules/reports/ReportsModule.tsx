@@ -171,15 +171,21 @@ export function ReportsModule({ token }: ReportsModuleProps) {
     () => (preview ? previewReports : (reportsQuery.data ?? []).map(mapApiReport)),
     [preview, reportsQuery.data],
   );
+  const dashboards = useMemo(() => (preview ? previewDashboards : []), [preview]);
+  const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
+  const scheduledReports = useMemo(() => (preview ? previewScheduledReports : []), [preview]);
+  const reportAuditEvents = useMemo(() => (preview ? previewAuditEvents : []), [preview]);
+  const kpis = useMemo(() => (preview ? previewKpis : []), [preview]);
+  const builderSteps = useMemo(() => (preview ? previewBuilderSteps : []), [preview]);
   const summary = useMemo(
     () =>
       computeReportsSummary({
-        dashboards: previewDashboards,
-        exports: previewExportJobs,
+        dashboards,
+        exports: exportJobs,
         reports,
-        schedules: previewScheduledReports,
+        schedules: scheduledReports,
       }),
-    [reports],
+    [dashboards, exportJobs, reports, scheduledReports],
   );
   const visibleReports = useMemo(() => filterReportsBySection(reports, activeSection), [activeSection, reports]);
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
@@ -279,11 +285,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
 
       {selectedReport ? (
         <ReportDetail
-          auditEvents={previewAuditEvents.filter((event) => event.reportId === selectedReport.id)}
-          exports={previewExportJobs}
+          auditEvents={reportAuditEvents.filter((event) => event.reportId === selectedReport.id)}
+          exports={exportJobs}
           onBack={() => setSelectedReportId(null)}
           report={selectedReport}
-          schedules={previewScheduledReports.filter((schedule) => schedule.reportId === selectedReport.id)}
+          schedules={scheduledReports.filter((schedule) => schedule.reportId === selectedReport.id)}
           selectedTab={activeDetailTab}
           setSelectedTab={setActiveDetailTab}
         />
@@ -291,21 +297,21 @@ export function ReportsModule({ token }: ReportsModuleProps) {
 
       {!selectedReport && activeSection === "dashboard" ? (
         <ReportsDashboard
-          dashboards={previewDashboards}
-          exports={previewExportJobs}
-          kpis={previewKpis}
+          dashboards={dashboards}
+          exports={exportJobs}
+          kpis={kpis}
           onOpenReport={openReport}
           onOpenSection={setActiveSection}
           reports={reports}
-          schedules={previewScheduledReports}
+          schedules={scheduledReports}
           summary={summary}
         />
       ) : null}
       {!selectedReport && activeSection === "standard" ? <StandardReports onOpenReport={openReport} onRunReport={runReport} reports={visibleReports} syncing={reportsQuery.isFetching} /> : null}
-      {!selectedReport && activeSection === "custom" ? <CustomReportBuilder onOpenReports={() => setActiveSection("standard")} /> : null}
-      {!selectedReport && activeSection === "dashboards" ? <DashboardsSection dashboards={previewDashboards} onOpenReports={() => setActiveSection("standard")} /> : null}
-      {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={previewScheduledReports} /> : null}
-      {!selectedReport && activeSection === "exports" ? <ExportsSection exports={previewExportJobs} /> : null}
+      {!selectedReport && activeSection === "custom" ? <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} /> : null}
+      {!selectedReport && activeSection === "dashboards" ? <DashboardsSection dashboards={dashboards} onOpenReports={() => setActiveSection("standard")} /> : null}
+      {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={scheduledReports} /> : null}
+      {!selectedReport && activeSection === "exports" ? <ExportsSection exports={exportJobs} /> : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -494,7 +500,7 @@ function StandardReports({
   );
 }
 
-function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
+function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: typeof previewBuilderSteps; onOpenReports: () => void }) {
   const [dataSource, setDataSource] = useState("Submissions");
   const [visualization, setVisualization] = useState("KPI Card");
   const dataSources = ["Projects", "Forms", "Submissions", "Indicators", "Beneficiaries", "Field Operations", "Data Quality"];
@@ -512,7 +518,7 @@ function CustomReportBuilder({ onOpenReports }: { onOpenReports: () => void }) {
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Panel title="Report Builder Steps">
           <div className="space-y-3">
-            {previewBuilderSteps.map((step, index) => (
+            {builderSteps.map((step, index) => (
               <div className="rounded-xl border bg-background p-3" key={step.id}>
                 <div className="flex items-center gap-2">
                   <Badge tone={step.status === "Complete" ? "success" : step.status === "Current" ? "accent" : "neutral"}>{index + 1}</Badge>

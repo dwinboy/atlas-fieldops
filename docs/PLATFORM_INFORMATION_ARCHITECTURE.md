@@ -203,7 +203,7 @@ The sidebar is grouped by business domain. Do not create new top-level sidebar i
 | Operations | Forms | Create, publish, version, govern, and manage survey/data collection forms. |
 | Operations | Field Operations | Manage assignments, supervisors, field officers, targets, work plans, and monitoring. |
 | Operations | Submissions | View, review, approve, reject, return, archive, and manage collected records. |
-| Operations | Beneficiaries | Register, search, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time. |
+| Operations | Beneficiaries | Search, import, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time. |
 | Analytics | Mapping | GIS maps, boundaries, GPS validation, coverage monitoring, and spatial analysis. |
 | Analytics | Indicators | Indicator library, logframes, baselines, targets, results frameworks, and progress tracking. |
 | Analytics | Reports | Standard reports, custom reports, dashboards, scheduled outputs, and exports. |
@@ -299,7 +299,6 @@ The production route model must use clean domain prefixes. The current web app i
 ### Beneficiaries / Entities
 
 - `/beneficiaries`
-- `/beneficiaries/register`
 - `/beneficiaries/import`
 - `/beneficiaries/duplicates`
 - `/beneficiaries/:entityId`
@@ -529,11 +528,16 @@ Navigation visibility and route access must be controlled from `frontend/src/con
 - Use form-level settings for permissions, workflow, reference data, data quality rules, mapping settings, version history, and audit trail tied to one form.
 - Use project-level settings for project team assignment, locations, objectives, indicators, donor metadata, beneficiary scope, and project-wide reporting.
 - Never allow orphan forms. A form must belong to a project context.
+- Never allow orphan beneficiaries/entities. A beneficiary/entity must be enrolled in a project at creation or import time.
 - Never allow orphan submissions. A submission must retain organization, project, form, enumerator, timestamp, and GPS metadata when applicable.
 
 ## Entity-Centric Data Collection
 
 **Rule:** Forms collect records, but beneficiaries/entities are the anchor for longitudinal M&E tracking.
+
+**Project linkage rule:** Every beneficiary/entity must be linked to a project, and every data collection form must be linked to a project before it can be built, published, assigned, or pushed to mobile.
+
+**Allowed beneficiary creation paths:** Beneficiaries/entities may only enter the platform through a project-scoped import in the web application or through a project-linked registration form completed by a field officer and synced from mobile. Do not add a separate free-form manual beneficiary registration workflow.
 
 Purpose:
 
@@ -548,6 +552,7 @@ Canonical ownership:
 - Projects exposes `/projects/:projectId/beneficiaries` as the project-specific entity scope and coverage view.
 - Forms owns form-level entity controls: whether a form creates, updates, requires, or allows anonymous entity records; duplicate controls; frequency rules; and prefill mappings.
 - Submissions owns collected records and must support nullable `entity_id`, `entity_type`, `frequency_period`, and `event_id` so older non-entity submissions remain valid.
+- Field officer submissions must enter the review queue as submitted evidence. Validation, duplicate, GPS, and data-quality checks may flag issues and recommend review attention, but they must not automatically approve, reject, or discard submitted data. Authorized reviewers decide whether to approve, reject, return for correction, override, or archive.
 - Data Quality owns duplicate resolution, investigations, merge reason, quality issue lifecycle, and confirmed duplicate signals.
 - Governance owns immutable audit visibility for entity creation, profile change, duplicate override, merge, frequency block, prefill rule change, and entity-linked submission events.
 
@@ -558,6 +563,8 @@ Entity registry requirements:
 - Status values include Active, Inactive, Deceased, Moved, Duplicate, and Archived.
 - Registration must run duplicate checks before save and show possible matches when phone, national ID, household ID, name/date of birth, name/village, or GPS proximity indicates risk.
 - Duplicate creation must never be silent. Users must use the existing record, cancel, send for supervisor review, or continue only with a reason and sufficient permission.
+- Web imports must require a target project before beneficiary rows can be applied. If legacy data has no project field, the selected target project becomes the project enrollment.
+- Mobile-created beneficiaries must come from a published, project-linked form whose entity controls allow creating the entity type.
 
 Entity-linked form behavior:
 
@@ -584,6 +591,69 @@ Mobile-ready architecture placeholders:
 - Future mobile apps should consume assigned projects, assigned entities, assigned forms, published form versions, reference data, locations, duplicate rules, frequency rules, prefill data, returned submissions, and sync-ready upload APIs.
 - Required API contracts include assigned entities, assigned forms, sync package, prefill data, duplicate rule package, frequency rule package, submission upload package, and sync conflict responses.
 - Do not create mobile screens in the web app. Web work should expose typed backend/data contracts that can later be consumed by offline-first mobile sync.
+
+## Mobile App Architecture
+
+Purpose:
+
+- The mobile app is an Android-friendly, offline-first field extension of Atlas FieldOps.
+- Mobile is for field data collection, assigned beneficiaries/entities, assigned forms, supervisor-ready correction workflows, local drafts, attachments, audit events, and sync.
+- Mobile is not a second administration, governance, reports, mapping analytics, or platform console experience.
+
+Ownership and placement:
+
+- Mobile code lives under `mobile/`.
+- Shared mobile-safe TypeScript contracts live under `shared/types/`.
+- Mobile backend contracts are exposed under `/api/v1/mobile/*`.
+- Mobile must consume API/data contracts and must not depend on web UI logic, web routes, or browser-only state.
+
+Required mobile contracts:
+
+- User, Organization, Project, Assignment, Entity/Beneficiary, Location, Form, Form Version, Question, Reference Data, Submission, Submission Draft, Attachment, Notification, Sync Queue Item, and Audit Event.
+- Offline-capable records must include `localId`, `serverId`, `syncStatus`, `createdAt`, `updatedAt`, `lastSyncedAt`, nullable `deviceId`, nullable `conflictStatus`, and nullable `deletedAt`.
+
+Required mobile API namespace:
+
+- `GET /api/v1/mobile/bootstrap`
+- `POST /api/v1/mobile/devices/register`
+- `GET /api/v1/mobile/version-policy`
+- `GET /api/v1/mobile/projects`
+- `GET /api/v1/mobile/assignments`
+- `GET /api/v1/mobile/forms`
+- `GET /api/v1/mobile/form-versions`
+- `GET /api/v1/mobile/entities`
+- `GET /api/v1/mobile/locations`
+- `GET /api/v1/mobile/reference-data`
+- `GET /api/v1/mobile/returned-submissions`
+- `GET /api/v1/mobile/notifications`
+- `GET /api/v1/mobile/sync`
+- `POST /api/v1/mobile/submissions`
+- `POST /api/v1/mobile/attachments`
+- `POST /api/v1/mobile/audit-events`
+- `POST /api/v1/mobile/sync`
+
+Mobile pilot administration:
+
+- Organization-level mobile deployment controls belong in Administration, not Platform Console, because they manage an organization field rollout.
+- Approved routes are `/administration/mobile-devices`, `/administration/mobile-versions`, `/administration/mobile-pilots`, `/administration/mobile-monitoring`, `/administration/mobile-monitoring/crashes`, `/administration/mobile-feedback`, and `/administration/mobile-testing`.
+- Mobile device records track device ID, device name, user, organization, Android version, app version, registration date, last sync, last login, status, remote logout readiness, and future remote wipe readiness.
+- Version management must define current production version, staging version, minimum supported version, optional update state, mandatory update state, and release notes.
+- Pilot records must track pilot name, project, dates, devices, field officers, supervisors, status, submissions, sync failures, crashes, issues, and feedback.
+- Crash reports, diagnostics, feedback, and field test records must never contain sensitive form answers.
+
+Offline-first rules:
+
+- Draft submissions must be saved locally before sync.
+- Every offline action that changes server state must create a sync queue item.
+- Mobile duplicate checks are advisory; backend duplicate and frequency checks remain the final authority.
+- Mobile audit events must queue locally and sync to Governance Audit Trail.
+- Tokens must be stored in secure device storage when the concrete mobile runtime is connected. Passwords must never be stored.
+
+Entity-linked mobile collection:
+
+- The canonical field flow is Assignment -> Select Entity -> Select Form -> Load Prefilled Data -> Complete Form -> Save Draft -> Queue Submission -> Sync.
+- Entity-linked mobile submissions must preserve project, assignment, form, form version, entity, frequency period, event, GPS, attachment, and audit metadata.
+- Anonymous submissions are allowed only when the published form version explicitly allows anonymous collection.
 
 ## Mapping and GIS Rules
 

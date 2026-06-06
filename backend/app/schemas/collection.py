@@ -200,6 +200,7 @@ class FormField(BaseModel):
     type: str = Field(min_length=2, max_length=80)
     label: str = Field(min_length=1, max_length=240)
     hint: str | None = Field(default=None, max_length=500)
+    variable_name: str | None = Field(default=None, max_length=120)
     required: bool = False
     validation: dict[str, Any] = Field(default_factory=dict)
     visibility: dict[str, Any] = Field(default_factory=dict)

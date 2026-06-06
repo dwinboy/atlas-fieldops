@@ -94,6 +94,7 @@ import {
 import type {
   AdministrationPageConfig,
   AdministrationSection,
+  AdminStatus,
   ApiKeyRecord,
   BackupJob,
   ConfigurationChange,
@@ -205,6 +206,21 @@ function formatTimestamp(): string {
 
 function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+const mobileReadinessSections: AdministrationSection[] = [
+  "mobile-devices",
+  "mobile-versions",
+  "mobile-pilots",
+  "mobile-monitoring",
+  "mobile-feedback",
+  "mobile-testing",
+];
+
+function isMobileReadinessSection(
+  section: AdministrationSection,
+): boolean {
+  return mobileReadinessSections.includes(section);
 }
 
 function formatApiDate(value?: string | null): string {
@@ -885,6 +901,12 @@ export function AdministrationModule({
       integrations: "integration",
       "imports-migration": null,
       "location-hierarchy": "location",
+      "mobile-devices": null,
+      "mobile-feedback": null,
+      "mobile-monitoring": null,
+      "mobile-pilots": null,
+      "mobile-testing": null,
+      "mobile-versions": null,
       "notification-settings": "notification",
       "reference-data": "reference-list",
       "system-settings": null,
@@ -902,6 +924,12 @@ export function AdministrationModule({
     }
     if (activeSection === "imports-migration") {
       setActionResult("Start from Upload / Select Source below. You can upload a file or use sample migration data to test the assistant.");
+      return;
+    }
+    if (isMobileReadinessSection(activeSection)) {
+      setActionResult(
+        "Mobile pilot controls are ready. Use the readiness table below to review devices, releases, monitoring, feedback, and field test gates before deployment.",
+      );
       return;
     }
     setModalMode(modalBySection[activeSection]);
@@ -2140,6 +2168,10 @@ export function AdministrationModule({
         <ImportsMigrationModule token={token} />
       ) : null}
 
+      {isMobileReadinessSection(activeSection) ? (
+        <MobileReadinessView activeSection={activeSection} />
+      ) : null}
+
       <AdministrationModal
         apiKeyDraft={apiKeyDraft}
         backupCreate={createBackup}
@@ -2347,6 +2379,198 @@ function AdministrationDashboard({
           </dl>
         </ConfigPanel>
       </div>
+    </div>
+  );
+}
+
+type MobileReadinessRecord = {
+  detail: string;
+  id: string;
+  name: string;
+  owner: string;
+  status: AdminStatus;
+  updatedAt: string;
+};
+
+function mobileReadinessRows(section: AdministrationSection): MobileReadinessRecord[] {
+  const updatedAt = formatTimestamp();
+  const rowsBySection: Partial<Record<AdministrationSection, MobileReadinessRecord[]>> = {
+    "mobile-devices": [
+      {
+        detail: "Device registration endpoint, remote logout flag, and blocked/lost/retired statuses are available.",
+        id: "mobile-device-registry",
+        name: "Device registry",
+        owner: "System Admin",
+        status: "active",
+        updatedAt,
+      },
+      {
+        detail: "Remote wipe is architecture-ready and intentionally held for a future elevated confirmation workflow.",
+        id: "mobile-device-remote-wipe",
+        name: "Remote wipe readiness",
+        owner: "Security",
+        status: "warning",
+        updatedAt,
+      },
+    ],
+    "mobile-versions": [
+      {
+        detail: "Production, staging, minimum supported version, optional update, and mandatory update policy are exposed.",
+        id: "mobile-version-policy",
+        name: "Version policy",
+        owner: "Release Manager",
+        status: "active",
+        updatedAt,
+      },
+      {
+        detail: "Android package, support URLs, privacy URL, permissions, icon, and splash configuration are centralized.",
+        id: "android-release-config",
+        name: "Android release config",
+        owner: "Mobile",
+        status: "scheduled",
+        updatedAt,
+      },
+    ],
+    "mobile-pilots": [
+      {
+        detail: "Pilot records track project, dates, devices, field officers, supervisors, status, feedback, and issues.",
+        id: "mobile-pilot-program",
+        name: "Pilot program tracking",
+        owner: "Pilot Coordinator",
+        status: "active",
+        updatedAt,
+      },
+      {
+        detail: "Rollout decisions use devices, sync rate, crash rate, feedback volume, and field testing evidence.",
+        id: "pilot-dashboard-gates",
+        name: "Pilot dashboard gates",
+        owner: "M&E Manager",
+        status: "scheduled",
+        updatedAt,
+      },
+    ],
+    "mobile-monitoring": [
+      {
+        detail: "Monitoring summary covers active devices, sync failures, crashes, offline devices, app versions, and throughput.",
+        id: "mobile-monitoring-summary",
+        name: "Monitoring center",
+        owner: "Operations",
+        status: "healthy",
+        updatedAt,
+      },
+      {
+        detail: "Crash reports capture device, app version, severity, message, and stack trace without form answers.",
+        id: "mobile-crash-reports",
+        name: "Crash reporting",
+        owner: "QA",
+        status: "active",
+        updatedAt,
+      },
+    ],
+    "mobile-feedback": [
+      {
+        detail: "Field officers can submit bug, performance, sync, feature, or other feedback with diagnostics.",
+        id: "mobile-feedback-channel",
+        name: "Feedback intake",
+        owner: "Support",
+        status: "active",
+        updatedAt,
+      },
+      {
+        detail: "Diagnostics include storage, queue, conflicts, failed syncs, and fake offline mode state.",
+        id: "mobile-diagnostics-package",
+        name: "Diagnostics package",
+        owner: "Support",
+        status: "healthy",
+        updatedAt,
+      },
+    ],
+    "mobile-testing": [
+      {
+        detail: "Offline, GPS, attachment, sync, and large-form testing records are ready for pilot evidence capture.",
+        id: "mobile-field-tests",
+        name: "Field testing workflows",
+        owner: "QA",
+        status: "active",
+        updatedAt,
+      },
+      {
+        detail: "Low-end Android, weak network, reboot, failed sync, and app update scenarios are documented.",
+        id: "mobile-test-plan",
+        name: "Pilot test plan",
+        owner: "QA",
+        status: "scheduled",
+        updatedAt,
+      },
+    ],
+  };
+  return rowsBySection[section] ?? [];
+}
+
+function MobileReadinessView({
+  activeSection,
+}: {
+  activeSection: AdministrationSection;
+}) {
+  const rows = mobileReadinessRows(activeSection);
+  const columns: TableColumn<MobileReadinessRecord>[] = [
+    {
+      header: "Control",
+      key: "name",
+      render: (row) => (
+        <div>
+          <p className="font-semibold">{row.name}</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">
+            {row.detail}
+          </p>
+        </div>
+      ),
+      value: (row) => `${row.name} ${row.detail}`,
+    },
+    {
+      header: "Owner",
+      key: "owner",
+      render: (row) => row.owner,
+      value: (row) => row.owner,
+    },
+    {
+      header: "Status",
+      key: "status",
+      render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge>,
+      value: (row) => row.status,
+    },
+    {
+      header: "Updated",
+      key: "updated",
+      render: (row) => row.updatedAt,
+      value: (row) => row.updatedAt,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-4">
+        {[
+          ["Pilot gate", "Ready for controlled field validation"],
+          ["Device safety", "Registration and remote logout ready"],
+          ["Release policy", "Minimum version enforcement ready"],
+          ["Support loop", "Crash, feedback, and diagnostics ready"],
+        ].map(([label, value]) => (
+          <article className="rounded-xl border bg-panel p-3 shadow-line" key={label}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {label}
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-5">{value}</p>
+          </article>
+        ))}
+      </div>
+      <DataTable
+        columns={columns}
+        emptyLabel="No mobile readiness controls found"
+        rows={rows}
+        searchLabel="Search mobile readiness controls"
+        title="Mobile Pilot Readiness"
+      />
     </div>
   );
 }

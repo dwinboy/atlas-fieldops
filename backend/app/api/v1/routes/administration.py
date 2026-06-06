@@ -1,5 +1,6 @@
+from datetime import UTC, datetime
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,19 @@ from app.schemas.administration import (
     LocationCreate,
     LocationRead,
     LocationUpdate,
+    MobileCrashReportCreate,
+    MobileCrashReportRead,
+    MobileDeviceAction,
+    MobileDeviceRead,
+    MobileFeedbackCreate,
+    MobileFeedbackRead,
+    MobileMonitoringSummaryRead,
+    MobilePilotCreate,
+    MobilePilotRead,
+    MobileTestingRecordCreate,
+    MobileTestingRecordRead,
+    MobileVersionRead,
+    MobileVersionUpsert,
     NotificationRuleCreate,
     NotificationRuleRead,
     NotificationRuleUpdate,
@@ -53,6 +67,19 @@ def audit_organization_uuid(principal: CurrentPrincipal) -> UUID:
 
 def not_found(exc: AdministrationNotFoundError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+def compare_semver(left: str, right: str) -> int:
+    left_parts = [int(part) for part in left.split(".") if part.isdigit()]
+    right_parts = [int(part) for part in right.split(".") if part.isdigit()]
+    length = max(len(left_parts), len(right_parts))
+    for index in range(length):
+        difference = (left_parts[index] if index < len(left_parts) else 0) - (
+            right_parts[index] if index < len(right_parts) else 0
+        )
+        if difference != 0:
+            return difference
+    return 0
 
 
 @router.get("/summary", response_model=AdministrationSummaryRead, summary="Read administration summary")
@@ -327,3 +354,158 @@ async def list_system_audit_logs(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[SystemAuditLogRead]:
     return await AdministrationService(session).list_system_audit_logs()
+
+
+@router.get("/mobile-devices", response_model=list[MobileDeviceRead], summary="List registered mobile devices")
+async def list_mobile_devices(
+    principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> list[MobileDeviceRead]:
+    now = datetime.now(UTC)
+    return [
+        MobileDeviceRead(
+            device_id="pilot-device-placeholder",
+            device_name="Pilot Android Device",
+            user_id=UUID(principal.user_id),
+            organization_id=UUID(principal.organization_id),
+            platform="Android",
+            android_version="Android-ready",
+            app_version="0.1.0",
+            registered_at=now,
+            last_sync_at=None,
+            last_login_at=now,
+            status="Active",
+        )
+    ]
+
+
+@router.get("/mobile-devices/{device_id}", response_model=MobileDeviceRead, summary="Read mobile device details")
+async def read_mobile_device(
+    device_id: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileDeviceRead:
+    now = datetime.now(UTC)
+    return MobileDeviceRead(
+        device_id=device_id,
+        device_name="Pilot Android Device",
+        user_id=UUID(principal.user_id),
+        organization_id=UUID(principal.organization_id),
+        platform="Android",
+        android_version="Android-ready",
+        app_version="0.1.0",
+        registered_at=now,
+        last_login_at=now,
+        status="Active",
+    )
+
+
+@router.post("/mobile-devices/{device_id}/disable", response_model=MobileDeviceRead, summary="Disable a mobile device")
+async def disable_mobile_device(
+    device_id: str,
+    _payload: MobileDeviceAction,
+    principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileDeviceRead:
+    device = await read_mobile_device(device_id, principal)
+    device.status = "Blocked"
+    device.remote_logout_required = True
+    return device
+
+
+@router.post("/mobile-devices/{device_id}/force-logout", response_model=MobileDeviceRead, summary="Force logout on a mobile device")
+async def force_logout_mobile_device(
+    device_id: str,
+    _payload: MobileDeviceAction,
+    principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileDeviceRead:
+    device = await read_mobile_device(device_id, principal)
+    device.remote_logout_required = True
+    return device
+
+
+@router.get("/mobile-versions", response_model=MobileVersionRead, summary="Read mobile app version policy")
+async def read_mobile_versions(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileVersionRead:
+    return MobileVersionRead()
+
+
+@router.put("/mobile-versions", response_model=MobileVersionRead, summary="Update mobile app version policy")
+async def update_mobile_versions(
+    payload: MobileVersionUpsert,
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileVersionRead:
+    mandatory = compare_semver(payload.current_production_version, payload.minimum_supported_version) < 0
+    return MobileVersionRead(
+        current_production_version=payload.current_production_version,
+        minimum_supported_version=payload.minimum_supported_version,
+        staging_version=payload.staging_version,
+        optional_update=not mandatory,
+        mandatory_update=mandatory,
+        release_notes=payload.release_notes,
+    )
+
+
+@router.get("/mobile-pilots", response_model=list[MobilePilotRead], summary="List mobile pilot programs")
+async def list_mobile_pilots(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> list[MobilePilotRead]:
+    return []
+
+
+@router.post("/mobile-pilots", response_model=MobilePilotRead, summary="Create a mobile pilot program")
+async def create_mobile_pilot(
+    payload: MobilePilotCreate,
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobilePilotRead:
+    return MobilePilotRead(id=uuid4(), **payload.model_dump())
+
+
+@router.get("/mobile-monitoring", response_model=MobileMonitoringSummaryRead, summary="Read mobile monitoring dashboard")
+async def mobile_monitoring(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileMonitoringSummaryRead:
+    return MobileMonitoringSummaryRead(app_versions={"0.1.0": 1}, active_devices=1, active_users=1)
+
+
+@router.get("/mobile-monitoring/crashes", response_model=list[MobileCrashReportRead], summary="List mobile crash reports")
+async def list_mobile_crashes(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> list[MobileCrashReportRead]:
+    return []
+
+
+@router.post("/mobile-monitoring/crashes", response_model=MobileCrashReportRead, summary="Create mobile crash report")
+async def create_mobile_crash(
+    payload: MobileCrashReportCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+) -> MobileCrashReportRead:
+    return MobileCrashReportRead(id=uuid4(), user_id=UUID(principal.user_id), created_at=datetime.now(UTC), **payload.model_dump())
+
+
+@router.get("/mobile-feedback", response_model=list[MobileFeedbackRead], summary="List mobile feedback")
+async def list_mobile_feedback(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> list[MobileFeedbackRead]:
+    return []
+
+
+@router.post("/mobile-feedback", response_model=MobileFeedbackRead, summary="Submit mobile feedback")
+async def create_mobile_feedback(
+    payload: MobileFeedbackCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+) -> MobileFeedbackRead:
+    return MobileFeedbackRead(id=uuid4(), user_id=UUID(principal.user_id), created_at=datetime.now(UTC), **payload.model_dump())
+
+
+@router.get("/mobile-testing", response_model=list[MobileTestingRecordRead], summary="List mobile field test records")
+async def list_mobile_testing(
+    _principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> list[MobileTestingRecordRead]:
+    return []
+
+
+@router.post("/mobile-testing", response_model=MobileTestingRecordRead, summary="Create mobile field test record")
+async def create_mobile_testing(
+    payload: MobileTestingRecordCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_administration_access)],
+) -> MobileTestingRecordRead:
+    return MobileTestingRecordRead(id=uuid4(), tested_by_user_id=UUID(principal.user_id), tested_at=datetime.now(UTC), **payload.model_dump())

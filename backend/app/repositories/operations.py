@@ -84,6 +84,16 @@ class OperationsRepository:
         )
         return list(result.scalars())
 
+    async def project_exists(self, *, organization_id: UUID, project_id: UUID) -> bool:
+        result = await self.session.execute(
+            select(Project.id).where(
+                Project.organization_id == organization_id,
+                Project.id == project_id,
+                Project.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
     async def create_beneficiary(self, *, organization_id: UUID, values: dict[str, object]) -> Beneficiary:
         beneficiary = Beneficiary(organization_id=organization_id, **values)
         self.session.add(beneficiary)
@@ -144,6 +154,25 @@ class OperationsRepository:
             .where(MonitoringIndicator.organization_id == organization_id, MonitoringIndicator.deleted_at.is_(None))
             .order_by(MonitoringIndicator.code)
         )
+        return list(result.scalars())
+
+    async def list_approved_submissions(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None = None,
+        survey_id: UUID | None = None,
+    ) -> list[Submission]:
+        query = select(Submission).where(
+            Submission.organization_id == organization_id,
+            Submission.status == "approved",
+            Submission.deleted_at.is_(None),
+        )
+        if project_id is not None:
+            query = query.where(Submission.project_id == project_id)
+        if survey_id is not None:
+            query = query.where(Submission.survey_id == survey_id)
+        result = await self.session.execute(query.limit(10000))
         return list(result.scalars())
 
     async def create_case(self, *, organization_id: UUID, values: dict[str, object]) -> CaseRecord:

@@ -955,7 +955,7 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
 }
 
 function ResponsesTab({ submission }: { submission: SubmissionRecord }) {
-  const entries = Object.entries(submission.payload_json);
+  const entries = Object.entries(submission.payload_json).filter(([key]) => !key.startsWith("_"));
   const midpoint = Math.ceil(entries.length / 2);
   const sections = [
     ["Core Responses", entries.slice(0, midpoint)],
@@ -1156,6 +1156,9 @@ function QualityTab({ submission }: { submission: SubmissionRecord }) {
       </Panel>
       <Panel title="Quality Flags">
         <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            These checks guide reviewer decisions only. A reviewer must still approve, reject, return, or archive the submission.
+          </p>
           {submission.quality_flags.map((flag) => (
             <div
               className="rounded-xl border bg-background/60 p-3"

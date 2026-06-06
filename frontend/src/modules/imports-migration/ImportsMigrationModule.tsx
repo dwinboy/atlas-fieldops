@@ -37,6 +37,7 @@ import {
   listImportJobs,
   listProjectImportJobs,
   listImportSupportedSources,
+  listProjects,
   previewImport,
   rollbackImportJob,
   uploadImportFile,
@@ -79,6 +80,50 @@ const steps = [
 
 const defaultColumns = ["farmer_name", "mobile", "district", "improved_seed"];
 
+const emptyValidation: ImportPreviewResponse = {
+  duplicate_rows: 0,
+  error_rows: 0,
+  issues: [],
+  suggested_mapping: [],
+  valid_rows: 0,
+};
+
+const emptyAnalysis: ImportAnalysisResponse = {
+  date_formats: [],
+  duplicate_groups: [],
+  entity_matches: [],
+  generated_ids: [],
+  gps_warnings: [],
+  indicator_matches: [],
+  legacy_fields: [],
+  location_matches: [],
+  preview_counts: { create: 0, update: 0, skip: 0, warnings: 0, errors: 0 },
+  progress_percent: 0,
+  quality_report: {
+    data_quality_score: 100,
+    duplicate_candidates: 0,
+    errors: 0,
+    import_batch_id: "not-started",
+    location_issues: 0,
+    recommendations: ["Upload a file and run Analyze Data to generate a quality report."],
+    records_created: 0,
+    records_skipped: 0,
+    records_updated: 0,
+    source_system: "Not selected",
+    unlinked_submissions: 0,
+    warnings: 0,
+  },
+  readiness: {
+    category: "Not Ready",
+    factors: {},
+    issues: ["No import file has been analyzed yet."],
+    recommended_action: "Upload an Excel, CSV, JSON, XLSForm, GeoJSON, or KML file before continuing.",
+    score: 0,
+  },
+  suggested_mapping: [],
+  validation_issues: [],
+};
+
 function statusTone(status: string): "danger" | "neutral" | "success" | "warning" {
   if (status.includes("completed") || status === "validated" || status === "ready") return "success";
   if (status.includes("error") || status === "failed" || status === "needs_fixes") return "danger";
@@ -110,12 +155,13 @@ export function ImportsMigrationModule({
   const [targetMode, setTargetMode] = useState(projectId ? "existing_project" : "new_project");
   const [targetProjectId, setTargetProjectId] = useState(projectId ?? "");
   const [reason, setReason] = useState("Continue an existing M&E project inside Atlas FieldOps.");
-  const [validation, setValidation] = useState<ImportPreviewResponse | null>(previewValidation);
-  const [analysis, setAnalysis] = useState<ImportAnalysisResponse>(previewSmartAnalysis);
+  const [validation, setValidation] = useState<ImportPreviewResponse | null>(preview ? previewValidation : emptyValidation);
+  const [analysis, setAnalysis] = useState<ImportAnalysisResponse>(preview ? previewSmartAnalysis : emptyAnalysis);
   const [activeJob, setActiveJob] = useState<ImportJobRead | null>(null);
   const [errorReportSummary, setErrorReportSummary] = useState("");
-  const [uploadedColumns, setUploadedColumns] = useState<string[]>(defaultColumns);
-  const [uploadedRows, setUploadedRows] = useState<Record<string, unknown>[]>(sampleRows);
+  const [uploadedColumns, setUploadedColumns] = useState<string[]>(preview ? defaultColumns : []);
+  const [uploadedRows, setUploadedRows] = useState<Record<string, unknown>[]>(preview ? sampleRows : []);
+  const projectRequiredForImport = ["beneficiaries", "entity_registry", "form_definitions", "submissions"].includes(selectedType);
 
   const overviewQuery = useQuery({
     queryKey: ["imports-migration-overview", token],
@@ -132,11 +178,23 @@ export function ImportsMigrationModule({
     queryFn: () => projectId ? listProjectImportJobs(token ?? "", projectId) : listImportJobs(token ?? ""),
     enabled: Boolean(token && !preview),
   });
+  const projectsQuery = useQuery({
+    queryKey: ["imports-migration-projects", token],
+    queryFn: () => listProjects(token ?? ""),
+    enabled: Boolean(token && !preview && !projectId),
+  });
 
-  const sources = sourcesQuery.data ?? overviewQuery.data?.supported_sources ?? previewSources;
-  const history = historyQuery.data ?? overviewQuery.data?.recent_batches ?? previewImportJobs;
+  const sources = useMemo(
+    () => (preview ? previewSources : (sourcesQuery.data ?? overviewQuery.data?.supported_sources ?? [])),
+    [overviewQuery.data?.supported_sources, preview, sourcesQuery.data],
+  );
+  const history = useMemo(
+    () => (preview ? previewImportJobs : (historyQuery.data ?? overviewQuery.data?.recent_batches ?? [])),
+    [historyQuery.data, overviewQuery.data?.recent_batches, preview],
+  );
   const selectedImportType = importTypes.find((item) => item.id === selectedType) ?? importTypes[1];
   const selectedSource = sources.find((item) => item.id === source) ?? sources[0];
+  const projectOptions = projectsQuery.data ?? [];
   const mobileOutputs = overviewQuery.data?.mobile_ready_outputs ?? [
     "assignedEntities",
     "assignedForms",
@@ -153,6 +211,9 @@ export function ImportsMigrationModule({
       if (!file) {
         throw new Error("Choose a CSV, Excel, JSON, XLSForm, GeoJSON, or KML file.");
       }
+      if (projectRequiredForImport && !targetProjectId) {
+        throw new Error("Select the target project before importing beneficiaries, forms, or submissions.");
+      }
       return uploadImportFile(token ?? "", selectedType, file, {
         importReason: reason,
         sourceSystem,
@@ -161,13 +222,13 @@ export function ImportsMigrationModule({
       });
     },
     onSuccess: (result) => {
-      setUploadedColumns(result.columns.length ? result.columns : defaultColumns);
-      setUploadedRows(result.preview_rows.length ? result.preview_rows : sampleRows);
+      setUploadedColumns(result.columns.length ? result.columns : []);
+      setUploadedRows(result.preview_rows.length ? result.preview_rows : []);
       setValidation({
         duplicate_rows: result.job.duplicate_rows,
         error_rows: result.job.error_rows,
         issues: result.issues,
-        suggested_mapping: result.job.id ? validation?.suggested_mapping ?? previewValidation.suggested_mapping : previewValidation.suggested_mapping,
+        suggested_mapping: result.job.id ? validation?.suggested_mapping ?? emptyValidation.suggested_mapping : emptyValidation.suggested_mapping,
         valid_rows: result.job.valid_rows,
       });
       setActiveJob(result.job);
@@ -292,7 +353,7 @@ export function ImportsMigrationModule({
   ];
 
   const issueRows = [...(validation?.issues ?? []), ...analysis.gps_warnings];
-  const mappingRows = analysis.suggested_mapping.length ? analysis.suggested_mapping : validation?.suggested_mapping ?? previewValidation.suggested_mapping;
+  const mappingRows = analysis.suggested_mapping.length ? analysis.suggested_mapping : validation?.suggested_mapping ?? emptyValidation.suggested_mapping;
 
   return (
     <section className="space-y-4" aria-labelledby="imports-migration-title">
@@ -382,21 +443,38 @@ export function ImportsMigrationModule({
                   <label className="grid gap-1.5 text-sm font-medium">Target<Select onChange={(event) => setTargetMode(event.target.value)} value={targetMode}><option value="new_project">Create New Project</option><option value="existing_project">Import Into Existing Project</option><option value="new_form">Create New Form</option><option value="existing_form">Link to Existing Form</option><option value="existing_entity_type">Link to Existing Entity Type</option></Select></label>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-medium">Target project ID<Input onChange={(event) => setTargetProjectId(event.target.value)} placeholder="Optional project UUID" value={targetProjectId} /></label>
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    Target project
+                    {projectId ? (
+                      <Input disabled value={targetProjectId} />
+                    ) : projectOptions.length ? (
+                      <Select onChange={(event) => setTargetProjectId(event.target.value)} value={targetProjectId}>
+                        <option value="">Select a project</option>
+                        {projectOptions.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <Input onChange={(event) => setTargetProjectId(event.target.value)} placeholder={projectRequiredForImport ? "Required project UUID" : "Optional project UUID"} value={targetProjectId} />
+                    )}
+                    {projectRequiredForImport && !targetProjectId ? (
+                      <span className="text-xs text-danger">Required for beneficiary, form, and submission imports.</span>
+                    ) : null}
+                  </label>
                   <label className="grid gap-1.5 text-sm font-medium">Import reason<Input onChange={(event) => setReason(event.target.value)} value={reason} /></label>
                 </div>
                 <div className="rounded-xl border bg-success/10 p-3 text-sm text-success">Imported records will keep source IDs, batch IDs, entity links, and project links for future mobile sync.</div>
                 <Button
-                  disabled={uploadMutation.isPending}
+                  disabled={uploadMutation.isPending || (!preview && projectRequiredForImport && !targetProjectId)}
                   onClick={() => {
                     if (file && !preview) {
                       uploadMutation.mutate();
                       return;
                     }
-                    setUploadedColumns(defaultColumns);
-                    setUploadedRows(sampleRows);
-                    setAnalysis(previewSmartAnalysis);
-                    setValidation(previewValidation);
+                    setUploadedColumns(preview ? defaultColumns : []);
+                    setUploadedRows(preview ? sampleRows : []);
+                    setAnalysis(preview ? previewSmartAnalysis : emptyAnalysis);
+                    setValidation(preview ? previewValidation : emptyValidation);
                     setStep(1);
                   }}
                   type="button"
@@ -432,13 +510,13 @@ export function ImportsMigrationModule({
             {step === 4 ? <MatchingPanel emptyLabel="No location mismatches found." icon={MapPin} matches={analysis.location_matches} title="Location matches" /> : null}
             {step === 5 ? <EntityMatchingPanel analysis={analysis} /> : null}
             {step === 6 ? <DuplicateReview groups={analysis.duplicate_groups} /> : null}
-            {step === 7 ? <ValidationPanel dateFormats={analysis.date_formats} issues={issueRows} validation={validation ?? previewValidation} onValidate={() => preview ? setValidation(previewValidation) : previewMutation.mutate()} loading={previewMutation.isPending} /> : null}
-            {step === 8 ? <ImportPreview analysis={analysis} selectedType={selectedImportType.label} validation={validation ?? previewValidation} /> : null}
+            {step === 7 ? <ValidationPanel dateFormats={analysis.date_formats} issues={issueRows} validation={validation ?? emptyValidation} onValidate={() => preview ? setValidation(previewValidation) : previewMutation.mutate()} loading={previewMutation.isPending} /> : null}
+            {step === 8 ? <ImportPreview analysis={analysis} selectedType={selectedImportType.label} validation={validation ?? emptyValidation} /> : null}
             {step === 9 ? (
               <div className="grid gap-3">
                 <Textarea onChange={(event) => setReason(event.target.value)} rows={4} value={reason} />
                 <div className="rounded-xl border bg-warning/10 p-3 text-sm text-warning">Warnings can be imported with confirmation. Errors block live import until fixed.</div>
-                <ImportPreview analysis={analysis} selectedType={selectedImportType.label} validation={validation ?? previewValidation} compact />
+                <ImportPreview analysis={analysis} selectedType={selectedImportType.label} validation={validation ?? emptyValidation} compact />
                 <Button disabled={preview ? false : !activeJob || confirmMutation.isPending} onClick={() => preview ? setStep(10) : confirmMutation.mutate()} type="button" variant="primary">
                   <ShieldCheck aria-hidden="true" />
                   Confirm import with reason

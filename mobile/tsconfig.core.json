@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src/**/*.ts", "../shared/types/**/*.ts"],
+  "exclude": ["src/**/*.native.ts"]
+}

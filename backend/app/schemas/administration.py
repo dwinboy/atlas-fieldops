@@ -309,3 +309,112 @@ class SystemAuditLogRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class MobileDeviceRead(BaseModel):
+    device_id: str
+    device_name: str | None = None
+    user_id: UUID | None = None
+    organization_id: UUID | None = None
+    platform: str = "Android"
+    android_version: str | None = None
+    app_version: str = "0.1.0"
+    registered_at: datetime
+    last_sync_at: datetime | None = None
+    last_login_at: datetime | None = None
+    status: str = "Active"
+    remote_logout_required: bool = False
+    remote_wipe_required: bool = False
+
+
+class MobileDeviceAction(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class MobileVersionRead(BaseModel):
+    current_production_version: str = "0.1.0"
+    minimum_supported_version: str = "0.1.0"
+    staging_version: str = "0.1.0"
+    optional_update: bool = False
+    mandatory_update: bool = False
+    release_notes: str = "Pilot build ready for controlled field testing."
+
+
+class MobileVersionUpsert(BaseModel):
+    current_production_version: str = Field(min_length=5, max_length=40)
+    minimum_supported_version: str = Field(min_length=5, max_length=40)
+    staging_version: str = Field(min_length=5, max_length=40)
+    release_notes: str = Field(default="", max_length=4000)
+
+
+class MobilePilotCreate(BaseModel):
+    pilot_name: str = Field(min_length=2, max_length=200)
+    project_id: UUID
+    start_date: datetime
+    end_date: datetime
+    device_ids: list[str] = Field(default_factory=list)
+    field_officer_ids: list[UUID] = Field(default_factory=list)
+    supervisor_ids: list[UUID] = Field(default_factory=list)
+    status: str = Field(default="Planned", pattern=r"^(Planned|Active|Completed|Archived)$")
+
+
+class MobilePilotRead(MobilePilotCreate):
+    id: UUID
+    submissions: int = 0
+    sync_failures: int = 0
+    crashes: int = 0
+    issues: int = 0
+    feedback: int = 0
+
+
+class MobileMonitoringSummaryRead(BaseModel):
+    active_devices: int = 0
+    sync_success_rate: float = 100
+    sync_failures: int = 0
+    crashes: int = 0
+    app_versions: dict[str, int] = Field(default_factory=dict)
+    active_users: int = 0
+    offline_devices: int = 0
+    submission_throughput: int = 0
+
+
+class MobileCrashReportCreate(BaseModel):
+    device_id: str = Field(min_length=2, max_length=160)
+    app_version: str = Field(min_length=1, max_length=40)
+    severity: str = Field(default="Medium", pattern=r"^(Low|Medium|High|Critical)$")
+    message: str = Field(min_length=2, max_length=1000)
+    stack_trace: str | None = Field(default=None, max_length=12000)
+    context: dict[str, object] = Field(default_factory=dict)
+
+
+class MobileCrashReportRead(MobileCrashReportCreate):
+    id: UUID
+    user_id: UUID | None = None
+    created_at: datetime
+
+
+class MobileFeedbackCreate(BaseModel):
+    category: str = Field(pattern=r"^(Bug|Feature Request|Performance|Sync Problem|Other)$")
+    description: str = Field(min_length=5, max_length=4000)
+    screenshot_url: str | None = Field(default=None, max_length=1000)
+    diagnostics_json: dict[str, object] = Field(default_factory=dict)
+
+
+class MobileFeedbackRead(MobileFeedbackCreate):
+    id: UUID
+    user_id: UUID | None = None
+    device_id: str | None = None
+    status: str = "Open"
+    created_at: datetime
+
+
+class MobileTestingRecordCreate(BaseModel):
+    scenario: str = Field(pattern=r"^(Offline Test|GPS Test|Attachment Test|Sync Test|Large Form Test)$")
+    result: str = Field(pattern=r"^(Pass|Fail)$")
+    comments: str = Field(default="", max_length=3000)
+
+
+class MobileTestingRecordRead(MobileTestingRecordCreate):
+    id: UUID
+    tested_by_user_id: UUID | None = None
+    tested_at: datetime

@@ -661,6 +661,33 @@ def normalized_phone(value: str | None) -> str:
     return "".join(character for character in (value or "") if character.isdigit())
 
 
+def submission_values(payload: dict[str, object]) -> dict[str, object]:
+    responses = payload.get("responses")
+    if isinstance(responses, list):
+        mapped: dict[str, object] = {}
+        for item in responses:
+            if not isinstance(item, dict):
+                continue
+            value = item.get("value")
+            for key_name in ("question_id", "questionId", "variable_name", "variableName"):
+                key = item.get(key_name)
+                if isinstance(key, str) and key:
+                    mapped[key] = value
+        return mapped
+    return dict(payload)
+
+
+def number_value(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    try:
+        return float(str(value).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
 def beneficiary_values_from_import_row(row: dict[str, object]) -> dict[str, object] | None:
     beneficiary_uid = optional_text(row.get("beneficiary_uid"))
     display_name = optional_text(row.get("display_name"))
@@ -883,6 +910,18 @@ class OperationsService:
         return await self.repository.list_programs(organization_id)
 
     async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate, actor_user_id: UUID | None = None) -> Beneficiary:
+        if not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise ValueError("Beneficiaries must be linked to a valid project.")
+        registration_source = str(
+            payload.profile_json.get("registrationSource")
+            or payload.profile_json.get("registration_source")
+            or ""
+        ).strip().lower()
+        allowed_sources = {"import", "imported", "web import", "uploaded file", "mobile", "form submission", "field collection"}
+        if registration_source not in allowed_sources:
+            raise ValueError(
+                "Beneficiaries can only be added through a project import or a project-linked mobile registration form."
+            )
         beneficiary = await self.repository.create_beneficiary(
             organization_id=organization_id,
             values=payload.model_dump(),
@@ -1094,7 +1133,43 @@ class OperationsService:
 
     async def list_indicators(self, organization_id: UUID) -> list[IndicatorRead]:
         indicators = await self.repository.list_indicators(organization_id)
-        return [self.to_indicator_read(indicator) for indicator in indicators]
+        reads: list[IndicatorRead] = []
+        for indicator in indicators:
+            calculated_value = await self.calculate_indicator_current_value(organization_id, indicator)
+            reads.append(self.to_indicator_read(indicator, calculated_value=calculated_value))
+        return reads
+
+    async def calculate_indicator_current_value(self, organization_id: UUID, indicator: MonitoringIndicator) -> float | None:
+        formula = (indicator.formula or "").strip()
+        if not formula or not indicator.project_id:
+            return None
+        match = re.fullmatch(r"(?:(sum|avg|average|count|percent)\(([^)]+)\)|([A-Za-z0-9_.-]+))", formula, flags=re.IGNORECASE)
+        if match is None:
+            return None
+        operation = (match.group(1) or "sum").lower()
+        field_name = (match.group(2) or match.group(3) or "").strip()
+        if not field_name:
+            return None
+        submissions = await self.repository.list_approved_submissions(
+            organization_id=organization_id,
+            project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
+        )
+        values = [submission_values(submission.payload_json).get(field_name) for submission in submissions]
+        if operation == "count":
+            return float(sum(1 for value in values if value not in (None, "", [], {})))
+        if operation == "percent":
+            answered = [value for value in values if value not in (None, "", [], {})]
+            if not answered:
+                return 0.0
+            positive = sum(1 for value in answered if str(value).strip().lower() in {"1", "true", "yes", "y", "approved", "complete"})
+            return round((positive / len(answered)) * 100, 2)
+        numeric = [number for number in (number_value(value) for value in values) if number is not None]
+        if not numeric:
+            return 0.0
+        if operation in {"avg", "average"}:
+            return round(sum(numeric) / len(numeric), 2)
+        return round(sum(numeric), 2)
 
     async def create_case(self, organization_id: UUID, payload: CaseCreate, actor_user_id: UUID | None = None) -> CaseRecord:
         case = await self.repository.create_case(organization_id=organization_id, values=payload.model_dump())
@@ -1550,6 +1625,11 @@ class OperationsService:
         )
 
     async def create_import_job(self, organization_id: UUID, user_id: UUID, payload: ImportJobCreate) -> ImportJobRead:
+        if payload.target_project_id is not None and not await self.repository.project_exists(
+            organization_id=organization_id,
+            project_id=payload.target_project_id,
+        ):
+            raise ValueError("Target project not found for this organization.")
         mapping_json: dict[str, object] = {"columns": [item.model_dump() for item in payload.mapping]}
         summary_json: dict[str, object] = {
             "valid_rows": payload.total_rows,
@@ -1599,6 +1679,11 @@ class OperationsService:
         source_system: str = "Uploaded File",
         import_reason: str | None = None,
     ) -> ImportUploadResponse:
+        if target_project_id is not None and not await self.repository.project_exists(
+            organization_id=organization_id,
+            project_id=target_project_id,
+        ):
+            raise ValueError("Target project not found for this organization.")
         source_format, columns, rows = parse_uploaded_dataset(filename, content)
         mapping = infer_mapping(dataset_type, columns)
         issues = validate_sample_rows(dataset_type, rows[:100], mapping)
@@ -1810,6 +1895,11 @@ class OperationsService:
         job = await self.repository.get_import_job(organization_id=organization_id, import_job_id=import_job_id)
         if job is None:
             raise KeyError("Import job not found")
+        if job.target_project_id is not None and not await self.repository.project_exists(
+            organization_id=organization_id,
+            project_id=job.target_project_id,
+        ):
+            raise ValueError("Target project not found for this organization.")
         supported_apply_types = {"beneficiaries", "entity_registry", "programs", "projects", "indicators", "cases", "assets", "organization_units"}
         if job.dataset_type not in supported_apply_types:
             raise ValueError(f"{job.dataset_type.replace('_', ' ').title()} imports can be previewed and cleaned, but cannot be applied to live records yet")
@@ -1831,10 +1921,14 @@ class OperationsService:
             values: dict[str, object] | None = None
 
             if job.dataset_type in {"beneficiaries", "entity_registry"}:
+                if job.target_project_id is None:
+                    skipped_rows += 1
+                    continue
                 values = beneficiary_values_from_import_row(mapped)
                 if values is None:
                     skipped_rows += 1
                     continue
+                values["project_id"] = job.target_project_id
                 existing_beneficiary = await self.repository.get_beneficiary_by_uid(
                     organization_id=organization_id,
                     beneficiary_uid=cast(str, values["beneficiary_uid"]),
@@ -2345,7 +2439,13 @@ class OperationsService:
         )
 
     @staticmethod
-    def to_indicator_read(indicator: MonitoringIndicator) -> IndicatorRead:
+    def to_indicator_read(indicator: MonitoringIndicator, calculated_value: float | None = None) -> IndicatorRead:
+        current_value = indicator.current_value if calculated_value is None else calculated_value
+        progress = (
+            round(max(0, min(((current_value - indicator.baseline_value) / (indicator.target_value - indicator.baseline_value)) * 100, 100)), 1)
+            if indicator.target_value > indicator.baseline_value
+            else 0
+        )
         return IndicatorRead(
             id=indicator.id,
             project_id=indicator.project_id,
@@ -2357,9 +2457,9 @@ class OperationsService:
             reporting_frequency=indicator.reporting_frequency,
             baseline_value=indicator.baseline_value,
             target_value=indicator.target_value,
-            current_value=indicator.current_value,
+            current_value=current_value,
             sdg_code=indicator.sdg_code,
             formula=indicator.formula,
             is_active=indicator.is_active,
-            progress_percent=indicator_progress(indicator),
+            progress_percent=progress,
         )

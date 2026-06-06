@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
   getOperationsSummary,
+  listUsers,
   listForms,
   listSubmissions,
   type CurrentPrincipal,
@@ -401,20 +402,26 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const preview = !token || token === "preview-token";
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
-    enabled: Boolean(token && token !== "preview-token"),
+    enabled: Boolean(token && !preview),
   });
   const formsQuery = useQuery({
     queryKey: ["dashboard-forms", token],
     queryFn: () => listForms(token ?? ""),
-    enabled: Boolean(token && token !== "preview-token"),
+    enabled: Boolean(token && !preview),
   });
   const submissionsQuery = useQuery({
     queryKey: ["dashboard-submissions", token],
     queryFn: () => listSubmissions(token ?? ""),
-    enabled: Boolean(token && token !== "preview-token"),
+    enabled: Boolean(token && !preview),
+  });
+  const usersQuery = useQuery({
+    queryKey: ["dashboard-users", token],
+    queryFn: () => listUsers(token ?? ""),
+    enabled: Boolean(token && !preview),
   });
   const dashboardForms = formsQuery.data ?? [];
   const dashboardSubmissions = submissionsQuery.data ?? [];
@@ -493,12 +500,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const hasFormActivity = Boolean(
     formPerformance.length ||
     formPerformanceTotals.submissions ||
-    localForms.length ||
-    localAssignments.length,
+    (preview && (localForms.length || localAssignments.length)),
   );
   const hasOperationalData = Boolean(
     hasFormActivity ||
-    localProjects.length ||
+    (preview && localProjects.length) ||
     (summaryQuery.data &&
       (summaryQuery.data.beneficiaries ||
         summaryQuery.data.active_programs ||
@@ -819,21 +825,26 @@ export function Dashboard({ token, principal }: DashboardProps) {
           .map((form) => form.project_id)
           .filter((projectId): projectId is string => Boolean(projectId)),
       ).size) +
-    new Set(
-      [
-        ...localProjects.map((project) => project.name),
-        ...localForms.map((form) => form.project_name),
-        ...localAssignments.map((assignment) => assignment.project),
-      ].filter(Boolean),
-    ).size;
-  const fieldOfficerActivity =
+    (preview
+      ? new Set(
+          [
+            ...localProjects.map((project) => project.name),
+            ...localForms.map((form) => form.project_name),
+            ...localAssignments.map((assignment) => assignment.project),
+          ].filter(Boolean),
+        ).size
+      : 0);
+  const liveFieldOfficerUsers = (usersQuery.data ?? []).filter((user) =>
+    ["field_officer", "collector", "enumerator"].includes((user.role_name ?? "").toLowerCase()),
+  ).length;
+  const fieldOfficerActivity = liveFieldOfficerUsers || (
     new Set(
       dashboardSubmissions
         .map((submission) => submission.field_officer_id)
         .filter(Boolean),
     ).size +
-    new Set(localAssignments.flatMap((assignment) => assignment.fieldOfficers))
-      .size;
+    (preview ? new Set(localAssignments.flatMap((assignment) => assignment.fieldOfficers)).size : 0)
+  );
   const coverageOverview = getDashboardCoverageOverview(dashboardSubmissions);
   const approvalOverview = getDashboardApprovalOverview(
     dashboardSubmissions,
@@ -861,9 +872,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const commandMetrics = getDashboardCommandMetrics({
     activeForms:
       formPerformance.length +
-      localForms.filter(
-        (form) => form.status === "published" || form.active_assignments > 0,
-      ).length,
+      (preview
+        ? localForms.filter(
+            (form) => form.status === "published" || form.active_assignments > 0,
+          ).length
+        : 0),
     activeProjects: activeProjectCount,
     coveragePercent: coverageOverview.coveragePercent,
     fieldOfficers: fieldOfficerActivity,
@@ -1167,20 +1180,28 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               {[
-                ["Pending", approvalOverview.pending],
-                ["Approved", approvalOverview.approved],
-                ["Returned", approvalOverview.returned],
-                ["Rejected", approvalOverview.rejected],
-              ].map(([label, value]) => (
-                <div
-                  className="rounded-xl border bg-background/80 p-3"
+                ["Pending", approvalOverview.pending, "submissions", "Opening pending review submissions."],
+                ["Approved", approvalOverview.approved, "submissions", "Opening approved submission results."],
+                ["Returned", approvalOverview.returned, "submissions", "Opening returned submissions that need correction."],
+                ["Rejected", approvalOverview.rejected, "submissions", "Opening rejected submission results."],
+              ].map(([label, value, view, result]) => (
+                <button
+                  className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
                   key={label}
+                  onClick={() =>
+                    openView({
+                      label: String(label),
+                      result: String(result),
+                      view: view as WorkspaceView,
+                    })
+                  }
+                  type="button"
                 >
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-1 text-lg font-semibold">
                     {Number(value).toLocaleString()}
                   </p>
-                </div>
+                </button>
               ))}
             </div>
             <div className="mt-4">
@@ -1227,18 +1248,38 @@ export function Dashboard({ token, principal }: DashboardProps) {
               />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-xl border bg-background/80 p-3">
+              <button
+                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
+                onClick={() =>
+                  openView({
+                    label: "Mapped records",
+                    result: "Opening Submission Maps so teams can inspect collected records with GPS coordinates.",
+                    view: "map",
+                  })
+                }
+                type="button"
+              >
                 <p className="text-xs text-muted-foreground">Mapped records</p>
                 <p className="mt-1 text-lg font-semibold">
                   {coverageOverview.locatedSubmissions.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-xl border bg-background/80 p-3">
+              </button>
+              <button
+                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
+                onClick={() =>
+                  openView({
+                    label: "Mapped locations",
+                    result: "Opening Mapping so teams can review location coverage and map readiness.",
+                    view: "map",
+                  })
+                }
+                type="button"
+              >
                 <p className="text-xs text-muted-foreground">Locations</p>
                 <p className="mt-1 text-lg font-semibold">
                   {coverageOverview.uniqueLocations.toLocaleString()}
                 </p>
-              </div>
+              </button>
             </div>
             <div className="mt-4 space-y-3">
               {[
@@ -1310,23 +1351,27 @@ export function Dashboard({ token, principal }: DashboardProps) {
           </div>
           <div className="grid min-w-full gap-2 sm:grid-cols-4 lg:min-w-[560px]">
             {[
-              ["Active forms", formPerformance.length.toLocaleString()],
-              ["Responses", formPerformanceTotals.submissions.toLocaleString()],
-              ["Synced", formPerformanceTotals.syncedRecords.toLocaleString()],
+              ["Active forms", formPerformance.length.toLocaleString(), "forms", "Opening Forms so you can review active and published forms."],
+              ["Responses", formPerformanceTotals.submissions.toLocaleString(), "submissions", "Opening Submissions so you can inspect collected responses."],
+              ["Synced", formPerformanceTotals.syncedRecords.toLocaleString(), "connectivity", "Opening sync health so synced and pending mobile records can be checked."],
               [
                 "Needs review",
                 formPerformanceTotals.pendingReview.toLocaleString(),
+                "submissions",
+                "Opening the review queue for submissions that need reviewer action.",
               ],
-            ].map(([label, value]) => (
-              <div
-                className="rounded-xl border bg-background/80 p-3"
+            ].map(([label, value, view, result]) => (
+              <button
+                className="rounded-xl border bg-background/80 p-3 text-left transition hover:border-primary/35 hover:bg-primary/5"
                 key={label}
+                onClick={() => openView({ label: String(label), result: String(result), view: view as WorkspaceView })}
+                type="button"
               >
                 <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {label}
                 </p>
                 <p className="mt-2 text-lg font-semibold">{value}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>

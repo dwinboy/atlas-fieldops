@@ -58,7 +58,9 @@ export function reviewStageFromStatus(status: string): SubmissionWorkflowStage {
 
 export function calculateQualityScore(submission: SubmissionRead): number {
   const payload = submission.payload_json ?? {};
-  const values = Object.values(payload);
+  const values = Object.entries(payload)
+    .filter(([key]) => !key.startsWith("_"))
+    .map(([, value]) => value);
   const completeness = values.length ? Math.round((values.filter((value) => value !== null && value !== undefined && value !== "").length / values.length) * 100) : 60;
   const gpsPenalty = !submission.latitude || !submission.longitude ? 25 : submission.accuracy && submission.accuracy > 20 ? 15 : 0;
   const statusPenalty = submission.status === "rejected" ? 35 : ["correction_requested", "needs_correction"].includes(submission.status) ? 20 : 0;
@@ -66,12 +68,29 @@ export function calculateQualityScore(submission: SubmissionRead): number {
   return Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
 }
 
+function submissionValidationIssues(submission: SubmissionRead): string[] {
+  const payload = submission.payload_json ?? {};
+  const rawIssues = payload._validation_issues;
+  if (!Array.isArray(rawIssues)) return [];
+  return rawIssues.filter((issue): issue is string => typeof issue === "string" && issue.trim().length > 0);
+}
+
 export function normalizeSubmission(submission: SubmissionRead): SubmissionRecord {
   const qualityScore = calculateQualityScore(submission);
   const dueAt = new Date(new Date(submission.submitted_at || submission.sync_received_at).getTime() + 48 * 60 * 60 * 1000).toISOString();
   const reviewStage = reviewStageFromStatus(submission.status);
   const gpsStatus = !submission.latitude || !submission.longitude ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
+  const validationIssues = submissionValidationIssues(submission);
   const qualityFlags: SubmissionRecord["quality_flags"] = [];
+  validationIssues.forEach((message, index) => {
+    qualityFlags.push({
+      check: "Form Validation",
+      id: `${submission.id}-validation-${index}`,
+      message,
+      severity: "High",
+      status: "open",
+    });
+  });
   if (gpsStatus !== "valid") {
     qualityFlags.push({
       check: "GPS Validation",
