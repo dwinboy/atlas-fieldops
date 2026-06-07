@@ -15,6 +15,13 @@ type FieldOfficerOperationsProps = {
   token: string | null;
 };
 
+function generateTemporaryPassword(): string {
+  const words = ["Field", "Atlas", "Green", "Swift", "Clear", "Safe", "Smart", "True", "Link", "Peak"];
+  const word = words[Math.floor(Math.random() * words.length)];
+  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  return `${word}${digits}!`;
+}
+
 const previewOfficers: FieldOfficerRead[] = [
   {
     id: "officer-001",
@@ -66,16 +73,18 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
   });
 
   const inviteMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (temporaryPassword: string) =>
       inviteFieldOfficer(token ?? "", {
         email,
         full_name: fullName,
         home_region: region,
-        temporary_password: "ChangeMe12345!"
+        temporary_password: temporaryPassword
       }),
-    onSuccess: async () => {
-      setInviteResult(`${fullName} was invited and can now be assigned forms, regions, and sync permissions.`);
-      pushToast({ title: "Field officer invited", description: `${fullName} can sign in and sync assigned forms`, tone: "success" });
+    onSuccess: async (_, temporaryPassword) => {
+      setInviteResult(
+        `${fullName} was invited. Share these sign-in details with them:\n\nEmail: ${email}\nPassword: ${temporaryPassword}\n\nThey can change their password after first sign-in.`
+      );
+      pushToast({ title: "Field officer invited", description: `Share the generated password with ${fullName}`, tone: "success" });
       setFullName("");
       setEmail("");
       setRegion("");
@@ -236,7 +245,7 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
               setRegion("");
               return;
             }
-            inviteMutation.mutate();
+            inviteMutation.mutate(generateTemporaryPassword());
           }}
         >
           <div className="mb-4 flex items-center gap-2">
@@ -265,7 +274,8 @@ export function FieldOfficerOperations({ token }: FieldOfficerOperationsProps) {
           {inviteResult ? (
             <div className="mt-4 rounded-lg border border-success/30 bg-success/10 p-3" aria-live="polite">
               <p className="text-sm font-semibold">Invite outcome</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{inviteResult}</p>
+              <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-2 text-xs leading-5 text-foreground">{inviteResult}</pre>
+              <p className="mt-2 text-xs text-muted-foreground">Copy these details and share them with the field officer directly. The password is not stored and cannot be retrieved again.</p>
             </div>
           ) : null}
           {refreshResult ? (
