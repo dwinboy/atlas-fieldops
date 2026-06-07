@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,7 +19,9 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { listBeneficiaries, type CurrentPrincipal } from "@/lib/api";
+import { Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { listBeneficiaries, mergeBeneficiaries, type CurrentPrincipal } from "@/lib/api";
 import {
   mapBeneficiaryRead,
   previewEntities,
@@ -58,9 +60,17 @@ export function BeneficiariesModule({
   const [selectedEntity, setSelectedEntity] = useState<BeneficiaryEntity | null>(
     null,
   );
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeDraft, setMergeDraft] = useState({
+    duplicateId: "",
+    masterId: "",
+    reason: "",
+  });
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const isImportRoute =
     (pathname ?? "").replace(/\/+$/, "") === "/beneficiaries/import";
   const entitiesQuery = useQuery({
@@ -79,6 +89,31 @@ export function BeneficiariesModule({
   );
   const activeEntities = entities.filter((entity) => entity.status === "Active");
   const managerAccess = canManage(principal);
+  const mergeMutation = useMutation({
+    mutationFn: () => mergeBeneficiaries(token ?? "", {
+      duplicate_beneficiary_id: mergeDraft.duplicateId,
+      master_beneficiary_id: mergeDraft.masterId,
+      merge_profile_fields: true,
+      reason: mergeDraft.reason.trim(),
+    }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["beneficiaries", token] });
+      setMergeOpen(false);
+      setMergeDraft({ duplicateId: "", masterId: "", reason: "" });
+      pushToast({
+        title: "Beneficiaries merged",
+        description: `${result.moved_submissions} submissions and ${result.moved_quality_signals} quality signals now point to the master record.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Merge failed",
+        description: error instanceof Error ? error.message : "The duplicate records could not be merged.",
+        tone: "danger",
+      });
+    },
+  });
   const summaryCards: {
     icon: LucideIcon;
     label: string;
@@ -93,6 +128,42 @@ export function BeneficiariesModule({
   function openWorkspace(view: WorkspaceView, path?: string): void {
     setActiveView(view);
     if (path) router.push(path);
+  }
+
+  function openMergeReview(duplicate?: BeneficiaryEntity): void {
+    const selectedDuplicate = duplicate ?? duplicates[0];
+    const masterCandidate =
+      entities.find((entity) =>
+        selectedDuplicate &&
+        entity.id !== selectedDuplicate.id &&
+        entity.status === "Active" &&
+        entity.entityType === selectedDuplicate.entityType &&
+        (entity.householdId === selectedDuplicate.householdId ||
+          entity.phoneNumber === selectedDuplicate.phoneNumber ||
+          entity.village === selectedDuplicate.village),
+      ) ?? entities.find((entity) => entity.id !== selectedDuplicate?.id && entity.status === "Active");
+    setMergeDraft({
+      duplicateId: selectedDuplicate?.id ?? "",
+      masterId: masterCandidate?.id ?? "",
+      reason: "",
+    });
+    setMergeOpen(true);
+  }
+
+  function submitMerge(): void {
+    if (preview || !token || !managerAccess) {
+      pushToast({ title: "Merge unavailable", description: "Sign in with beneficiary management permission to merge duplicate records.", tone: "warning" });
+      return;
+    }
+    if (!mergeDraft.duplicateId || !mergeDraft.masterId || mergeDraft.duplicateId === mergeDraft.masterId) {
+      pushToast({ title: "Choose two records", description: "Select one duplicate record and one different master record.", tone: "warning" });
+      return;
+    }
+    if (mergeDraft.reason.trim().length < 8) {
+      pushToast({ title: "Reason required", description: "Add a clear merge reason before continuing.", tone: "warning" });
+      return;
+    }
+    mergeMutation.mutate();
   }
 
   if (isImportRoute) {
@@ -221,6 +292,14 @@ export function BeneficiariesModule({
               Import beneficiaries
             </Button>
             <Button
+              disabled={!managerAccess || !duplicates.length}
+              onClick={() => openMergeReview()}
+              variant="secondary"
+            >
+              <AlertTriangle aria-hidden="true" />
+              Review duplicates
+            </Button>
+            <Button
               disabled={!managerAccess}
               onClick={() => openWorkspace("forms", "/forms/create")}
               variant="secondary"
@@ -257,8 +336,22 @@ export function BeneficiariesModule({
         <EntitySidePanel
           duplicates={duplicates}
           entity={selectedEntity ?? entities[0] ?? null}
+          managerAccess={managerAccess}
+          onMerge={openMergeReview}
         />
       </div>
+      <MergeBeneficiariesModal
+        canSubmit={managerAccess && !preview && !mergeMutation.isPending}
+        duplicateOptions={duplicates.length ? duplicates : entities}
+        draft={mergeDraft}
+        entities={entities}
+        onChange={setMergeDraft}
+        onOpenChange={setMergeOpen}
+        onSubmit={submitMerge}
+        open={mergeOpen}
+        preview={preview}
+        saving={mergeMutation.isPending}
+      />
     </section>
   );
 }
@@ -266,9 +359,13 @@ export function BeneficiariesModule({
 function EntitySidePanel({
   duplicates,
   entity,
+  managerAccess,
+  onMerge,
 }: {
   duplicates: BeneficiaryEntity[];
   entity: BeneficiaryEntity | null;
+  managerAccess: boolean;
+  onMerge: (duplicate?: BeneficiaryEntity) => void;
 }) {
   if (!entity) {
     return (
@@ -335,14 +432,31 @@ function EntitySidePanel({
         </div>
       </div>
       <div className="rounded-xl border bg-panel p-4 shadow-line">
-        <h2 className="text-sm font-semibold">Duplicate review queue</h2>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Duplicate review queue</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Compare possible duplicates, choose a master record, and preserve linked submissions.
+            </p>
+          </div>
+          <Button disabled={!managerAccess || !duplicates.length} onClick={() => onMerge()} size="sm" variant="secondary">
+            Review
+          </Button>
+        </div>
         <div className="mt-3 space-y-2">
           {duplicates.slice(0, 3).map((item) => (
             <div className="rounded-lg border bg-background p-3" key={item.id}>
-              <p className="text-sm font-medium">{item.fullName}</p>
-              <p className="text-xs text-muted-foreground">
-                {item.entityId} · {item.duplicateStatus}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">{item.fullName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.entityId} · {item.duplicateStatus}
+                  </p>
+                </div>
+                <Button disabled={!managerAccess} onClick={() => onMerge(item)} size="sm" variant="ghost">
+                  Merge
+                </Button>
+              </div>
             </div>
           ))}
           {!duplicates.length ? (
@@ -353,6 +467,126 @@ function EntitySidePanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+function MergeBeneficiariesModal({
+  canSubmit,
+  draft,
+  duplicateOptions,
+  entities,
+  onChange,
+  onOpenChange,
+  onSubmit,
+  open,
+  preview,
+  saving,
+}: {
+  canSubmit: boolean;
+  draft: { duplicateId: string; masterId: string; reason: string };
+  duplicateOptions: BeneficiaryEntity[];
+  entities: BeneficiaryEntity[];
+  onChange: (draft: { duplicateId: string; masterId: string; reason: string }) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  preview: boolean;
+  saving: boolean;
+}) {
+  const duplicate = entities.find((entity) => entity.id === draft.duplicateId) ?? null;
+  const master = entities.find((entity) => entity.id === draft.masterId) ?? null;
+  return (
+    <Modal
+      contentClassName="max-w-4xl"
+      description="Compare duplicate beneficiary records, choose the master, provide a reason, and preserve linked submissions."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Merge duplicate beneficiaries"
+    >
+      <div className="space-y-4">
+        {preview ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            Preview data can show the workflow, but merging requires a signed-in tenant account with beneficiary management permission.
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium">
+            Duplicate record to close
+            <Select
+              className="mt-2"
+              onChange={(event) => onChange({ ...draft, duplicateId: event.target.value })}
+              value={draft.duplicateId}
+            >
+              <option value="">Select duplicate</option>
+              {duplicateOptions.map((entity) => (
+                <option key={entity.id} value={entity.id}>
+                  {entity.fullName} · {entity.entityId} · {entity.duplicateStatus}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Master record to keep
+            <Select
+              className="mt-2"
+              onChange={(event) => onChange({ ...draft, masterId: event.target.value })}
+              value={draft.masterId}
+            >
+              <option value="">Select master</option>
+              {entities.filter((entity) => entity.id !== draft.duplicateId).map((entity) => (
+                <option key={entity.id} value={entity.id}>
+                  {entity.fullName} · {entity.entityId} · {entity.status}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <MergeRecordCard label="Duplicate will be marked duplicate" entity={duplicate} tone="warning" />
+          <MergeRecordCard label="Master will keep linked data" entity={master} tone="success" />
+        </div>
+        <label className="block text-sm font-medium">
+          Merge reason
+          <Input
+            className="mt-2"
+            onChange={(event) => onChange({ ...draft, reason: event.target.value })}
+            placeholder="Example: Same phone, same household ID, and supervisor confirmed one farmer record."
+            value={draft.reason}
+          />
+        </label>
+        <div className="rounded-xl border bg-muted/40 p-3 text-sm text-muted-foreground">
+          Merging never hard-deletes a beneficiary. Linked submissions and quality signals move to the master record, the duplicate remains traceable, and the reason is stored for audit.
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
+            Cancel
+          </Button>
+          <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
+            {saving ? "Merging..." : "Merge records"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MergeRecordCard({ entity, label, tone }: { entity: BeneficiaryEntity | null; label: string; tone: "success" | "warning" }) {
+  return (
+    <div className="rounded-xl border bg-background p-3">
+      <Badge tone={tone}>{label}</Badge>
+      {entity ? (
+        <div className="mt-3 space-y-2 text-sm">
+          <p className="font-semibold">{entity.fullName}</p>
+          <Signal label="Code" value={entity.entityId} />
+          <Signal label="Project" value={entity.projectName} />
+          <Signal label="Phone" value={entity.phoneNumber ?? "Not recorded"} />
+          <Signal label="Household" value={entity.householdId ?? "N/A"} />
+          <Signal label="Location" value={`${entity.village}, ${entity.district}`} />
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">Select a record to compare details.</p>
+      )}
+    </div>
   );
 }
 

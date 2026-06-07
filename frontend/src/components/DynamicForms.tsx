@@ -858,9 +858,14 @@ function labelPatchWithAutoVariable(
     field.label,
     existingNames,
   );
+  const idAutoVariable = field.id
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
   const shouldRegenerate =
     !currentVariable ||
     currentVariable === field.id ||
+    currentVariable === idAutoVariable ||
     currentVariable === previousAutoVariable;
   return {
     label: nextLabel,
@@ -9778,7 +9783,12 @@ export function DynamicForms({
                     )}
                     data-question-first-canvas
                   >
-                    <div className="grid grid-cols-[48px_minmax(0,1fr)] border-r bg-panel/60">
+                    <div
+                      className={cn(
+                        "grid grid-cols-[48px_minmax(0,1fr)] border-r bg-panel/60",
+                        questionFirstMode && "grid-rows-[auto_minmax(0,1fr)]",
+                      )}
+                    >
                       <div className="row-span-2 border-r bg-muted/50 py-3">
                         <button
                           aria-label="Add question"
@@ -9835,7 +9845,12 @@ export function DynamicForms({
                           <ClipboardList aria-hidden="true" size={18} />
                         </button>
                       </div>
-                      <div className="border-b bg-background px-4 py-3">
+                      <div
+                        className={cn(
+                          "border-b bg-background px-4 py-3",
+                          questionFirstMode && "px-3 py-2",
+                        )}
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-sm font-semibold">Questions</p>
@@ -9855,7 +9870,12 @@ export function DynamicForms({
                             </Button>
                           ) : null}
                         </div>
-                        <div className="mt-3 rounded-md border bg-panel p-2">
+                        <div
+                          className={cn(
+                            "mt-3 rounded-md border bg-panel p-2",
+                            questionFirstMode && "mt-1.5 p-1.5",
+                          )}
+                        >
                           <div className="flex items-center gap-1.5 text-xs font-semibold">
                             <Sparkles
                               aria-hidden="true"
@@ -9864,32 +9884,65 @@ export function DynamicForms({
                             />
                             Ask a question
                           </div>
-                          <div className="mt-2 grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto]">
-                            <Textarea
-                              className="min-h-14 bg-background text-xs"
-                              onChange={(event) =>
-                                setQuestionComposerText(event.target.value)
-                              }
-                              onKeyDown={(event) => {
-                                if (
-                                  (event.metaKey || event.ctrlKey) &&
-                                  event.key === "Enter" &&
-                                  questionComposerText.trim()
-                                ) {
-                                  event.preventDefault();
-                                  if (recommendedQuestionSuggestion) {
-                                    addQuestionFromComposer(
-                                      recommendedQuestionSuggestion,
-                                    );
-                                  }
+                          <div
+                            className={cn(
+                              "mt-2 grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto]",
+                              questionFirstMode && "mt-1 gap-1",
+                            )}
+                          >
+                            {questionFirstMode ? (
+                              <Input
+                                className="h-8 bg-background"
+                                onChange={(event) =>
+                                  setQuestionComposerText(event.target.value)
                                 }
-                              }}
-                              placeholder="Type a question, e.g. Farmer name"
-                              value={questionComposerText}
-                            />
+                                onKeyDown={(event) => {
+                                  if (
+                                    (event.metaKey || event.ctrlKey) &&
+                                    event.key === "Enter" &&
+                                    questionComposerText.trim()
+                                  ) {
+                                    event.preventDefault();
+                                    if (recommendedQuestionSuggestion) {
+                                      addQuestionFromComposer(
+                                        recommendedQuestionSuggestion,
+                                      );
+                                    }
+                                  }
+                                }}
+                                placeholder="Type a question, e.g. Farmer name"
+                                value={questionComposerText}
+                              />
+                            ) : (
+                              <Textarea
+                                className="min-h-14 bg-background text-xs"
+                                onChange={(event) =>
+                                  setQuestionComposerText(event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (
+                                    (event.metaKey || event.ctrlKey) &&
+                                    event.key === "Enter" &&
+                                    questionComposerText.trim()
+                                  ) {
+                                    event.preventDefault();
+                                    if (recommendedQuestionSuggestion) {
+                                      addQuestionFromComposer(
+                                        recommendedQuestionSuggestion,
+                                      );
+                                    }
+                                  }
+                                }}
+                                placeholder="Type a question, e.g. Farmer name"
+                                value={questionComposerText}
+                              />
+                            )}
                             <Button
                               aria-label="Choose response type"
-                              className="self-stretch"
+                              className={cn(
+                                "self-stretch",
+                                questionFirstMode && "h-8 self-auto px-2",
+                              )}
                               onClick={() => {
                                 setSmartFieldQuery("");
                                 openBuilderAssistant("question");
@@ -9902,47 +9955,53 @@ export function DynamicForms({
                               Type
                             </Button>
                           </div>
-                          <div className="mt-2 grid gap-1.5">
-                            {questionTypeSuggestions
-                              .slice(0, 2)
-                              .map((suggestion) => {
-                                const Icon = fieldTypeIcons[suggestion.type];
-                                return (
-                                  <button
-                                    className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1.5 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
-                                    disabled={!questionComposerText.trim()}
-                                    key={`${suggestion.id}-${suggestion.type}`}
-                                    onClick={() =>
-                                      addQuestionFromComposer(suggestion)
-                                    }
-                                    type="button"
-                                  >
-                                    <span className="flex min-w-0 items-center gap-1.5">
-                                      <Icon
-                                        aria-hidden="true"
-                                        className="shrink-0 text-primary"
-                                        size={13}
-                                      />
-                                      <span className="truncate font-medium">
-                                        {suggestion.label}
-                                      </span>
-                                    </span>
-                                    <Badge
-                                      tone={
-                                        suggestion.confidence === "Best match"
-                                          ? "success"
-                                          : "neutral"
+                          {questionComposerText.trim() ? (
+                            <div className="mt-2 grid gap-1.5">
+                              {questionTypeSuggestions
+                                .slice(0, 2)
+                                .map((suggestion) => {
+                                  const Icon = fieldTypeIcons[suggestion.type];
+                                  return (
+                                    <button
+                                      className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1.5 text-left text-xs transition hover:border-primary/35 hover:bg-primary/5"
+                                      key={`${suggestion.id}-${suggestion.type}`}
+                                      onClick={() =>
+                                        addQuestionFromComposer(suggestion)
                                       }
+                                      type="button"
                                     >
-                                      {suggestion.confidence}
-                                    </Badge>
-                                  </button>
-                                );
-                              })}
-                          </div>
+                                      <span className="flex min-w-0 items-center gap-1.5">
+                                        <Icon
+                                          aria-hidden="true"
+                                          className="shrink-0 text-primary"
+                                          size={13}
+                                        />
+                                        <span className="truncate font-medium">
+                                          {suggestion.label}
+                                        </span>
+                                      </span>
+                                      <Badge
+                                        tone={
+                                          suggestion.confidence === "Best match"
+                                            ? "success"
+                                            : "neutral"
+                                        }
+                                      >
+                                        {suggestion.confidence}
+                                      </Badge>
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                      <div className="max-h-[56vh] overflow-y-auto product-scrollbar">
+                      <div
+                        className={cn(
+                          "max-h-[56vh] overflow-y-auto product-scrollbar",
+                          questionFirstMode && "min-h-0",
+                        )}
+                      >
                         {activePageFields.length ? (
                           <DndContext
                             sensors={sensors}
@@ -11960,9 +12019,27 @@ export function DynamicForms({
                                       }
                                       onLabelChange={(label) =>
                                         updateSelectedForm(
-                                          updateField(selectedForm, field.id, {
-                                            label,
-                                          }),
+                                          updateField(
+                                            selectedForm,
+                                            field.id,
+                                            labelPatchWithAutoVariable(
+                                              field,
+                                              label,
+                                              selectedForm.fields
+                                                .filter(
+                                                  (candidate) =>
+                                                    candidate.id !== field.id,
+                                                )
+                                                .map(
+                                                  (candidate) =>
+                                                    candidate.variableName,
+                                                )
+                                                .filter(
+                                                  (name): name is string =>
+                                                    Boolean(name),
+                                                ),
+                                            ),
+                                          ),
                                         )
                                       }
                                       onMoveDown={() => moveField(field.id, 1)}

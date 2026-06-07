@@ -28,6 +28,9 @@ from app.repositories.operations import OperationsRepository
 from app.repositories.identity import IdentityRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.operations import (
     BeneficiaryCreate,
+    BeneficiaryMergeRead,
+    BeneficiaryMergeRequest,
+    BeneficiaryRead,
     EntityDuplicateCandidateRead,
     EntityDuplicateCheckRequest,
     EntityPrefillRead,
@@ -37,6 +40,7 @@ from app.schemas.operations import (
     CaseCreate,
     DataRouteCreate,
     DataRouteRead,
+    DataQualitySignalRead,
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
@@ -958,6 +962,102 @@ class OperationsService:
 
     async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
         return await self.repository.list_beneficiaries(organization_id)
+
+    async def merge_beneficiaries(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: BeneficiaryMergeRequest,
+    ) -> BeneficiaryMergeRead:
+        if payload.master_beneficiary_id == payload.duplicate_beneficiary_id:
+            raise ValueError("Choose two different beneficiary records to merge.")
+        master = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=payload.master_beneficiary_id,
+        )
+        duplicate = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=payload.duplicate_beneficiary_id,
+        )
+        if master is None or duplicate is None:
+            raise ValueError("Beneficiary record not found.")
+        moved_submissions, moved_quality_signals = await self.repository.move_duplicate_links(
+            organization_id=organization_id,
+            master=master,
+            duplicate=duplicate,
+        )
+        master_profile = dict(master.profile_json or {})
+        duplicate_profile = dict(duplicate.profile_json or {})
+        merged_at = datetime.now(UTC).isoformat()
+        if payload.merge_profile_fields:
+            for key, value in duplicate_profile.items():
+                if key not in master_profile or master_profile.get(key) in {None, ""}:
+                    master_profile[key] = value
+        if not isinstance(master_profile.get("mergedDuplicates"), list):
+            master_profile["mergedDuplicates"] = []
+        master_profile["mergedDuplicates"].append(
+            {
+                "beneficiaryId": str(duplicate.id),
+                "beneficiaryUid": duplicate.beneficiary_uid,
+                "mergedAt": merged_at,
+                "reason": payload.reason,
+            }
+        )
+        duplicate_profile["mergedIntoBeneficiaryId"] = str(master.id)
+        duplicate_profile["mergedIntoBeneficiaryUid"] = master.beneficiary_uid
+        duplicate_profile["mergedAt"] = merged_at
+        duplicate_profile["mergeReason"] = payload.reason
+        await self.repository.update_beneficiary(master, {"profile_json": master_profile})
+        await self.repository.update_beneficiary(
+            duplicate,
+            {
+                "duplicate_risk_score": 100,
+                "enrollment_status": "duplicate",
+                "profile_json": duplicate_profile,
+            },
+        )
+        await self.record_operational_event(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalEventCreate(
+                event_type="beneficiary.duplicates_merged",
+                source_module="beneficiaries",
+                project_id=master.project_id,
+                beneficiary_id=master.id,
+                priority="high",
+                summary=f"Duplicate beneficiary {duplicate.beneficiary_uid} was merged into {master.beneficiary_uid}.",
+                payload={
+                    "master_beneficiary_id": str(master.id),
+                    "master_beneficiary_uid": master.beneficiary_uid,
+                    "duplicate_beneficiary_id": str(duplicate.id),
+                    "duplicate_beneficiary_uid": duplicate.beneficiary_uid,
+                    "moved_submissions": moved_submissions,
+                    "moved_quality_signals": moved_quality_signals,
+                    "reason": payload.reason,
+                },
+            ),
+        )
+        return BeneficiaryMergeRead(
+            master_beneficiary=BeneficiaryRead.model_validate(master),
+            duplicate_beneficiary=BeneficiaryRead.model_validate(duplicate),
+            moved_submissions=moved_submissions,
+            moved_quality_signals=moved_quality_signals,
+            reason=payload.reason,
+        )
+
+    async def list_quality_signals(
+        self,
+        organization_id: UUID,
+        *,
+        status: str | None = None,
+        signal_type: str | None = None,
+    ) -> list[DataQualitySignalRead]:
+        signals = await self.repository.list_quality_signals(
+            organization_id,
+            status=status,
+            signal_type=signal_type,
+        )
+        return [DataQualitySignalRead.model_validate(signal) for signal in signals]
 
     async def search_beneficiaries(self, organization_id: UUID, query: str) -> list[Beneficiary]:
         query_text = normalized_text(query)

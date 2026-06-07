@@ -58,6 +58,8 @@ async def list_submissions(
         await SubmissionService(session).list_submissions(
             organization_id=UUID(principal.organization_id),
             status=status_filter,
+            actor_user_id=UUID(principal.user_id),
+            scope_type=principal.scope_type,
         )
     )
 

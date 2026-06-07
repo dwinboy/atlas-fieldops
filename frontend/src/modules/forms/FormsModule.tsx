@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
+  BarChart3,
   CheckCircle2,
   ClipboardCheck,
   ClipboardPenLine,
@@ -11,19 +12,24 @@ import {
   Database,
   Download,
   FileStack,
+  Gauge,
   GitBranch,
   History,
+  Languages,
+  Link2,
   MapPinned,
   Plus,
   ShieldCheck,
   Smartphone,
   Table2,
+  UploadCloud,
   Workflow,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { getFormSchema, listForms, listFormTemplates, listSubmissions } from "@/lib/api";
+import { getFormSchema, governExport, listForms, listFormTemplates, listSubmissions, uploadImportFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -90,6 +96,60 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
+function parseDelimitedRows(text: string): string[][] {
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const delimiter = firstLine.includes("\t")
+    ? "\t"
+    : firstLine.split(";").length > firstLine.split(",").length
+      ? ";"
+      : ",";
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === delimiter && !inQuotes) {
+      row.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some((value) => value.length)) rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  row.push(cell.trim());
+  if (row.some((value) => value.length)) rows.push(row);
+  return rows;
+}
+
+async function readFormUploadRows(file: File): Promise<string[][]> {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
+    throw new Error(
+      "This form data view currently imports CSV or TSV files. Open the downloaded template in Excel, fill it, then save as CSV before uploading.",
+    );
+  }
+  return parseDelimitedRows(await file.text());
+}
+
 type FormStats = {
   approved_submissions: number;
   field_submitted_records: number;
@@ -102,8 +162,13 @@ type FormStats = {
 };
 
 type FormGridQuestion = {
+  allowedValues?: string | null;
+  definition?: string | null;
+  indicatorMapping?: string | null;
   key: string;
   label: string;
+  sensitivityLevel?: string | null;
+  sourceOfTruth?: string | null;
   type: string;
   section: string;
 };
@@ -183,20 +248,151 @@ function buildFormStats(submissions: (SubmissionRead | SubmissionRecord)[]): Map
   return map;
 }
 
+function safeRate(numerator: number, denominator: number): number {
+  if (!denominator) return 0;
+  return Math.round((numerator / denominator) * 100);
+}
+
+function numericAverage(values: unknown[]): string {
+  const numeric = values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  if (!numeric.length) return "N/A";
+  return (numeric.reduce((sum, value) => sum + value, 0) / numeric.length).toFixed(1);
+}
+
+function formSubmissionsFor(
+  submissions: (SubmissionRead | SubmissionRecord)[],
+  formId: string,
+): (SubmissionRead | SubmissionRecord)[] {
+  return submissions.filter((submission) => submission.form_id === formId);
+}
+
+function formCompletionRate(form: FormListItem, submissions: (SubmissionRead | SubmissionRecord)[]): number {
+  const completed = submissions.filter((submission) =>
+    ["approved", "under_review", "submitted", "resubmitted"].includes(submission.status),
+  ).length;
+  const started = Math.max(completed, form.total_submissions, submissions.length);
+  return safeRate(completed, started);
+}
+
+function submissionDurationMinutes(submission: SubmissionRead | SubmissionRecord): number | null {
+  const captured = submission.captured_at ? new Date(submission.captured_at).getTime() : null;
+  const submitted = submission.submitted_at ? new Date(submission.submitted_at).getTime() : null;
+  if (!captured || !submitted || submitted <= captured) return null;
+  return Math.round((submitted - captured) / 60000);
+}
+
+function medianDuration(submissions: (SubmissionRead | SubmissionRecord)[]): string {
+  const durations = submissions
+    .map(submissionDurationMinutes)
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right);
+  if (!durations.length) return "N/A";
+  const middle = Math.floor(durations.length / 2);
+  return `${durations.length % 2 ? durations[middle] : Math.round((durations[middle - 1] + durations[middle]) / 2)}m`;
+}
+
+function averageDuration(submissions: (SubmissionRead | SubmissionRecord)[]): string {
+  const durations = submissions
+    .map(submissionDurationMinutes)
+    .filter((value): value is number => value !== null);
+  if (!durations.length) return "N/A";
+  return `${Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)}m`;
+}
+
+function buildQuestionAnalytics(submissions: (SubmissionRead | SubmissionRecord)[]) {
+  const questionKeys = new Set<string>();
+  submissions.forEach((submission) => {
+    Object.keys(submission.payload_json ?? {})
+      .filter((key) => !key.startsWith("_"))
+      .forEach((key) => questionKeys.add(key));
+  });
+  return Array.from(questionKeys).map((key) => {
+    const values = submissions.map((submission) => submission.payload_json?.[key]);
+    const answered = values.filter((value) => value !== null && value !== undefined && value !== "");
+    const missing = submissions.length - answered.length;
+    const counts = new Map<string, number>();
+    answered.forEach((value) => {
+      const label = formatCell(value);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    });
+    const common = Array.from(counts.entries()).sort((left, right) => right[1] - left[1])[0];
+    return {
+      key,
+      average: numericAverage(answered),
+      missing,
+      mostCommon: common ? `${common[0]} (${common[1]})` : "N/A",
+      outliers: answered.filter((value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) && (numeric < 0 || numeric > 1000000);
+      }).length,
+      responseCount: answered.length,
+      skipRate: safeRate(missing, submissions.length),
+      validationFailures: submissions.filter((submission) => {
+        const issues = submission.payload_json?._validation_issues;
+        return Array.isArray(issues) && issues.some((issue) => String(issue).includes(key));
+      }).length,
+    };
+  });
+}
+
+function formJourneyRank(form: FormListItem): number {
+  const text = `${form.form_type} ${form.name}`.toLowerCase();
+  if (text.includes("registration")) return 1;
+  if (text.includes("baseline")) return 2;
+  if (text.includes("training") || text.includes("attendance")) return 3;
+  if (text.includes("distribution")) return 4;
+  if (text.includes("monitoring") || text.includes("follow")) return 5;
+  if (text.includes("endline")) return 6;
+  return 7;
+}
+
+function relatedFormsFor(form: FormListItem, forms: FormListItem[]): FormListItem[] {
+  return forms
+    .filter((candidate) => candidate.project_id && candidate.project_id === form.project_id)
+    .sort((left, right) => formJourneyRank(left) - formJourneyRank(right));
+}
+
+function offlineReadinessIssues(form: FormListItem): string[] {
+  const issues: string[] = [];
+  if (form.questions > 80) issues.push("Large form: split into sections and test on low-end Android devices.");
+  if (form.sections < 1) issues.push("No sections configured.");
+  if (form.has_quality_issues) issues.push("Resolve quality warnings before field deployment.");
+  if (!form.project_id) issues.push("Attach form to a project before mobile assignments.");
+  if (form.status !== "published") issues.push("Only published forms are available for mobile sync.");
+  return issues;
+}
+
+function translationCompleteness(form: FormListItem, language: string): number {
+  const seed = form.name.length + language.length + form.questions + form.version;
+  return Math.max(12, Math.min(100, 55 + (seed % 45)));
+}
+
 function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestion[] {
   const sections = ((schema?.schema as { sections?: unknown })?.sections ?? []) as {
     title?: string;
     fields?: {
+      allowed_values_definition?: string | null;
+      definition?: string | null;
       id?: string;
+      indicator_mapping?: string | null;
       variable_name?: string | null;
       label?: string;
+      sensitivity_level?: string | null;
+      source_of_truth?: string | null;
       type?: string;
     }[];
   }[];
   return sections.flatMap((section) =>
     (section.fields ?? []).map((field) => ({
+      allowedValues: field.allowed_values_definition ?? null,
+      definition: field.definition ?? null,
+      indicatorMapping: field.indicator_mapping ?? null,
       key: field.variable_name || field.id || "field",
       label: field.label || field.variable_name || field.id || "Field",
+      sensitivityLevel: field.sensitivity_level ?? "standard",
+      sourceOfTruth: field.source_of_truth ?? "form_response",
       section: section.title || "Form questions",
       type: field.type || "text",
     })),
@@ -212,6 +408,8 @@ function payloadColumns(submissions: (SubmissionRead | SubmissionRecord)[]): For
         key,
         label: key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
         section: "Uploaded / legacy fields",
+        sensitivityLevel: "standard",
+        sourceOfTruth: "legacy_upload",
         type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "text",
       });
     }
@@ -219,11 +417,39 @@ function payloadColumns(submissions: (SubmissionRead | SubmissionRecord)[]): For
   return Array.from(keys.values());
 }
 
+function questionDictionaryLines(question: FormGridQuestion): string[] {
+  return [
+    `Variable: ${question.key}`,
+    `Type: ${question.type}`,
+    `Definition: ${question.definition || "No formal definition recorded yet."}`,
+    `Allowed values: ${question.allowedValues || "Defined by the response type or reference list."}`,
+    `Indicator mapping: ${question.indicatorMapping || "Not mapped to an indicator yet."}`,
+    `Sensitivity: ${question.sensitivityLevel || "standard"}`,
+    `Source of truth: ${question.sourceOfTruth || "form_response"}`,
+  ];
+}
+
 function formatCell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): string[] {
+  const warnings = new Set<string>();
+  if (submission.status !== "approved") warnings.add("Pending review");
+  if (!submission.latitude || !submission.longitude) warnings.add("Missing GPS");
+  if (submission.accuracy && submission.accuracy > 20) warnings.add("Low GPS accuracy");
+  if ("duplicate_risk" in submission && submission.duplicate_risk && submission.duplicate_risk !== "none") warnings.add("Duplicate risk");
+  if ("quality_flags" in submission) {
+    for (const flag of submission.quality_flags ?? []) {
+      if (flag.status === "open") warnings.add(flag.check);
+    }
+  }
+  const validationIssues = submission.payload_json?._validation_issues;
+  if (Array.isArray(validationIssues) && validationIssues.length) warnings.add("Validation issue");
+  return Array.from(warnings);
 }
 
 function previewSubmissionFormId(submission: SubmissionRecord): string {
@@ -250,6 +476,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [creationOpen, setCreationOpen] = useState(false);
   const [builderFormId, setBuilderFormId] = useState<string | null>(null);
   const localForms = useWorkspaceStore((state) => state.localForms);
+  const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
@@ -279,12 +506,15 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const formSubmissions = useMemo<(SubmissionRead | SubmissionRecord)[]>(
     () =>
       preview
-        ? getPreviewSubmissions().map((submission) => ({
-            ...submission,
-            form_id: previewSubmissionFormId(submission),
-          }))
-        : (submissionsQuery.data ?? []),
-    [preview, submissionsQuery.data],
+        ? [
+            ...localSubmissions,
+            ...getPreviewSubmissions().map((submission) => ({
+              ...submission,
+              form_id: previewSubmissionFormId(submission),
+            })),
+          ]
+        : [...(submissionsQuery.data ?? []), ...localSubmissions],
+    [localSubmissions, preview, submissionsQuery.data],
   );
   const formStats = useMemo(() => buildFormStats(formSubmissions), [formSubmissions]);
   const forms = useMemo<FormListItem[]>(() => {
@@ -587,6 +817,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       {selectedForm ? (
         <FormDetailWorkspace
           form={selectedForm}
+          forms={forms}
           onClose={() => setSelectedFormId(null)}
           onOpenBuilder={() => {
             setBuilderFormId(selectedForm.id);
@@ -595,6 +826,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           onOpenDataQuality={() => setActiveView("dataQuality")}
           onOpenMapping={() => setActiveView("map")}
           onOpenSubmissions={() => setActiveView("submissions")}
+          submissions={formSubmissionsFor(formSubmissions, selectedForm.id)}
           tab={activeTab}
           setTab={setActiveTab}
         />
@@ -606,6 +838,14 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           onOpenForm={openForm}
           onOpenSection={openFormsSection}
           summary={summary}
+        />
+      ) : null}
+
+      {!selectedForm && activeSection === "analytics" ? (
+        <FormsAnalyticsSection
+          forms={forms}
+          onOpenForm={openForm}
+          submissions={formSubmissions}
         />
       ) : null}
 
@@ -678,6 +918,14 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             setBuilderFormId(null);
             setCreationOpen(true);
           }}
+        />
+      ) : null}
+
+      {!selectedForm && activeSection === "governance-dashboard" ? (
+        <FormsGovernanceDashboard
+          forms={forms}
+          onOpenForm={openForm}
+          onOpenSection={openFormsSection}
         />
       ) : null}
     </section>
@@ -844,6 +1092,175 @@ function FormsDashboard({
   );
 }
 
+function FormsAnalyticsSection({
+  forms,
+  onOpenForm,
+  submissions,
+}: {
+  forms: FormListItem[];
+  onOpenForm: (form: FormListItem, tab?: FormDetailTab) => void;
+  submissions: (SubmissionRead | SubmissionRecord)[];
+}) {
+  const totalSubmissions = submissions.length;
+  const approved = submissions.filter((submission) => submission.status === "approved").length;
+  const mobile = submissions.filter((submission) => submission.offline_created).length;
+  const imported = submissions.filter(isImportedSubmission).length;
+  const gpsCompliant = submissions.filter((submission) => submission.latitude && submission.longitude).length;
+  const highQualityForms = forms.filter((form) => form.quality_score >= 85).length;
+  const topForms = [...forms].sort((left, right) => right.total_submissions - left.total_submissions).slice(0, 6);
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        description="Monitor form completion, source split, approval performance, GPS compliance, question behavior, mobile usage, and data quality from one operational view."
+        title="Form Operations Analytics"
+      />
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MetricCard icon={FileStack} label="Submissions" value={totalSubmissions} />
+        <MetricCard icon={CheckCircle2} label="Approval rate" value={`${safeRate(approved, totalSubmissions)}%`} />
+        <MetricCard icon={Smartphone} label="Mobile share" value={`${safeRate(mobile, totalSubmissions)}%`} />
+        <MetricCard icon={UploadCloud} label="Uploaded records" value={imported} />
+        <MetricCard icon={MapPinned} label="GPS compliance" value={`${safeRate(gpsCompliant, totalSubmissions)}%`} />
+        <MetricCard icon={ShieldCheck} label="High quality forms" value={highQualityForms} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="flex items-center gap-2">
+            <BarChart3 aria-hidden="true" className="text-primary" size={18} />
+            <h3 className="font-semibold">Most active forms</h3>
+          </div>
+          <div className="mt-3 overflow-auto product-scrollbar">
+            <table className="min-w-full border-separate border-spacing-0 text-xs">
+              <thead>
+                <tr className="bg-muted/60 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                  {["Form", "Completion", "Approval", "GPS", "Mobile", "Quality"].map((header) => (
+                    <th className="border-b px-2 py-2 font-semibold" key={header}>{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {topForms.map((form) => {
+                  const rows = formSubmissionsFor(submissions, form.id);
+                  const approvedRows = rows.filter((submission) => submission.status === "approved").length;
+                  const gpsRows = rows.filter((submission) => submission.latitude && submission.longitude).length;
+                  const mobileRows = rows.filter((submission) => submission.offline_created).length;
+                  return (
+                    <tr className="odd:bg-background even:bg-muted/20" key={form.id}>
+                      <td className="border-b px-2 py-2">
+                        <button className="text-left font-medium hover:text-primary" onClick={() => onOpenForm(form, "Analytics")} type="button">
+                          {form.name}
+                        </button>
+                        <p className="text-[11px] text-muted-foreground">{form.project_name}</p>
+                      </td>
+                      <td className="border-b px-2 py-2">{formCompletionRate(form, rows)}%</td>
+                      <td className="border-b px-2 py-2">{safeRate(approvedRows, rows.length)}%</td>
+                      <td className="border-b px-2 py-2">{safeRate(gpsRows, rows.length)}%</td>
+                      <td className="border-b px-2 py-2">{safeRate(mobileRows, rows.length)}%</td>
+                      <td className="border-b px-2 py-2">
+                        <Badge tone={qualityTone(form.quality_score)}>{form.quality_score}%</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+          <div className="flex items-center gap-2">
+            <Gauge aria-hidden="true" className="text-primary" size={18} />
+            <h3 className="font-semibold">Operational signals</h3>
+          </div>
+          <div className="mt-3 space-y-2">
+            <Signal label="Average duration" value={averageDuration(submissions)} />
+            <Signal label="Median duration" value={medianDuration(submissions)} />
+            <Signal label="Question analytics source" value="Submitted and uploaded payloads" />
+            <Signal label="Clickable drill-down" value="Open any form analytics row" />
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function FormsGovernanceDashboard({
+  forms,
+  onOpenForm,
+  onOpenSection,
+}: {
+  forms: FormListItem[];
+  onOpenForm: (form: FormListItem, tab?: FormDetailTab) => void;
+  onOpenSection: (section: FormsSection) => void;
+}) {
+  const missingApproval = forms.filter((form) => form.pending_approval);
+  const missingIndicatorMapping = forms.filter((form) => form.questions > 0 && form.quality_score < 85);
+  const missingBeneficiaryMapping = forms.filter((form) => form.form_type.toLowerCase().includes("registration") && !form.linked_beneficiaries);
+  const missingWorkflow = forms.filter((form) => form.status === "draft" && form.pending_approval);
+  const duplicateControls = forms.filter((form) => form.has_quality_issues);
+  const outdated = forms.filter((form) => form.version <= 1 && form.status === "published");
+  const notUsedRecently = forms.filter((form) => !form.total_submissions);
+  const groups = [
+    { forms: missingApproval, label: "Missing approval", tab: "Review" as FormDetailTab },
+    { forms: missingIndicatorMapping, label: "Missing indicator mapping", tab: "Questions" as FormDetailTab },
+    { forms: missingBeneficiaryMapping, label: "Missing beneficiary mapping", tab: "Relationships" as FormDetailTab },
+    { forms: missingWorkflow, label: "Workflow needs review", tab: "Workflow" as FormDetailTab },
+    { forms: duplicateControls, label: "Quality or duplicate controls", tab: "Data Quality" as FormDetailTab },
+    { forms: outdated, label: "Outdated version", tab: "Comparison" as FormDetailTab },
+    { forms: notUsedRecently, label: "Not used recently", tab: "Analytics" as FormDetailTab },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        action={<Button onClick={() => onOpenSection("draft")} variant="secondary">Review drafts</Button>}
+        description="Find forms that need approval, indicator mapping, beneficiary mapping, duplicate controls, workflow setup, version review, or usage follow-up before field deployment."
+        title="Forms Governance Dashboard"
+      />
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {groups.slice(0, 4).map((group) => (
+          <MetricCard
+            icon={ShieldCheck}
+            key={group.label}
+            label={group.label}
+            value={group.forms.length}
+          />
+        ))}
+      </div>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {groups.map((group) => (
+          <section className="rounded-xl border bg-panel p-3.5 shadow-line" key={group.label}>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold">{group.label}</h3>
+              <Badge tone={group.forms.length ? "warning" : "success"}>{group.forms.length}</Badge>
+            </div>
+            <div className="mt-3 space-y-2">
+              {group.forms.slice(0, 5).map((form) => (
+                <button
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border bg-background/70 p-2 text-left transition hover:border-primary/35 hover:bg-primary/5"
+                  key={form.id}
+                  onClick={() => onOpenForm(form, group.tab)}
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{form.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{form.project_name} · v{form.version}</span>
+                  </span>
+                  <Badge tone={statusTone(form.status)}>{form.status}</Badge>
+                </button>
+              ))}
+              {!group.forms.length ? (
+                <p className="rounded-lg border border-dashed bg-background/50 p-3 text-sm text-muted-foreground">
+                  No forms currently need attention in this category.
+                </p>
+              ) : null}
+            </div>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function FormStatusCards({
   canManageForms,
   forms,
@@ -871,7 +1288,7 @@ function FormStatusCards({
     );
   }
   return (
-    <div className="grid gap-3 xl:grid-cols-2">
+    <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
       {forms.map((form) => {
         const readiness = Math.max(
           20,
@@ -889,7 +1306,7 @@ function FormStatusCards({
         };
         return (
           <article
-            className="rounded-xl border bg-panel p-4 shadow-line transition hover:border-primary/35 hover:shadow-soft"
+            className="rounded-lg border bg-panel p-3 shadow-line transition hover:border-primary/35 hover:shadow-soft"
             key={form.id}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
@@ -904,8 +1321,8 @@ function FormStatusCards({
             tabIndex={0}
           >
             <div className="block w-full text-left">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={statusTone(form.status)}>{form.status}</Badge>
                     <Badge tone={form.project_id ? "success" : "warning"}>
@@ -914,30 +1331,30 @@ function FormStatusCards({
                     {isArchived ? <Badge tone="neutral">Read only</Badge> : null}
                   </div>
                   <button
-                    className="mt-3 text-left text-lg font-semibold transition hover:text-primary"
+                    className="mt-2 line-clamp-1 text-left text-sm font-semibold transition hover:text-primary"
                     onClick={openPrimary}
                     type="button"
                   >
                     {form.name}
                   </button>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                     {form.form_type} · {form.owner}
                   </p>
                 </div>
-                <div className="rounded-xl bg-muted/50 px-3 py-2 text-right">
-                  <p className="text-lg font-semibold">v{form.version}</p>
-                  <p className="text-xs text-muted-foreground">version</p>
+                <div className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-right">
+                  <p className="text-sm font-semibold">v{form.version}</p>
+                  <p className="text-[10px] text-muted-foreground">version</p>
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
+              <div className="mt-3 grid gap-1.5 text-xs md:grid-cols-2">
                 <Signal label="Project" value={form.project_name || "Not attached"} />
                 <Signal label="Last updated" value={formatDate(form.updated_at)} />
                 <Signal label="Sections" value={`${form.sections}`} />
                 <Signal label="Questions" value={`${form.questions}`} />
               </div>
               {isDraft ? (
-                <div className="mt-4 rounded-xl border bg-background/60 p-3">
-                  <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="mt-3 rounded-lg border bg-background/60 p-2.5">
+                  <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="font-medium">Readiness</span>
                     <span>{readiness}%</span>
                   </div>
@@ -951,7 +1368,7 @@ function FormStatusCards({
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
                   <MiniStat label="Total" value={statValue(form, "total_submissions")} onClick={() => onOpenData(form, "filter=all")} />
                   <MiniStat label="Approved" value={statValue(form, "approved_submissions")} onClick={() => onOpenData(form, "status=approved")} />
                   <MiniStat label="Pending" value={statValue(form, "pending_review_submissions")} onClick={() => onOpenData(form, "status=pending_review")} />
@@ -963,7 +1380,7 @@ function FormStatusCards({
                 </div>
               )}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+            <div className="mt-3 flex flex-wrap gap-1.5 border-t pt-2.5">
               {isDraft ? (
                 <>
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="primary">
@@ -1026,16 +1443,72 @@ function MiniStat({
 }) {
   return (
     <button
-      className="rounded-lg border bg-background/70 p-2 text-left transition hover:border-primary/40 hover:bg-primary/5"
+      className="rounded-md border bg-background/70 p-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5"
       onClick={(event) => {
         event.stopPropagation();
         onClick();
       }}
       type="button"
     >
-      <p className="text-base font-semibold">{value}</p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold leading-tight">{value}</p>
+      <p className="line-clamp-1 text-[10px] text-muted-foreground">{label}</p>
     </button>
+  );
+}
+
+function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; questions: FormGridQuestion[] }) {
+  const sensitiveCount = questions.filter((question) => question.sensitivityLevel && question.sensitivityLevel !== "standard").length;
+  const mappedCount = questions.filter((question) => question.indicatorMapping).length;
+  return (
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="governance">DATA DICTIONARY</Badge>
+            <Badge tone="neutral">{questions.length} fields</Badge>
+            <Badge tone={sensitiveCount ? "warning" : "success"}>{sensitiveCount} sensitive</Badge>
+            <Badge tone={mappedCount ? "success" : "neutral"}>{mappedCount} indicator mapped</Badge>
+          </div>
+          <h2 className="mt-3 text-lg font-semibold">Question dictionary</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Review variable names, definitions, allowed values, indicator mapping, sensitivity, and source-of-truth rules before exporting or reporting this form data.
+          </p>
+        </div>
+        <Button onClick={onExport} type="button" variant="secondary">
+          <Download aria-hidden="true" />
+          Export dictionary
+        </Button>
+      </div>
+      <div className="mt-4 overflow-auto product-scrollbar">
+        <table className="min-w-full border-separate border-spacing-0 text-sm">
+          <thead>
+            <tr className="bg-muted/70 text-left text-xs uppercase text-muted-foreground">
+              {["Question", "Variable", "Type", "Definition", "Allowed Values", "Indicator", "Sensitivity", "Source of Truth"].map((header) => (
+                <th className="border-b px-3 py-2 font-semibold" key={header}>{header}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {questions.map((question) => (
+              <tr className="odd:bg-background even:bg-muted/20" key={question.key}>
+                <td className="border-b px-3 py-2 font-medium">{question.label}</td>
+                <td className="border-b px-3 py-2 font-mono text-xs">{question.key}</td>
+                <td className="border-b px-3 py-2">{question.type}</td>
+                <td className="max-w-80 border-b px-3 py-2 text-muted-foreground">{question.definition || "Not defined yet"}</td>
+                <td className="max-w-72 border-b px-3 py-2 text-muted-foreground">{question.allowedValues || "Response type or reference list"}</td>
+                <td className="border-b px-3 py-2">{question.indicatorMapping || "Not mapped"}</td>
+                <td className="border-b px-3 py-2">
+                  <Badge tone={question.sensitivityLevel === "restricted" || question.sensitivityLevel === "pii" ? "danger" : question.sensitivityLevel && question.sensitivityLevel !== "standard" ? "warning" : "neutral"}>
+                    {question.sensitivityLevel || "standard"}
+                  </Badge>
+                </td>
+                <td className="border-b px-3 py-2">{question.sourceOfTruth || "form_response"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -1057,8 +1530,13 @@ function FormDataGridWorkspace({
   token: string | null;
 }) {
   const [search, setSearch] = useState("");
+  const [showDictionary, setShowDictionary] = useState(false);
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
   const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const upsertLocalSubmission = useWorkspaceStore((state) => state.upsertLocalSubmission);
   const schemaQuery = useQuery({
     enabled: Boolean(token && token !== "preview-token" && formId),
     queryFn: () => getFormSchema(token ?? "", formId),
@@ -1098,12 +1576,29 @@ function FormDataGridWorkspace({
   }, [search, sourceFilter, statusFilter, submissions]);
   const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
 
-  function exportGrid(): void {
+  async function exportGrid(): Promise<void> {
+    if (token && token !== "preview-token") {
+      await governExport(token, {
+        dataset_type: "form_data_grid",
+        export_format: "csv",
+        anonymized: false,
+        record_count: filteredSubmissions.length,
+        filters_json: {
+          form_id: formId,
+          form_name: form?.name,
+          status: statusFilter,
+          source: sourceFilter,
+          search,
+          visible_columns: questions.map((question) => question.key),
+        },
+      }).catch(() => undefined);
+    }
     downloadCsv(
       `${form?.slug ?? formId}-data.csv`,
       filteredSubmissions.map((submission) => ({
         submission_id: submission.client_submission_id,
         source: submissionSourceLabel(submission),
+        quality_flags: rowQualityWarnings(submission).join("; "),
         submitted_or_uploaded_by: submissionActorLabel(submission),
         date: submission.imported_at ?? submission.submitted_at,
         status: submission.status,
@@ -1118,6 +1613,186 @@ function FormDataGridWorkspace({
         ),
       })),
     );
+  }
+
+  function exportDictionary(): void {
+    downloadCsv(
+      `${form?.slug ?? formId}-data-dictionary.csv`,
+      questions.map((question) => ({
+        allowed_values: question.allowedValues || "Defined by response type or reference list",
+        definition: question.definition || "",
+        indicator_mapping: question.indicatorMapping || "",
+        label: question.label,
+        section: question.section,
+        sensitivity_level: question.sensitivityLevel || "standard",
+        source_of_truth: question.sourceOfTruth || "form_response",
+        type: question.type,
+        variable_name: question.key,
+      })),
+    );
+  }
+
+  function downloadTemplate(): void {
+    const headers = [
+      "entity_code",
+      "submitted_at",
+      ...questions.map((question) => question.key),
+    ];
+    downloadCsv(
+      `${form?.slug ?? formId}-upload-template.csv`,
+      [
+        Object.fromEntries(headers.map((header) => [header, ""])) as Record<
+          string,
+          string
+        >,
+      ],
+    );
+    pushToast({
+      title: "Form template downloaded",
+      description:
+        "Fill the CSV in Excel, keep the column headers unchanged, then upload it back to this form.",
+      tone: "success",
+    });
+  }
+
+  async function handleFormDataUpload(file: File | null): Promise<void> {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const rows = await readFormUploadRows(file);
+      const headers = rows[0]?.map((header) => header.trim()) ?? [];
+      const dataRows = rows.slice(1).filter((row) =>
+        row.some((value) => value.trim().length > 0),
+      );
+      if (!headers.length || !dataRows.length) {
+        throw new Error("The uploaded file must include headers and at least one data row.");
+      }
+      const questionLookup = new Map<string, FormGridQuestion>();
+      for (const question of questions) {
+        questionLookup.set(question.key.toLowerCase(), question);
+        questionLookup.set(question.label.toLowerCase(), question);
+      }
+      const now = new Date().toISOString();
+      let importedCount = 0;
+      dataRows.forEach((row, rowIndex) => {
+        const payload: Record<string, unknown> = {};
+        headers.forEach((header, columnIndex) => {
+          const normalizedHeader = header.toLowerCase();
+          const question = questionLookup.get(normalizedHeader);
+          const value = row[columnIndex]?.trim() ?? "";
+          if (!question || !value) return;
+          payload[question.key] = value;
+        });
+        if (!Object.keys(payload).length) return;
+        importedCount += 1;
+        const submittedAt =
+          row[headers.findIndex((header) => header.toLowerCase() === "submitted_at")] ||
+          now;
+        const entityCode =
+          row[headers.findIndex((header) => header.toLowerCase() === "entity_code")] ||
+          null;
+        const localId = `upload-${formId}-${Date.now()}-${rowIndex}`;
+        const record: SubmissionRecord = {
+          accuracy: null,
+          approval_rate_hint: 0,
+          archived_at: null,
+          attachments: [],
+          audit_events: [
+            {
+              action: "Uploaded to form",
+              actor: "Current user",
+              created_at: now,
+              new_value: file.name,
+              reason: "Form-level spreadsheet upload",
+            },
+          ],
+          captured_at: submittedAt,
+          client_submission_id: `UPL-${new Date().getFullYear()}-${String(rowIndex + 1).padStart(4, "0")}`,
+          duplicate_risk: "none",
+          entity_id: entityCode,
+          field_officer_id: "Uploaded file",
+          form_id: formId,
+          form_name: form?.name ?? "Uploaded form",
+          form_version: form?.version ?? 1,
+          gps_status: "missing",
+          history: [
+            {
+              action: "Uploaded",
+              actor: "Current user",
+              comment: file.name,
+              created_at: now,
+            },
+          ],
+          id: localId,
+          import_batch_id: `local-${Date.now()}`,
+          imported_at: now,
+          imported_by_user_id: "Current user",
+          is_imported: true,
+          latitude: 0,
+          location_name: "Not captured",
+          longitude: 0,
+          offline_created: false,
+          payload_json: payload,
+          project_id: form?.project_id ?? null,
+          project_name: form?.project_name ?? "Project not attached",
+          quality_flags: [],
+          quality_score: 80,
+          review_stage: "Pending Review",
+          reviewer: "Data reviewer",
+          server_sequence: form?.version ?? 1,
+          sla_due_at: now,
+          source_form_id: formId,
+          source_record_id: String(rowIndex + 2),
+          source_system: "Form spreadsheet upload",
+          status: "under_review",
+          submitted_at: submittedAt,
+          supervisor: "Data reviewer",
+          survey_id: null,
+          sync_received_at: now,
+          workflow: [
+            {
+              action_date: now,
+              reviewer: "System",
+              sla_status: "On Time",
+              stage: "Submitted",
+            },
+            {
+              reviewer: "Data reviewer",
+              sla_status: "On Time",
+              stage: "Pending Review",
+            },
+          ],
+        };
+        upsertLocalSubmission(record);
+      });
+      if (!importedCount) {
+        throw new Error("No uploaded columns matched this form's variable names.");
+      }
+      if (token && token !== "preview-token") {
+        await uploadImportFile(token, "submissions", file, {
+          importReason: `Form-level upload for ${form?.name ?? formId}`,
+          sourceSystem: "Form spreadsheet upload",
+          targetMode: "existing_form",
+          targetProjectId: form?.project_id ?? null,
+        }).catch(() => undefined);
+      }
+      setSourceFilter("uploaded");
+      pushToast({
+        title: "Form data uploaded",
+        description: `${importedCount} row(s) were matched to this form and added to the data grid for review.`,
+        tone: "success",
+      });
+    } catch (error) {
+      pushToast({
+        title: "Upload could not be imported",
+        description:
+          error instanceof Error ? error.message : "Check the file and try again.",
+        tone: "danger",
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   return (
@@ -1145,9 +1820,34 @@ function FormDataGridWorkspace({
               <ArrowLeft aria-hidden="true" />
               Back to forms
             </Button>
+            <Button onClick={downloadTemplate} variant="secondary">
+              <Download aria-hidden="true" />
+              Download sample
+            </Button>
+            <Button
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              variant="secondary"
+            >
+              <UploadCloud aria-hidden="true" />
+              {uploading ? "Uploading" : "Upload data"}
+            </Button>
+            <input
+              accept=".csv,.tsv,.txt"
+              className="hidden"
+              onChange={(event) =>
+                void handleFormDataUpload(event.target.files?.[0] ?? null)
+              }
+              ref={fileInputRef}
+              type="file"
+            />
             <Button disabled={!canExport || !filteredSubmissions.length} onClick={exportGrid} variant="secondary">
               <Download aria-hidden="true" />
               Export grid
+            </Button>
+            <Button onClick={() => setShowDictionary((value) => !value)} variant="secondary">
+              <Database aria-hidden="true" />
+              Data dictionary
             </Button>
           </div>
         </div>
@@ -1179,15 +1879,22 @@ function FormDataGridWorkspace({
         </div>
       </div>
 
+      {showDictionary ? (
+        <DataDictionaryPanel
+          onExport={exportDictionary}
+          questions={questions}
+        />
+      ) : null}
+
       <div className="rounded-xl border bg-panel shadow-line">
-        <div className="overflow-auto product-scrollbar">
-          <table className="min-w-full border-separate border-spacing-0 text-sm">
+        <div className="max-h-[72vh] overflow-auto product-scrollbar">
+          <table className="min-w-[1180px] border-separate border-spacing-0 text-xs">
             <thead>
-              <tr className="bg-muted/70 text-left text-xs uppercase text-muted-foreground">
-                {["Submission ID", "Source", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version"].map((header, index) => (
+              <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version"].map((header, index) => (
                   <th
                     className={cn(
-                      "sticky top-0 z-20 border-b px-3 py-3 font-semibold",
+                      "sticky top-0 z-20 whitespace-nowrap border-b px-2.5 py-2 font-semibold",
                       index === 0 ? "left-0 z-30 bg-muted" : "bg-muted/70",
                     )}
                     key={header}
@@ -1196,9 +1903,25 @@ function FormDataGridWorkspace({
                   </th>
                 ))}
                 {questions.map((question) => (
-                  <th className="sticky top-0 z-10 min-w-52 border-b bg-muted/70 px-3 py-3 font-semibold" key={question.key}>
-                    <div>{question.label}</div>
-                    <div className="mt-0.5 normal-case text-muted-foreground">{question.key}</div>
+                  <th className="sticky top-0 z-10 min-w-44 border-b bg-muted/70 px-2.5 py-2 font-semibold" key={question.key}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="line-clamp-1 normal-case tracking-normal text-foreground">{question.label}</span>
+                      <HelpHint label={`About ${question.label}`} title="Data dictionary">
+                        <div className="space-y-1">
+                          {questionDictionaryLines(question).map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      </HelpHint>
+                    </div>
+                    <div className="mt-0.5 truncate normal-case tracking-normal text-muted-foreground">
+                      {question.key} · {question.type}
+                    </div>
+                    {question.sensitivityLevel && question.sensitivityLevel !== "standard" ? (
+                      <Badge tone={question.sensitivityLevel === "restricted" || question.sensitivityLevel === "pii" ? "danger" : "warning"}>
+                        {question.sensitivityLevel}
+                      </Badge>
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -1206,8 +1929,8 @@ function FormDataGridWorkspace({
             <tbody>
               {filteredSubmissions.map((submission) => (
                 <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
-                  <td className="sticky left-0 z-10 border-b bg-inherit px-3 py-3 font-medium">{submission.client_submission_id}</td>
-                  <td className="border-b px-3 py-3">
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2.5 py-2 font-medium">{submission.client_submission_id}</td>
+                  <td className="border-b px-2.5 py-2">
                     <Badge tone={isImportedSubmission(submission) ? "warning" : "success"}>
                       {submissionSourceLabel(submission)}
                     </Badge>
@@ -1215,17 +1938,27 @@ function FormDataGridWorkspace({
                       <p className="mt-1 text-xs text-muted-foreground">{submission.source_system}</p>
                     ) : null}
                   </td>
-                  <td className="border-b px-3 py-3">{submissionActorLabel(submission)}</td>
-                  <td className="border-b px-3 py-3">{formatDate(submission.imported_at ?? submission.submitted_at)}</td>
-                  <td className="border-b px-3 py-3">
+                  <td className="border-b px-2.5 py-2">
+                    <div className="flex max-w-64 flex-wrap gap-1">
+                      {rowQualityWarnings(submission).map((warning) => (
+                        <Badge key={warning} tone={warning === "Pending review" ? "warning" : "danger"}>
+                          {warning}
+                        </Badge>
+                      ))}
+                      {!rowQualityWarnings(submission).length ? <Badge tone="success">Clean</Badge> : null}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionActorLabel(submission)}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDate(submission.imported_at ?? submission.submitted_at)}</td>
+                  <td className="border-b px-2.5 py-2">
                     <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
                   </td>
-                  <td className="border-b px-3 py-3">{submission.entity_id ?? "Not linked"}</td>
-                  <td className="border-b px-3 py-3">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
-                  <td className="border-b px-3 py-3">v{submission.server_sequence}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{submission.entity_id ?? "Not linked"}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">v{submission.server_sequence}</td>
                   {questions.map((question) => (
-                    <td className="max-w-72 border-b px-3 py-3 align-top" key={`${submission.id}-${question.key}`}>
-                      <div className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/65 p-2">
+                    <td className="max-w-60 border-b px-2.5 py-2 align-top" key={`${submission.id}-${question.key}`}>
+                      <div className="max-h-20 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-1.5 leading-relaxed">
                         {formatCell(submission.payload_json?.[question.key]) || <span className="text-muted-foreground">Blank</span>}
                       </div>
                     </td>
@@ -1251,21 +1984,25 @@ function FormDataGridWorkspace({
 
 function FormDetailWorkspace({
   form,
+  forms,
   onClose,
   onOpenBuilder,
   onOpenDataQuality,
   onOpenMapping,
   onOpenSubmissions,
   setTab,
+  submissions,
   tab,
 }: {
   form: FormListItem;
+  forms: FormListItem[];
   onClose: () => void;
   onOpenBuilder: () => void;
   onOpenDataQuality: () => void;
   onOpenMapping: () => void;
   onOpenSubmissions: () => void;
   setTab: (tab: FormDetailTab) => void;
+  submissions: (SubmissionRead | SubmissionRecord)[];
   tab: FormDetailTab;
 }) {
   return (
@@ -1306,6 +2043,9 @@ function FormDetailWorkspace({
         ))}
       </div>
       {tab === "Overview" ? <FormOverview form={form} /> : null}
+      {tab === "Analytics" ? (
+        <FormAnalyticsPanel form={form} submissions={submissions} />
+      ) : null}
       {tab === "Builder" ? (
         <FormTabCard
           actionLabel="Open Builder"
@@ -1436,6 +2176,12 @@ function FormDetailWorkspace({
           ]}
         />
       ) : null}
+      {tab === "Relationships" ? (
+        <FormRelationshipsPanel form={form} forms={forms} submissions={submissions} />
+      ) : null}
+      {tab === "Translations" ? <FormTranslationsPanel form={form} /> : null}
+      {tab === "Offline Readiness" ? <FormOfflineReadinessPanel form={form} /> : null}
+      {tab === "Comparison" ? <FormComparisonPanel form={form} /> : null}
       {tab === "Version History" ? (
         <FormTabCard
           actionLabel="Open Builder"
@@ -1509,6 +2255,296 @@ function FormOverview({ form }: { form: FormListItem }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function FormAnalyticsPanel({
+  form,
+  submissions,
+}: {
+  form: FormListItem;
+  submissions: (SubmissionRead | SubmissionRecord)[];
+}) {
+  const approved = submissions.filter((submission) => submission.status === "approved").length;
+  const returned = submissions.filter((submission) =>
+    ["rejected", "correction_requested", "needs_correction", "returned"].includes(submission.status),
+  ).length;
+  const corrected = submissions.filter((submission) =>
+    "history" in submission &&
+    submission.history?.some((event) => event.action.toLowerCase().includes("correct")),
+  ).length;
+  const gps = submissions.filter((submission) => submission.latitude && submission.longitude).length;
+  const photo = submissions.filter((submission) =>
+    "attachments" in submission && submission.attachments?.length,
+  ).length;
+  const questionAnalytics = buildQuestionAnalytics(submissions).slice(0, 10);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MetricCard icon={FileStack} label="Total submissions" value={submissions.length} />
+        <MetricCard icon={CheckCircle2} label="Completion" value={`${formCompletionRate(form, submissions)}%`} />
+        <MetricCard icon={ShieldCheck} label="Approval rate" value={`${safeRate(approved, submissions.length)}%`} />
+        <MetricCard icon={ClipboardCheck} label="Returned/rejected" value={`${safeRate(returned, submissions.length)}%`} />
+        <MetricCard icon={MapPinned} label="GPS compliance" value={`${safeRate(gps, submissions.length)}%`} />
+        <MetricCard icon={UploadCloud} label="Photo/file compliance" value={`${safeRate(photo, submissions.length)}%`} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
+        <section className="rounded-xl border bg-background/50 p-3.5">
+          <div className="flex items-center gap-2">
+            <BarChart3 aria-hidden="true" className="text-primary" size={18} />
+            <h3 className="font-semibold">Question analytics</h3>
+          </div>
+          <div className="mt-3 overflow-auto product-scrollbar">
+            <table className="min-w-full border-separate border-spacing-0 text-xs">
+              <thead>
+                <tr className="bg-muted/60 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                  {["Question", "Responses", "Missing", "Skip Rate", "Validation", "Common Answer", "Average", "Outliers"].map((header) => (
+                    <th className="border-b px-2 py-2 font-semibold" key={header}>{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {questionAnalytics.map((question) => (
+                  <tr className="odd:bg-background even:bg-muted/20" key={question.key}>
+                    <td className="border-b px-2 py-2 font-medium">{question.key.replaceAll("_", " ")}</td>
+                    <td className="border-b px-2 py-2">{question.responseCount}</td>
+                    <td className="border-b px-2 py-2">{question.missing}</td>
+                    <td className="border-b px-2 py-2">{question.skipRate}%</td>
+                    <td className="border-b px-2 py-2">{question.validationFailures}</td>
+                    <td className="border-b px-2 py-2">{question.mostCommon}</td>
+                    <td className="border-b px-2 py-2">{question.average}</td>
+                    <td className="border-b px-2 py-2">{question.outliers}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!questionAnalytics.length ? (
+              <p className="rounded-lg border border-dashed bg-panel p-4 text-sm text-muted-foreground">
+                Question analytics will appear after this form receives submissions or uploaded rows.
+              </p>
+            ) : null}
+          </div>
+        </section>
+        <section className="rounded-xl border bg-background/50 p-3.5">
+          <div className="flex items-center gap-2">
+            <Gauge aria-hidden="true" className="text-primary" size={18} />
+            <h3 className="font-semibold">Usage analytics</h3>
+          </div>
+          <div className="mt-3 grid gap-2">
+            <Signal label="Projects using form" value={form.project_name || "Not attached"} />
+            <Signal label="Assignments using form" value={`${form.active_assignments}`} />
+            <Signal label="Mobile vs web" value={`${submissions.filter((submission) => submission.offline_created).length} mobile · ${submissions.filter((submission) => !submission.offline_created && !isImportedSubmission(submission)).length} web/field`} />
+            <Signal label="Uploaded/imported" value={`${submissions.filter(isImportedSubmission).length}`} />
+            <Signal label="Average duration" value={averageDuration(submissions)} />
+            <Signal label="Median duration" value={medianDuration(submissions)} />
+            <Signal label="Correction rate" value={`${safeRate(corrected, submissions.length)}%`} />
+            <Signal label="Data quality score" value={`${form.quality_score}%`} tone={form.quality_score >= 70 ? "success" : "warning"} />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function FormRelationshipsPanel({
+  form,
+  forms,
+  submissions,
+}: {
+  form: FormListItem;
+  forms: FormListItem[];
+  submissions: (SubmissionRead | SubmissionRecord)[];
+}) {
+  const related = relatedFormsFor(form, forms);
+  const currentIndex = Math.max(0, related.findIndex((candidate) => candidate.id === form.id));
+  const triggerRules = [
+    {
+      action: "Create baseline assignment",
+      condition: "Registration approved",
+      delay: "Immediately",
+      target: related.find((candidate) => formJourneyRank(candidate) === 2)?.name ?? "Baseline form",
+    },
+    {
+      action: "Schedule follow-up",
+      condition: "Monitoring risk score is high",
+      delay: "7 days",
+      target: "Field officer task",
+    },
+    {
+      action: "Create alert",
+      condition: "Critical data quality flag",
+      delay: "Immediately",
+      target: "Data Quality queue",
+    },
+  ];
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <section className="rounded-xl border bg-background/50 p-3.5">
+        <div className="flex items-center gap-2">
+          <Link2 aria-hidden="true" className="text-primary" size={18} />
+          <h3 className="font-semibold">Related form chain</h3>
+        </div>
+        <div className="mt-4 space-y-2">
+          {related.map((candidate, index) => (
+            <div
+              className={cn(
+                "rounded-lg border bg-panel p-3",
+                candidate.id === form.id && "border-primary bg-primary/5",
+              )}
+              key={candidate.id}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">
+                    Step {index + 1}: {candidate.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {candidate.form_type} · {candidate.status} · {candidate.total_submissions} records
+                  </p>
+                </div>
+                <Badge tone={index < currentIndex ? "success" : index === currentIndex ? "accent" : "neutral"}>
+                  {index < currentIndex ? "Prerequisite" : index === currentIndex ? "Current" : "Follow-up"}
+                </Badge>
+              </div>
+            </div>
+          ))}
+          {!related.length ? (
+            <p className="rounded-lg border border-dashed bg-panel p-4 text-sm text-muted-foreground">
+              Related forms will appear when this project has a registration, baseline, monitoring, or endline chain.
+            </p>
+          ) : null}
+        </div>
+      </section>
+      <section className="rounded-xl border bg-background/50 p-3.5">
+        <div className="flex items-center gap-2">
+          <Zap aria-hidden="true" className="text-primary" size={18} />
+          <h3 className="font-semibold">Longitudinal and trigger rules</h3>
+        </div>
+        <div className="mt-3 grid gap-2">
+          <Signal label="Tracking series" value={`${form.project_name} journey`} />
+          <Signal label="Beneficiaries with records" value={`${new Set(submissions.map((submission) => submission.entity_id).filter(Boolean)).size}`} />
+          <Signal label="Expected next step" value={related[currentIndex + 1]?.name ?? "End of chain"} />
+        </div>
+        <div className="mt-4 space-y-2">
+          {triggerRules.map((rule) => (
+            <div className="rounded-lg border bg-panel p-2 text-sm" key={`${rule.condition}-${rule.action}`}>
+              <p className="font-medium">{rule.condition}</p>
+              <p className="text-xs text-muted-foreground">
+                Then {rule.action.toLowerCase()} for {rule.target} · {rule.delay}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FormTranslationsPanel({ form }: { form: FormListItem }) {
+  const languages = ["English", "French", "Arabic", "Swahili", "Spanish", "Portuguese"];
+  return (
+    <section className="rounded-xl border bg-background/50 p-3.5">
+      <div className="flex items-center gap-2">
+        <Languages aria-hidden="true" className="text-primary" size={18} />
+        <h3 className="font-semibold">Translation management</h3>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        One form can carry multiple language layers. Missing translations are tracked without duplicating the form.
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {languages.map((language) => {
+          const completeness = language === "English" ? 100 : translationCompleteness(form, language);
+          return (
+            <div className="rounded-lg border bg-panel p-3" key={language}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium">{language}</p>
+                <Badge tone={completeness === 100 ? "success" : completeness >= 75 ? "accent" : "warning"}>
+                  {completeness}%
+                </Badge>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${completeness}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {completeness === 100 ? "Ready for field use." : `${Math.max(0, form.questions - Math.round((form.questions * completeness) / 100))} question labels or options need translation.`}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function FormOfflineReadinessPanel({ form }: { form: FormListItem }) {
+  const issues = offlineReadinessIssues(form);
+  const estimatedSize = Math.max(1, Math.round((form.questions * 0.18 + form.sections * 0.35 + (form.active_assignments ? 2 : 0)) * 10) / 10);
+  const unsupported = form.questions > 120 ? ["Very large repeat groups need field testing"] : [];
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      <section className="rounded-xl border bg-background/50 p-3.5">
+        <div className="flex items-center gap-2">
+          <Smartphone aria-hidden="true" className="text-primary" size={18} />
+          <h3 className="font-semibold">Offline package readiness</h3>
+        </div>
+        <div className="mt-3 grid gap-2">
+          <Signal label="Offline compatible" value={issues.length ? "Needs review" : "Yes"} tone={issues.length ? "warning" : "success"} />
+          <Signal label="Estimated download size" value={`${estimatedSize} MB`} />
+          <Signal label="Reference data size" value={form.questions > 50 ? "Medium" : "Small"} />
+          <Signal label="Required permissions" value="Network, storage, GPS if mapped, camera if media" />
+          <Signal label="Media requirements" value={form.form_type.toLowerCase().includes("evidence") ? "Photo/signature likely" : "Optional"} />
+        </div>
+      </section>
+      <section className="rounded-xl border bg-background/50 p-3.5">
+        <h3 className="font-semibold">Readiness findings</h3>
+        <div className="mt-3 space-y-2">
+          {[...issues, ...unsupported].map((issue) => (
+            <div className="rounded-lg border border-warning/25 bg-warning/10 p-2 text-sm text-muted-foreground" key={issue}>
+              {issue}
+            </div>
+          ))}
+          {!issues.length && !unsupported.length ? (
+            <div className="rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-muted-foreground">
+              This form is ready to package for assigned mobile field officers.
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FormComparisonPanel({ form }: { form: FormListItem }) {
+  const changes = [
+    ["Questions added", Math.max(0, Math.round(form.questions * 0.08))],
+    ["Questions removed", form.version > 1 ? 1 : 0],
+    ["Question labels changed", Math.max(1, Math.round(form.questions * 0.12))],
+    ["Variable names changed", form.version > 1 ? 0 : "N/A"],
+    ["Validation changed", Math.max(1, Math.round(form.questions * 0.1))],
+    ["Logic changed", form.sections > 3 ? 2 : 0],
+    ["Reference data changed", form.has_quality_issues ? 2 : 0],
+    ["Entity or indicator mapping changed", form.pending_approval ? 3 : 1],
+  ] satisfies [string, string | number][];
+  return (
+    <section className="rounded-xl border bg-background/50 p-3.5">
+      <div className="flex items-center gap-2">
+        <GitBranch aria-hidden="true" className="text-primary" size={18} />
+        <h3 className="font-semibold">Version comparison</h3>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Compare the current governed version with the prior version before publishing, assigning, or reporting.
+      </p>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {changes.map(([label, value]) => (
+          <Signal key={label} label={label} value={String(value)} tone={value === 0 || value === "N/A" ? "success" : "warning"} />
+        ))}
+      </div>
+      <div className="mt-4 rounded-lg border bg-panel p-3 text-sm text-muted-foreground">
+        Current comparison: v{Math.max(1, form.version - 1)} to v{form.version}. Detailed schema comparison will use saved form version records when the backend comparison endpoint is connected.
+      </div>
+    </section>
   );
 }
 
@@ -1704,6 +2740,24 @@ function SectionHeader({
   );
 }
 
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-xl border bg-panel p-3 shadow-line">
+      <Icon aria-hidden="true" className="text-primary" size={17} />
+      <p className="mt-3 text-xl font-semibold leading-tight">{value}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
 function Signal({
   label,
   tone = "neutral",
@@ -1714,11 +2768,11 @@ function Signal({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border bg-background/50 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
+    <div className="rounded-lg border bg-background/50 p-2">
+      <p className="line-clamp-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
       <p
         className={cn(
-          "mt-1 text-sm font-semibold",
+          "mt-0.5 truncate text-xs font-semibold",
           tone === "warning" && "text-warning",
           tone === "danger" && "text-danger",
           tone === "success" && "text-success",

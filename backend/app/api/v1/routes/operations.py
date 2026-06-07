@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -10,6 +10,8 @@ from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import (
     BeneficiaryCreate,
+    BeneficiaryMergeRead,
+    BeneficiaryMergeRequest,
     BeneficiaryRead,
     BulkEditRead,
     BulkEditRequest,
@@ -17,6 +19,7 @@ from app.schemas.operations import (
     CaseRead,
     DataRouteCreate,
     DataRouteRead,
+    DataQualitySignalRead,
     DonorReportCreate,
     DonorReportRead,
     EntityDuplicateCandidateRead,
@@ -248,6 +251,20 @@ async def list_beneficiaries(
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
+@router.get("/data-quality/signals", response_model=list[DataQualitySignalRead], summary="List data cleaning and reconciliation signals")
+async def list_quality_signals(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status_filter: Annotated[str | None, Query(alias="status")] = "open",
+    signal_type: Annotated[str | None, Query()] = None,
+) -> list[DataQualitySignalRead]:
+    return await OperationsService(session).list_quality_signals(
+        organization_uuid(principal),
+        status=status_filter,
+        signal_type=signal_type,
+    )
+
+
 @router.get("/beneficiaries/search", response_model=list[BeneficiaryRead], summary="Search beneficiary and entity registry")
 async def search_beneficiaries(
     q: str,
@@ -269,6 +286,32 @@ async def check_entity_duplicates(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[EntityDuplicateCandidateRead]:
     return await OperationsService(session).check_entity_duplicates(organization_uuid(principal), payload)
+
+
+@router.post(
+    "/beneficiaries/merge",
+    response_model=BeneficiaryMergeRead,
+    summary="Merge duplicate beneficiaries and preserve linked submissions",
+)
+async def merge_beneficiaries(
+    payload: BeneficiaryMergeRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BeneficiaryMergeRead:
+    try:
+        result = await OperationsService(session).merge_beneficiaries(
+            organization_uuid(principal),
+            user_uuid(principal),
+            payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post(

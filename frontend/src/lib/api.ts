@@ -996,6 +996,21 @@ export type BeneficiaryCreate = {
   profile_json?: Record<string, unknown>;
 };
 
+export type BeneficiaryMergeRequest = {
+  master_beneficiary_id: string;
+  duplicate_beneficiary_id: string;
+  reason: string;
+  merge_profile_fields?: boolean;
+};
+
+export type BeneficiaryMergeRead = {
+  master_beneficiary: BeneficiaryRead;
+  duplicate_beneficiary: BeneficiaryRead;
+  moved_submissions: number;
+  moved_quality_signals: number;
+  reason: string;
+};
+
 export type DuplicateCheckRequest = {
   entity_id?: string;
   entity_type?: string;
@@ -1017,6 +1032,19 @@ export type DuplicateCandidateRead = {
   score: number;
   level: string;
   matched_fields: string[];
+};
+
+export type DataQualitySignalRead = {
+  id: string;
+  submission_id: string | null;
+  beneficiary_id: string | null;
+  signal_type: string;
+  severity: string;
+  confidence: number;
+  summary: string;
+  status: string;
+  evidence_json: Record<string, unknown>;
+  created_at: string;
 };
 
 export type EntityPrefillRead = {
@@ -1587,7 +1615,14 @@ export type FormDataQualityRule = {
 };
 
 export type FormGovernancePolicy = {
-  form_status: "draft" | "testing" | "published" | "suspended" | "archived";
+  form_status:
+    | "draft"
+    | "testing"
+    | "review"
+    | "approved"
+    | "published"
+    | "suspended"
+    | "archived";
   approval_workflow: "simple" | "standard" | "correction" | "custom";
   required_review_levels: number;
   submitted_records_editable: boolean;
@@ -1644,6 +1679,34 @@ export type FormEntityControlSettings = {
   profile_update_mode: string;
 };
 
+export type FormInstrumentSettings = {
+  purpose?: Record<string, unknown>;
+  indicator_mappings?: Record<string, unknown>[];
+  data_dictionary?: Record<string, unknown>[];
+  dependency_map?: Record<string, unknown>[];
+  profile_impact_rules?: Record<string, unknown>[];
+  profile_history_policy?: Record<string, unknown>;
+  attachment_governance?: Record<string, unknown>;
+  interview_duration?: Record<string, unknown>;
+  enumerator_quality?: Record<string, unknown>;
+  event_settings?: Record<string, unknown>;
+  tracking?: Record<string, unknown>;
+  seasonal_rules?: Record<string, unknown>;
+  survey_wave?: Record<string, unknown>;
+  data_source?: Record<string, unknown>;
+  geographic_scope?: Record<string, unknown>;
+  auto_assignment_rules?: Record<string, unknown>[];
+  trigger_rules?: Record<string, unknown>[];
+  related_forms?: Record<string, unknown>;
+  lifecycle?: Record<string, unknown>;
+  certification?: Record<string, unknown>;
+  sampling?: Record<string, unknown>;
+  performance_analytics?: Record<string, unknown>;
+  localization?: Record<string, unknown>;
+  accessibility?: Record<string, unknown>;
+  ai_readiness?: Record<string, unknown>;
+};
+
 export type FormControlsSettings = {
   reference_bindings: FormReferenceBinding[];
   permission_rules: FormPermissionRule[];
@@ -1653,6 +1716,7 @@ export type FormControlsSettings = {
   governance: FormGovernancePolicy;
   audit: FormAuditSettings;
   versioning: FormVersioningSettings;
+  instrument?: FormInstrumentSettings;
 };
 
 export type DataFormRead = {
@@ -1666,6 +1730,13 @@ export type DataFormRead = {
   current_version: number;
   controls_json?: FormControlsSettings | Record<string, unknown>;
   is_active: boolean;
+};
+
+export type DataFormUpdate = {
+  name: string;
+  description?: string | null;
+  schema: Record<string, unknown>;
+  publish?: boolean;
 };
 
 export type DataFormSchemaRead = {
@@ -2492,6 +2563,21 @@ export async function checkEntityDuplicates(token: string, payload: DuplicateChe
   return request<DuplicateCandidateRead[]>("/operations/beneficiaries/duplicate-check", { method: "POST", token, bodyJson: payload });
 }
 
+export async function mergeBeneficiaries(token: string, payload: BeneficiaryMergeRequest): Promise<BeneficiaryMergeRead> {
+  return request<BeneficiaryMergeRead>("/operations/beneficiaries/merge", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listDataQualitySignals(
+  token: string,
+  filters: { status?: string; signal_type?: string } = {},
+): Promise<DataQualitySignalRead[]> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.signal_type) params.set("signal_type", filters.signal_type);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<DataQualitySignalRead[]>(`/operations/data-quality/signals${query}`, { token });
+}
+
 export async function getProjectEntities(token: string, projectId: string): Promise<BeneficiaryRead[]> {
   return request<BeneficiaryRead[]>(`/projects/${projectId}/beneficiaries`, { token });
 }
@@ -2712,6 +2798,10 @@ export async function createForm(token: string, payload: DataFormCreate): Promis
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
 
+export async function updateForm(token: string, formId: string, payload: DataFormUpdate): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {
   return request<FormControlsSettings>(`/forms/${formId}/controls`, { token });
 }
@@ -2897,6 +2987,7 @@ export const api = {
   updateAdministrationReferenceValue,
   updatePlatformFeatureFlag,
   updateImportRow,
+  updateForm,
   updateFormControls,
   updateSubmissionResponses,
   updateSurveyGovernance,

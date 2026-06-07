@@ -30,7 +30,14 @@ export function computeFormsSummary(forms: FormListItem[]): FormsSummary {
 }
 
 export function filterForms(forms: FormListItem[], section: FormsSection): FormListItem[] {
-  if (section === "all" || section === "dashboard" || section === "templates" || section === "reference-data") {
+  if (
+    section === "all" ||
+    section === "dashboard" ||
+    section === "analytics" ||
+    section === "templates" ||
+    section === "reference-data" ||
+    section === "governance-dashboard"
+  ) {
     return forms;
   }
   return forms.filter((form) => form.status.toLowerCase() === section);

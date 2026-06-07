@@ -277,6 +277,25 @@ The production route model must use clean domain prefixes. The current web app i
 - `/forms/:formId/version-history`
 - `/forms/:formId/audit-trail`
 
+Form publishing rule:
+
+- A form may be saved as draft while incomplete, but it must pass Field Readiness / Publish Controls before it can be published or assigned to field officers.
+- The form lifecycle is Draft -> Testing -> Review -> Approved -> Published, with Suspended and Archived for operational control. Direct Draft -> Published should be blocked unless an explicit bypass permission is implemented and audited.
+- Publish readiness must verify form information, project linkage, entity rules, beneficiary profile mappings, frequency rules, duplicate prevention, question validation, logic, structure, reference data, GPS, media, consent, data quality, workflow, reviewer roles, permissions, assignment rules, offline settings, risk classification, version number, and change summary.
+- Advanced M&E instrument metadata belongs in Forms controls, not in a duplicate module. This includes form objective, business purpose, result area, linked outcome/output, indicator mappings, form-level data dictionary, question dependencies, profile impact rules, tracking series, survey waves, seasonal rules, sampling metadata, event settings, related forms, trigger rules, localization, accessibility, and AI-ready metadata.
+- Indicator mappings stored on a form must remain traceable from question -> variable -> indicator component -> approved submission -> beneficiary/project -> report.
+- Publishing creates or updates an immutable published version; editing a published form must create a new draft/version and must not silently overwrite historical form versions or submissions.
+- Field-submitted data from published forms must enter the submission review workflow. Approval, return, rejection, and correction decisions belong to authorized reviewers, not automatic publish logic.
+
+Form operations rule:
+
+- Advanced form operations belong inside the Forms module, not in duplicate analytics or automation modules. This includes form analytics, question analytics, form usage analytics, template library, related form chains, longitudinal tracking series, trigger-based form rules, form relationships, version comparison, translation management, offline package readiness, and the form governance dashboard.
+- Organization-level form analytics may summarize completion, approval, rejection/correction, GPS/media compliance, source split, mobile usage, uploaded records, and data quality using existing form and submission records.
+- Per-form operations views must drill into question performance, usage, relationship chains, tracking series, trigger rules, translations, offline readiness, comparison, version history, and audit trail while preserving the canonical form builder as the only question-design surface.
+- Trigger-based form rules should start as simple governed rules tied to approved form events, assignments, tasks, alerts, or follow-up forms. They must write audit events when activated and must not silently change approved data.
+- Translation management must support one multilingual form instrument with language entries and completeness tracking; do not duplicate forms per language.
+- Offline readiness must report mobile package compatibility, estimated download size, reference data needs, GPS/media permissions, unsupported question types, and large-form warnings before field deployment.
+
 ### Field Operations
 
 - `/field-operations`
@@ -592,6 +611,28 @@ Mobile-ready architecture placeholders:
 - Future mobile apps should consume assigned projects, assigned entities, assigned forms, published form versions, reference data, locations, duplicate rules, frequency rules, prefill data, returned submissions, and sync-ready upload APIs.
 - Required API contracts include assigned entities, assigned forms, sync package, prefill data, duplicate rule package, frequency rule package, submission upload package, and sync conflict responses.
 - Do not create mobile screens in the web app. Web work should expose typed backend/data contracts that can later be consumed by offline-first mobile sync.
+
+## M&E Data Governance and Cleaning
+
+Purpose:
+
+- Protect approved results, preserve source traceability, and make data cleaning visible before records feed indicators, reports, dashboards, and donor outputs.
+- Keep data correction, beneficiary profile updates, duplicate reconciliation, export logging, and lineage inside the existing Governance, Data Quality, Submissions, and Beneficiaries ownership boundaries.
+
+Rules:
+
+- Each form question should carry a data dictionary entry: variable name, response type, definition, allowed values, indicator mapping, sensitivity level, and source-of-truth role.
+- Submission lifecycle is `draft -> submitted -> under_review -> approved -> returned -> rejected -> archived`. Field officer and mobile submissions must not be approved automatically.
+- Approved submissions are locked. Corrections to approved records must create a change request with reason, old values, new values, actor, timestamp, and affected fields instead of silently overwriting the approved record.
+- Every answer edit before approval must create change history. Store old value, new value, actor, timestamp, reason, and source submission context in Governance data version records.
+- Approved beneficiary-linked submissions may create beneficiary records, link submissions to beneficiaries, append beneficiary timeline events, and record lineage from form/question/submission to beneficiary fields.
+- Sensitive beneficiary profile changes such as name, phone, village, GPS, national ID, or household ID must create a profile conflict/reconciliation signal unless the governing workflow explicitly allows automatic update.
+- Data Quality owns cleaning queues for missing values, duplicates, outliers, invalid GPS, inconsistent answers, and profile conflicts. Backend signals should be exposed to the Data Quality module rather than hidden inside form or submission screens.
+- Excel-style form data views must show row-level source, status, quality flags, and imported-vs-field-submitted provenance.
+- Exportable operational data must call export governance before download where practical, logging dataset type, format, filters, record count, requester, risk score, and anonymization state.
+- Row-level access remains mandatory. APIs must enforce organization scope first, then project, location, team, role, assignment, and donor/viewer aggregation rules as the endpoint supports them.
+- Data retention and archiving rules belong in Governance. Reports and dashboards must not bypass retention, anonymization, legal hold, or export restrictions.
+- Quarterly or formal donor reporting should use frozen report snapshots so later corrections do not silently change historical reported results.
 
 ## Mobile App Architecture
 

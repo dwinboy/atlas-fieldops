@@ -11,13 +11,15 @@ from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.security import hash_password
 from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
-from app.models.operations import Beneficiary
+from app.models.governance import DataVersion, LineageEvent
+from app.models.operations import Beneficiary, DataQualitySignal, VisitRecord
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
 from app.schemas.collection import (
     DataFormCreate,
     DataFormSchemaRead,
+    DataFormUpdate,
     FormControlsSettings,
     FormCollectionCompatibility,
     FieldOfficerInvite,
@@ -577,6 +579,58 @@ class FormService:
         )
         return form
 
+    async def update_form(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+        payload: DataFormUpdate,
+    ) -> object:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        previous_version = form.current_version
+        previous_status = form.status
+        form, version = await self.forms.save_schema_revision(
+            form=form,
+            name=payload.name,
+            description=payload.description,
+            schema_json=payload.form_schema.model_dump(mode="json"),
+            publish=payload.publish,
+        )
+        if not form.controls_json:
+            await self.forms.update_controls(
+                form=form,
+                controls_json=FormControlsSettings().model_dump(mode="json"),
+            )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.version_updated" if previous_status == "published" else "form.updated",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={
+                "previous_version": previous_version,
+                "version": version.version,
+                "previous_status": previous_status,
+                "status": form.status,
+                "published": payload.publish,
+            },
+        )
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "form.version_updated",
+                "organization_id": str(organization_id),
+                "project_id": str(form.project_id),
+                "survey_id": str(form.survey_id),
+                "form_id": str(form.id),
+                "version": version.version,
+            },
+        )
+        return form
+
     async def list_forms(self, organization_id: UUID) -> list[DataForm]:
         forms = list(await self.forms.list(organization_id))
         for form in forms:
@@ -627,6 +681,7 @@ class FormService:
                 "permission_rules": len(payload.permission_rules),
                 "workflow_stages": len(payload.workflow_stages),
                 "data_quality_rules": len(payload.data_quality_rules),
+                "instrument_sections": len(payload.instrument),
                 "governance_status": payload.governance.form_status,
             },
         )
@@ -943,8 +998,21 @@ class SubmissionService:
             )
         return submission
 
-    async def list_submissions(self, *, organization_id: UUID, status: str | None = None) -> list[Submission]:
-        return await self.submissions.list_for_review(organization_id, status)
+    async def list_submissions(
+        self,
+        *,
+        organization_id: UUID,
+        status: str | None = None,
+        actor_user_id: UUID | None = None,
+        scope_type: str = "organization",
+    ) -> list[Submission]:
+        field_officer_id: UUID | None = None
+        if scope_type == "own" and actor_user_id is not None:
+            officer = await self.officers.get_for_user(organization_id=organization_id, user_id=actor_user_id)
+            if officer is None:
+                return []
+            field_officer_id = officer.id
+        return await self.submissions.list_for_review(organization_id, status, field_officer_id)
 
     async def review_submission(
         self,
@@ -1083,6 +1151,20 @@ class SubmissionService:
             await self.session.flush()
             submission.entity_id = beneficiary.id
             submission.entity_type = beneficiary.beneficiary_type
+            self._record_beneficiary_lineage(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+                beneficiary=beneficiary,
+                transformation="approved_submission_created_beneficiary",
+                field_values=values,
+            )
+            self._record_beneficiary_visit(
+                organization_id=organization_id,
+                submission=submission,
+                beneficiary=beneficiary,
+                summary="Approved submission created this beneficiary profile.",
+            )
             await self.audit.append(
                 organization_id=organization_id,
                 actor_user_id=actor_user_id,
@@ -1142,6 +1224,39 @@ class SubmissionService:
         }
         submission.entity_id = existing.id
         submission.entity_type = existing.beneficiary_type
+        self._record_beneficiary_lineage(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            submission=submission,
+            beneficiary=existing,
+            transformation="approved_submission_linked_beneficiary",
+            field_values=values,
+        )
+        self._record_beneficiary_visit(
+            organization_id=organization_id,
+            submission=submission,
+            beneficiary=existing,
+            summary="Approved submission was added to this beneficiary timeline.",
+        )
+        if proposed_changes:
+            self.session.add(
+                DataQualitySignal(
+                    organization_id=organization_id,
+                    submission_id=submission.id,
+                    beneficiary_id=existing.id,
+                    signal_type="profile_conflict",
+                    severity="high",
+                    confidence=0.9,
+                    summary="Approved submission proposes changes to beneficiary profile fields.",
+                    status="open",
+                    evidence_json={
+                        "beneficiary_uid": existing.beneficiary_uid,
+                        "client_submission_id": submission.client_submission_id,
+                        "changes": proposed_changes,
+                        "recommended_queue": "reconciliation",
+                    },
+                )
+            )
         await self.session.flush()
         await self.audit.append(
             organization_id=organization_id,
@@ -1155,6 +1270,69 @@ class SubmissionService:
                 "client_submission_id": submission.client_submission_id,
                 "profile_update_proposals": len(proposed_changes),
             },
+        )
+
+    def _record_beneficiary_visit(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        beneficiary: Beneficiary,
+        summary: str,
+    ) -> None:
+        self.session.add(
+            VisitRecord(
+                organization_id=organization_id,
+                beneficiary_id=beneficiary.id,
+                field_officer_id=submission.field_officer_id,
+                submission_id=submission.id,
+                visit_type=str(submission.entity_type or "approved_record").lower().replace(" ", "_"),
+                visited_at=submission.submitted_at,
+                latitude=submission.latitude,
+                longitude=submission.longitude,
+                summary=summary,
+                media_count=0,
+            )
+        )
+
+    def _record_beneficiary_lineage(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+        beneficiary: Beneficiary,
+        transformation: str,
+        field_values: dict[str, object],
+    ) -> None:
+        self.session.add(
+            LineageEvent(
+                organization_id=organization_id,
+                source_type="submission",
+                source_id=str(submission.id),
+                target_type="beneficiary",
+                target_id=str(beneficiary.id),
+                transformation=transformation,
+                actor_user_id=actor_user_id,
+                lineage_json={
+                    "beneficiary_uid": beneficiary.beneficiary_uid,
+                    "client_submission_id": submission.client_submission_id,
+                    "form_id": str(submission.form_id),
+                    "project_id": str(submission.project_id) if submission.project_id else None,
+                    "field_officer_id": str(submission.field_officer_id),
+                    "approval_status": submission.status,
+                    "approved_at": datetime.now(UTC).isoformat(),
+                    "field_sources": {
+                        key: {
+                            "value": value,
+                            "form_id": str(submission.form_id),
+                            "submission_id": str(submission.id),
+                            "client_submission_id": submission.client_submission_id,
+                        }
+                        for key, value in field_values.items()
+                    },
+                },
+            )
         )
 
     def _entity_controls(self, controls_json: dict[str, object]) -> dict[str, object]:
@@ -1290,12 +1468,86 @@ class SubmissionService:
             for key, value in payload.responses.items()
             if isinstance(key, str) and key and not key.startswith("_")
         }
+        previous_payload = {
+            key: value
+            for key, value in submission.payload_json.items()
+            if isinstance(key, str) and not key.startswith("_")
+        }
+        field_changes = {
+            key: {"old": previous_payload.get(key), "new": value}
+            for key, value in clean_responses.items()
+            if previous_payload.get(key) != value
+        }
+        removed_fields = sorted(set(previous_payload) - set(clean_responses))
+        for key in removed_fields:
+            field_changes[key] = {"old": previous_payload.get(key), "new": None}
+        if submission.status == "approved":
+            self.session.add(
+                DataVersion(
+                    organization_id=organization_id,
+                    entity_type="submission",
+                    entity_id=str(submission.id),
+                    version_number=submission.server_sequence + 1,
+                    changed_by_user_id=actor_user_id,
+                    change_type="change_request",
+                    previous_json=submission.payload_json,
+                    current_json={**clean_responses, **protected_payload},
+                    field_changes_json={
+                        "status": "pending_review",
+                        "reason": payload.reason,
+                        "field_changes": field_changes,
+                        "client_submission_id": submission.client_submission_id,
+                    },
+                    rollback_available=False,
+                )
+            )
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="submission.change_request_created",
+                resource_type="submission",
+                resource_id=str(submission.id),
+                metadata={
+                    "reason": payload.reason,
+                    "field_count": len(field_changes),
+                    "client_submission_id": submission.client_submission_id,
+                    "approved_record_locked": True,
+                },
+            )
+            await event_publisher.publish(
+                settings.kafka_submission_events_topic,
+                {
+                    "type": "submission.change_request_created",
+                    "organization_id": str(organization_id),
+                    "submission_id": str(submission.id),
+                },
+            )
+            await self.session.flush()
+            return submission
         updated_payload = {**clean_responses, **protected_payload}
         updated = await self.submissions.update_payload(
             submission=submission,
             actor_user_id=actor_user_id,
             payload_json=updated_payload,
             reason=payload.reason,
+        )
+        self.session.add(
+            DataVersion(
+                organization_id=organization_id,
+                entity_type="submission",
+                entity_id=str(submission.id),
+                version_number=submission.server_sequence,
+                changed_by_user_id=actor_user_id,
+                change_type="response_edit",
+                previous_json={**previous_payload, **protected_payload},
+                current_json=updated_payload,
+                field_changes_json={
+                    "reason": payload.reason,
+                    "field_changes": field_changes,
+                    "client_submission_id": submission.client_submission_id,
+                },
+                rollback_available=True,
+            )
         )
         await self.audit.append(
             organization_id=organization_id,
@@ -1305,7 +1557,8 @@ class SubmissionService:
             resource_id=str(submission.id),
             metadata={
                 "reason": payload.reason,
-                "field_count": len(clean_responses),
+                "field_count": len(field_changes),
+                "field_changes": field_changes,
                 "client_submission_id": submission.client_submission_id,
             },
         )

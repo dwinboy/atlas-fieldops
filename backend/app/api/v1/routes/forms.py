@@ -13,6 +13,7 @@ from app.schemas.collection import (
     DataFormCreate,
     DataFormRead,
     DataFormSchemaRead,
+    DataFormUpdate,
     FormCollectionCompatibility,
     FormControlsSettings,
     FormTemplateDetail,
@@ -108,6 +109,30 @@ async def create_form(
         form = await FormService(session).create_form(
             organization_id=UUID(principal.organization_id),
             actor_user_id=UUID(principal.user_id),
+            payload=payload,
+        )
+        await session.commit()
+        return form
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.patch("/{form_id}", response_model=DataFormRead, summary="Update a dynamic form and publish a new version when needed")
+async def update_form(
+    form_id: UUID,
+    payload: DataFormUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> object:
+    try:
+        form = await FormService(session).update_form(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
             payload=payload,
         )
         await session.commit()

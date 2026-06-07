@@ -40,6 +40,7 @@ import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { CurrentPrincipal, DataFormRead, DataFormSchemaRead } from "@/lib/api";
 import {
+  governExport,
   getFormSchema,
   listForms,
   listSubmissions,
@@ -308,11 +309,14 @@ export function SubmissionsModule({
       updateSubmissionResponses(token ?? "", submissionId, {
         reason,
         responses,
-      }),
+    }),
     onSuccess: async (submission) => {
       pushToast({
-        title: "Responses saved",
-        description: submission.client_submission_id,
+        title: submission.status === "approved" ? "Change request created" : "Responses saved",
+        description:
+          submission.status === "approved"
+            ? `${submission.client_submission_id} is approved and locked. The proposed correction is waiting for review.`
+            : submission.client_submission_id,
         tone: "success",
       });
       await submissionsQuery.refetch();
@@ -445,6 +449,34 @@ export function SubmissionsModule({
       responses,
       submissionId: submission.id,
     });
+  }
+
+  async function exportSubmissionsCsv(
+    filename: string,
+    rows: SubmissionRecord[],
+    filters: Record<string, unknown>,
+  ): Promise<void> {
+    if (token && token !== "preview-token") {
+      await governExport(token, {
+        dataset_type: "submissions",
+        export_format: "csv",
+        anonymized: false,
+        record_count: rows.length,
+        filters_json: filters,
+      }).catch(() => undefined);
+    }
+    downloadCsv(
+      filename,
+      rows.map((submission) => ({
+        id: submission.client_submission_id,
+        project: submission.project_name,
+        form: submission.form_name,
+        enumerator: submission.field_officer_id,
+        status: submission.status,
+        quality_score: submission.quality_score,
+        submitted_at: submission.submitted_at,
+      })),
+    );
   }
 
   const columns: TableColumn<SubmissionRecord>[] = [
@@ -583,20 +615,7 @@ export function SubmissionsModule({
             </Button>
             <Button
               disabled={!canExport || !submissions.length}
-              onClick={() =>
-                downloadCsv(
-                  "atlas-submissions.csv",
-                  submissions.map((submission) => ({
-                    id: submission.client_submission_id,
-                    project: submission.project_name,
-                    form: submission.form_name,
-                    enumerator: submission.field_officer_id,
-                    status: submission.status,
-                    quality_score: submission.quality_score,
-                    submitted_at: submission.submitted_at,
-                  })),
-                )
-              }
+              onClick={() => exportSubmissionsCsv("atlas-submissions.csv", submissions, { section: "all" })}
               variant="secondary"
             >
               <Download aria-hidden="true" />
@@ -673,15 +692,10 @@ export function SubmissionsModule({
                 <Button
                   disabled={!canExport || !visibleSubmissions.length}
                   onClick={() =>
-                    downloadCsv(
-                      "atlas-submission-view.csv",
-                      visibleSubmissions.map((submission) => ({
-                        id: submission.client_submission_id,
-                        status: submission.status,
-                        reviewer: submission.reviewer,
-                        quality: submission.quality_score,
-                      })),
-                    )
+                    exportSubmissionsCsv("atlas-submission-view.csv", visibleSubmissions, {
+                      section: activeSection,
+                      visible_statuses: Array.from(new Set(visibleSubmissions.map((submission) => submission.status))),
+                    })
                   }
                   variant="secondary"
                 >
@@ -703,7 +717,7 @@ export function SubmissionsModule({
                 ?.label ?? "Submissions"
             }
           />
-          <SubmissionFilters submissions={visibleSubmissions} />
+          <SubmissionFilters activeSection={activeSection} submissions={visibleSubmissions} />
           <DataTable
             columns={columns}
             emptyLabel="No submissions match this view yet"
@@ -1303,6 +1317,9 @@ function ResponsesTab({
   const blankCount = rows.filter(
     (row) => row.value === null || row.value === undefined || row.value === "",
   ).length;
+  const approvedLocked = submission.status === "approved";
+  const editActionLabel = approvedLocked ? "Request correction" : "Edit responses";
+  const saveActionLabel = approvedLocked ? "Submit change request" : "Save edited data";
 
   function updateEditValue(key: string, value: string): void {
     setEditValues((current) => ({ ...current, [key]: value }));
@@ -1367,7 +1384,7 @@ function ResponsesTab({
               variant={editing ? "secondary" : "primary"}
             >
               {editing ? <X aria-hidden="true" /> : <Edit3 aria-hidden="true" />}
-              {editing ? "Cancel edit" : "Edit responses"}
+              {editing ? "Cancel edit" : editActionLabel}
             </Button>
           </div>
         </div>
@@ -1387,7 +1404,7 @@ function ResponsesTab({
           </label>
           <div className="flex items-center gap-2 rounded-full border bg-panel px-3 py-2 text-xs text-muted-foreground">
             <Database aria-hidden="true" size={14} />
-            {rows.length} total fields · {editableCount} editable
+            {rows.length} total fields · {editableCount} {approvedLocked ? "change-request fields" : "editable"}
           </div>
         </div>
       </div>
@@ -1406,12 +1423,13 @@ function ResponsesTab({
             </label>
             <Button disabled={isSaving} onClick={handleSave} variant="primary">
               <Save aria-hidden="true" />
-              {isSaving ? "Saving..." : "Save edited data"}
+              {isSaving ? "Saving..." : saveActionLabel}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Edits create a new submission version and audit trail entry. Review
-            approval is still a separate human decision.
+            {approvedLocked
+              ? "Approved records are locked. This will create a change request for review and preserve the approved data until an authorized reviewer accepts the correction."
+              : "Edits create a new submission version and audit trail entry. Review approval is still a separate human decision."}
           </p>
           {editError ? (
             <p className="mt-2 text-sm font-medium text-danger">{editError}</p>
@@ -1835,8 +1853,10 @@ function LocationTab({ submission }: { submission: SubmissionRecord }) {
 }
 
 function SubmissionFilters({
+  activeSection,
   submissions,
 }: {
+  activeSection: SubmissionSection;
   submissions: SubmissionRecord[];
 }) {
   const projects = Array.from(
@@ -1848,6 +1868,7 @@ function SubmissionFilters({
   const reviewers = Array.from(
     new Set(submissions.map((submission) => submission.reviewer)),
   );
+  const sectionStatusLabel = submissionSections.find((section) => section.id === activeSection)?.label ?? "Current status";
   return (
     <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-2 xl:grid-cols-5">
       <Select>
@@ -1866,12 +1887,8 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
-      <Select>
-        <option value="">All statuses</option>
-        <option value="under_review">Pending Review</option>
-        <option value="approved">Approved</option>
-        <option value="rejected">Rejected</option>
-        <option value="correction_requested">Returned</option>
+      <Select disabled value={activeSection}>
+        <option value={activeSection}>{sectionStatusLabel}</option>
       </Select>
       <Select>
         <option value="">All reviewers</option>

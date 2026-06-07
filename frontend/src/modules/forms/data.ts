@@ -3,14 +3,17 @@ import type { DataFormRead, FormTemplateRead } from "@/lib/api";
 export type FormsSection =
   | "dashboard"
   | "all"
+  | "analytics"
   | "draft"
   | "published"
   | "archived"
   | "templates"
-  | "reference-data";
+  | "reference-data"
+  | "governance-dashboard";
 
 export type FormDetailTab =
   | "Overview"
+  | "Analytics"
   | "Builder"
   | "Questions"
   | "Reference Data"
@@ -21,6 +24,10 @@ export type FormDetailTab =
   | "Mapping Settings"
   | "Preview"
   | "Review"
+  | "Relationships"
+  | "Translations"
+  | "Offline Readiness"
+  | "Comparison"
   | "Version History"
   | "Audit Trail";
 
@@ -74,15 +81,18 @@ export const formsSections: {
 }[] = [
   { id: "dashboard", label: "Overview", route: "/forms", description: "Organization-wide form status, usage, quality, and governance signals." },
   { id: "all", label: "All Forms", route: "/forms/all", description: "All survey and data collection forms." },
+  { id: "analytics", label: "Analytics", route: "/forms/analytics", description: "Form usage, completion, approval, quality, question, source, and mobile-readiness analytics." },
   { id: "draft", label: "Draft", route: "/forms/draft", description: "Forms still being designed or configured." },
   { id: "published", label: "Published", route: "/forms/published", description: "Forms available for field collection." },
   { id: "archived", label: "Archived", route: "/forms/archived", description: "Retired forms kept for audit and version history." },
   { id: "templates", label: "Templates", route: "/forms/templates", description: "Reusable baseline, monitoring, registration, and assessment templates." },
   { id: "reference-data", label: "Reference Data", route: "/forms/reference-data", description: "Controlled lists and bindings used by form questions." },
+  { id: "governance-dashboard", label: "Governance", route: "/forms/governance-dashboard", description: "Forms missing approval, mappings, workflow, duplicate controls, version review, or recent use." },
 ];
 
 export const formDetailTabs: FormDetailTab[] = [
   "Overview",
+  "Analytics",
   "Builder",
   "Questions",
   "Reference Data",
@@ -93,6 +103,10 @@ export const formDetailTabs: FormDetailTab[] = [
   "Mapping Settings",
   "Preview",
   "Review",
+  "Relationships",
+  "Translations",
+  "Offline Readiness",
+  "Comparison",
   "Version History",
   "Audit Trail",
 ];

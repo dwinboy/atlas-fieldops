@@ -1,7 +1,7 @@
 from uuid import UUID
 from typing import TypeVar
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import Project
@@ -110,11 +110,48 @@ class OperationsRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_beneficiary(self, *, organization_id: UUID, beneficiary_id: UUID) -> Beneficiary | None:
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id == beneficiary_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def update_beneficiary(self, beneficiary: Beneficiary, values: dict[str, object]) -> Beneficiary:
         for key, value in values.items():
             setattr(beneficiary, key, value)
         await self.session.flush()
         return beneficiary
+
+    async def move_duplicate_links(
+        self,
+        *,
+        organization_id: UUID,
+        master: Beneficiary,
+        duplicate: Beneficiary,
+    ) -> tuple[int, int]:
+        submission_result = await self.session.execute(
+            update(Submission)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.entity_id == duplicate.id,
+                Submission.deleted_at.is_(None),
+            )
+            .values(entity_id=master.id, entity_type=master.beneficiary_type)
+        )
+        signal_result = await self.session.execute(
+            update(DataQualitySignal)
+            .where(
+                DataQualitySignal.organization_id == organization_id,
+                DataQualitySignal.beneficiary_id == duplicate.id,
+            )
+            .values(beneficiary_id=master.id)
+        )
+        await self.session.flush()
+        return int(submission_result.rowcount or 0), int(signal_result.rowcount or 0)
 
     async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
         result = await self.session.execute(
@@ -123,6 +160,21 @@ class OperationsRepository:
             .order_by(Beneficiary.updated_at.desc())
             .limit(500)
         )
+        return list(result.scalars())
+
+    async def list_quality_signals(
+        self,
+        organization_id: UUID,
+        *,
+        status: str | None = None,
+        signal_type: str | None = None,
+    ) -> list[DataQualitySignal]:
+        query = select(DataQualitySignal).where(DataQualitySignal.organization_id == organization_id)
+        if status:
+            query = query.where(DataQualitySignal.status == status)
+        if signal_type:
+            query = query.where(DataQualitySignal.signal_type == signal_type)
+        result = await self.session.execute(query.order_by(DataQualitySignal.created_at.desc()).limit(500))
         return list(result.scalars())
 
     async def create_indicator(self, *, organization_id: UUID, values: dict[str, object]) -> MonitoringIndicator:

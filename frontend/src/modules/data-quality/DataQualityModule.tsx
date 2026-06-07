@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -26,7 +27,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import type { CurrentPrincipal } from "@/lib/api";
+import { listDataQualitySignals, type CurrentPrincipal, type DataQualitySignalRead } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   dataQualitySections,
@@ -45,9 +46,12 @@ import {
   type OutlierRecord,
   type QualityAuditEvent,
   type QualityIssue,
+  type QualityIssueStatus,
+  type QualityIssueType,
   type QualityRuleRecord,
   type QualityScore,
   type QualityScope,
+  type QualitySeverity,
   type RiskAlertRecord,
   type ValidationFailureRecord,
 } from "@/modules/data-quality/data";
@@ -75,6 +79,64 @@ type IssueDetailTab = "Overview" | "Related Submission" | "Investigation" | "Res
 
 const issueTabs: IssueDetailTab[] = ["Overview", "Related Submission", "Investigation", "Resolution", "History", "Audit Trail"];
 
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function signalSeverity(value: string): QualitySeverity {
+  const normalized = value.toLowerCase();
+  if (normalized === "critical") return "Critical";
+  if (normalized === "high") return "High";
+  if (normalized === "low") return "Low";
+  return "Medium";
+}
+
+function signalIssueType(value: string): QualityIssueType {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("duplicate")) return "Duplicate";
+  if (normalized.includes("gps")) return "GPS Issue";
+  if (normalized.includes("missing")) return "Missing Data";
+  if (normalized.includes("outlier")) return "Outlier";
+  if (normalized.includes("risk") || normalized.includes("fraud")) return "Risk Alert";
+  return "Validation Failure";
+}
+
+function signalStatus(value: string): QualityIssueStatus {
+  const normalized = value.toLowerCase();
+  if (normalized === "resolved") return "Resolved";
+  if (normalized === "closed") return "Closed";
+  if (normalized === "assigned") return "Assigned";
+  if (normalized === "under_investigation" || normalized === "under investigation") return "Under Investigation";
+  if (normalized === "escalated") return "Escalated";
+  if (normalized === "governance_review" || normalized === "governance review") return "Governance Review";
+  return "Detected";
+}
+
+function qualityIssueFromSignal(signal: DataQualitySignalRead): QualityIssue {
+  const evidence = Object.entries(signal.evidence_json ?? {}).map(([key, value]) => `${titleCase(key)}: ${String(value)}`);
+  return {
+    assignedTo: "Unassigned",
+    detectedAt: signal.created_at,
+    description: signal.summary,
+    enumerator: "Unknown",
+    evidence: evidence.length ? evidence : [`Confidence: ${Math.round(signal.confidence * 100)}%`],
+    form: String(signal.evidence_json?.form_name ?? "Unknown form"),
+    id: signal.id,
+    location: String(signal.evidence_json?.location ?? signal.evidence_json?.community ?? "Unknown location"),
+    project: String(signal.evidence_json?.project_name ?? "Project context pending"),
+    recommendedAction: String(signal.evidence_json?.recommended_action ?? signal.evidence_json?.recommended_queue ?? "Review and assign an investigator."),
+    scoreImpact: signal.severity.toLowerCase() === "critical" ? 18 : signal.severity.toLowerCase() === "high" ? 12 : signal.severity.toLowerCase() === "low" ? 4 : 8,
+    severity: signalSeverity(signal.severity),
+    status: signalStatus(signal.status),
+    submissionId: signal.submission_id ?? "Not linked",
+    supervisor: "Unassigned",
+    title: signal.summary,
+    type: signalIssueType(signal.signal_type),
+  };
+}
+
 function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
   const csv = toCsv(rows);
   if (!csv) return;
@@ -95,7 +157,15 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = !token || token === "preview-token";
-  const qualityIssues = useMemo(() => (preview ? sampleQualityIssues : []), [preview]);
+  const qualitySignalsQuery = useQuery({
+    enabled: !preview && Boolean(token),
+    queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
+    queryKey: ["data-quality", "signals", token],
+  });
+  const qualityIssues = useMemo(
+    () => (preview ? sampleQualityIssues : (qualitySignalsQuery.data ?? []).map(qualityIssueFromSignal)),
+    [preview, qualitySignalsQuery.data],
+  );
   const qualityAuditEvents = useMemo(() => (preview ? sampleQualityAuditEvents : []), [preview]);
   const gpsIssues = useMemo(() => (preview ? sampleGpsIssues : []), [preview]);
   const riskAlerts = useMemo(() => (preview ? sampleRiskAlerts : []), [preview]);
@@ -205,6 +275,48 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             <div>
               <h2 className="text-sm font-semibold">Data quality update</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">{actionResult}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!preview && qualitySignalsQuery.isLoading ? (
+        <section className="rounded-xl border bg-panel p-4 shadow-line" aria-live="polite">
+          <div className="flex items-start gap-3">
+            <Gauge aria-hidden="true" className="mt-0.5 text-primary" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Loading live quality signals</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Atlas is checking reconciliation, duplicate, GPS, validation, and profile-conflict signals for this organization.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!preview && qualitySignalsQuery.isError ? (
+        <section className="rounded-xl border border-danger/30 bg-danger/10 p-4 shadow-line" role="alert">
+          <div className="flex items-start gap-3">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 text-danger" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">Quality signals could not load</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The dashboard is available, but live data cleaning signals did not load. Check your connection or permission to view beneficiary and submission quality issues.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!preview && !qualitySignalsQuery.isLoading && !qualitySignalsQuery.isError && !qualityIssues.length ? (
+        <section className="rounded-xl border border-success/30 bg-success/10 p-4 shadow-line">
+          <div className="flex items-start gap-3">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 text-success" size={18} />
+            <div>
+              <h2 className="text-sm font-semibold">No open reconciliation signals</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No open duplicate, profile conflict, GPS, missing data, validation, or risk signals are currently waiting for review.
+              </p>
             </div>
           </div>
         </section>

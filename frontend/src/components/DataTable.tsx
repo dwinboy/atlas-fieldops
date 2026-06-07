@@ -60,15 +60,15 @@ export function DataTable<T>({
 
   return (
     <section
-      className="surface-premium overflow-hidden rounded-2xl"
+      className="surface-premium overflow-hidden rounded-xl"
       aria-labelledby={`${title}-title`}
     >
-      <div className="flex flex-col gap-2.5 border-b bg-muted/25 px-4 py-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-2 border-b bg-muted/25 px-3 py-2.5 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 id={`${title}-title`} className="text-[13px] font-semibold">
+          <h2 id={`${title}-title`} className="text-xs font-semibold">
             {title}
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
             Showing {filteredRows.length} of {rows.length}
           </p>
         </div>
@@ -81,7 +81,7 @@ export function DataTable<T>({
               size={15}
             />
             <Input
-              className="pl-9"
+              className="h-8 pl-9 text-xs"
               placeholder={searchLabel}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -127,12 +127,12 @@ export function DataTable<T>({
         ) : null}
       </div>
 
-      <div className="hidden overflow-x-auto product-scrollbar md:block">
-        <table className="w-full min-w-[680px] text-left text-[13px]">
+      <div className="hidden max-h-[68vh] overflow-auto product-scrollbar md:block">
+        <table className="w-full min-w-[920px] text-left text-xs">
           <thead className="sticky top-0 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className="px-3.5 py-2 font-medium">
+                <th key={column.key} className="whitespace-nowrap px-2.5 py-2 font-semibold">
                   {column.value ? (
                     <button
                       className={
@@ -178,11 +178,11 @@ export function DataTable<T>({
                     key={column.key}
                     className={
                       column.align === "right"
-                        ? "px-3.5 py-2.5 text-right"
-                        : "px-3.5 py-2.5"
+                        ? "max-w-72 px-2.5 py-2 text-right align-top"
+                        : "max-w-72 px-2.5 py-2 align-top"
                     }
                   >
-                    {column.render(row)}
+                    <div className="min-w-0 truncate">{column.render(row)}</div>
                   </td>
                 ))}
               </tr>

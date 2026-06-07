@@ -218,6 +218,59 @@ class FormRepository:
         await self.session.flush()
         return form
 
+    async def save_schema_revision(
+        self,
+        *,
+        form: DataForm,
+        name: str,
+        description: str | None,
+        schema_json: dict[str, Any],
+        publish: bool,
+    ) -> tuple[DataForm, DataFormVersion]:
+        now = datetime.now(UTC)
+        form.name = name
+        form.description = description
+        form.updated_at = now
+
+        if form.status == "published":
+            next_version = form.current_version + 1
+            version = DataFormVersion(
+                organization_id=form.organization_id,
+                form_id=form.id,
+                version=next_version,
+                schema_json=schema_json,
+                offline_compatible=True,
+                published_at=now if publish else None,
+            )
+            self.session.add(version)
+            form.current_version = next_version
+            form.status = "published" if publish else "draft"
+            await self.session.flush()
+            return form, version
+
+        version = await self.get_current_version(
+            organization_id=form.organization_id,
+            form_id=form.id,
+        )
+        if version is None:
+            version = DataFormVersion(
+                organization_id=form.organization_id,
+                form_id=form.id,
+                version=form.current_version,
+                schema_json=schema_json,
+                offline_compatible=True,
+                published_at=now if publish else None,
+            )
+            self.session.add(version)
+        else:
+            version.schema_json = schema_json
+            version.offline_compatible = True
+            if publish:
+                version.published_at = now
+        form.status = "published" if publish else "draft"
+        await self.session.flush()
+        return form, version
+
     async def record_template_usage(
         self,
         *,
@@ -453,10 +506,17 @@ class SubmissionRepository:
         )
         return submission
 
-    async def list_for_review(self, organization_id: UUID, status: str | None = None) -> list[Submission]:
+    async def list_for_review(
+        self,
+        organization_id: UUID,
+        status: str | None = None,
+        field_officer_id: UUID | None = None,
+    ) -> list[Submission]:
         query = select(Submission).where(Submission.organization_id == organization_id, Submission.deleted_at.is_(None))
         if status:
             query = query.where(Submission.status == status)
+        if field_officer_id:
+            query = query.where(Submission.field_officer_id == field_officer_id)
         result = await self.session.execute(query.order_by(Submission.sync_received_at.desc()).limit(200))
         return list(result.scalars())
 

@@ -199,8 +199,13 @@ class FormField(BaseModel):
     id: str = Field(min_length=1, max_length=120)
     type: str = Field(min_length=2, max_length=80)
     label: str = Field(min_length=1, max_length=240)
+    definition: str | None = Field(default=None, max_length=1000)
     hint: str | None = Field(default=None, max_length=500)
     variable_name: str | None = Field(default=None, max_length=120)
+    indicator_mapping: str | None = Field(default=None, max_length=160)
+    sensitivity_level: str = Field(default="standard", pattern=r"^(public|standard|sensitive|restricted|pii)$")
+    allowed_values_definition: str | None = Field(default=None, max_length=1000)
+    source_of_truth: str = Field(default="form_response", max_length=120)
     required: bool = False
     validation: dict[str, Any] = Field(default_factory=dict)
     visibility: dict[str, Any] = Field(default_factory=dict)
@@ -346,7 +351,7 @@ class FormDataQualityRule(BaseModel):
 
 
 class FormGovernancePolicy(BaseModel):
-    form_status: str = Field(default="draft", pattern=r"^(draft|testing|published|suspended|archived)$")
+    form_status: str = Field(default="draft", pattern=r"^(draft|testing|review|approved|published|suspended|archived)$")
     approval_workflow: str = Field(default="standard", pattern=r"^(simple|standard|correction|custom)$")
     required_review_levels: int = Field(default=2, ge=0, le=5)
     submitted_records_editable: bool = False
@@ -489,6 +494,10 @@ class FormControlsSettings(BaseModel):
     governance: FormGovernancePolicy = Field(default_factory=FormGovernancePolicy)
     audit: FormAuditSettings = Field(default_factory=FormAuditSettings)
     versioning: FormVersioningSettings = Field(default_factory=FormVersioningSettings)
+    instrument: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Advanced M&E instrument metadata: purpose, indicator links, data dictionary, tracking, sampling, localization, analytics, and trigger rules.",
+    )
 
 
 class DataFormCreate(BaseModel):
@@ -496,6 +505,15 @@ class DataFormCreate(BaseModel):
     slug: str = Field(min_length=2, max_length=140, pattern=r"^[a-z0-9-]+$")
     project_id: UUID
     survey_id: UUID
+    description: str | None = Field(default=None, max_length=2000)
+    form_schema: FormSchema = Field(alias="schema")
+    publish: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
+class DataFormUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False

@@ -195,7 +195,6 @@ export function AppShell({
       ? getNavigationItemByView(guidance.next)
       : null;
   const nextActionItem = nextItem?.id === activeView ? null : nextItem;
-  const headerQuickLinks = (activeItem.children ?? []).slice(0, 4);
   const accountName =
     principal?.full_name?.trim() || principal?.email || "Signed-in user";
   const accountRole =
@@ -364,29 +363,6 @@ export function AppShell({
                 fieldwork, quality, reports, governance, and system controls.
               </HelpHint>
             </div>
-          </div>
-          <div
-            className={cn(
-              "mb-3 rounded-lg border bg-background/80 p-2.5 shadow-sm",
-              collapsedSidebar && "hidden",
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
-                {organizationInitials(accountName)}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Signed in as
-                </p>
-                <p className="truncate text-[13px] font-semibold text-foreground">
-                  {accountName}
-                </p>
-              </div>
-            </div>
-            <p className="mt-1.5 truncate text-[11px] capitalize text-muted-foreground">
-              {accountRole} · {accountScope}
-            </p>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pr-1 product-scrollbar">
@@ -610,32 +586,6 @@ export function AppShell({
                   ) : null}
                 </div>
               </div>
-              {headerQuickLinks.length ? (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 product-scrollbar">
-                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Quick links
-                  </span>
-                  {headerQuickLinks.map((child) => (
-                    <span
-                      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border bg-background/70 px-2 text-[11px] font-medium text-muted-foreground shadow-line"
-                      key={child.route}
-                    >
-                      <a
-                        className="transition hover:text-primary"
-                        href={child.route}
-                      >
-                        {child.label}
-                      </a>
-                      <HelpHint
-                        label={`About ${child.label}`}
-                        title={child.label}
-                      >
-                        {child.description}
-                      </HelpHint>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
               {lastActionResult ? (
                 <section
                   className="rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5"

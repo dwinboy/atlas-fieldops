@@ -93,6 +93,21 @@ class BeneficiaryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BeneficiaryMergeRequest(BaseModel):
+    master_beneficiary_id: UUID
+    duplicate_beneficiary_id: UUID
+    reason: str = Field(min_length=8, max_length=1000)
+    merge_profile_fields: bool = True
+
+
+class BeneficiaryMergeRead(BaseModel):
+    master_beneficiary: BeneficiaryRead
+    duplicate_beneficiary: BeneficiaryRead
+    moved_submissions: int
+    moved_quality_signals: int
+    reason: str
+
+
 class EntityDuplicateCheckRequest(BaseModel):
     entity_id: str | None = Field(default=None, max_length=120)
     entity_type: str | None = Field(default=None, max_length=80)
@@ -114,6 +129,21 @@ class EntityDuplicateCandidateRead(BaseModel):
     score: int
     level: str
     matched_fields: list[str]
+
+
+class DataQualitySignalRead(BaseModel):
+    id: UUID
+    submission_id: UUID | None
+    beneficiary_id: UUID | None
+    signal_type: str
+    severity: str
+    confidence: float
+    summary: str
+    status: str
+    evidence_json: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class EntityPrefillRead(BaseModel):
