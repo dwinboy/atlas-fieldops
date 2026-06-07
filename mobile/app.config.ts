@@ -16,10 +16,23 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl: productionApiBaseUrl,
     appEnv,
+    eas: {
+      projectId: "71a567ed-0bac-4abb-9c00-2b49e693e69e",
+    },
   },
+  plugins: [
+    "expo-image-picker",
+    [
+      "expo-location",
+      {
+        locationAlwaysAndWhenInUsePermission: "Atlas FieldOps uses GPS to record submission locations.",
+      },
+    ],
+    "expo-local-authentication",
+  ],
   android: {
     package: "com.atlasfieldops.mobile",
-    versionCode: 1,
+    versionCode: 2,
     adaptiveIcon: {
       backgroundColor: "#12332b",
     },
@@ -29,9 +42,10 @@ const config: ExpoConfig = {
       "android.permission.CAMERA",
       "android.permission.ACCESS_FINE_LOCATION",
       "android.permission.ACCESS_COARSE_LOCATION",
-      "android.permission.RECORD_AUDIO",
       "android.permission.READ_MEDIA_IMAGES",
       "android.permission.POST_NOTIFICATIONS",
+      "android.permission.USE_BIOMETRIC",
+      "android.permission.USE_FINGERPRINT",
     ],
   },
 };
