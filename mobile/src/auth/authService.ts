@@ -26,22 +26,19 @@ export class AuthService {
     const token = await this.apis.auth.login({ email, password, organizationSlug });
     const deviceId = generatedDeviceId(email, organizationSlug);
 
+    // Device registration is best-effort — it tracks device info but is not
+    // required for the field officer to collect data offline.
     try {
       await this.devices.register(token.accessToken, {
         deviceId,
         deviceName: "Atlas FieldOps Android",
         osVersion: null,
       });
-    } catch (err) {
-      throw new Error(`Step 2 device registration: ${err instanceof Error ? err.message : String(err)}`);
+    } catch {
+      // Non-blocking: continue login even if device registration fails.
     }
 
-    let syncPackage: Awaited<ReturnType<BootstrapSyncService["syncAssignedWork"]>>;
-    try {
-      syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
-    } catch (err) {
-      throw new Error(`Step 3 sync: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    const syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
 
     new AuditEventService(this.database).queue("mobile.login", { deviceId, organizationSlug });
     const session: MobileSession = {
