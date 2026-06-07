@@ -18,7 +18,7 @@ export type AndroidReleaseConfig = {
 
 export const androidReleaseConfig: AndroidReleaseConfig = {
   environment: "production",
-  apiUrl: "https://atlasfieldops.com/api/v1",
+  apiUrl: "https://backend-production-13c9.up.railway.app/api/v1",
   featureFlags: {
     offlineCollection: true,
     attachmentSync: true,
@@ -56,7 +56,7 @@ export const releaseChannels = {
     loggingLevel: "info",
   },
   production: {
-    apiUrl: "https://atlasfieldops.com/api/v1",
+    apiUrl: "https://backend-production-13c9.up.railway.app/api/v1",
     loggingLevel: "warn",
   },
 } satisfies Record<

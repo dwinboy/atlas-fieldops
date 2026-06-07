@@ -21,12 +21,12 @@ const appEnv = (runtimeEnv.APP_ENV ?? runtimeEnv.EXPO_PUBLIC_APP_ENV ?? "product
 const configuredApiBaseUrl =
   runtimeEnv.EXPO_PUBLIC_API_BASE_URL ??
   runtimeEnv.API_BASE_URL ??
-  "https://atlasfieldops.com/api/v1";
+  "https://backend-production-13c9.up.railway.app/api/v1";
 
 function normalizeApiBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) {
-    return "https://atlasfieldops.com/api/v1";
+    return "https://backend-production-13c9.up.railway.app/api/v1";
   }
   if (trimmed.endsWith("/api/v1")) {
     return trimmed;
