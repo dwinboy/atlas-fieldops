@@ -265,6 +265,7 @@ The production route model must use clean domain prefixes. The current web app i
 - `/forms/archived`
 - `/forms/templates`
 - `/forms/reference-data`
+- `/forms/:formId/data`
 - `/forms/:formId/overview`
 - `/forms/:formId/questions`
 - `/forms/:formId/reference-data`

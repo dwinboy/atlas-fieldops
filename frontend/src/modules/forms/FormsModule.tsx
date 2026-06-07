@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Archive,
+  ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
   ClipboardPenLine,
@@ -16,10 +17,11 @@ import {
   Plus,
   ShieldCheck,
   Smartphone,
+  Table2,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -27,9 +29,9 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input } from "@/components/ui/input";
-import type { CurrentPrincipal } from "@/lib/api";
-import { listForms, listFormTemplates } from "@/lib/api";
+import { Input, Select } from "@/components/ui/input";
+import type { CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
+import { getFormSchema, listForms, listFormTemplates, listSubmissions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -51,6 +53,8 @@ import {
   toCsv,
 } from "@/modules/forms/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { getPreviewSubmissions } from "@/modules/submissions/utils";
+import type { SubmissionRecord } from "@/modules/submissions/data";
 
 type FormsModuleProps = {
   principal?: CurrentPrincipal | null;
@@ -86,8 +90,160 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
+type FormStats = {
+  approved_submissions: number;
+  field_submitted_records: number;
+  last_submission_at: string | null;
+  linked_beneficiaries: number;
+  pending_review_submissions: number;
+  rejected_returned_submissions: number;
+  total_submissions: number;
+  uploaded_records: number;
+};
+
+type FormGridQuestion = {
+  key: string;
+  label: string;
+  type: string;
+  section: string;
+};
+
+function isImportedSubmission(submission: SubmissionRead | SubmissionRecord): boolean {
+  return Boolean(
+    submission.is_imported ||
+      submission.import_batch_id ||
+      submission.imported_at ||
+      submission.source_system,
+  );
+}
+
+function submissionSourceLabel(submission: SubmissionRead | SubmissionRecord): string {
+  if (isImportedSubmission(submission)) return "Uploaded / Imported";
+  if (submission.offline_created) return "Mobile";
+  return "Field Submitted";
+}
+
+function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): string {
+  if (isImportedSubmission(submission)) {
+    return submission.imported_by_user_id ?? "Uploaded user";
+  }
+  return submission.field_officer_id;
+}
+
+function statusBucket(status: string): "approved" | "pending" | "rejectedReturned" | "other" {
+  if (status === "approved") return "approved";
+  if (["submitted", "under_review", "pending_review", "resubmitted"].includes(status)) return "pending";
+  if (["rejected", "correction_requested", "needs_correction", "returned"].includes(status)) return "rejectedReturned";
+  return "other";
+}
+
+function emptyStats(): FormStats {
+  return {
+    approved_submissions: 0,
+    field_submitted_records: 0,
+    last_submission_at: null,
+    linked_beneficiaries: 0,
+    pending_review_submissions: 0,
+    rejected_returned_submissions: 0,
+    total_submissions: 0,
+    uploaded_records: 0,
+  };
+}
+
+function statValue(form: FormListItem, key: keyof FormStats): number {
+  const value = form[key];
+  return typeof value === "number" ? value : 0;
+}
+
+function buildFormStats(submissions: (SubmissionRead | SubmissionRecord)[]): Map<string, FormStats> {
+  const map = new Map<string, FormStats>();
+  for (const submission of submissions) {
+    const stats = map.get(submission.form_id) ?? emptyStats();
+    stats.total_submissions += 1;
+    if (isImportedSubmission(submission)) {
+      stats.uploaded_records += 1;
+    } else {
+      stats.field_submitted_records += 1;
+    }
+    const bucket = statusBucket(submission.status);
+    if (bucket === "approved") stats.approved_submissions += 1;
+    if (bucket === "pending") stats.pending_review_submissions += 1;
+    if (bucket === "rejectedReturned") stats.rejected_returned_submissions += 1;
+    if (submission.entity_id) stats.linked_beneficiaries += 1;
+    const date = submission.imported_at ?? submission.submitted_at ?? submission.sync_received_at;
+    if (
+      date &&
+      (!stats.last_submission_at ||
+        new Date(date).getTime() > new Date(stats.last_submission_at).getTime())
+    ) {
+      stats.last_submission_at = date;
+    }
+    map.set(submission.form_id, stats);
+  }
+  return map;
+}
+
+function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestion[] {
+  const sections = ((schema?.schema as { sections?: unknown })?.sections ?? []) as {
+    title?: string;
+    fields?: {
+      id?: string;
+      variable_name?: string | null;
+      label?: string;
+      type?: string;
+    }[];
+  }[];
+  return sections.flatMap((section) =>
+    (section.fields ?? []).map((field) => ({
+      key: field.variable_name || field.id || "field",
+      label: field.label || field.variable_name || field.id || "Field",
+      section: section.title || "Form questions",
+      type: field.type || "text",
+    })),
+  );
+}
+
+function payloadColumns(submissions: (SubmissionRead | SubmissionRecord)[]): FormGridQuestion[] {
+  const keys = new Map<string, FormGridQuestion>();
+  for (const submission of submissions) {
+    for (const [key, value] of Object.entries(submission.payload_json ?? {})) {
+      if (key.startsWith("_") || keys.has(key)) continue;
+      keys.set(key, {
+        key,
+        label: key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        section: "Uploaded / legacy fields",
+        type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "text",
+      });
+    }
+  }
+  return Array.from(keys.values());
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function previewSubmissionFormId(submission: SubmissionRecord): string {
+  const formName = submission.form_name.toLowerCase();
+  if (submission.form_id.includes("farmer") || formName.includes("farmer")) {
+    return "preview-farmer-registration";
+  }
+  if (submission.form_id.includes("baseline") || formName.includes("baseline")) {
+    return "preview-baseline-household";
+  }
+  if (submission.form_id.includes("health") || formName.includes("health")) {
+    return "preview-health-monitoring";
+  }
+  return submission.form_id;
+}
+
 export function FormsModule({ principal, token }: FormsModuleProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<FormsSection>("dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
@@ -109,19 +265,41 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     queryFn: () => listForms(token ?? ""),
     enabled,
   });
+  const submissionsQuery = useQuery({
+    queryKey: ["forms-module", "submissions", token],
+    queryFn: () => listSubmissions(token ?? ""),
+    enabled,
+  });
   const templatesQuery = useQuery({
     queryKey: ["forms-module", "templates", token],
     queryFn: () => listFormTemplates(token ?? ""),
     enabled,
   });
 
-  const forms = useMemo<FormListItem[]>(
+  const formSubmissions = useMemo<(SubmissionRead | SubmissionRecord)[]>(
     () =>
       preview
-        ? [...localForms, ...previewForms]
-        : (formsQuery.data ?? []).map(normalizeBackendForm),
-    [formsQuery.data, localForms, preview],
+        ? getPreviewSubmissions().map((submission) => ({
+            ...submission,
+            form_id: previewSubmissionFormId(submission),
+          }))
+        : (submissionsQuery.data ?? []),
+    [preview, submissionsQuery.data],
   );
+  const formStats = useMemo(() => buildFormStats(formSubmissions), [formSubmissions]);
+  const forms = useMemo<FormListItem[]>(() => {
+    const baseForms = preview
+      ? [...localForms, ...previewForms]
+      : (formsQuery.data ?? []).map(normalizeBackendForm);
+    return baseForms.map((form) => {
+      const stats = formStats.get(form.id);
+      if (!stats) return form;
+      return {
+        ...form,
+        ...stats,
+      };
+    });
+  }, [formStats, formsQuery.data, localForms, preview]);
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const summary = computeFormsSummary(forms);
   const visibleForms = useMemo(
@@ -131,6 +309,9 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const selectedForm = forms.find((form) => form.id === selectedFormId) ?? null;
   const isCreateRoute =
     (pathname ?? "").replace(/\/+$/, "") === "/forms/create";
+  const dataRouteMatch = pathname?.match(/^\/forms\/([^/]+)\/data\/?$/);
+  const dataFormId = dataRouteMatch?.[1] ? decodeURIComponent(dataRouteMatch[1]) : null;
+  const dataForm = dataFormId ? forms.find((form) => form.id === dataFormId) ?? null : null;
 
   useEffect(() => {
     if (!isCreateRoute) {
@@ -141,9 +322,33 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     setCreationOpen(true);
   }, [isCreateRoute]);
 
+  useEffect(() => {
+    const normalizedPath = (pathname ?? "").replace(/\/+$/, "");
+    const sectionFromPath = formsSections.find((section) => section.route === normalizedPath);
+    if (sectionFromPath) {
+      setSelectedFormId(null);
+      setActiveSection(sectionFromPath.id);
+    }
+  }, [pathname]);
+
   function openForm(form: FormListItem, tab: FormDetailTab = "Overview"): void {
+    if (["all", "published", "archived"].includes(activeSection)) {
+      router.push(`/forms/${form.id}/data`);
+      return;
+    }
     setSelectedFormId(form.id);
     setActiveTab(tab);
+  }
+
+  function openFormsSection(section: FormsSection): void {
+    const route = formsSections.find((item) => item.id === section)?.route ?? "/forms";
+    router.push(route);
+    setSelectedFormId(null);
+    setActiveSection(section);
+  }
+
+  function openFormData(formId: string, query?: string): void {
+    router.push(`/forms/${formId}/data${query ? `?${query}` : ""}`);
   }
 
   const columns: TableColumn<FormListItem>[] = [
@@ -213,13 +418,42 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       render: (form) => form.total_submissions,
     },
     {
+      key: "source",
+      header: "Source Split",
+      value: (form) =>
+        `${statValue(form, "uploaded_records")} ${statValue(form, "field_submitted_records")}`,
+      render: (form) => (
+        <div className="space-y-1 text-xs">
+          <p>{statValue(form, "field_submitted_records")} field/mobile</p>
+          <p className="text-muted-foreground">
+            {statValue(form, "uploaded_records")} uploaded
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "approval",
+      header: "Approval",
+      value: (form) =>
+        `${statValue(form, "approved_submissions")} ${statValue(form, "pending_review_submissions")} ${statValue(form, "rejected_returned_submissions")}`,
+      render: (form) => (
+        <div className="flex flex-wrap gap-1">
+          <Badge tone="success">{statValue(form, "approved_submissions")} approved</Badge>
+          <Badge tone="warning">{statValue(form, "pending_review_submissions")} pending</Badge>
+          <Badge tone={statValue(form, "rejected_returned_submissions") ? "danger" : "neutral"}>
+            {statValue(form, "rejected_returned_submissions")} returned/rejected
+          </Badge>
+        </div>
+      ),
+    },
+    {
       key: "actions",
       header: "Actions",
       align: "right",
       render: (form) => (
         <div className="flex justify-end gap-2">
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">
-            View
+            View data
           </Button>
           <Button
             onClick={() => openForm(form, "Builder")}
@@ -251,6 +485,20 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           setCreationOpen(false);
           setBuilderFormId(null);
         }}
+        token={token}
+      />
+    );
+  }
+
+  if (dataFormId) {
+    return (
+      <FormDataGridWorkspace
+        canExport={hasAnyPermission(principal, ["submissions.export", "reports.export", "forms.manage"])}
+        form={dataForm}
+        formId={dataFormId}
+        onBack={() => router.push("/forms/all")}
+        searchParams={searchParams}
+        submissions={formSubmissions.filter((submission) => submission.form_id === dataFormId)}
         token={token}
       />
     );
@@ -327,10 +575,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
                   : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => {
-                setSelectedFormId(null);
-                setActiveSection(section.id);
-              }}
+              onClick={() => openFormsSection(section.id)}
               type="button"
             >
               {section.label}
@@ -356,7 +601,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       ) : null}
 
       {!selectedForm && activeSection === "dashboard" ? (
-        <FormsDashboard forms={forms} summary={summary} onOpenForm={openForm} />
+        <FormsDashboard
+          forms={forms}
+          onOpenForm={openForm}
+          onOpenSection={openFormsSection}
+          summary={summary}
+        />
       ) : null}
 
       {!selectedForm &&
@@ -385,13 +635,30 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             }
           />
           <FormFilters />
-          <DataTable
-            columns={columns}
-            emptyLabel="No forms match this view yet"
-            rows={visibleForms}
-            searchLabel="Search forms, projects, owners, status"
-            title="Form list"
-          />
+          {activeSection === "all" ? (
+            <DataTable
+              columns={columns}
+              emptyLabel="No forms match this view yet"
+              rows={visibleForms}
+              searchLabel="Search forms, projects, owners, status"
+              title="Form list"
+            />
+          ) : (
+            <FormStatusCards
+              canManageForms={canManageForms}
+              forms={visibleForms}
+              onAssign={(form) => {
+                setActiveView("officers");
+                router.push(`/field-operations?formId=${encodeURIComponent(form.id)}`);
+              }}
+              onEdit={(form) => {
+                setBuilderFormId(form.id);
+                setCreationOpen(true);
+              }}
+              onOpenData={(form, query) => openFormData(form.id, query)}
+              section={activeSection}
+            />
+          )}
         </section>
       ) : null}
 
@@ -420,43 +687,51 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
 function FormsDashboard({
   forms,
   onOpenForm,
+  onOpenSection,
   summary,
 }: {
   forms: FormListItem[];
   onOpenForm: (form: FormListItem, tab?: FormDetailTab) => void;
+  onOpenSection: (section: FormsSection) => void;
   summary: ReturnType<typeof computeFormsSummary>;
 }) {
   const cards = [
-    { icon: FileStack, label: "Total Forms", value: summary.total_forms },
+    { icon: FileStack, label: "Total Forms", section: "all" as FormsSection, value: summary.total_forms },
     {
       icon: ClipboardPenLine,
       label: "Draft Forms",
+      section: "draft" as FormsSection,
       value: summary.draft_forms,
     },
     {
       icon: Smartphone,
       label: "Published Forms",
+      section: "published" as FormsSection,
       value: summary.published_forms,
     },
-    { icon: Archive, label: "Archived Forms", value: summary.archived_forms },
+    { icon: Archive, label: "Archived Forms", section: "archived" as FormsSection, value: summary.archived_forms },
     {
       icon: ClipboardCheck,
       label: "Pending Approval",
+      section: "draft" as FormsSection,
       value: summary.pending_approval_forms,
     },
     {
       icon: CheckCircle2,
       label: "Active Collection",
+      section: "published" as FormsSection,
       value: summary.active_collection_forms,
     },
     {
       icon: ShieldCheck,
       label: "Quality Issues",
+      section: "all" as FormsSection,
       value: summary.forms_with_quality_issues,
     },
     {
       icon: History,
       label: "Recently Updated",
+      section: "all" as FormsSection,
       value: summary.recently_updated_forms,
     },
   ];
@@ -470,14 +745,16 @@ function FormsDashboard({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div
-            className="rounded-xl border bg-panel p-3 shadow-line"
+          <button
+            className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-soft"
             key={card.label}
+            onClick={() => onOpenSection(card.section)}
+            type="button"
           >
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             <p className="mt-4 text-2xl font-semibold">{card.value}</p>
             <p className="text-xs text-muted-foreground">{card.label}</p>
-          </div>
+          </button>
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -564,6 +841,411 @@ function FormsDashboard({
         />
       </div>
     </div>
+  );
+}
+
+function FormStatusCards({
+  canManageForms,
+  forms,
+  onAssign,
+  onEdit,
+  onOpenData,
+  section,
+}: {
+  canManageForms: boolean;
+  forms: FormListItem[];
+  onAssign: (form: FormListItem) => void;
+  onEdit: (form: FormListItem) => void;
+  onOpenData: (form: FormListItem, query?: string) => void;
+  section: FormsSection;
+}) {
+  if (!forms.length) {
+    return (
+      <div className="rounded-xl border border-dashed bg-panel p-8 text-center">
+        <FileStack aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
+        <p className="mt-3 font-medium">No {section} forms yet</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Forms will appear here when they match this status.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-3 xl:grid-cols-2">
+      {forms.map((form) => {
+        const readiness = Math.max(
+          20,
+          Math.min(100, Math.round((form.quality_score + (form.project_id ? 15 : -15)) / 1.15)),
+        );
+        const isDraft = section === "draft";
+        const isPublished = section === "published";
+        const isArchived = section === "archived";
+        const openPrimary = () => {
+          if (isDraft) {
+            onEdit(form);
+          } else {
+            onOpenData(form);
+          }
+        };
+        return (
+          <article
+            className="rounded-xl border bg-panel p-4 shadow-line transition hover:border-primary/35 hover:shadow-soft"
+            key={form.id}
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+              openPrimary();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openPrimary();
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="block w-full text-left">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={statusTone(form.status)}>{form.status}</Badge>
+                    <Badge tone={form.project_id ? "success" : "warning"}>
+                    {form.project_id ? "Project attached" : "Project not attached"}
+                    </Badge>
+                    {isArchived ? <Badge tone="neutral">Read only</Badge> : null}
+                  </div>
+                  <button
+                    className="mt-3 text-left text-lg font-semibold transition hover:text-primary"
+                    onClick={openPrimary}
+                    type="button"
+                  >
+                    {form.name}
+                  </button>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {form.form_type} · {form.owner}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/50 px-3 py-2 text-right">
+                  <p className="text-lg font-semibold">v{form.version}</p>
+                  <p className="text-xs text-muted-foreground">version</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                <Signal label="Project" value={form.project_name || "Not attached"} />
+                <Signal label="Last updated" value={formatDate(form.updated_at)} />
+                <Signal label="Sections" value={`${form.sections}`} />
+                <Signal label="Questions" value={`${form.questions}`} />
+              </div>
+              {isDraft ? (
+                <div className="mt-4 rounded-xl border bg-background/60 p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium">Readiness</span>
+                    <span>{readiness}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${readiness}%` }} />
+                  </div>
+                  {!form.project_id ? (
+                    <p className="mt-2 text-xs text-warning">
+                      Attach this form to a project before publishing if governance requires project context.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <MiniStat label="Total" value={statValue(form, "total_submissions")} onClick={() => onOpenData(form, "filter=all")} />
+                  <MiniStat label="Approved" value={statValue(form, "approved_submissions")} onClick={() => onOpenData(form, "status=approved")} />
+                  <MiniStat label="Pending" value={statValue(form, "pending_review_submissions")} onClick={() => onOpenData(form, "status=pending_review")} />
+                  <MiniStat label="Uploaded" value={statValue(form, "uploaded_records")} onClick={() => onOpenData(form, "source=uploaded")} />
+                  <MiniStat label="Field" value={statValue(form, "field_submitted_records")} onClick={() => onOpenData(form, "source=field")} />
+                  <MiniStat label="Returned" value={statValue(form, "rejected_returned_submissions")} onClick={() => onOpenData(form, "status=returned")} />
+                  <MiniStat label="Entities" value={statValue(form, "linked_beneficiaries")} onClick={() => onOpenData(form, "entity=linked")} />
+                  <MiniStat label="Last" value={form.last_submission_at ? formatDate(form.last_submission_at) : "None"} onClick={() => onOpenData(form)} />
+                </div>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+              {isDraft ? (
+                <>
+                  <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="primary">
+                    Continue Editing
+                  </Button>
+                  <Button onClick={() => onOpenData(form)} size="sm" variant="secondary">
+                    Preview
+                  </Button>
+                  <Button disabled={!canManageForms || !form.project_id} onClick={() => onEdit(form)} size="sm" variant="secondary">
+                    Publish
+                  </Button>
+                </>
+              ) : null}
+              {isPublished ? (
+                <>
+                  <Button onClick={() => onOpenData(form)} size="sm" variant="primary">
+                    <Table2 aria-hidden="true" />
+                    View Data
+                  </Button>
+                  <Button disabled={!canManageForms} onClick={() => onAssign(form)} size="sm" variant="secondary">
+                    Assign
+                  </Button>
+                  <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="secondary">
+                    New Version
+                  </Button>
+                  <Button disabled={!canManageForms} size="sm" variant="secondary">
+                    Archive
+                  </Button>
+                </>
+              ) : null}
+              {isArchived ? (
+                <>
+                  <Button onClick={() => onOpenData(form)} size="sm" variant="primary">
+                    View Historical Data
+                  </Button>
+                  <Button disabled={!canManageForms} size="sm" variant="secondary">
+                    Restore
+                  </Button>
+                  <Button size="sm" variant="secondary">
+                    Export
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  onClick,
+  value,
+}: {
+  label: string;
+  onClick: () => void;
+  value: string | number;
+}) {
+  return (
+    <button
+      className="rounded-lg border bg-background/70 p-2 text-left transition hover:border-primary/40 hover:bg-primary/5"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      type="button"
+    >
+      <p className="text-base font-semibold">{value}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+    </button>
+  );
+}
+
+function FormDataGridWorkspace({
+  canExport,
+  form,
+  formId,
+  onBack,
+  searchParams,
+  submissions,
+  token,
+}: {
+  canExport: boolean;
+  form: FormListItem | null;
+  formId: string;
+  onBack: () => void;
+  searchParams: ReturnType<typeof useSearchParams>;
+  submissions: (SubmissionRead | SubmissionRecord)[];
+  token: string | null;
+}) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
+  const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
+  const schemaQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token" && formId),
+    queryFn: () => getFormSchema(token ?? "", formId),
+    queryKey: ["forms", "data-grid", "schema", token, formId],
+  });
+  const schemaQuestions = questionsFromSchema(schemaQuery.data ?? null);
+  const allQuestionMap = new Map<string, FormGridQuestion>();
+  for (const question of [...schemaQuestions, ...payloadColumns(submissions)]) {
+    if (!allQuestionMap.has(question.key)) allQuestionMap.set(question.key, question);
+  }
+  const questions = Array.from(allQuestionMap.values());
+  const filteredSubmissions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return submissions.filter((submission) => {
+      const source = submissionSourceLabel(submission);
+      if (sourceFilter === "uploaded" && !isImportedSubmission(submission)) return false;
+      if (sourceFilter === "field" && isImportedSubmission(submission)) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "pending_review") {
+          if (!["submitted", "under_review", "pending_review", "resubmitted"].includes(submission.status)) return false;
+        } else if (statusFilter === "returned") {
+          if (!["rejected", "correction_requested", "needs_correction", "returned"].includes(submission.status)) return false;
+        } else if (submission.status !== statusFilter) {
+          return false;
+        }
+      }
+      if (!term) return true;
+      return [
+        submission.client_submission_id,
+        source,
+        submissionActorLabel(submission),
+        submission.status,
+        submission.entity_id ?? "",
+        ...Object.values(submission.payload_json ?? {}).map(formatCell),
+      ].join(" ").toLowerCase().includes(term);
+    });
+  }, [search, sourceFilter, statusFilter, submissions]);
+  const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
+
+  function exportGrid(): void {
+    downloadCsv(
+      `${form?.slug ?? formId}-data.csv`,
+      filteredSubmissions.map((submission) => ({
+        submission_id: submission.client_submission_id,
+        source: submissionSourceLabel(submission),
+        submitted_or_uploaded_by: submissionActorLabel(submission),
+        date: submission.imported_at ?? submission.submitted_at,
+        status: submission.status,
+        entity_code: submission.entity_id ?? "",
+        project: form?.project_name ?? submission.project_id ?? "",
+        form_version: submission.server_sequence,
+        ...Object.fromEntries(
+          questions.map((question) => [
+            question.label,
+            formatCell(submission.payload_json?.[question.key]),
+          ]),
+        ),
+      })),
+    );
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="collect">FORM DATA</Badge>
+              <Badge tone={form?.status === "published" ? "success" : "neutral"}>
+                {form?.status ?? "Unknown form"}
+              </Badge>
+              <Badge tone="accent">{filteredSubmissions.length} visible rows</Badge>
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+              {form?.name ?? "Form data"}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Spreadsheet-style view of submissions, uploaded records, approval
+              status, source attribution, and every question response.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onBack} variant="secondary">
+              <ArrowLeft aria-hidden="true" />
+              Back to forms
+            </Button>
+            <Button disabled={!canExport || !filteredSubmissions.length} onClick={exportGrid} variant="secondary">
+              <Download aria-hidden="true" />
+              Export grid
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-4">
+          <MiniStat label="Total submissions" value={stats.total_submissions} onClick={() => setStatusFilter("all")} />
+          <MiniStat label="Approved" value={stats.approved_submissions} onClick={() => setStatusFilter("approved")} />
+          <MiniStat label="Uploaded / imported" value={stats.uploaded_records} onClick={() => setSourceFilter("uploaded")} />
+          <MiniStat label="Field submitted" value={stats.field_submitted_records} onClick={() => setSourceFilter("field")} />
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="grid gap-3 xl:grid-cols-[1fr_180px_180px]">
+          <label className="relative">
+            <Database aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+            <Input className="pl-9" onChange={(event) => setSearch(event.target.value)} placeholder="Search any response, submission ID, source, officer, or status" value={search} />
+          </label>
+          <Select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+            <option value="all">All statuses</option>
+            <option value="pending_review">Pending review</option>
+            <option value="approved">Approved</option>
+            <option value="returned">Returned/rejected</option>
+          </Select>
+          <Select onChange={(event) => setSourceFilter(event.target.value)} value={sourceFilter}>
+            <option value="all">All sources</option>
+            <option value="field">Field/mobile</option>
+            <option value="uploaded">Uploaded/imported</option>
+          </Select>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-panel shadow-line">
+        <div className="overflow-auto product-scrollbar">
+          <table className="min-w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr className="bg-muted/70 text-left text-xs uppercase text-muted-foreground">
+                {["Submission ID", "Source", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version"].map((header, index) => (
+                  <th
+                    className={cn(
+                      "sticky top-0 z-20 border-b px-3 py-3 font-semibold",
+                      index === 0 ? "left-0 z-30 bg-muted" : "bg-muted/70",
+                    )}
+                    key={header}
+                  >
+                    {header}
+                  </th>
+                ))}
+                {questions.map((question) => (
+                  <th className="sticky top-0 z-10 min-w-52 border-b bg-muted/70 px-3 py-3 font-semibold" key={question.key}>
+                    <div>{question.label}</div>
+                    <div className="mt-0.5 normal-case text-muted-foreground">{question.key}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSubmissions.map((submission) => (
+                <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
+                  <td className="sticky left-0 z-10 border-b bg-inherit px-3 py-3 font-medium">{submission.client_submission_id}</td>
+                  <td className="border-b px-3 py-3">
+                    <Badge tone={isImportedSubmission(submission) ? "warning" : "success"}>
+                      {submissionSourceLabel(submission)}
+                    </Badge>
+                    {submission.source_system ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{submission.source_system}</p>
+                    ) : null}
+                  </td>
+                  <td className="border-b px-3 py-3">{submissionActorLabel(submission)}</td>
+                  <td className="border-b px-3 py-3">{formatDate(submission.imported_at ?? submission.submitted_at)}</td>
+                  <td className="border-b px-3 py-3">
+                    <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
+                  </td>
+                  <td className="border-b px-3 py-3">{submission.entity_id ?? "Not linked"}</td>
+                  <td className="border-b px-3 py-3">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
+                  <td className="border-b px-3 py-3">v{submission.server_sequence}</td>
+                  {questions.map((question) => (
+                    <td className="max-w-72 border-b px-3 py-3 align-top" key={`${submission.id}-${question.key}`}>
+                      <div className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/65 p-2">
+                        {formatCell(submission.payload_json?.[question.key]) || <span className="text-muted-foreground">Blank</span>}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!filteredSubmissions.length ? (
+            <div className="p-10 text-center">
+              <Table2 aria-hidden="true" className="mx-auto text-muted-foreground" size={24} />
+              <p className="mt-3 font-medium">No data rows match this view</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Upload historical data, sync mobile submissions, or clear the filters.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -41,6 +41,13 @@ export type FormListItem = {
   sections: number;
   active_assignments: number;
   total_submissions: number;
+  uploaded_records?: number;
+  field_submitted_records?: number;
+  approved_submissions?: number;
+  pending_review_submissions?: number;
+  rejected_returned_submissions?: number;
+  linked_beneficiaries?: number;
+  last_submission_at?: string | null;
   quality_score: number;
   pending_approval: boolean;
   has_quality_issues: boolean;
@@ -108,6 +115,13 @@ export const previewForms: FormListItem[] = [
     sections: 6,
     active_assignments: 12,
     total_submissions: 1840,
+    uploaded_records: 240,
+    field_submitted_records: 1600,
+    approved_submissions: 1510,
+    pending_review_submissions: 84,
+    rejected_returned_submissions: 26,
+    linked_beneficiaries: 1475,
+    last_submission_at: new Date().toISOString(),
     quality_score: 91,
     pending_approval: false,
     has_quality_issues: false,
@@ -131,6 +145,13 @@ export const previewForms: FormListItem[] = [
     sections: 8,
     active_assignments: 0,
     total_submissions: 0,
+    uploaded_records: 0,
+    field_submitted_records: 0,
+    approved_submissions: 0,
+    pending_review_submissions: 0,
+    rejected_returned_submissions: 0,
+    linked_beneficiaries: 0,
+    last_submission_at: null,
     quality_score: 72,
     pending_approval: true,
     has_quality_issues: true,
@@ -154,6 +175,13 @@ export const previewForms: FormListItem[] = [
     sections: 5,
     active_assignments: 8,
     total_submissions: 965,
+    uploaded_records: 120,
+    field_submitted_records: 845,
+    approved_submissions: 720,
+    pending_review_submissions: 88,
+    rejected_returned_submissions: 157,
+    linked_beneficiaries: 0,
+    last_submission_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
     quality_score: 84,
     pending_approval: false,
     has_quality_issues: true,
@@ -237,6 +265,13 @@ export function normalizeBackendForm(form: DataFormRead, index = 0): FormListIte
     sections: Math.max(1, Math.ceil(questionEstimate / 8)),
     active_assignments: activeAssignments,
     total_submissions: 0,
+    uploaded_records: 0,
+    field_submitted_records: 0,
+    approved_submissions: 0,
+    pending_review_submissions: 0,
+    rejected_returned_submissions: 0,
+    linked_beneficiaries: 0,
+    last_submission_at: null,
     quality_score: form.status === "published" ? 86 : 68,
     pending_approval: form.status === "draft",
     has_quality_issues: qualityRules > 0 && form.status !== "archived",

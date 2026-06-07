@@ -493,6 +493,28 @@ class SubmissionRepository:
         await self.session.flush()
         return submission
 
+    async def update_payload(
+        self,
+        *,
+        submission: Submission,
+        actor_user_id: UUID,
+        payload_json: dict[str, Any],
+        reason: str,
+    ) -> Submission:
+        submission.payload_json = payload_json
+        submission.server_sequence += 1
+        await self.add_version(submission=submission, actor_user_id=actor_user_id, reason=reason)
+        await self.add_status_history(
+            organization_id=submission.organization_id,
+            submission_id=submission.id,
+            actor_user_id=actor_user_id,
+            from_status=submission.status,
+            to_status=submission.status,
+            comment=f"Responses edited: {reason}",
+        )
+        await self.session.flush()
+        return submission
+
     async def add_version(self, *, submission: Submission, actor_user_id: UUID, reason: str | None) -> SubmissionVersion:
         version = SubmissionVersion(
             organization_id=submission.organization_id,

@@ -26,7 +26,7 @@ adds `/api/v1` automatically when the value is a backend root URL.
 Before the Vercel frontend is considered live for users, the backend must be deployed and reachable over HTTPS. Configure the backend with:
 
 ```bash
-BACKEND_CORS_ORIGINS=https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app,https://atlastfieldops.com
+BACKEND_CORS_ORIGINS=https://atlasfieldops.com,https://www.atlasfieldops.com,https://atlas-fieldops.vercel.app,https://atlas-fieldops-l6h6tkdyh-dwinboys-projects.vercel.app
 ```
 
 Also configure production values for `DATABASE_URL`, `REDIS_URL`, `KAFKA_BOOTSTRAP_SERVERS`, `JWT_SECRET`, and any provider keys. Do not add secrets to the repository.

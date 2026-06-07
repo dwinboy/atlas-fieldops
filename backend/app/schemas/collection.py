@@ -716,6 +716,15 @@ class SubmissionRead(BaseModel):
     longitude: float
     accuracy: float | None
     payload_json: dict[str, Any]
+    is_imported: bool = False
+    source_system: str | None = None
+    source_record_id: str | None = None
+    source_project_id: str | None = None
+    source_form_id: str | None = None
+    source_submission_id: str | None = None
+    import_batch_id: UUID | None = None
+    imported_at: datetime | None = None
+    imported_by_user_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -739,6 +748,11 @@ class EntityFrequencyValidationRead(BaseModel):
 class SubmissionReviewAction(BaseModel):
     action: str = Field(pattern=r"^(approve|reject|request_correction|start_review)$")
     comment: str = Field(min_length=2, max_length=4000)
+
+
+class SubmissionResponsesUpdate(BaseModel):
+    responses: dict[str, Any]
+    reason: str = Field(min_length=2, max_length=4000)
 
 
 class SubmissionHistoryRead(BaseModel):

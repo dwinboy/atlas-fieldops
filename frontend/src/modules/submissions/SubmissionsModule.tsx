@@ -8,7 +8,9 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock3,
+  Database,
   Download,
+  Edit3,
   Eye,
   FileArchive,
   FileCheck2,
@@ -19,9 +21,12 @@ import {
   MessageSquareWarning,
   Paperclip,
   RotateCcw,
+  Save,
   Search,
   ShieldAlert,
+  SlidersHorizontal,
   UserCheck,
+  X,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -33,8 +38,14 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal } from "@/lib/api";
-import { listSubmissions, reviewSubmission } from "@/lib/api";
+import type { CurrentPrincipal, DataFormRead, DataFormSchemaRead } from "@/lib/api";
+import {
+  getFormSchema,
+  listForms,
+  listSubmissions,
+  reviewSubmission,
+  updateSubmissionResponses,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   submissionDetailTabs,
@@ -68,6 +79,38 @@ type ReviewAction =
   | "request_correction"
   | "start_review"
   | "archive";
+
+type FormFieldMeta = {
+  id: string;
+  type: string;
+  label: string;
+  hint?: string | null;
+  variable_name?: string | null;
+  required?: boolean;
+  options?: { label?: string; value?: string; name?: string }[];
+};
+
+type FormSectionMeta = {
+  id: string;
+  title: string;
+  fields?: FormFieldMeta[];
+};
+
+type ParsedFormSchema = {
+  sections?: FormSectionMeta[];
+};
+
+type ResponseRow = {
+  key: string;
+  label: string;
+  value: unknown;
+  type: string;
+  sectionTitle: string;
+  source: "form" | "uploaded" | "system";
+  required: boolean;
+  hint?: string | null;
+  options?: FormFieldMeta["options"];
+};
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
@@ -148,6 +191,10 @@ export function SubmissionsModule({
     "reports.export",
     "submissions.manage",
   ]);
+  const canEditResponses = hasAnyPermission(principal, [
+    "submissions.edit",
+    "submissions.manage",
+  ]);
 
   useEffect(() => {
     if (!localSubmissions.length) return;
@@ -165,13 +212,38 @@ export function SubmissionsModule({
     queryFn: () => listSubmissions(token ?? ""),
     enabled: Boolean(token && !preview),
   });
+  const formsQuery = useQuery({
+    queryKey: ["submissions-module", "forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const formMap = useMemo(() => {
+    const map = new Map<string, DataFormRead>();
+    for (const form of formsQuery.data ?? []) {
+      map.set(form.id, form);
+    }
+    return map;
+  }, [formsQuery.data]);
 
   const submissions = useMemo(
-    () =>
-      preview
-        ? previewRows
-        : (submissionsQuery.data ?? []).map(normalizeSubmission),
-    [preview, previewRows, submissionsQuery.data],
+    () => {
+      if (preview) return previewRows;
+      return (submissionsQuery.data ?? []).map((submission) => {
+        const normalized = normalizeSubmission(submission);
+        const form = formMap.get(submission.form_id);
+        return form
+          ? {
+              ...normalized,
+              form_name: form.name,
+              form_version: form.current_version,
+              project_name: form.project_id
+                ? normalized.project_name
+                : "Project link missing",
+            }
+          : normalized;
+      });
+    },
+    [formMap, preview, previewRows, submissionsQuery.data],
   );
   const summary = useMemo(
     () => computeSubmissionsSummary(submissions),
@@ -184,6 +256,11 @@ export function SubmissionsModule({
   const selectedSubmission =
     submissions.find((submission) => submission.id === selectedSubmissionId) ??
     null;
+  const selectedFormSchemaQuery = useQuery({
+    queryKey: ["submission-form-schema", token, selectedSubmission?.form_id],
+    queryFn: () => getFormSchema(token ?? "", selectedSubmission?.form_id ?? ""),
+    enabled: Boolean(token && !preview && selectedSubmission?.form_id),
+  });
 
   const reviewMutation = useMutation({
     mutationFn: ({
@@ -213,6 +290,37 @@ export function SubmissionsModule({
       pushToast({
         title: "Review action failed",
         description: "Check submission state and permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const updateResponsesMutation = useMutation({
+    mutationFn: ({
+      reason,
+      responses,
+      submissionId,
+    }: {
+      reason: string;
+      responses: Record<string, unknown>;
+      submissionId: string;
+    }) =>
+      updateSubmissionResponses(token ?? "", submissionId, {
+        reason,
+        responses,
+      }),
+    onSuccess: async (submission) => {
+      pushToast({
+        title: "Responses saved",
+        description: submission.client_submission_id,
+        tone: "success",
+      });
+      await submissionsQuery.refetch();
+    },
+    onError: () => {
+      pushToast({
+        title: "Could not save responses",
+        description: "Check your permission and add a clear edit reason.",
         tone: "danger",
       });
     },
@@ -280,6 +388,62 @@ export function SubmissionsModule({
       action,
       comment,
       submissionId: selectedSubmission.id,
+    });
+  }
+
+  function saveResponses(
+    submission: SubmissionRecord,
+    responses: Record<string, unknown>,
+    reason: string,
+  ): void {
+    if (preview) {
+      setPreviewRows((current) =>
+        current.map((row) =>
+          row.id === submission.id
+            ? {
+                ...row,
+                audit_events: [
+                  ...row.audit_events,
+                  {
+                    action: "Submission Responses Edited",
+                    actor: "Reviewer",
+                    created_at: new Date().toISOString(),
+                    reason,
+                  },
+                ],
+                history: [
+                  ...row.history,
+                  {
+                    action: "Responses Edited",
+                    actor: "Reviewer",
+                    comment: reason,
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+                payload_json: {
+                  ...responses,
+                  ...Object.fromEntries(
+                    Object.entries(row.payload_json).filter(([key]) =>
+                      key.startsWith("_"),
+                    ),
+                  ),
+                },
+                server_sequence: row.server_sequence + 1,
+              }
+            : row,
+        ),
+      );
+      pushToast({
+        title: "Preview responses saved",
+        description: submission.client_submission_id,
+        tone: "success",
+      });
+      return;
+    }
+    updateResponsesMutation.mutate({
+      reason,
+      responses,
+      submissionId: submission.id,
     });
   }
 
@@ -467,9 +631,13 @@ export function SubmissionsModule({
 
       {selectedSubmission ? (
         <SubmissionDetailWorkspace
+          canEditResponses={canEditResponses}
           canReview={canReview}
+          formSchema={selectedFormSchemaQuery.data ?? null}
+          isSavingResponses={updateResponsesMutation.isPending}
           onApplyReviewAction={applyReviewAction}
           onClose={() => setSelectedSubmissionId(null)}
+          onSaveResponses={saveResponses}
           reviewComment={reviewComment}
           reviewResult={reviewResult}
           setReviewComment={setReviewComment}
@@ -793,9 +961,13 @@ function SubmissionsDashboard({
 }
 
 function SubmissionDetailWorkspace({
+  canEditResponses,
   canReview,
+  formSchema,
+  isSavingResponses,
   onApplyReviewAction,
   onClose,
+  onSaveResponses,
   reviewComment,
   reviewResult,
   setReviewComment,
@@ -803,9 +975,17 @@ function SubmissionDetailWorkspace({
   submission,
   tab,
 }: {
+  canEditResponses: boolean;
   canReview: boolean;
+  formSchema: DataFormSchemaRead | null;
+  isSavingResponses: boolean;
   onApplyReviewAction: (action: ReviewAction) => void;
   onClose: () => void;
+  onSaveResponses: (
+    submission: SubmissionRecord,
+    responses: Record<string, unknown>,
+    reason: string,
+  ) => void;
   reviewComment: string;
   reviewResult: string;
   setReviewComment: (value: string) => void;
@@ -860,7 +1040,15 @@ function SubmissionDetailWorkspace({
       </div>
 
       {tab === "Overview" ? <OverviewTab submission={submission} /> : null}
-      {tab === "Responses" ? <ResponsesTab submission={submission} /> : null}
+      {tab === "Responses" ? (
+        <ResponsesTab
+          canEdit={canEditResponses}
+          formSchema={formSchema}
+          isSaving={isSavingResponses}
+          onSave={onSaveResponses}
+          submission={submission}
+        />
+      ) : null}
       {tab === "Workflow" ? (
         <WorkflowTab
           canReview={canReview}
@@ -954,59 +1142,423 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
   );
 }
 
-function ResponsesTab({ submission }: { submission: SubmissionRecord }) {
-  const entries = Object.entries(submission.payload_json).filter(([key]) => !key.startsWith("_"));
-  const midpoint = Math.ceil(entries.length / 2);
-  const sections = [
-    ["Core Responses", entries.slice(0, midpoint)],
-    ["Evidence and Review Fields", entries.slice(midpoint)],
-  ] as const;
+function humanizeKey(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatResponseValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Blank";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function responseValueToInput(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
+function parseEditedResponse(row: ResponseRow, rawValue: string): unknown {
+  if (rawValue.trim() === "") {
+    return "";
+  }
+  if (["number", "decimal", "currency", "rating", "nps"].includes(row.type)) {
+    const parsed = Number(rawValue);
+    return Number.isNaN(parsed) ? rawValue : parsed;
+  }
+  if (["checkbox", "boolean", "consent"].includes(row.type)) {
+    return rawValue === "true";
+  }
+  if (["multiselect", "ranking", "repeat_group", "repeatable_group", "grid"].includes(row.type)) {
+    try {
+      return JSON.parse(rawValue) as unknown;
+    } catch {
+      return rawValue
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+  if (rawValue.trim().startsWith("{") || rawValue.trim().startsWith("[")) {
+    try {
+      return JSON.parse(rawValue) as unknown;
+    } catch {
+      return rawValue;
+    }
+  }
+  return rawValue;
+}
+
+function buildResponseRows(
+  payload: Record<string, unknown>,
+  formSchema: DataFormSchemaRead | null,
+): ResponseRow[] {
+  const rows: ResponseRow[] = [];
+  const usedKeys = new Set<string>();
+  const schema = (formSchema?.schema ?? {}) as ParsedFormSchema;
+  for (const section of schema.sections ?? []) {
+    for (const field of section.fields ?? []) {
+      const candidates = [field.variable_name, field.id].filter(
+        (candidate): candidate is string => Boolean(candidate),
+      );
+      const payloadKey =
+        candidates.find((candidate) =>
+          Object.prototype.hasOwnProperty.call(payload, candidate),
+        ) ?? candidates[0] ?? field.id;
+      usedKeys.add(payloadKey);
+      rows.push({
+        key: payloadKey,
+        label: field.label || humanizeKey(payloadKey),
+        value: payload[payloadKey],
+        type: field.type,
+        sectionTitle: section.title || "Form responses",
+        source: "form",
+        required: Boolean(field.required),
+        hint: field.hint,
+        options: field.options,
+      });
+    }
+  }
+  for (const [key, value] of Object.entries(payload)) {
+    if (usedKeys.has(key)) continue;
+    rows.push({
+      key,
+      label: humanizeKey(key),
+      value,
+      type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "text",
+      sectionTitle: key.startsWith("_") ? "System review metadata" : "Uploaded / legacy fields",
+      source: key.startsWith("_") ? "system" : "uploaded",
+      required: false,
+    });
+  }
+  return rows;
+}
+
+function ResponsesTab({
+  canEdit,
+  formSchema,
+  isSaving,
+  onSave,
+  submission,
+}: {
+  canEdit: boolean;
+  formSchema: DataFormSchemaRead | null;
+  isSaving: boolean;
+  onSave: (
+    submission: SubmissionRecord,
+    responses: Record<string, unknown>,
+    reason: string,
+  ) => void;
+  submission: SubmissionRecord;
+}) {
+  const rows = useMemo(
+    () => buildResponseRows(submission.payload_json, formSchema),
+    [formSchema, submission.payload_json],
+  );
+  const [editing, setEditing] = useState(false);
+  const [editReason, setEditReason] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [editError, setEditError] = useState("");
+
+  useEffect(() => {
+    setEditing(false);
+    setEditReason("");
+    setEditError("");
+    setSearchTerm("");
+    setEditValues(
+      Object.fromEntries(
+        rows
+          .filter((row) => row.source !== "system")
+          .map((row) => [row.key, responseValueToInput(row.value)]),
+      ),
+    );
+  }, [rows, submission.id]);
+
+  const filteredRows = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) =>
+      [row.label, row.key, row.sectionTitle, row.type, formatResponseValue(row.value)]
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [rows, searchTerm]);
+  const visibleSections = useMemo(() => {
+    const groups = new Map<string, ResponseRow[]>();
+    for (const row of filteredRows) {
+      const existing = groups.get(row.sectionTitle) ?? [];
+      existing.push(row);
+      groups.set(row.sectionTitle, existing);
+    }
+    return Array.from(groups.entries());
+  }, [filteredRows]);
+  const editableCount = rows.filter((row) => row.source !== "system").length;
+  const uploadedCount = rows.filter((row) => row.source === "uploaded").length;
+  const blankCount = rows.filter(
+    (row) => row.value === null || row.value === undefined || row.value === "",
+  ).length;
+
+  function updateEditValue(key: string, value: string): void {
+    setEditValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleSave(): void {
+    const reason = editReason.trim();
+    if (reason.length < 4) {
+      setEditError("Add a short reason before saving response edits.");
+      return;
+    }
+    const responses: Record<string, unknown> = {};
+    for (const row of rows) {
+      if (row.source === "system") continue;
+      responses[row.key] = parseEditedResponse(row, editValues[row.key] ?? "");
+    }
+    setEditError("");
+    onSave(submission, responses, reason);
+    setEditing(false);
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-2xl border bg-background/50 p-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h3 className="font-semibold">Collected responses</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Read-only by default. Editing must follow form governance rules.
-          </p>
+      <div className="rounded-2xl border bg-gradient-to-br from-primary/8 via-background to-info/8 p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="collect">Data record</Badge>
+              <Badge tone={uploadedCount ? "warning" : "neutral"}>
+                {uploadedCount} uploaded / legacy fields
+              </Badge>
+              <Badge tone={blankCount ? "warning" : "success"}>
+                {blankCount} blank
+              </Badge>
+            </div>
+            <h3 className="mt-3 text-lg font-semibold">Collected data</h3>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Every value saved against this form is visible here, including
+              imported columns that do not yet exist in the current form schema.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!editableCount}
+              onClick={() => downloadCsv(`${submission.client_submission_id}-responses.csv`, rows.map((row) => ({
+                field: row.label,
+                variable: row.key,
+                section: row.sectionTitle,
+                source: row.source,
+                value: formatResponseValue(row.value),
+              })))}
+              size="sm"
+              variant="secondary"
+            >
+              <Download aria-hidden="true" />
+              Export fields
+            </Button>
+            <Button
+              disabled={!canEdit || !editableCount}
+              onClick={() => setEditing((value) => !value)}
+              size="sm"
+              variant={editing ? "secondary" : "primary"}
+            >
+              {editing ? <X aria-hidden="true" /> : <Edit3 aria-hidden="true" />}
+              {editing ? "Cancel edit" : "Edit responses"}
+            </Button>
+          </div>
         </div>
-        <label className="relative md:min-w-72">
-          <Search
-            aria-hidden="true"
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            size={15}
-          />
-          <Input className="pl-9" placeholder="Search responses" />
-        </label>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+          <label className="relative">
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={15}
+            />
+            <Input
+              className="pl-9"
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search field, value, section, or variable"
+              value={searchTerm}
+            />
+          </label>
+          <div className="flex items-center gap-2 rounded-full border bg-panel px-3 py-2 text-xs text-muted-foreground">
+            <Database aria-hidden="true" size={14} />
+            {rows.length} total fields · {editableCount} editable
+          </div>
+        </div>
       </div>
-      {sections.map(([title, rows]) => (
-        <Panel key={title} title={title}>
-          <div className="divide-y">
-            {rows.map(([key, value]) => (
-              <div
-                className="grid gap-2 py-3 md:grid-cols-[240px_1fr]"
-                key={key}
-              >
-                <div>
-                  <p className="text-sm font-medium">
-                    {key.replaceAll("_", " ")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    ${"{"}
-                    {key}
-                    {"}"}
-                  </p>
+
+      {editing ? (
+        <div className="rounded-2xl border border-warning/30 bg-warning/8 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <label className="block flex-1 text-sm font-medium">
+              Reason for editing
+              <Input
+                className="mt-2"
+                onChange={(event) => setEditReason(event.target.value)}
+                placeholder="Example: Corrected spelling after supervisor verification"
+                value={editReason}
+              />
+            </label>
+            <Button disabled={isSaving} onClick={handleSave} variant="primary">
+              <Save aria-hidden="true" />
+              {isSaving ? "Saving..." : "Save edited data"}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Edits create a new submission version and audit trail entry. Review
+            approval is still a separate human decision.
+          </p>
+          {editError ? (
+            <p className="mt-2 text-sm font-medium text-danger">{editError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {visibleSections.map(([title, sectionRows]) => (
+        <Panel
+          key={title}
+          title={title}
+          action={
+            <Badge tone={title === "System review metadata" ? "neutral" : "accent"}>
+              {sectionRows.length} fields
+            </Badge>
+          }
+        >
+          <div className="overflow-hidden rounded-xl border">
+            <div className="hidden grid-cols-[minmax(220px,0.75fr)_minmax(220px,1fr)_120px] border-b bg-muted/60 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground md:grid">
+              <span>Field</span>
+              <span>Value</span>
+              <span>Source</span>
+            </div>
+            <div className="divide-y">
+              {sectionRows.map((row) => (
+                <div
+                  className="grid gap-3 bg-background/70 p-3 md:grid-cols-[minmax(220px,0.75fr)_minmax(220px,1fr)_120px] md:items-start"
+                  key={`${row.sectionTitle}-${row.key}`}
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{row.label}</p>
+                      {row.required ? <Badge tone="warning">Required</Badge> : null}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {row.key} · {row.type}
+                    </p>
+                    {row.hint ? (
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        {row.hint}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div>
+                    {editing && row.source !== "system" ? (
+                      <ResponseEditor
+                        onChange={(value) => updateEditValue(row.key, value)}
+                        row={row}
+                        value={editValues[row.key] ?? ""}
+                      />
+                    ) : (
+                      <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/45 p-3 text-sm leading-6 text-foreground">
+                        {formatResponseValue(row.value)}
+                      </pre>
+                    )}
+                  </div>
+                  <div className="flex items-center md:justify-end">
+                    <Badge
+                      tone={
+                        row.source === "form"
+                          ? "success"
+                          : row.source === "uploaded"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {row.source === "form"
+                        ? "Form"
+                        : row.source === "uploaded"
+                          ? "Uploaded"
+                          : "System"}
+                    </Badge>
+                  </div>
                 </div>
-                <p className="break-words text-sm">{String(value)}</p>
-              </div>
-            ))}
-            {!rows.length ? (
-              <EmptyMini label="No responses in this section." />
-            ) : null}
+              ))}
+            </div>
           </div>
         </Panel>
       ))}
+      {!visibleSections.length ? (
+        <div className="rounded-2xl border bg-panel p-8 text-center">
+          <Search
+            aria-hidden="true"
+            className="mx-auto text-muted-foreground"
+            size={22}
+          />
+          <p className="mt-3 font-medium">No matching fields</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Clear the search to see every saved field for this submission.
+          </p>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function ResponseEditor({
+  onChange,
+  row,
+  value,
+}: {
+  onChange: (value: string) => void;
+  row: ResponseRow;
+  value: string;
+}) {
+  if (["checkbox", "boolean", "consent"].includes(row.type)) {
+    return (
+      <Select onChange={(event) => onChange(event.target.value)} value={value || "false"}>
+        <option value="true">Yes / True</option>
+        <option value="false">No / False</option>
+      </Select>
+    );
+  }
+  if (row.options?.length) {
+    return (
+      <Select onChange={(event) => onChange(event.target.value)} value={value}>
+        <option value="">Select value</option>
+        {row.options.map((option, index) => {
+          const optionValue = option.value ?? option.name ?? option.label ?? String(index);
+          return (
+            <option key={`${optionValue}-${index}`} value={optionValue}>
+              {option.label ?? optionValue}
+            </option>
+          );
+        })}
+      </Select>
+    );
+  }
+  if (
+    ["textarea", "long_text", "repeat_group", "repeatable_group", "grid", "file", "photo", "signature"].includes(row.type) ||
+    value.trim().startsWith("{") ||
+    value.trim().startsWith("[")
+  ) {
+    return (
+      <textarea
+        className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/15"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    );
+  }
+  return (
+    <Input
+      onChange={(event) => onChange(event.target.value)}
+      type={["number", "decimal", "currency", "rating", "nps"].includes(row.type) ? "number" : "text"}
+      value={value}
+    />
   );
 }
 

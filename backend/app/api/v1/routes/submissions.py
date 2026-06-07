@@ -15,6 +15,7 @@ from app.schemas.collection import (
     SubmissionHistoryRead,
     SubmissionRead,
     SubmissionReviewAction,
+    SubmissionResponsesUpdate,
     SyncBatchCreate,
     SyncBatchRead,
 )
@@ -110,6 +111,30 @@ async def review_submission(
     except InvalidWorkflowTransitionError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.patch("/{submission_id}/responses", response_model=SubmissionRead, summary="Edit submission response fields")
+async def update_submission_responses(
+    submission_id: UUID,
+    payload: SubmissionResponsesUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> object:
+    try:
+        submission = await SubmissionService(session).update_responses(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            submission_id=submission_id,
+            payload=payload,
+        )
+        await session.commit()
+        return submission
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

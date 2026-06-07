@@ -894,6 +894,20 @@ export type SubmissionRead = {
   longitude: number;
   accuracy: number | null;
   payload_json: Record<string, unknown>;
+  is_imported?: boolean;
+  source_system?: string | null;
+  source_record_id?: string | null;
+  source_project_id?: string | null;
+  source_form_id?: string | null;
+  source_submission_id?: string | null;
+  import_batch_id?: string | null;
+  imported_at?: string | null;
+  imported_by_user_id?: string | null;
+};
+
+export type SubmissionResponsesUpdate = {
+  responses: Record<string, unknown>;
+  reason: string;
 };
 
 export type OperationsSummary = {
@@ -2442,6 +2456,18 @@ export async function reviewSubmission(
   });
 }
 
+export async function updateSubmissionResponses(
+  token: string,
+  submissionId: string,
+  payload: SubmissionResponsesUpdate
+): Promise<SubmissionRead> {
+  return request<SubmissionRead>(`/submissions/${submissionId}/responses`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload
+  });
+}
+
 export async function getOperationsSummary(token: string): Promise<OperationsSummary> {
   return request<OperationsSummary>("/operations/summary", { token });
 }
@@ -2678,12 +2704,12 @@ export async function listForms(token: string): Promise<DataFormRead[]> {
   return request<DataFormRead[]>("/forms", { token });
 }
 
-export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
-  return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
-}
-
 export async function getFormSchema(token: string, formId: string): Promise<DataFormSchemaRead> {
   return request<DataFormSchemaRead>(`/forms/${formId}/schema`, { token });
+}
+
+export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
+  return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
 
 export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {
@@ -2781,6 +2807,7 @@ export const api = {
   getProjectDetail,
   getProjectsSummary,
   getFormTemplate,
+  getFormSchema,
   getFormCollectionCompatibility,
   getGovernanceSummary,
   getOrganizationGovernanceSummary,
@@ -2871,6 +2898,7 @@ export const api = {
   updatePlatformFeatureFlag,
   updateImportRow,
   updateFormControls,
+  updateSubmissionResponses,
   updateSurveyGovernance,
   upsertAdministrationFeatureFlag,
   upsertAdministrationSystemSetting,

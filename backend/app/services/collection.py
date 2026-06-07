@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.security import hash_password
 from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
+from app.models.operations import Beneficiary
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
@@ -28,6 +29,7 @@ from app.schemas.collection import (
     SubmissionRead,
     SubmissionCreate,
     SubmissionReviewAction,
+    SubmissionResponsesUpdate,
     SurveyCreate,
     SurveyGovernanceSettings,
     SurveyRead,
@@ -972,6 +974,12 @@ class SubmissionService:
             resource_id=str(submission.id),
             metadata={"comment": payload.comment},
         )
+        if to_status == "approved":
+            await self._apply_approved_submission_to_beneficiary(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+            )
         await event_publisher.publish(
             settings.kafka_submission_events_topic,
             {
@@ -981,6 +989,335 @@ class SubmissionService:
             },
         )
         return submission
+
+    async def _apply_approved_submission_to_beneficiary(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+    ) -> None:
+        form = await self.forms.get(organization_id=organization_id, form_id=submission.form_id)
+        if form is None or submission.project_id is None:
+            return
+        controls = self._entity_controls(form.controls_json or {})
+        is_entity_linked = bool(
+            controls.get("linked_to_entity")
+            or controls.get("is_entity_linked")
+            or controls.get("linkedToEntity")
+            or submission.entity_id
+            or submission.entity_type
+        )
+        creates_or_updates = bool(
+            controls.get("creates_new_entity")
+            or controls.get("createsNewEntity")
+            or controls.get("updates_existing_entity")
+            or controls.get("updatesExistingEntity")
+        )
+        if not is_entity_linked and not creates_or_updates:
+            return
+
+        values = self._flat_payload_values(submission.payload_json or {})
+        entity_type = str(controls.get("entity_type") or controls.get("entityType") or submission.entity_type or "Beneficiary")
+        display_name = self._entity_display_name(values)
+        if not display_name:
+            return
+        phone = self._string_value(values, "phone_number", "phone", "mobile", "farmer_phone")
+        national_id = self._string_value(values, "national_id", "nationalid", "id_number")
+        household_id = self._string_value(values, "household_id", "householdid", "household")
+        village = self._string_value(values, "village", "community")
+        existing = await self._find_beneficiary_for_submission(
+            organization_id=organization_id,
+            submission=submission,
+            display_name=display_name,
+            phone=phone,
+            national_id=national_id,
+            household_id=household_id,
+            village=village,
+        )
+        if existing is None:
+            if bool(controls.get("requires_existing_entity") or controls.get("requiresExistingEntity")):
+                await self.audit.append(
+                    organization_id=organization_id,
+                    actor_user_id=actor_user_id,
+                    action="beneficiary.link_missing",
+                    resource_type="submission",
+                    resource_id=str(submission.id),
+                    metadata={"client_submission_id": submission.client_submission_id, "entity_type": entity_type},
+                )
+                return
+            beneficiary = Beneficiary(
+                organization_id=organization_id,
+                project_id=submission.project_id,
+                beneficiary_uid=await self._next_beneficiary_uid(organization_id=organization_id, entity_type=entity_type),
+                beneficiary_type=entity_type,
+                display_name=display_name,
+                sex=self._string_value(values, "gender", "sex"),
+                phone_number=phone,
+                region=self._string_value(values, "region"),
+                district=self._string_value(values, "district"),
+                community=village,
+                enrollment_status="active",
+                latitude=submission.latitude,
+                longitude=submission.longitude,
+                last_visit_at=submission.submitted_at,
+                profile_json={
+                    "source": "Approved Submission",
+                    "sourceSubmissionId": str(submission.id),
+                    "sourceClientSubmissionId": submission.client_submission_id,
+                    "createdFromFormId": str(submission.form_id),
+                    "approvalLinkedAt": datetime.now(UTC).isoformat(),
+                    "national_id": national_id,
+                    "household_id": household_id,
+                    "raw_approved_values": values,
+                },
+                is_imported=submission.is_imported,
+                source_system=submission.source_system,
+                source_record_id=submission.source_record_id,
+                source_project_id=submission.source_project_id,
+                import_batch_id=submission.import_batch_id,
+                imported_at=submission.imported_at,
+                imported_by_user_id=submission.imported_by_user_id,
+            )
+            self.session.add(beneficiary)
+            await self.session.flush()
+            submission.entity_id = beneficiary.id
+            submission.entity_type = beneficiary.beneficiary_type
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="beneficiary.created_from_approved_submission",
+                resource_type="beneficiary",
+                resource_id=str(beneficiary.id),
+                metadata={
+                    "beneficiary_uid": beneficiary.beneficiary_uid,
+                    "submission_id": str(submission.id),
+                    "client_submission_id": submission.client_submission_id,
+                    "form_id": str(submission.form_id),
+                    "project_id": str(submission.project_id),
+                },
+            )
+            return
+
+        original_profile = dict(existing.profile_json or {})
+        proposed_changes: dict[str, object] = {}
+        for field_name, next_value in {
+            "display_name": display_name,
+            "phone_number": phone,
+            "region": self._string_value(values, "region"),
+            "district": self._string_value(values, "district"),
+            "community": village,
+            "latitude": submission.latitude,
+            "longitude": submission.longitude,
+        }.items():
+            current_value = getattr(existing, field_name)
+            if current_value in {None, ""} and next_value not in {None, ""}:
+                setattr(existing, field_name, next_value)
+            elif next_value not in {None, ""} and current_value != next_value:
+                proposed_changes[field_name] = {"current": current_value, "proposed": next_value}
+        existing.last_visit_at = submission.submitted_at
+        existing.project_id = existing.project_id or submission.project_id
+        existing.profile_json = {
+            **original_profile,
+            "lastApprovedSubmissionId": str(submission.id),
+            "lastApprovedFormId": str(submission.form_id),
+            "lastApprovalLinkedAt": datetime.now(UTC).isoformat(),
+            "national_id": original_profile.get("national_id") or national_id,
+            "household_id": original_profile.get("household_id") or household_id,
+            "profileUpdateProposals": [
+                *(original_profile.get("profileUpdateProposals") if isinstance(original_profile.get("profileUpdateProposals"), list) else []),
+                *(
+                    [
+                        {
+                            "submissionId": str(submission.id),
+                            "clientSubmissionId": submission.client_submission_id,
+                            "changes": proposed_changes,
+                            "createdAt": datetime.now(UTC).isoformat(),
+                        }
+                    ]
+                    if proposed_changes
+                    else []
+                ),
+            ],
+        }
+        submission.entity_id = existing.id
+        submission.entity_type = existing.beneficiary_type
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="beneficiary.linked_to_approved_submission",
+            resource_type="beneficiary",
+            resource_id=str(existing.id),
+            metadata={
+                "beneficiary_uid": existing.beneficiary_uid,
+                "submission_id": str(submission.id),
+                "client_submission_id": submission.client_submission_id,
+                "profile_update_proposals": len(proposed_changes),
+            },
+        )
+
+    def _entity_controls(self, controls_json: dict[str, object]) -> dict[str, object]:
+        controls = controls_json.get("entity_controls") if isinstance(controls_json.get("entity_controls"), dict) else {}
+        return controls
+
+    def _flat_payload_values(self, payload_json: dict[str, object]) -> dict[str, object]:
+        raw_responses = payload_json.get("responses")
+        if isinstance(raw_responses, list):
+            flattened: dict[str, object] = {}
+            for item in raw_responses:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("variableName") or item.get("variable_name") or item.get("questionId") or item.get("question_id") or "").strip()
+                if key:
+                    flattened[key.lower()] = item.get("value")
+            if flattened:
+                return flattened
+        return {str(key).lower(): value for key, value in payload_json.items() if not str(key).startswith("_")}
+
+    def _string_value(self, values: dict[str, object], *keys: str) -> str | None:
+        for key in keys:
+            value = values.get(key.lower())
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return None
+
+    def _entity_display_name(self, values: dict[str, object]) -> str | None:
+        full_name = self._string_value(values, "full_name", "farmer_name", "beneficiary_name", "respondent", "name")
+        if full_name:
+            return full_name
+        parts = [
+            self._string_value(values, "first_name", "firstname"),
+            self._string_value(values, "last_name", "lastname", "surname"),
+        ]
+        combined = " ".join(part for part in parts if part)
+        return combined or None
+
+    def _normalize_phone(self, value: str | None) -> str:
+        return re.sub(r"\D+", "", value or "")
+
+    async def _find_beneficiary_for_submission(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        display_name: str,
+        phone: str | None,
+        national_id: str | None,
+        household_id: str | None,
+        village: str | None,
+    ) -> Beneficiary | None:
+        if submission.entity_id is not None:
+            result = await self.session.execute(
+                select(Beneficiary).where(
+                    Beneficiary.organization_id == organization_id,
+                    Beneficiary.id == submission.entity_id,
+                    Beneficiary.deleted_at.is_(None),
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                return existing
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        normalized_phone = self._normalize_phone(phone)
+        normalized_name = display_name.strip().lower()
+        normalized_village = (village or "").strip().lower()
+        for beneficiary in result.scalars():
+            profile = beneficiary.profile_json or {}
+            if normalized_phone and self._normalize_phone(beneficiary.phone_number) == normalized_phone:
+                return beneficiary
+            if national_id and str(profile.get("national_id") or profile.get("nationalId") or "").strip().lower() == national_id.strip().lower():
+                return beneficiary
+            if household_id and str(profile.get("household_id") or profile.get("householdId") or "").strip().lower() == household_id.strip().lower():
+                return beneficiary
+            same_name = beneficiary.display_name.strip().lower() == normalized_name
+            same_village = normalized_village and (beneficiary.community or "").strip().lower() == normalized_village
+            if same_name and same_village:
+                return beneficiary
+        return None
+
+    async def _next_beneficiary_uid(self, *, organization_id: UUID, entity_type: str) -> str:
+        prefix = {
+            "farmer": "FRM",
+            "household": "HH",
+            "beneficiary": "BEN",
+            "facility": "FAC",
+            "school": "SCH",
+            "village": "VIL",
+            "group": "GRP",
+        }.get(entity_type.strip().lower(), "BEN")
+        year = datetime.now(UTC).year
+        result = await self.session.execute(
+            select(Beneficiary.beneficiary_uid).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.beneficiary_uid.like(f"{prefix}-{year}-%"),
+            )
+        )
+        existing = set(result.scalars())
+        next_number = len(existing) + 1
+        while True:
+            candidate = f"{prefix}-{year}-{next_number:06d}"
+            if candidate not in existing:
+                return candidate
+            next_number += 1
+
+    async def update_responses(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission_id: UUID,
+        payload: SubmissionResponsesUpdate,
+    ) -> Submission:
+        submission = await self.submissions.get(organization_id=organization_id, submission_id=submission_id)
+        if submission is None:
+            raise CollectionNotFoundError("Submission not found")
+        protected_payload = {
+            key: value
+            for key, value in submission.payload_json.items()
+            if isinstance(key, str) and key.startswith("_")
+        }
+        clean_responses = {
+            key: value
+            for key, value in payload.responses.items()
+            if isinstance(key, str) and key and not key.startswith("_")
+        }
+        updated_payload = {**clean_responses, **protected_payload}
+        updated = await self.submissions.update_payload(
+            submission=submission,
+            actor_user_id=actor_user_id,
+            payload_json=updated_payload,
+            reason=payload.reason,
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="submission.responses_edited",
+            resource_type="submission",
+            resource_id=str(submission.id),
+            metadata={
+                "reason": payload.reason,
+                "field_count": len(clean_responses),
+                "client_submission_id": submission.client_submission_id,
+            },
+        )
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "submission.responses_edited",
+                "organization_id": str(organization_id),
+                "submission_id": str(submission.id),
+            },
+        )
+        return updated
 
     async def history(self, *, organization_id: UUID, submission_id: UUID) -> list[object]:
         return list(await self.submissions.history(organization_id=organization_id, submission_id=submission_id))
