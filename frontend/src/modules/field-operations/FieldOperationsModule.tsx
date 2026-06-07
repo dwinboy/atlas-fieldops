@@ -108,9 +108,9 @@ const defaultInviteDraft: FieldOfficerInvite = {
 };
 
 function generateTemporaryPassword(): string {
-  const words = ["Field", "Atlas", "Green", "Swift", "Clear", "Safe", "Smart", "True", "Link", "Peak"];
+  const words = ["Field", "Atlas", "Green", "Swift", "Clear", "Smart", "Signal", "Survey", "Active", "Verify"];
   const word = words[Math.floor(Math.random() * words.length)];
-  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  const digits = String(Math.floor(100000 + Math.random() * 900000));
   return `${word}${digits}!`;
 }
 
