@@ -539,7 +539,9 @@ class DataFormRead(BaseModel):
 class DataFormSchemaRead(BaseModel):
     form_id: UUID
     version: int
-    schema: dict[str, Any]
+    form_schema: dict[str, Any] = Field(alias="schema")
+
+    model_config = {"populate_by_name": True}
 
 
 class XlsFormSurveyRow(BaseModel):

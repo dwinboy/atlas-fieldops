@@ -19,6 +19,7 @@ from app.schemas.mobile import (
     MobileFormVersionRead,
     MobileLocationRead,
     MobileProjectRead,
+    MobileReferenceListRead,
     MobileSubmissionUpload,
     MobileSubmissionUploadRead,
     MobileSyncPackageRead,
