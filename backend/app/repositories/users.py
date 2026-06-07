@@ -20,7 +20,17 @@ class UserRepository:
             .join(Membership, Membership.user_id == User.id)
             .join(Organization, Organization.id == Membership.organization_id)
             .join(Role, Role.id == Membership.role_id)
-            .where(User.email == email, Organization.slug == organization_slug)
+            .where(
+                User.email == email,
+                Organization.slug == organization_slug,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                Organization.deleted_at.is_(None),
+                Organization.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                Membership.is_active.is_(True),
+                Role.deleted_at.is_(None),
+            )
         )
         result = await self.session.execute(statement)
         row = result.first()

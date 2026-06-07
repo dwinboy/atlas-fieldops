@@ -104,8 +104,15 @@ const defaultInviteDraft: FieldOfficerInvite = {
   email: "",
   full_name: "",
   home_region: "",
-  temporary_password: "ChangeMe12345!",
+  temporary_password: "",
 };
+
+function generateTemporaryPassword(): string {
+  const words = ["Field", "Atlas", "Green", "Swift", "Clear", "Safe", "Smart", "True", "Link", "Peak"];
+  const word = words[Math.floor(Math.random() * words.length)];
+  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  return `${word}${digits}!`;
+}
 
 const defaultWorkPlanDraft: Omit<WorkPlan, "id" | "progress" | "view"> = {
   assignedTeams: [],
@@ -269,6 +276,7 @@ export function FieldOperationsModule({
   const [officerPreviewRows, setOfficerPreviewRows] =
     useState<FieldOfficerRead[]>(() => (preview ? previewOfficers : []));
   const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [lastInviteCredentials, setLastInviteCredentials] = useState<{ email: string; password: string; organizationCode: string } | null>(null);
   const [assignmentDraft, setAssignmentDraft] = useState(
     defaultAssignmentDraft,
   );
@@ -446,15 +454,21 @@ export function FieldOperationsModule({
   }, [localAssignments, preview]);
 
   const inviteMutation = useMutation({
-    mutationFn: () => inviteFieldOfficer(token ?? "", inviteDraft),
-    onSuccess: async (officer) => {
+    mutationFn: (temporaryPassword: string) =>
+      inviteFieldOfficer(token ?? "", { ...inviteDraft, temporary_password: temporaryPassword }),
+    onSuccess: async (officer, temporaryPassword) => {
       setOfficerPreviewRows((current) => [officer, ...current]);
+      setLastInviteCredentials({
+        email: officer.email,
+        password: temporaryPassword,
+        organizationCode: principal?.organization_slug ?? "",
+      });
       setInviteDraft(defaultInviteDraft);
       setModalMode(null);
       await officersQuery.refetch();
       pushToast({
         title: "Field officer invited",
-        description: `${officer.full_name} can receive assignments and sync forms.`,
+        description: `Share the sign-in credentials with ${officer.full_name}.`,
         tone: "success",
       });
     },
@@ -1286,6 +1300,26 @@ export function FieldOperationsModule({
               type="file"
             />
           </div>
+          {lastInviteCredentials ? (
+            <div className="rounded-lg border border-success/30 bg-success/10 p-4" aria-live="polite">
+              <p className="text-sm font-semibold">Field officer invited — share these sign-in details</p>
+              <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-3 text-xs leading-6 text-foreground font-mono">
+{`Organization code: ${lastInviteCredentials.organizationCode}
+Email:             ${lastInviteCredentials.email}
+Password:          ${lastInviteCredentials.password}`}
+              </pre>
+              <p className="mt-2 text-xs text-muted-foreground">
+                The field officer enters these details in the Atlas FieldOps mobile app. Share them directly — this password cannot be retrieved again.
+              </p>
+              <button
+                className="mt-2 text-xs font-medium text-muted-foreground underline"
+                onClick={() => setLastInviteCredentials(null)}
+                type="button"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
           <DataTable
             columns={officerColumns}
             emptyLabel="No field officers yet. Invite one officer or import a CSV roster."
@@ -1751,7 +1785,7 @@ export function FieldOperationsModule({
               });
               return;
             }
-            inviteMutation.mutate();
+            inviteMutation.mutate(generateTemporaryPassword());
           }}
         >
           <label className="block text-sm font-medium">
