@@ -80,7 +80,20 @@ class ProjectsService:
             organization_id=organization_id,
             name=payload.name,
             slug=payload.project_code,
+            description=payload.description,
+            program_type=payload.program_type,
+            category=payload.category,
+            donor=payload.donor,
+            implementing_organization=payload.implementing_organization,
+            country=payload.country,
             region=payload.region or payload.country,
+            district=payload.district,
+            community=payload.community,
+            owner=payload.owner,
+            status=payload.status,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            settings_json=payload.settings_json,
             is_active=payload.status in {"approved", "active"},
         )
         self.session.add(project)
@@ -118,9 +131,34 @@ class ProjectsService:
             project.slug = payload.project_code
         if payload.name is not None:
             project.name = payload.name
+        if payload.description is not None:
+            project.description = payload.description
+        if payload.program_type is not None:
+            project.program_type = payload.program_type
+        if payload.category is not None:
+            project.category = payload.category
+        if payload.donor is not None:
+            project.donor = payload.donor
+        if payload.implementing_organization is not None:
+            project.implementing_organization = payload.implementing_organization
+        if payload.country is not None:
+            project.country = payload.country
         if payload.country is not None or payload.region is not None:
             project.region = payload.region or payload.country
+        if payload.district is not None:
+            project.district = payload.district
+        if payload.community is not None:
+            project.community = payload.community
+        if payload.owner is not None:
+            project.owner = payload.owner
+        if payload.start_date is not None:
+            project.start_date = payload.start_date
+        if payload.end_date is not None:
+            project.end_date = payload.end_date
+        if payload.settings_json is not None:
+            project.settings_json = payload.settings_json
         if payload.status is not None:
+            project.status = payload.status
             project.is_active = payload.status in {"approved", "active"}
         await self.audit.append(
             organization_id=organization_id,
@@ -192,7 +230,11 @@ class ProjectsService:
         audit_trail = await self.audit_trail(organization_id, project_id)
         return ProjectDetailRead(
             **item.model_dump(),
-            description=None,
+            description=project.description,
+            program_type=project.program_type,
+            category=project.category,
+            implementing_organization=project.implementing_organization,
+            settings_json=project.settings_json or {},
             forms=forms,
             indicators=indicators,
             locations=locations,
@@ -260,8 +302,13 @@ class ProjectsService:
             id=project.id,
             name=project.name,
             project_code=project.slug,
-            status="active" if project.is_active else "closed",
+            status=project.status or ("active" if project.is_active else "closed"),
+            donor=project.donor,
+            country=project.country,
             region=project.region,
+            owner=project.owner,
+            start_date=project.start_date,
+            end_date=project.end_date,
             active_forms=forms,
             active_assignments=assignments,
             total_submissions=submissions,

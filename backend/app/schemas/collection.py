@@ -418,6 +418,14 @@ class FormVersioningSettings(BaseModel):
     archived_versions_viewable: bool = True
 
 
+class FormCollectionAccessSettings(BaseModel):
+    selection_mode: str = Field(default="assigned_only", pattern=r"^(assigned_only|project_team|open_link)$")
+    field_officer_ids: list[UUID] = Field(default_factory=list, max_length=200)
+    assigned_at: datetime | None = None
+    assigned_by_user_id: UUID | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
 class FormEntityControlSettings(BaseModel):
     linked_to_entity: bool = False
     entity_type: str = Field(default="Farmer", max_length=80)
@@ -490,6 +498,7 @@ class FormControlsSettings(BaseModel):
         ],
         max_length=100,
     )
+    collection_access: FormCollectionAccessSettings = Field(default_factory=FormCollectionAccessSettings)
     entity_controls: FormEntityControlSettings = Field(default_factory=FormEntityControlSettings)
     governance: FormGovernancePolicy = Field(default_factory=FormGovernancePolicy)
     audit: FormAuditSettings = Field(default_factory=FormAuditSettings)

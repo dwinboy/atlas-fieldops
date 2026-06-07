@@ -76,6 +76,19 @@ export type FormField = {
     maxLength?: number;
     accuracyMax?: number;
     expression?: string;
+    minDate?: string;
+    maxDate?: string;
+    blockFutureDates?: boolean;
+    blockPastDates?: boolean;
+    integerOnly?: boolean;
+    uniqueResponse?: boolean;
+    duplicateCheck?: boolean;
+    allowDontKnow?: boolean;
+    allowRefused?: boolean;
+    customMessage?: string;
+    allowedFileTypes?: string;
+    maxFileSizeMb?: number;
+    maxAttachmentCount?: number;
   };
   logic?: LogicRule[];
   appearance?: {

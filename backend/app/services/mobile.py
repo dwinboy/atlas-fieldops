@@ -383,6 +383,31 @@ class MobileService:
         )
         return list(result.scalars())
 
+    async def _forms_for_officer_access(self, organization_id: UUID, officer_id: UUID) -> list[DataForm]:
+        result = await self.session.execute(
+            select(DataForm)
+            .where(
+                DataForm.organization_id == organization_id,
+                DataForm.deleted_at.is_(None),
+                DataForm.is_active.is_(True),
+                DataForm.status == "published",
+            )
+            .order_by(DataForm.name)
+        )
+        officer_key = str(officer_id)
+        forms: list[DataForm] = []
+        for form in result.scalars():
+            controls = form.controls_json or {}
+            collection_access = controls.get("collection_access")
+            if not isinstance(collection_access, dict):
+                continue
+            if collection_access.get("selection_mode") != "assigned_only":
+                continue
+            selected_officers = collection_access.get("field_officer_ids")
+            if isinstance(selected_officers, list) and officer_key in {str(item) for item in selected_officers}:
+                forms.append(form)
+        return forms
+
     async def _versions(self, organization_id: UUID, forms: list[DataForm]) -> list[DataFormVersion]:
         if not forms:
             return []
@@ -507,8 +532,11 @@ class MobileService:
             return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, []))
 
         assignments = await self._assignments(organization_id, officer.id)
+        controlled_forms = await self._forms_for_officer_access(organization_id, officer.id)
         project_ids = {assignment.project_id for assignment in assignments if assignment.is_active}
+        project_ids.update(form.project_id for form in controlled_forms if form.project_id is not None)
         assigned_form_ids = {assignment.form_id for assignment in assignments if assignment.is_active and assignment.form_id is not None}
+        assigned_form_ids.update(form.id for form in controlled_forms)
         legacy_project_form_ids = {
             assignment.project_id
             for assignment in assignments

@@ -37,10 +37,12 @@ import {
   createForm,
   createSurvey,
   getFormSchema,
+  listFieldOfficers,
   listProjects,
   listSurveys,
   updateForm,
   updateFormControls,
+  type FieldOfficerRead,
   type FormControlsSettings,
 } from "@/lib/api";
 import {
@@ -82,6 +84,7 @@ type FormControlsDraft = {
   allowAnonymous: boolean;
   allowManualCoordinates: boolean;
   assignmentMode: "assigned_only" | "project_team" | "open_link";
+  assignedFieldOfficerIds: string[];
   auditTrail: boolean;
   autoAssignmentRule: string;
   beneficiarySearch: "required" | "optional" | "disabled";
@@ -547,6 +550,7 @@ const defaultControlsDraft: FormControlsDraft = {
   allowAnonymous: false,
   allowManualCoordinates: false,
   assignmentMode: "assigned_only",
+  assignedFieldOfficerIds: [],
   auditTrail: true,
   autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
   beneficiarySearch: "optional",
@@ -627,6 +631,39 @@ const defaultControlsDraft: FormControlsDraft = {
   waveLabel: "",
   workflowPreset: "supervisor_review",
 };
+
+const previewFieldOfficers: FieldOfficerRead[] = [
+  {
+    device_id: null,
+    email: "amina.field@atlas-demo.org",
+    employee_code: "FO-001",
+    full_name: "Amina Field Officer",
+    home_region: "North West",
+    id: "preview-officer-amina",
+    is_active: true,
+    last_latitude: null,
+    last_longitude: null,
+    last_seen_at: null,
+    last_sync_at: null,
+    phone_number: "+237 677 000 001",
+    user_id: "preview-user-amina",
+  },
+  {
+    device_id: null,
+    email: "james.field@atlas-demo.org",
+    employee_code: "FO-002",
+    full_name: "James Field Officer",
+    home_region: "Central",
+    id: "preview-officer-james",
+    is_active: true,
+    last_latitude: null,
+    last_longitude: null,
+    last_seen_at: null,
+    last_sync_at: null,
+    phone_number: "+237 677 000 002",
+    user_id: "preview-user-james",
+  },
+];
 
 function variableNameFromLabel(label: string, fallback: string): string {
   return (
@@ -1093,6 +1130,20 @@ function controlsDraftToApiControls(
             changed_since_publish: true,
           }))
       : [],
+    collection_access: {
+      selection_mode: controls.assignmentMode,
+      field_officer_ids:
+        controls.assignmentMode === "assigned_only"
+          ? controls.assignedFieldOfficerIds
+          : [],
+      assigned_at: controls.assignedFieldOfficerIds.length
+        ? new Date().toISOString()
+        : null,
+      assigned_by_user_id: null,
+      notes: controls.assignedFieldOfficerIds.length
+        ? "Specific field officers selected in form controls."
+        : "No specific field officer selection saved.",
+    },
     entity_controls: {
       linked_to_entity: controls.requiresEntity || !controls.allowAnonymous,
       entity_type: controls.entityType,
@@ -1548,6 +1599,7 @@ function controlsDraftFromApiControls(
 
   const entity = asRecord(controls.entity_controls);
   const governance = asRecord(controls.governance);
+  const collectionAccess = asRecord(controls.collection_access);
   const instrument = asRecord(controls.instrument);
   const purpose = asRecord(instrument.purpose);
   const tracking = asRecord(instrument.tracking);
@@ -1609,12 +1661,20 @@ function controlsDraftFromApiControls(
       entity.allows_anonymous,
       defaultControlsDraft.allowAnonymous,
     ),
-    assignmentMode: booleanValue(
-      governance.require_enumerator_assignment,
-      defaultControlsDraft.assignmentMode === "assigned_only",
-    )
-      ? "assigned_only"
-      : "project_team",
+    assignmentMode:
+      stringValue(collectionAccess.selection_mode) === "open_link" ||
+      stringValue(collectionAccess.selection_mode) === "project_team" ||
+      stringValue(collectionAccess.selection_mode) === "assigned_only"
+        ? (stringValue(
+            collectionAccess.selection_mode,
+          ) as FormControlsDraft["assignmentMode"])
+        : booleanValue(
+              governance.require_enumerator_assignment,
+              defaultControlsDraft.assignmentMode === "assigned_only",
+            )
+          ? "assigned_only"
+          : "project_team",
+    assignedFieldOfficerIds: stringArrayValue(collectionAccess.field_officer_ids),
     auditTrail: booleanValue(controls.audit && asRecord(controls.audit).immutable, true),
     autoAssignmentRule: firstRuleText(instrument.auto_assignment_rules),
     beneficiarySearch: booleanValue(entity.prefill_profile, true)
@@ -2501,12 +2561,15 @@ export function validateFormForPublish(
     }),
     item({
       category: "Assignment rules",
-      complete: controls.assignmentMode === "assigned_only",
+      complete:
+        controls.assignmentMode === "assigned_only"
+          ? controls.assignedFieldOfficerIds.length > 0
+          : Boolean(controls.assignmentMode),
       description:
-        "Assigned users only is the recommended default before pushing forms to field officers.",
+        "Choose whether this form is restricted to selected field officers, the project team, or controlled web entry.",
       id: "assignment",
       jumpTo: "controls",
-      label: "Assignment rules configured",
+      label: "Field officer access configured",
       required: false,
       warning: true,
     }),
@@ -2665,8 +2728,20 @@ export function FormCreationWorkspace({
     queryFn: () => listSurveys(token ?? ""),
     queryKey: ["form-builder-surveys", token],
   });
+  const fieldOfficersQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listFieldOfficers(token ?? ""),
+    queryKey: ["form-builder-field-officers", token],
+  });
   const tenantProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const tenantSurveys = useMemo(() => surveysQuery.data ?? [], [surveysQuery.data]);
+  const fieldOfficerOptions = useMemo(
+    () =>
+      (preview ? previewFieldOfficers : fieldOfficersQuery.data ?? [])
+        .filter((officer) => officer.is_active)
+        .sort((first, second) => first.full_name.localeCompare(second.full_name)),
+    [fieldOfficersQuery.data, preview],
+  );
   const formSchemaQuery = useQuery({
     enabled: Boolean(initialForm && token && !preview),
     queryFn: () => getFormSchema(token ?? "", initialForm?.id ?? ""),
@@ -2831,6 +2906,37 @@ export function FormCreationWorkspace({
 
   function updateControlsDraft(patch: Partial<FormControlsDraft>): void {
     setControlsDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function toggleAssignedFieldOfficer(officerId: string): void {
+    setControlsDraft((current) => {
+      const selected = new Set(current.assignedFieldOfficerIds);
+      if (selected.has(officerId)) {
+        selected.delete(officerId);
+      } else {
+        selected.add(officerId);
+      }
+      return {
+        ...current,
+        assignmentMode: "assigned_only",
+        assignedFieldOfficerIds: Array.from(selected),
+      };
+    });
+  }
+
+  function selectAllFieldOfficers(): void {
+    setControlsDraft((current) => ({
+      ...current,
+      assignmentMode: "assigned_only",
+      assignedFieldOfficerIds: fieldOfficerOptions.map((officer) => officer.id),
+    }));
+  }
+
+  function clearAssignedFieldOfficers(): void {
+    setControlsDraft((current) => ({
+      ...current,
+      assignedFieldOfficerIds: [],
+    }));
   }
 
   function openLifecycleStep(stepId: (typeof lifecycleSteps)[number]["id"]): void {
@@ -4567,6 +4673,10 @@ export function FormCreationWorkspace({
                     onChange={(event) =>
                       updateControlsDraft({
                         assignmentMode: event.target.value as FormControlsDraft["assignmentMode"],
+                        assignedFieldOfficerIds:
+                          event.target.value === "assigned_only"
+                            ? controlsDraft.assignedFieldOfficerIds
+                            : [],
                       })
                     }
                     value={controlsDraft.assignmentMode}
@@ -4576,6 +4686,82 @@ export function FormCreationWorkspace({
                     <option value="open_link">Open link for controlled web entry</option>
                   </Select>
                 </label>
+                {controlsDraft.assignmentMode === "assigned_only" ? (
+                  <div className="sm:col-span-2 rounded-lg border bg-background p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Field officers who can see this form
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          Only selected field officers will be prepared to
+                          collect this form through field assignments and
+                          mobile sync.
+                        </p>
+                      </div>
+                      <Badge tone={controlsDraft.assignedFieldOfficerIds.length ? "success" : "warning"}>
+                        {controlsDraft.assignedFieldOfficerIds.length} selected
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        disabled={!fieldOfficerOptions.length}
+                        onClick={selectAllFieldOfficers}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        Select all
+                      </Button>
+                      <Button
+                        disabled={!controlsDraft.assignedFieldOfficerIds.length}
+                        onClick={clearAssignedFieldOfficers}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                    <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1 product-scrollbar">
+                      {fieldOfficersQuery.isLoading && !preview ? (
+                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                          Loading field officers...
+                        </div>
+                      ) : fieldOfficerOptions.length ? (
+                        fieldOfficerOptions.map((officer) => (
+                          <label
+                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-panel px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
+                            key={officer.id}
+                          >
+                            <input
+                              checked={controlsDraft.assignedFieldOfficerIds.includes(officer.id)}
+                              className="mt-1 h-4 w-4"
+                              onChange={() => toggleAssignedFieldOfficer(officer.id)}
+                              type="checkbox"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold">
+                                {officer.full_name}
+                              </span>
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {[officer.employee_code, officer.email, officer.home_region]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                          No active field officers found. Create field officer
+                          users in Users & Teams or Field Operations before
+                          assigning this form.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </section>
 

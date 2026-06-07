@@ -84,6 +84,7 @@ export function Select({
   const rootRef = useRef<HTMLDivElement>(null);
   const options = useMemo(() => extractOptions(children), [children]);
   const [open, setOpen] = useState(false);
+  const [highlightedValue, setHighlightedValue] = useState("");
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [internalValue, setInternalValue] = useState(
     defaultValue ?? options.find((option) => option.value)?.value ?? "",
@@ -93,6 +94,17 @@ export function Select({
     options.find((option) => option.value === selectedValue) ??
     options.find((option) => !option.disabled) ??
     options[0];
+  const enabledOptions = useMemo(
+    () => options.filter((option) => !option.disabled),
+    [options],
+  );
+  const highlighted =
+    enabledOptions.find((option) => option.value === highlightedValue) ??
+    selected;
+  const highlightedIndex = Math.max(
+    0,
+    enabledOptions.findIndex((option) => option.value === highlighted?.value),
+  );
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
@@ -106,6 +118,7 @@ export function Select({
 
   useEffect(() => {
     if (!open) return;
+    setHighlightedValue(selected?.value ?? enabledOptions[0]?.value ?? "");
 
     function updateMenuPosition(): void {
       const rect = rootRef.current?.getBoundingClientRect();
@@ -114,10 +127,8 @@ export function Select({
       const spaceBelow = window.innerHeight - rect.bottom - viewportGap;
       const spaceAbove = rect.top - viewportGap;
       const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-      const maxHeight = Math.max(
-        160,
-        Math.min(288, openUp ? spaceAbove - 8 : spaceBelow - 8),
-      );
+      const availableSpace = Math.max(96, openUp ? spaceAbove - 8 : spaceBelow - 8);
+      const maxHeight = Math.min(288, availableSpace);
       setMenuStyle({
         left: rect.left,
         maxHeight,
@@ -137,7 +148,7 @@ export function Select({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [enabledOptions, open, selected?.value]);
 
   useEffect(() => {
     if (selectedValue || !options.length) return;
@@ -154,11 +165,22 @@ export function Select({
     setOpen(false);
   }
 
+  function moveHighlight(direction: 1 | -1): void {
+    if (!enabledOptions.length) return;
+    const next =
+      enabledOptions[
+        (highlightedIndex + direction + enabledOptions.length) %
+          enabledOptions.length
+      ];
+    if (next) setHighlightedValue(next.value);
+  }
+
   return (
     <div className={cn("relative", className)} ref={rootRef}>
       <button
         aria-controls={menuId}
         aria-expanded={open}
+        aria-haspopup="listbox"
         className={cn(
           inputClass,
           "flex items-center justify-between gap-2 text-left",
@@ -168,12 +190,29 @@ export function Select({
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === "Escape") setOpen(false);
-          if (
-            event.key === "ArrowDown" ||
-            event.key === "Enter" ||
-            event.key === " "
-          ) {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
+            if (!enabledOptions.length) return;
+            if (!open) {
+              setOpen(true);
+              return;
+            }
+            moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+          }
+          if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            const next =
+              event.key === "Home"
+                ? enabledOptions[0]
+                : enabledOptions[enabledOptions.length - 1];
+            if (next) setHighlightedValue(next.value);
+          }
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (open && highlighted) {
+              choose(highlighted);
+              return;
+            }
             setOpen(true);
           }
         }}
@@ -198,18 +237,20 @@ export function Select({
       </button>
       {open ? (
         <div
-          className="overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated product-scrollbar"
+          className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
           id={menuId}
           role="listbox"
           style={menuStyle}
         >
           {options.map((option) => {
             const active = option.value === selectedValue;
+            const highlighted = option.value === highlightedValue;
             return (
               <button
                 aria-selected={active}
                 className={cn(
                   "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition hover:bg-muted",
+                  highlighted && !active && "bg-muted/80",
                   active && "bg-primary/10 text-primary",
                   option.disabled && "cursor-not-allowed opacity-45",
                 )}

@@ -1102,6 +1102,9 @@ export type ProjectCreate = {
   district?: string | null;
   community?: string | null;
   owner?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  settings_json?: Record<string, unknown>;
   status?: string;
 };
 
@@ -1170,6 +1173,7 @@ export type ProjectDetailRead = ProjectListItemRead & {
   program_type?: string | null;
   category?: string | null;
   implementing_organization?: string | null;
+  settings_json?: Record<string, unknown>;
   forms: ProjectRelatedRecordRead[];
   indicators: ProjectRelatedRecordRead[];
   locations: ProjectRelatedRecordRead[];
@@ -1645,6 +1649,14 @@ export type FormGovernancePolicy = {
   auto_archive_after_project_closure: boolean;
 };
 
+export type FormCollectionAccessSettings = {
+  selection_mode: "assigned_only" | "project_team" | "open_link";
+  field_officer_ids: string[];
+  assigned_at?: string | null;
+  assigned_by_user_id?: string | null;
+  notes?: string | null;
+};
+
 export type FormAuditSettings = {
   immutable: boolean;
   reason_required_events: string[];
@@ -1712,6 +1724,7 @@ export type FormControlsSettings = {
   permission_rules: FormPermissionRule[];
   workflow_stages: FormWorkflowStage[];
   data_quality_rules: FormDataQualityRule[];
+  collection_access?: FormCollectionAccessSettings;
   entity_controls?: FormEntityControlSettings;
   governance: FormGovernancePolicy;
   audit: FormAuditSettings;

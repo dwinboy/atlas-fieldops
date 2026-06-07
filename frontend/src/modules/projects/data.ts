@@ -14,7 +14,6 @@ export type ProjectSection = (typeof projectSections)[number]["id"];
 export const projectTabs = [
   "Overview",
   "Beneficiaries",
-  "Data Import",
   "Forms",
   "Indicators",
   "Locations",
@@ -22,6 +21,9 @@ export const projectTabs = [
   "Assignments",
   "Submissions",
   "Reports",
+  "Data Quality",
+  "Governance",
+  "Data Import",
   "Settings",
   "Audit Trail",
 ] as const;

@@ -802,6 +802,17 @@ function variableNameFromQuestion(
   question: string,
   existingNames: string[],
 ): string {
+  const base = variableBaseFromQuestion(question);
+  let candidate = base;
+  let suffix = 2;
+  while (existingNames.includes(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function variableBaseFromQuestion(question: string): string {
   const stopWords = new Set([
     "a",
     "an",
@@ -831,21 +842,15 @@ function variableNameFromQuestion(
     "with",
     "your",
   ]);
-  const base =
+  return (
     question
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
       .filter((word) => word && !stopWords.has(word))
       .slice(0, 5)
-      .join("_") || `question_${Date.now().toString(36)}`;
-  let candidate = base;
-  let suffix = 2;
-  while (existingNames.includes(candidate)) {
-    candidate = `${base}_${suffix}`;
-    suffix += 1;
-  }
-  return candidate;
+      .join("_") || `question_${Date.now().toString(36)}`
+  );
 }
 
 function labelPatchWithAutoVariable(
@@ -858,6 +863,7 @@ function labelPatchWithAutoVariable(
     field.label,
     existingNames,
   );
+  const previousBaseVariable = variableBaseFromQuestion(field.label);
   const idAutoVariable = field.id
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
@@ -866,7 +872,9 @@ function labelPatchWithAutoVariable(
     !currentVariable ||
     currentVariable === field.id ||
     currentVariable === idAutoVariable ||
-    currentVariable === previousAutoVariable;
+    currentVariable === previousAutoVariable ||
+    currentVariable === previousBaseVariable ||
+    currentVariable.startsWith(`${previousBaseVariable}_`);
   return {
     label: nextLabel,
     ...(shouldRegenerate
@@ -2239,6 +2247,13 @@ function FieldPropertiesPanel({
 
   const updateSelectedField = (patch: Partial<FormField>) =>
     onUpdateForm(updateField(form, field.id, patch));
+  const updateValidation = (patch: Partial<NonNullable<FormField["validation"]>>) =>
+    updateSelectedField({
+      validation: {
+        ...field.validation,
+        ...patch,
+      },
+    });
   const siblingVariableNames = form.fields
     .filter((candidate) => candidate.id !== field.id)
     .map((candidate) => candidate.variableName)
@@ -2538,6 +2553,63 @@ function FieldPropertiesPanel({
               />
             </label>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium">
+              Earliest date
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateValidation({
+                    minDate: event.target.value || undefined,
+                  })
+                }
+                type="date"
+                value={field.validation?.minDate ?? ""}
+              />
+            </label>
+            <label className="text-sm font-medium">
+              Latest date
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateValidation({
+                    maxDate: event.target.value || undefined,
+                  })
+                }
+                type="date"
+                value={field.validation?.maxDate ?? ""}
+              />
+            </label>
+          </div>
+          <div className="grid gap-2 rounded-md border bg-background p-3 text-sm">
+            {[
+              ["integerOnly", "Only whole numbers"],
+              ["blockFutureDates", "Block future dates"],
+              ["blockPastDates", "Block past dates"],
+              ["uniqueResponse", "Require a unique answer in this form"],
+              ["duplicateCheck", "Check this answer for duplicates"],
+              ["allowDontKnow", "Allow “Don’t know” as a valid response"],
+              ["allowRefused", "Allow “Refused” as a valid response"],
+            ].map(([key, label]) => (
+              <label className="flex items-center gap-2 font-medium" key={key}>
+                <input
+                  checked={Boolean(
+                    field.validation?.[
+                      key as keyof NonNullable<FormField["validation"]>
+                    ],
+                  )}
+                  className="h-4 w-4"
+                  onChange={(event) =>
+                    updateValidation({
+                      [key]: event.target.checked || undefined,
+                    } as Partial<NonNullable<FormField["validation"]>>)
+                  }
+                  type="checkbox"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
           <label className="block text-sm font-medium">
             Regex pattern
             <Input
@@ -2554,6 +2626,88 @@ function FieldPropertiesPanel({
               value={field.validation?.pattern ?? ""}
             />
           </label>
+          <label className="block text-sm font-medium">
+            Custom validation message
+            <Input
+              className="mt-2"
+              onChange={(event) =>
+                updateValidation({
+                  customMessage: event.target.value || undefined,
+                })
+              }
+              placeholder="Explain the correction in plain language"
+              value={field.validation?.customMessage ?? ""}
+            />
+          </label>
+          {["gps", "geolocation", "map", "geofence"].includes(field.type) ? (
+            <label className="block text-sm font-medium">
+              Maximum GPS accuracy in meters
+              <Input
+                className="mt-2"
+                onChange={(event) =>
+                  updateValidation({
+                    accuracyMax:
+                      event.target.value === ""
+                        ? undefined
+                        : Number(event.target.value),
+                  })
+                }
+                type="number"
+                value={field.validation?.accuracyMax ?? ""}
+              />
+            </label>
+          ) : null}
+          {["photo", "image", "signature", "audio", "video", "file"].includes(
+            field.type,
+          ) ? (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm font-medium">
+                Max file size MB
+                <Input
+                  className="mt-2"
+                  onChange={(event) =>
+                    updateValidation({
+                      maxFileSizeMb:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    })
+                  }
+                  type="number"
+                  value={field.validation?.maxFileSizeMb ?? ""}
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Max attachments
+                <Input
+                  className="mt-2"
+                  onChange={(event) =>
+                    updateValidation({
+                      maxAttachmentCount:
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value),
+                    })
+                  }
+                  type="number"
+                  value={field.validation?.maxAttachmentCount ?? ""}
+                />
+              </label>
+              <label className="block text-sm font-medium sm:col-span-2">
+                Allowed file types
+                <Input
+                  className="mt-2"
+                  onChange={(event) =>
+                    updateValidation({
+                      allowedFileTypes: event.target.value || undefined,
+                    })
+                  }
+                  placeholder="jpg,png,pdf"
+                  value={field.validation?.allowedFileTypes ?? ""}
+                />
+              </label>
+            </div>
+          ) : null}
           <label className="block text-sm font-medium">
             Cross-field validation
             <Input
@@ -4578,6 +4732,22 @@ export function DynamicForms({
     ) {
       setFieldSettingsDialogOpen(true);
     }
+  }
+
+  function updateSelectedFieldValidation(
+    patch: Partial<NonNullable<FormField["validation"]>>,
+  ) {
+    if (!selectedForm || !selectedField) {
+      return;
+    }
+    updateSelectedForm(
+      updateField(selectedForm, selectedField.id, {
+        validation: {
+          ...selectedField.validation,
+          ...patch,
+        },
+      }),
+    );
   }
 
   function fieldFromPreset(
@@ -10986,6 +11156,38 @@ export function DynamicForms({
                                     }
                                   />
                                 </label>
+                                <label className="text-sm font-semibold">
+                                  Earliest date
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedFieldValidation({
+                                        minDate:
+                                          event.target.value || undefined,
+                                      })
+                                    }
+                                    type="date"
+                                    value={
+                                      selectedField.validation?.minDate ?? ""
+                                    }
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Latest date
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedFieldValidation({
+                                        maxDate:
+                                          event.target.value || undefined,
+                                      })
+                                    }
+                                    type="date"
+                                    value={
+                                      selectedField.validation?.maxDate ?? ""
+                                    }
+                                  />
+                                </label>
                               </div>
                               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                 <label className="text-sm font-semibold">
@@ -11036,6 +11238,69 @@ export function DynamicForms({
                                     }
                                   />
                                 </label>
+                                <label className="text-sm font-semibold">
+                                  Custom validation message
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedFieldValidation({
+                                        customMessage:
+                                          event.target.value || undefined,
+                                      })
+                                    }
+                                    placeholder="Explain the correction in plain language"
+                                    value={
+                                      selectedField.validation
+                                        ?.customMessage ?? ""
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <div className="mt-3 grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-2">
+                                {[
+                                  ["integerOnly", "Whole number only"],
+                                  ["blockFutureDates", "Block future dates"],
+                                  ["blockPastDates", "Block past dates"],
+                                  [
+                                    "uniqueResponse",
+                                    "Require a unique answer",
+                                  ],
+                                  [
+                                    "duplicateCheck",
+                                    "Check this answer for duplicates",
+                                  ],
+                                  [
+                                    "allowDontKnow",
+                                    "Allow “Don’t know”",
+                                  ],
+                                  ["allowRefused", "Allow “Refused”"],
+                                ].map(([key, label]) => (
+                                  <label
+                                    className="flex items-center gap-2 text-sm font-semibold"
+                                    key={key}
+                                  >
+                                    <input
+                                      checked={Boolean(
+                                        selectedField.validation?.[
+                                          key as keyof NonNullable<
+                                            FormField["validation"]
+                                          >
+                                        ],
+                                      )}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          [key]:
+                                            event.target.checked || undefined,
+                                        } as Partial<
+                                          NonNullable<FormField["validation"]>
+                                        >)
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
                               </div>
                               <div className="mt-4 rounded-md border bg-background p-3">
                                 <div className="flex items-center justify-between gap-2">
@@ -11094,6 +11359,7 @@ export function DynamicForms({
                                     {
                                       label: "No future date",
                                       patch: {
+                                        blockFutureDates: true,
                                         expression: ". <= today()",
                                       },
                                     },
@@ -11206,7 +11472,13 @@ export function DynamicForms({
                                                     event.target.checked,
                                                   ),
                                                 validation:
-                                                  tag === "no-negative" &&
+                                                  tag === "integer-only" &&
+                                                  event.target.checked
+                                                    ? {
+                                                        ...selectedField.validation,
+                                                        integerOnly: true,
+                                                      }
+                                                    : tag === "no-negative" &&
                                                   event.target.checked
                                                     ? {
                                                         ...selectedField.validation,
@@ -11222,6 +11494,72 @@ export function DynamicForms({
                                       {label}
                                     </label>
                                   ))}
+                                </div>
+                              ) : null}
+                              {[
+                                "photo",
+                                "image",
+                                "signature",
+                                "audio",
+                                "video",
+                                "file",
+                              ].includes(selectedField.type) ? (
+                                <div className="mt-4 grid gap-3 rounded-md border bg-background p-3 sm:grid-cols-3">
+                                  <label className="text-sm font-semibold">
+                                    Max file size MB
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          maxFileSizeMb:
+                                            event.target.value === ""
+                                              ? undefined
+                                              : Number(event.target.value),
+                                        })
+                                      }
+                                      type="number"
+                                      value={
+                                        selectedField.validation
+                                          ?.maxFileSizeMb ?? ""
+                                      }
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Max attachments
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          maxAttachmentCount:
+                                            event.target.value === ""
+                                              ? undefined
+                                              : Number(event.target.value),
+                                        })
+                                      }
+                                      type="number"
+                                      value={
+                                        selectedField.validation
+                                          ?.maxAttachmentCount ?? ""
+                                      }
+                                    />
+                                  </label>
+                                  <label className="text-sm font-semibold">
+                                    Allowed file types
+                                    <Input
+                                      className="mt-2"
+                                      onChange={(event) =>
+                                        updateSelectedFieldValidation({
+                                          allowedFileTypes:
+                                            event.target.value || undefined,
+                                        })
+                                      }
+                                      placeholder="jpg,png,pdf"
+                                      value={
+                                        selectedField.validation
+                                          ?.allowedFileTypes ?? ""
+                                      }
+                                    />
+                                  </label>
                                 </div>
                               ) : null}
                             </section>
@@ -12512,6 +12850,109 @@ export function DynamicForms({
                             }
                           />
                         </label>
+                        <label className="text-sm font-medium">
+                          Min length
+                          <Input
+                            className="mt-2"
+                            type="number"
+                            value={selectedField.validation?.minLength ?? ""}
+                            onChange={(event) =>
+                              updateSelectedFieldValidation({
+                                minLength:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Number(event.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="text-sm font-medium">
+                          Max length
+                          <Input
+                            className="mt-2"
+                            type="number"
+                            value={selectedField.validation?.maxLength ?? ""}
+                            onChange={(event) =>
+                              updateSelectedFieldValidation({
+                                maxLength:
+                                  event.target.value === ""
+                                    ? undefined
+                                    : Number(event.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="text-sm font-medium">
+                          Earliest date
+                          <Input
+                            className="mt-2"
+                            type="date"
+                            value={selectedField.validation?.minDate ?? ""}
+                            onChange={(event) =>
+                              updateSelectedFieldValidation({
+                                minDate: event.target.value || undefined,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="text-sm font-medium">
+                          Latest date
+                          <Input
+                            className="mt-2"
+                            type="date"
+                            value={selectedField.validation?.maxDate ?? ""}
+                            onChange={(event) =>
+                              updateSelectedFieldValidation({
+                                maxDate: event.target.value || undefined,
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="grid gap-2 rounded-md border bg-background p-3 text-sm">
+                        {[
+                          ["integerOnly", "Only whole numbers"],
+                          ["blockFutureDates", "Block future dates"],
+                          ["blockPastDates", "Block past dates"],
+                          [
+                            "uniqueResponse",
+                            "Require a unique answer in this form",
+                          ],
+                          ["duplicateCheck", "Check this answer for duplicates"],
+                          [
+                            "allowDontKnow",
+                            "Allow “Don’t know” as a valid response",
+                          ],
+                          [
+                            "allowRefused",
+                            "Allow “Refused” as a valid response",
+                          ],
+                        ].map(([key, label]) => (
+                          <label
+                            className="flex items-center gap-2 font-medium"
+                            key={key}
+                          >
+                            <input
+                              checked={Boolean(
+                                selectedField.validation?.[
+                                  key as keyof NonNullable<
+                                    FormField["validation"]
+                                  >
+                                ],
+                              )}
+                              className="h-4 w-4"
+                              onChange={(event) =>
+                                updateSelectedFieldValidation({
+                                  [key]: event.target.checked || undefined,
+                                } as Partial<
+                                  NonNullable<FormField["validation"]>
+                                >)
+                              }
+                              type="checkbox"
+                            />
+                            {label}
+                          </label>
+                        ))}
                       </div>
                       <label className="block text-sm font-medium">
                         Regex or format rule
@@ -12529,6 +12970,20 @@ export function DynamicForms({
                             )
                           }
                           placeholder="Example: ^[A-Z0-9-]+$"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Custom validation message
+                        <Input
+                          className="mt-2"
+                          value={selectedField.validation?.customMessage ?? ""}
+                          onChange={(event) =>
+                            updateSelectedFieldValidation({
+                              customMessage:
+                                event.target.value || undefined,
+                            })
+                          }
+                          placeholder="Explain the correction in plain language"
                         />
                       </label>
                       <label className="block text-sm font-medium">
@@ -12573,6 +13028,70 @@ export function DynamicForms({
                             }
                           />
                         </label>
+                      ) : null}
+                      {[
+                        "photo",
+                        "image",
+                        "signature",
+                        "audio",
+                        "video",
+                        "file",
+                      ].includes(selectedField.type) ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="text-sm font-medium">
+                            Max file size MB
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              value={
+                                selectedField.validation?.maxFileSizeMb ?? ""
+                              }
+                              onChange={(event) =>
+                                updateSelectedFieldValidation({
+                                  maxFileSizeMb:
+                                    event.target.value === ""
+                                      ? undefined
+                                      : Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Max attachments
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              value={
+                                selectedField.validation?.maxAttachmentCount ??
+                                ""
+                              }
+                              onChange={(event) =>
+                                updateSelectedFieldValidation({
+                                  maxAttachmentCount:
+                                    event.target.value === ""
+                                      ? undefined
+                                      : Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="block text-sm font-medium sm:col-span-2">
+                            Allowed file types
+                            <Input
+                              className="mt-2"
+                              value={
+                                selectedField.validation?.allowedFileTypes ?? ""
+                              }
+                              onChange={(event) =>
+                                updateSelectedFieldValidation({
+                                  allowedFileTypes:
+                                    event.target.value || undefined,
+                                })
+                              }
+                              placeholder="jpg,png,pdf"
+                            />
+                          </label>
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

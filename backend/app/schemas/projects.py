@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -17,6 +18,9 @@ class ProjectCreate(BaseModel):
     district: str | None = Field(default=None, max_length=160)
     community: str | None = Field(default=None, max_length=180)
     owner: str | None = Field(default=None, max_length=200)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    settings_json: dict[str, Any] = Field(default_factory=dict)
     status: str = Field(default="draft", pattern=r"^(draft|planning|approved|active|suspended|completed|closed|archived)$")
 
     @field_validator("project_code")
@@ -36,6 +40,11 @@ class ProjectUpdate(BaseModel):
     district: str | None = Field(default=None, max_length=160)
     community: str | None = Field(default=None, max_length=180)
     owner: str | None = Field(default=None, max_length=200)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    program_type: str | None = Field(default=None, max_length=120)
+    category: str | None = Field(default=None, max_length=120)
+    settings_json: dict[str, Any] | None = None
     status: str | None = Field(default=None, pattern=r"^(draft|planning|approved|active|suspended|completed|closed|archived)$")
 
     @field_validator("project_code")
@@ -109,6 +118,7 @@ class ProjectDetailRead(ProjectListItemRead):
     program_type: str | None = None
     category: str | None = None
     implementing_organization: str | None = None
+    settings_json: dict[str, Any] = Field(default_factory=dict)
     forms: list[ProjectRelatedRecordRead] = Field(default_factory=list)
     indicators: list[ProjectRelatedRecordRead] = Field(default_factory=list)
     locations: list[ProjectRelatedRecordRead] = Field(default_factory=list)

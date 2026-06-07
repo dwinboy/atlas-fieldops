@@ -17,6 +17,7 @@ import {
   Plus,
   ShieldCheck,
   Target,
+  UploadCloud,
   UsersRound,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -79,12 +80,57 @@ const defaultProjectDraft: ProjectCreate = {
   description: "",
   district: "",
   donor: "",
+  end_date: null,
   implementing_organization: "",
   name: "",
   owner: "",
   program_type: "",
   project_code: "",
   region: "",
+  settings_json: {
+    automationRules: [],
+    beneficiary: {
+      codeFormat: "BEN-YYYY-000001",
+      duplicateFields: ["Phone", "National ID", "Household ID", "Name + Village", "GPS"],
+      primaryEntityType: "Beneficiary",
+      profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+      secondaryEntityTypes: [],
+    },
+    formJourney: [
+      "Registration required before baseline",
+      "Baseline required before monitoring",
+      "Monitoring required before endline",
+    ],
+    governance: {
+      approvalWorkflow: "Submitted → Under Review → Approved",
+      approvedDataOnly: true,
+      consentPolicy: "Consent required where forms collect PII",
+      exportRule: "Exports require permission and audit logging",
+      retentionRule: "Retain project data according to organization policy",
+      sensitiveDataControls: "Mask sensitive beneficiary fields for viewer roles",
+    },
+    indicators: {
+      baselineRequired: false,
+      disaggregation: ["Sex", "Age", "Location", "Disability status"],
+      frequency: "Monthly",
+      setupMode: "Configure later",
+    },
+    program: {
+      expectedOutcomes: "",
+      expectedOutputs: "",
+      fundingSource: "",
+      objective: "",
+      resultAreas: "",
+    },
+    team: {
+      dataManager: "",
+      fieldOfficers: "",
+      meManager: "",
+      projectManager: "",
+      supervisors: "",
+    },
+  },
+  start_date: null,
   status: "draft",
 };
 
@@ -105,14 +151,79 @@ const countryOptions = [
   "Zimbabwe",
 ];
 
+const projectTypeOptions = [
+  "Monitoring",
+  "Evaluation",
+  "Research",
+  "Registration",
+  "Humanitarian",
+  "Agriculture",
+  "Health",
+  "Education",
+  "Livelihood",
+  "Protection",
+  "WASH",
+  "Custom",
+];
+
+const projectStatusOptions = [
+  "draft",
+  "planning",
+  "active",
+  "suspended",
+  "completed",
+  "archived",
+];
+
+const projectEntityTypeOptions = [
+  "Farmer",
+  "Household",
+  "Beneficiary",
+  "School",
+  "Facility",
+  "Village",
+  "Group",
+  "Health Worker",
+  "Custom Entity",
+];
+
+const duplicateFieldOptions = [
+  "Phone",
+  "National ID",
+  "Household ID",
+  "Name + Village",
+  "Name + Date of Birth",
+  "GPS",
+];
+
+const submissionSourceOptions = [
+  "Field Submitted",
+  "Mobile",
+  "Web Entry",
+  "Uploaded",
+  "Imported",
+];
+
+const projectFrequencyOptions = [
+  "Monthly",
+  "Quarterly",
+  "Semi-annual",
+  "Annual",
+  "Seasonal",
+  "Event-based",
+];
+
 const wizardSteps = [
   "Basic Information",
-  "Locations",
-  "Project Structure",
+  "Program Setup",
+  "Geographic Scope",
+  "Beneficiaries",
   "Indicators",
-  "Forms",
+  "Forms Setup",
+  "Team Setup",
   "Governance",
-  "Review & Activate",
+  "Review",
+  "Activate",
 ] as const;
 
 function isPreview(token: string | null): boolean {
@@ -148,6 +259,221 @@ function normalizeProjectPayload(draft: ProjectCreate): ProjectCreate {
   };
 }
 
+type ProjectSettingsSection = Record<string, unknown>;
+type ReadinessCheck = {
+  label: string;
+  status: "passed" | "warning" | "failed";
+  critical?: boolean;
+  targetStep: number;
+};
+
+function sectionSettings(
+  draft: Pick<ProjectCreate, "settings_json">,
+  section: string,
+): ProjectSettingsSection {
+  const root = draft.settings_json ?? {};
+  const value = root[section];
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as ProjectSettingsSection)
+    : {};
+}
+
+function settingText(
+  draft: Pick<ProjectCreate, "settings_json">,
+  section: string,
+  key: string,
+  fallback = "",
+): string {
+  const value = sectionSettings(draft, section)[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function settingBoolean(
+  draft: Pick<ProjectCreate, "settings_json">,
+  section: string,
+  key: string,
+  fallback = false,
+): boolean {
+  const value = sectionSettings(draft, section)[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function settingStringList(
+  draft: Pick<ProjectCreate, "settings_json">,
+  section: string,
+  key: string,
+): string[] {
+  const value = sectionSettings(draft, section)[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function mergeProjectSettings(
+  draft: ProjectCreate,
+  section: string,
+  patch: ProjectSettingsSection,
+): ProjectCreate {
+  return {
+    ...draft,
+    settings_json: {
+      ...(draft.settings_json ?? {}),
+      [section]: {
+        ...sectionSettings(draft, section),
+        ...patch,
+      },
+    },
+  };
+}
+
+function dateInputValue(value?: string | null): string {
+  return value ? value.slice(0, 10) : "";
+}
+
+function projectReadiness(draft: ProjectCreate): {
+  checks: ReadinessCheck[];
+  score: number;
+  failedCritical: number;
+  category: "Ready" | "Needs Review" | "Not Ready";
+} {
+  const beneficiary = sectionSettings(draft, "beneficiary");
+  const governance = sectionSettings(draft, "governance");
+  const program = sectionSettings(draft, "program");
+  const forms = sectionSettings(draft, "forms");
+  const team = sectionSettings(draft, "team");
+  const checks: ReadinessCheck[] = [
+    {
+      critical: true,
+      label: "Project name is set",
+      status: draft.name.trim() ? "passed" : "failed",
+      targetStep: 0,
+    },
+    {
+      critical: true,
+      label: "Project code is set",
+      status:
+        draft.project_code || projectCodeFromName(draft.name)
+          ? "passed"
+          : "failed",
+      targetStep: 0,
+    },
+    {
+      critical: true,
+      label: "Project type is selected",
+      status: draft.program_type ? "passed" : "failed",
+      targetStep: 0,
+    },
+    {
+      label: "Project dates are defined",
+      status: draft.start_date && draft.end_date ? "passed" : "warning",
+      targetStep: 0,
+    },
+    {
+      label: "Program objective is documented",
+      status: typeof program.objective === "string" && program.objective.trim()
+        ? "passed"
+        : "warning",
+      targetStep: 1,
+    },
+    {
+      critical: true,
+      label: "Geographic scope is selected",
+      status: draft.country || draft.region || draft.district || draft.community
+        ? "passed"
+        : "failed",
+      targetStep: 2,
+    },
+    {
+      critical: true,
+      label: "Primary beneficiary/entity type is selected",
+      status:
+        typeof beneficiary.primaryEntityType === "string" &&
+        beneficiary.primaryEntityType.trim()
+          ? "passed"
+          : "failed",
+      targetStep: 3,
+    },
+    {
+      label: "Beneficiary code format is configured",
+      status:
+        typeof beneficiary.codeFormat === "string" &&
+        beneficiary.codeFormat.trim()
+          ? "passed"
+          : "warning",
+      targetStep: 3,
+    },
+    {
+      label: "Duplicate matching rules are configured",
+      status:
+        Array.isArray(beneficiary.duplicateFields) &&
+        beneficiary.duplicateFields.length
+          ? "passed"
+          : "warning",
+      targetStep: 3,
+    },
+    {
+      label: "Indicator setup plan is defined",
+      status: sectionSettings(draft, "indicators").setupMode
+        ? "passed"
+        : "warning",
+      targetStep: 4,
+    },
+    {
+      label: "Form starter or journey plan is defined",
+      status: forms.starterPack || forms.journey
+        ? "passed"
+        : "warning",
+      targetStep: 5,
+    },
+    {
+      critical: true,
+      label: "Project owner or manager is assigned",
+      status:
+        draft.owner ||
+        (typeof team.projectManager === "string" && team.projectManager.trim())
+          ? "passed"
+          : "failed",
+      targetStep: 6,
+    },
+    {
+      critical: true,
+      label: "Approval workflow is configured",
+      status:
+        typeof governance.approvalWorkflow === "string" &&
+        governance.approvalWorkflow.trim()
+          ? "passed"
+          : "failed",
+      targetStep: 7,
+    },
+    {
+      label: "Consent and retention rules are documented",
+      status: governance.consentPolicy && governance.retentionRule
+        ? "passed"
+        : "warning",
+      targetStep: 7,
+    },
+  ];
+  const passed = checks.filter((check) => check.status === "passed").length;
+  const warnings = checks.filter((check) => check.status === "warning").length;
+  const failedCritical = checks.filter(
+    (check) => check.critical && check.status === "failed",
+  ).length;
+  const score = Math.max(
+    0,
+    Math.round(((passed + warnings * 0.45) / checks.length) * 100),
+  );
+  return {
+    category: score >= 85 && failedCritical === 0
+      ? "Ready"
+      : score >= 60
+        ? "Needs Review"
+        : "Not Ready",
+    checks,
+    failedCritical,
+    score,
+  };
+}
+
 function projectFromDraft(draft: ProjectCreate): ProjectListItemRead {
   const now = new Date().toISOString();
   return {
@@ -157,7 +483,7 @@ function projectFromDraft(draft: ProjectCreate): ProjectListItemRead {
     country: draft.country || null,
     created_at: now,
     donor: draft.donor || null,
-    end_date: null,
+    end_date: draft.end_date ?? null,
     health_score: 35,
     health_status: "Needs Attention",
     id: `project-local-${Date.now()}`,
@@ -167,7 +493,7 @@ function projectFromDraft(draft: ProjectCreate): ProjectListItemRead {
     progress_percent: 10,
     project_code: draft.project_code,
     region: draft.region || draft.country || null,
-    start_date: null,
+    start_date: draft.start_date ?? null,
     status: draft.status ?? "draft",
     total_submissions: 0,
     updated_at: now,
@@ -187,6 +513,7 @@ function detailFromProject(project: ProjectListItemRead): ProjectDetailRead {
     locations: [],
     program_type: null,
     reports: [],
+    settings_json: {},
     submissions: [],
     teams: [],
   };
@@ -366,17 +693,27 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   }
 
   function openProjectEditor(project: ProjectListItemRead): void {
+    const currentDetail =
+      detail && detail.id === project.id ? detail : detailFromProject(project);
     setProjectWizardError("");
     setEditingProjectId(project.id);
     setProjectDraft({
       ...defaultProjectDraft,
-      country: project.country ?? "",
-      donor: project.donor ?? "",
-      name: project.name,
-      owner: project.owner ?? "",
-      project_code: project.project_code,
-      region: project.region ?? "",
-      status: project.status,
+      category: currentDetail.category ?? defaultProjectDraft.category,
+      country: currentDetail.country ?? "",
+      description: currentDetail.description ?? "",
+      donor: currentDetail.donor ?? "",
+      end_date: currentDetail.end_date ?? null,
+      implementing_organization:
+        currentDetail.implementing_organization ?? "",
+      name: currentDetail.name,
+      owner: currentDetail.owner ?? "",
+      program_type: currentDetail.program_type ?? "",
+      project_code: currentDetail.project_code,
+      region: currentDetail.region ?? "",
+      settings_json: currentDetail.settings_json ?? defaultProjectDraft.settings_json,
+      start_date: currentDetail.start_date ?? null,
+      status: currentDetail.status,
     });
     setWizardStep(0);
     setWizardOpen(true);
@@ -384,11 +721,22 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
 
   function submitProject(): void {
     const payload = normalizeProjectPayload(projectDraft);
+    const readiness = projectReadiness(payload);
     if (!payload.name || !payload.project_code) {
       setProjectWizardError(
         "Project name and project code are required before creation.",
       );
       setWizardStep(0);
+      return;
+    }
+    if (payload.status === "active" && readiness.failedCritical > 0) {
+      const firstFailure = readiness.checks.find(
+        (check) => check.critical && check.status === "failed",
+      );
+      setProjectWizardError(
+        "Project activation is blocked until critical readiness checks pass.",
+      );
+      setWizardStep(firstFailure?.targetStep ?? 8);
       return;
     }
     setProjectDraft(payload);
@@ -922,7 +1270,9 @@ function ProjectDetailWorkspace({
           </button>
         ))}
       </div>
-      {tab === "Overview" ? <ProjectOverview detail={detail} /> : null}
+      {tab === "Overview" ? (
+        <ProjectOverview detail={detail} onSelectTab={setTab} />
+      ) : null}
       {tab === "Beneficiaries" ? (
         <ProjectBeneficiariesPanel
           onOpenRegistry={onOpenBeneficiaries}
@@ -994,47 +1344,327 @@ function ProjectDetailWorkspace({
           title="Project Reports"
         />
       ) : null}
+      {tab === "Data Quality" ? <ProjectDataQuality detail={detail} /> : null}
+      {tab === "Governance" ? <ProjectGovernance detail={detail} /> : null}
       {tab === "Settings" ? <ProjectSettings detail={detail} /> : null}
       {tab === "Audit Trail" ? <AuditTrail detail={detail} /> : null}
     </section>
   );
 }
 
-function ProjectOverview({ detail }: { detail: ProjectDetailRead }) {
+function ProjectOverview({
+  detail,
+  onSelectTab,
+}: {
+  detail: ProjectDetailRead;
+  onSelectTab: (tab: ProjectTab) => void;
+}) {
+  const health = projectHealthSummary(detail);
+  const settingsDraft = { settings_json: detail.settings_json ?? {} };
+  const beneficiaryType =
+    settingText(settingsDraft, "beneficiary", "primaryEntityType") ||
+    "Not configured";
+  const approvalWorkflow =
+    settingText(settingsDraft, "governance", "approvalWorkflow") ||
+    "Not configured";
+  const overviewCards: {
+    label: string;
+    value: string;
+    tab: ProjectTab;
+    tone?: "success" | "warning" | "danger" | "neutral";
+  }[] = [
+    {
+      label: "Beneficiaries",
+      tab: "Beneficiaries",
+      value: `${detail.beneficiary_count}`,
+    },
+    { label: "Forms", tab: "Forms", value: `${detail.active_forms}` },
+    {
+      label: "Assignments",
+      tab: "Assignments",
+      value: `${detail.active_assignments}`,
+    },
+    {
+      label: "Submissions",
+      tab: "Submissions",
+      value: `${detail.total_submissions}`,
+    },
+    {
+      label: "Indicators",
+      tab: "Indicators",
+      value: `${detail.indicator_count}`,
+    },
+    {
+      label: "Data Quality",
+      tab: "Data Quality",
+      tone: health.qualityTone,
+      value: health.qualityLabel,
+    },
+    {
+      label: "Coverage",
+      tab: "Locations",
+      value: detail.region ?? detail.country ?? "All areas",
+    },
+    {
+      label: "Field Officers",
+      tab: "Teams",
+      value: `${detail.teams.length || detail.active_assignments}`,
+    },
+  ];
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-2xl border bg-background/50 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Project Summary</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {detail.description ??
+                  "Project metadata is ready for ownership, locations, indicators, teams, forms, and governance setup."}
+              </p>
+            </div>
+            <Badge tone={health.tone}>
+              {health.score}% · {health.label}
+            </Badge>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {overviewCards.map((card) => (
+              <button
+                className="rounded-xl border bg-background/50 p-3 text-left transition hover:border-primary hover:bg-primary/5"
+                key={card.label}
+                onClick={() => onSelectTab(card.tab)}
+                type="button"
+              >
+                <p className="text-xs text-muted-foreground">{card.label}</p>
+                <p
+                  className={cn(
+                    "mt-1 truncate text-sm font-semibold",
+                    card.tone === "warning" && "text-warning",
+                    card.tone === "danger" && "text-danger",
+                    card.tone === "success" && "text-success",
+                  )}
+                >
+                  {card.value}
+                </p>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <Signal
+              label="Primary entity"
+              value={beneficiaryType}
+              tone={beneficiaryType === "Not configured" ? "warning" : "success"}
+            />
+            <Signal
+              label="Approval workflow"
+              value={approvalWorkflow}
+              tone={approvalWorkflow === "Not configured" ? "warning" : "success"}
+            />
+            <Signal
+              label="Progress"
+              value={`${detail.progress_percent}%`}
+              tone={detail.progress_percent < 40 ? "warning" : "success"}
+            />
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-background/50 p-5">
+          <h3 className="font-semibold">Coverage Map Preview</h3>
+          <button
+            className="mt-4 grid min-h-64 w-full place-items-center rounded-2xl border bg-[radial-gradient(circle_at_25%_25%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(135deg,rgba(34,197,94,0.15),rgba(15,23,42,0.04))] p-5 text-center transition hover:border-primary"
+            onClick={() => onSelectTab("Locations")}
+            type="button"
+          >
+            <div>
+              <MapPinned
+                aria-hidden="true"
+                className="mx-auto text-primary"
+                size={34}
+              />
+              <p className="mt-3 font-semibold">
+                {detail.region ?? detail.country ?? "Assigned project areas"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Open Locations for boundaries, layers, GPS validation, and
+                spatial analysis.
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <InfoPanel
+          title="Beneficiary Journey"
+          lines={[
+            "Registration before baseline",
+            "Baseline before monitoring",
+            "Monitoring before endline",
+          ]}
+          onClick={() => onSelectTab("Governance")}
+        />
+        <InfoPanel
+          title="Project Health Inputs"
+          lines={[
+            "Coverage and submissions",
+            "Data quality and approvals",
+            "Indicator and assignment progress",
+          ]}
+          onClick={() => onSelectTab("Data Quality")}
+        />
+        <InfoPanel
+          title="Source Tracking"
+          lines={submissionSourceOptions}
+          onClick={() => onSelectTab("Submissions")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function projectHealthSummary(detail: ProjectDetailRead): {
+  label: string;
+  qualityLabel: string;
+  qualityTone: "success" | "warning" | "danger" | "neutral";
+  score: number;
+  tone: "success" | "warning" | "danger" | "neutral";
+} {
+  const score = detail.health_score || Math.round(
+    (detail.progress_percent + Math.min(detail.total_submissions, 100)) / 2,
+  );
+  if (score >= 85) {
+    return {
+      label: "Excellent",
+      qualityLabel: "Low risk",
+      qualityTone: "success",
+      score,
+      tone: "success",
+    };
+  }
+  if (score >= 65) {
+    return {
+      label: "Good",
+      qualityLabel: "Review",
+      qualityTone: "warning",
+      score,
+      tone: "success",
+    };
+  }
+  if (score >= 40) {
+    return {
+      label: "Needs Attention",
+      qualityLabel: "Issues",
+      qualityTone: "warning",
+      score,
+      tone: "warning",
+    };
+  }
+  return {
+    label: "Critical",
+    qualityLabel: "High risk",
+    qualityTone: "danger",
+    score,
+    tone: "danger",
+  };
+}
+
+function InfoPanel({
+  lines,
+  onClick,
+  title,
+}: {
+  lines: string[];
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      className="rounded-2xl border bg-background/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+      onClick={onClick}
+      type="button"
+    >
+      <p className="font-semibold">{title}</p>
+      <div className="mt-3 space-y-1.5">
+        {lines.map((line) => (
+          <p className="text-xs text-muted-foreground" key={line}>
+            {line}
+          </p>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function ProjectDataQuality({ detail }: { detail: ProjectDetailRead }) {
+  const health = projectHealthSummary(detail);
+  const items = [
+    ["Duplicate candidates", `${Math.max(0, Math.round(detail.beneficiary_count * 0.015))}`],
+    ["Missing data checks", detail.total_submissions ? "Active" : "Waiting for data"],
+    ["GPS issues", detail.total_submissions ? "Tracked in Data Quality" : "No submissions yet"],
+    ["Validation failures", detail.total_submissions ? "Review queue enabled" : "No issues yet"],
+    ["Quality score", `${health.score}%`],
+    ["Approval impact", "Only approved records count toward results"],
+  ];
+  return (
+    <div className="rounded-2xl border bg-background/50 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Project Data Quality</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Project-level quality checks summarize duplicates, missing values,
+            GPS issues, validation failures, and approval readiness.
+          </p>
+        </div>
+        <Badge tone={health.qualityTone}>{health.qualityLabel}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {items.map(([label, value]) => (
+          <Signal key={label} label={label} value={value} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
+  const settingsDraft = { settings_json: detail.settings_json ?? {} };
+  const governanceItems = [
+    ["Approval Workflow", settingText(settingsDraft, "governance", "approvalWorkflow") || "Submitted → Under Review → Approved"],
+    ["Consent Policy", settingText(settingsDraft, "governance", "consentPolicy") || "Set consent rules during project setup"],
+    ["Retention Rule", settingText(settingsDraft, "governance", "retentionRule") || "Use organization retention policy"],
+    ["Export Rule", settingText(settingsDraft, "governance", "exportRule") || "Exports require permission and audit logging"],
+    ["Sensitive Data", settingText(settingsDraft, "governance", "sensitiveDataControls") || "Mask sensitive fields for restricted roles"],
+    [
+      "Approved Data Only",
+      settingBoolean(settingsDraft, "governance", "approvedDataOnly", true)
+        ? "Beneficiaries, indicators, and reports use approved records"
+        : "Draft policy allows unapproved data where configured",
+    ],
+  ];
+  const beneficiaryItems = [
+    ["Primary Entity", settingText(settingsDraft, "beneficiary", "primaryEntityType") || "Not configured"],
+    ["Code Format", settingText(settingsDraft, "beneficiary", "codeFormat") || "BEN-YYYY-000001"],
+    [
+      "Duplicate Checks",
+      settingStringList(settingsDraft, "beneficiary", "duplicateFields").join(", ") ||
+        "Phone, ID, household, name + village, GPS",
+    ],
+    ["Profile Update Rule", settingText(settingsDraft, "beneficiary", "profileUpdateRule") || "Require review for sensitive changes"],
+  ];
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
       <div className="rounded-2xl border bg-background/50 p-5">
-        <h3 className="font-semibold">Project Summary</h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {detail.description ??
-            "Project metadata is ready for ownership, locations, indicators, teams, forms, and governance setup."}
-        </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Signal label="Progress" value={`${detail.progress_percent}%`} />
-          <Signal label="Forms" value={`${detail.active_forms}`} />
-          <Signal label="Assignments" value={`${detail.active_assignments}`} />
-          <Signal label="Submissions" value={`${detail.total_submissions}`} />
-          <Signal label="Indicators" value={`${detail.indicator_count}`} />
-          <Signal label="Beneficiaries" value={`${detail.beneficiary_count}`} />
+        <h3 className="font-semibold">Governance Defaults</h3>
+        <div className="mt-4 grid gap-3">
+          {governanceItems.map(([label, value]) => (
+            <Signal key={label} label={label} value={value} />
+          ))}
         </div>
       </div>
       <div className="rounded-2xl border bg-background/50 p-5">
-        <h3 className="font-semibold">Coverage Map Preview</h3>
-        <div className="mt-4 grid min-h-64 place-items-center rounded-2xl border bg-[radial-gradient(circle_at_25%_25%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(135deg,rgba(34,197,94,0.15),rgba(15,23,42,0.04))] p-5 text-center">
-          <div>
-            <MapPinned
-              aria-hidden="true"
-              className="mx-auto text-primary"
-              size={34}
-            />
-            <p className="mt-3 font-semibold">
-              {detail.region ?? detail.country ?? "Assigned project areas"}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Open Mapping for boundaries, layers, GPS validation, and spatial
-              analysis.
-            </p>
-          </div>
+        <h3 className="font-semibold">Beneficiary Rules</h3>
+        <div className="mt-4 grid gap-3">
+          {beneficiaryItems.map(([label, value]) => (
+            <Signal key={label} label={label} value={value} />
+          ))}
         </div>
       </div>
     </div>
@@ -1216,10 +1846,31 @@ function ProjectWizard({
   step: number;
 }) {
   const maxStep = wizardSteps.length - 1;
+  const readiness = projectReadiness(draft);
+  const duplicateFields = settingStringList(
+    draft,
+    "beneficiary",
+    "duplicateFields",
+  );
+  const updateSettings = (
+    section: string,
+    patch: ProjectSettingsSection,
+  ): void => onChange(mergeProjectSettings(draft, section, patch));
+  const setDuplicateField = (field: string, enabled: boolean): void => {
+    const next = new Set(duplicateFields);
+    if (enabled) next.add(field);
+    else next.delete(field);
+    updateSettings("beneficiary", { duplicateFields: Array.from(next) });
+  };
+  const finalDisabled =
+    !canSubmit ||
+    isSubmitting ||
+    (draft.status === "active" && readiness.failedCritical > 0);
+
   return (
     <Modal
-      contentClassName="max-w-4xl"
-      description="Create a project with the required operating context before attaching detailed forms, teams, indicators, and governance."
+      contentClassName="max-w-5xl"
+      description="Create the project container for beneficiaries, forms, indicators, teams, submissions, governance, and reports."
       onOpenChange={onOpenChange}
       open={open}
       title={isEditing ? "Edit project" : "Project creation wizard"}
@@ -1246,159 +1897,39 @@ function ProjectWizard({
           ))}
         </aside>
         <div className="space-y-4">
-          {step === 0 ? (
-            <div className="grid gap-3">
-              <Input
-                placeholder="Project name"
-                value={draft.name}
-                onChange={(event) =>
-                  onChange({
-                    ...draft,
-                    name: event.target.value,
-                    project_code:
-                      draft.project_code ||
-                      projectCodeFromName(event.target.value),
-                  })
-                }
-              />
-              <Input
-                placeholder="Project code"
-                value={draft.project_code}
-                onChange={(event) =>
-                  onChange({
-                    ...draft,
-                    project_code: event.target.value.toUpperCase(),
-                  })
-                }
-              />
-              <Textarea
-                placeholder="Description"
-                value={draft.description ?? ""}
-                onChange={(event) =>
-                  onChange({ ...draft, description: event.target.value })
-                }
-              />
-              <div className="grid gap-3 md:grid-cols-2">
-                <Input
-                  placeholder="Category"
-                  value={draft.category ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...draft, category: event.target.value })
-                  }
-                />
-                <Input
-                  placeholder="Donor"
-                  value={draft.donor ?? ""}
-                  onChange={(event) =>
-                    onChange({ ...draft, donor: event.target.value })
-                  }
-                />
-                <Input
-                  placeholder="Implementing organization"
-                  value={draft.implementing_organization ?? ""}
-                  onChange={(event) =>
-                    onChange({
-                      ...draft,
-                      implementing_organization: event.target.value,
-                    })
-                  }
-                />
+          <div className="rounded-2xl border bg-muted/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  Step {step + 1} of {wizardSteps.length}
+                </p>
+                <h3 className="mt-1 text-lg font-semibold">
+                  {wizardSteps[step]}
+                </h3>
               </div>
-            </div>
-          ) : null}
-          {step === 1 ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Select
-                value={draft.country ?? ""}
-                onChange={(event) =>
-                  onChange({ ...draft, country: event.target.value })
+              <Badge
+                tone={
+                  readiness.category === "Ready"
+                    ? "success"
+                    : readiness.category === "Needs Review"
+                      ? "warning"
+                      : "danger"
                 }
               >
-                <option value="">Select country</option>
-                {countryOptions.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                placeholder="Region"
-                value={draft.region ?? ""}
-                onChange={(event) =>
-                  onChange({ ...draft, region: event.target.value })
-                }
-              />
-              <Input
-                placeholder="District"
-                value={draft.district ?? ""}
-                onChange={(event) =>
-                  onChange({ ...draft, district: event.target.value })
-                }
-              />
-              <Input
-                placeholder="Community"
-                value={draft.community ?? ""}
-                onChange={(event) =>
-                  onChange({ ...draft, community: event.target.value })
-                }
-              />
+                {readiness.score}% · {readiness.category}
+              </Badge>
             </div>
-          ) : null}
-          {step >= 2 && step <= 5 ? <WizardPlanningStep step={step} /> : null}
-          {step === 6 ? (
-            <div className="space-y-3">
-              <Signal label="Project" value={draft.name || "Not named"} />
-              <Signal
-                label="Code"
-                value={(
-                  draft.project_code ||
-                  projectCodeFromName(draft.name) ||
-                  "Not set"
-                ).toLowerCase()}
-              />
-              <Signal
-                label="Program type"
-                value={draft.program_type ?? "Monitoring Program"}
-              />
-              <Signal label="Status" value={draft.status ?? "draft"} />
-              <div className="rounded-xl border bg-muted/35 p-3 text-sm">
-                <p className="font-medium">Creation readiness</p>
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  <ReadinessItem
-                    passed={Boolean(draft.name.trim())}
-                    label="Project name"
-                  />
-                  <ReadinessItem
-                    passed={Boolean(
-                      (
-                        draft.project_code || projectCodeFromName(draft.name)
-                      ).trim(),
-                    )}
-                    label="Project code"
-                  />
-                  <ReadinessItem
-                    passed={Boolean(draft.program_type)}
-                    label="Program type"
-                  />
-                  <ReadinessItem
-                    passed={Boolean(
-                      draft.country ||
-                      draft.region ||
-                      draft.district ||
-                      draft.community,
-                    )}
-                    label="Location can be completed after creation"
-                    warning
-                  />
-                </div>
-              </div>
-              <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">
-                After creation, open the project detail tabs to attach forms,
-                indicators, teams, assignments, locations, reports, settings,
-                and audit context.
-              </p>
-            </div>
-          ) : null}
+          </div>
+          <ProjectWizardStepContent
+            draft={draft}
+            duplicateFields={duplicateFields}
+            onChange={onChange}
+            readiness={readiness}
+            setDuplicateField={setDuplicateField}
+            setStep={setStep}
+            step={step}
+            updateSettings={updateSettings}
+          />
           {error ? (
             <div
               className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-danger"
@@ -1429,14 +1960,18 @@ function ProjectWizard({
               Continue
             </Button>
           ) : (
-            <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">
+            <Button disabled={finalDisabled} onClick={onSubmit} variant="primary">
               {isSubmitting
                 ? isEditing
                   ? "Saving..."
                   : "Creating..."
                 : isEditing
-                  ? "Save project"
-                  : "Create project"}
+                  ? draft.status === "active"
+                    ? "Save and activate"
+                    : "Save project"
+                  : draft.status === "active"
+                    ? "Create and activate"
+                    : "Create project"}
             </Button>
           )}
         </div>
@@ -1445,54 +1980,744 @@ function ProjectWizard({
   );
 }
 
-function ReadinessItem({
-  label,
-  passed,
-  warning = false,
+function ProjectWizardStepContent({
+  draft,
+  duplicateFields,
+  onChange,
+  readiness,
+  setDuplicateField,
+  setStep,
+  step,
+  updateSettings,
 }: {
-  label: string;
-  passed: boolean;
-  warning?: boolean;
+  draft: ProjectCreate;
+  duplicateFields: string[];
+  onChange: (draft: ProjectCreate) => void;
+  readiness: ReturnType<typeof projectReadiness>;
+  setDuplicateField: (field: string, enabled: boolean) => void;
+  setStep: (step: number) => void;
+  step: number;
+  updateSettings: (section: string, patch: ProjectSettingsSection) => void;
 }) {
+  if (step === 0) {
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input
+            placeholder="Project name"
+            value={draft.name}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                name: event.target.value,
+                project_code:
+                  draft.project_code || projectCodeFromName(event.target.value),
+              })
+            }
+          />
+          <Input
+            placeholder="Project code"
+            value={draft.project_code}
+            onChange={(event) =>
+              onChange({ ...draft, project_code: event.target.value.toUpperCase() })
+            }
+          />
+        </div>
+        <Textarea
+          placeholder="Description"
+          value={draft.description ?? ""}
+          onChange={(event) =>
+            onChange({ ...draft, description: event.target.value })
+          }
+        />
+        <div className="grid gap-3 md:grid-cols-3">
+          <Select
+            value={draft.program_type ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, program_type: event.target.value })
+            }
+          >
+            <option value="">Project type</option>
+            {projectTypeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={draft.status ?? "draft"}
+            onChange={(event) =>
+              onChange({ ...draft, status: event.target.value })
+            }
+          >
+            {projectStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+          <Input
+            placeholder="Project owner"
+            value={draft.owner ?? ""}
+            onChange={(event) => onChange({ ...draft, owner: event.target.value })}
+          />
+          <Input
+            aria-label="Start date"
+            type="date"
+            value={dateInputValue(draft.start_date)}
+            onInput={(event) =>
+              onChange({
+                ...draft,
+                start_date: event.currentTarget.value || null,
+              })
+            }
+            onChange={(event) =>
+              onChange({ ...draft, start_date: event.target.value || null })
+            }
+          />
+          <Input
+            aria-label="End date"
+            type="date"
+            value={dateInputValue(draft.end_date)}
+            onInput={(event) =>
+              onChange({
+                ...draft,
+                end_date: event.currentTarget.value || null,
+              })
+            }
+            onChange={(event) =>
+              onChange({ ...draft, end_date: event.target.value || null })
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+  if (step === 1) {
+    return (
+      <div className="grid gap-3">
+        <Textarea
+          placeholder="Program objective"
+          value={settingText(draft, "program", "objective")}
+          onChange={(event) =>
+            updateSettings("program", { objective: event.target.value })
+          }
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          <Textarea
+            placeholder="Expected outcomes"
+            value={settingText(draft, "program", "expectedOutcomes")}
+            onChange={(event) =>
+              updateSettings("program", { expectedOutcomes: event.target.value })
+            }
+          />
+          <Textarea
+            placeholder="Expected outputs"
+            value={settingText(draft, "program", "expectedOutputs")}
+            onChange={(event) =>
+              updateSettings("program", { expectedOutputs: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Result areas"
+            value={settingText(draft, "program", "resultAreas")}
+            onChange={(event) =>
+              updateSettings("program", { resultAreas: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Funding source"
+            value={settingText(draft, "program", "fundingSource")}
+            onChange={(event) =>
+              updateSettings("program", { fundingSource: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Donor"
+            value={draft.donor ?? ""}
+            onChange={(event) => onChange({ ...draft, donor: event.target.value })}
+          />
+          <Input
+            placeholder="Implementing organization"
+            value={draft.implementing_organization ?? ""}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                implementing_organization: event.target.value,
+              })
+            }
+          />
+          <Input
+            placeholder="Program category"
+            value={draft.category ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, category: event.target.value })
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+  if (step === 2) {
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Select
+            value={draft.country ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, country: event.target.value })
+            }
+          >
+            <option value="">Select country</option>
+            {countryOptions.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </Select>
+          <Input
+            placeholder="Region"
+            value={draft.region ?? ""}
+            onChange={(event) => onChange({ ...draft, region: event.target.value })}
+          />
+          <Input
+            placeholder="District"
+            value={draft.district ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, district: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Community"
+            value={draft.community ?? ""}
+            onChange={(event) =>
+              onChange({ ...draft, community: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Village"
+            value={settingText(draft, "geography", "village")}
+            onChange={(event) =>
+              updateSettings("geography", { village: event.target.value })
+            }
+          />
+          <Input
+            placeholder="Facility or site"
+            value={settingText(draft, "geography", "facility")}
+            onChange={(event) =>
+              updateSettings("geography", { facility: event.target.value })
+            }
+          />
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <InfoPanel
+            title="Select Existing Locations"
+            lines={["Use the organization hierarchy", "Drives assignments and reports"]}
+            onClick={() => undefined}
+          />
+          <ProjectSetupFileCard
+            accept=".csv,.xlsx,.xls,.json"
+            fileName={settingText(draft, "geography", "locationImportFileName")}
+            inputId="project-location-import-file"
+            title="Import Locations"
+            lines={["CSV and Excel-ready", "Use Data Import for large lists"]}
+            onFileSelected={(file) =>
+              updateSettings("geography", {
+                locationImportFileName: file.name,
+                locationImportFileSize: file.size,
+                locationImportFileType: file.type || "unknown",
+              })
+            }
+          />
+          <ProjectSetupFileCard
+            accept=".geojson,.json,.kml,.zip"
+            fileName={settingText(draft, "geography", "boundaryFileName")}
+            inputId="project-boundary-upload-file"
+            title="Upload Boundaries"
+            lines={["GeoJSON/KML/Shapefile-ready", "Used for GPS checks"]}
+            onFileSelected={(file) =>
+              updateSettings("geography", {
+                boundaryFileName: file.name,
+                boundaryFileSize: file.size,
+                boundaryFileType: file.type || "unknown",
+              })
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+  if (step === 3) {
+    return (
+      <div className="grid gap-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Select
+            value={settingText(draft, "beneficiary", "primaryEntityType")}
+            onChange={(event) =>
+              updateSettings("beneficiary", {
+                primaryEntityType: event.target.value,
+              })
+            }
+          >
+            <option value="">Primary entity type</option>
+            {projectEntityTypeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </Select>
+          <Input
+            placeholder="Secondary entity types, comma separated"
+            value={settingStringList(
+              draft,
+              "beneficiary",
+              "secondaryEntityTypes",
+            ).join(", ")}
+            onChange={(event) =>
+              updateSettings("beneficiary", {
+                secondaryEntityTypes: event.target.value
+                  .split(",")
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <Input
+            placeholder="Code format, e.g. FRM-YYYY-000001"
+            value={settingText(draft, "beneficiary", "codeFormat")}
+            onChange={(event) =>
+              updateSettings("beneficiary", { codeFormat: event.target.value })
+            }
+          />
+          <Select
+            value={settingText(
+              draft,
+              "beneficiary",
+              "profileUpdateRule",
+            )}
+            onChange={(event) =>
+              updateSettings("beneficiary", {
+                profileUpdateRule: event.target.value,
+              })
+            }
+          >
+            <option value="Require review for name, phone, village, and GPS changes">
+              Require review for sensitive changes
+            </option>
+            <option value="Keep history and update automatically">
+              Keep history and update automatically
+            </option>
+            <option value="Keep history only">Keep history only</option>
+          </Select>
+        </div>
+        <div className="rounded-2xl border bg-background/50 p-4">
+          <p className="font-medium">Duplicate detection fields</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {duplicateFieldOptions.map((field) => (
+              <label
+                className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-sm"
+                key={field}
+              >
+                <input
+                  checked={duplicateFields.includes(field)}
+                  onChange={(event) =>
+                    setDuplicateField(field, event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                {field}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (step === 4) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <Select
+          value={settingText(draft, "indicators", "setupMode")}
+          onChange={(event) =>
+            updateSettings("indicators", { setupMode: event.target.value })
+          }
+        >
+          <option value="Configure later">Configure later</option>
+          <option value="Create now">Create indicators now</option>
+          <option value="Import indicators">Import indicators</option>
+          <option value="Use templates">Use indicator templates</option>
+        </Select>
+        <Select
+          value={settingText(draft, "indicators", "frequency")}
+          onChange={(event) =>
+            updateSettings("indicators", { frequency: event.target.value })
+          }
+        >
+          {projectFrequencyOptions.map((frequency) => (
+            <option key={frequency} value={frequency}>
+              {frequency}
+            </option>
+          ))}
+        </Select>
+        <Input
+          placeholder="Data source"
+          value={settingText(draft, "indicators", "dataSource")}
+          onChange={(event) =>
+            updateSettings("indicators", { dataSource: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Responsible person"
+          value={settingText(draft, "indicators", "responsiblePerson")}
+          onChange={(event) =>
+            updateSettings("indicators", {
+              responsiblePerson: event.target.value,
+            })
+          }
+        />
+        <Textarea
+          placeholder="Disaggregation categories, e.g. Sex, Age, Location"
+          value={settingStringList(
+            draft,
+            "indicators",
+            "disaggregation",
+          ).join(", ")}
+          onChange={(event) =>
+            updateSettings("indicators", {
+              disaggregation: event.target.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+            })
+          }
+        />
+      </div>
+    );
+  }
+  if (step === 5) {
+    return (
+      <div className="grid gap-3">
+        <Select
+          value={settingText(draft, "forms", "starterPack")}
+          onChange={(event) =>
+            updateSettings("forms", { starterPack: event.target.value })
+          }
+        >
+          <option value="">Forms setup option</option>
+          <option value="Attach existing forms">Attach existing forms</option>
+          <option value="Create new forms">Create new forms</option>
+          <option value="Use form templates">Use form templates</option>
+          <option value="Install project starter pack">
+            Install project starter pack
+          </option>
+        </Select>
+        <Textarea
+          placeholder="Form journey, e.g. Registration → Baseline → Monitoring → Endline"
+          value={settingText(draft, "forms", "journey")}
+          onChange={(event) =>
+            updateSettings("forms", { journey: event.target.value })
+          }
+        />
+        <Textarea
+          placeholder="Prerequisites and follow-up rules"
+          value={settingText(draft, "forms", "prerequisites")}
+          onChange={(event) =>
+            updateSettings("forms", { prerequisites: event.target.value })
+          }
+        />
+        <div className="rounded-2xl border bg-background/50 p-4">
+          <p className="font-medium">Submission sources tracked</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {submissionSourceOptions.map((source) => (
+              <Badge key={source} tone="neutral">
+                {source}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (step === 6) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <Input
+          placeholder="Project Manager"
+          value={settingText(draft, "team", "projectManager") || draft.owner || ""}
+          onChange={(event) =>
+            onChange(
+              mergeProjectSettings(
+                { ...draft, owner: event.target.value },
+                "team",
+                { projectManager: event.target.value },
+              ),
+            )
+          }
+        />
+        <Input
+          placeholder="M&E Manager"
+          value={settingText(draft, "team", "meManager")}
+          onChange={(event) =>
+            updateSettings("team", { meManager: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Data Manager"
+          value={settingText(draft, "team", "dataManager")}
+          onChange={(event) =>
+            updateSettings("team", { dataManager: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Supervisors"
+          value={settingText(draft, "team", "supervisors")}
+          onChange={(event) =>
+            updateSettings("team", { supervisors: event.target.value })
+          }
+        />
+        <Textarea
+          placeholder="Field officers, teams, or location assignments"
+          value={settingText(draft, "team", "fieldOfficers")}
+          onChange={(event) =>
+            updateSettings("team", { fieldOfficers: event.target.value })
+          }
+        />
+        <Select
+          value={settingText(
+            draft,
+            "team",
+            "assignmentMode",
+            "Assigned users only",
+          )}
+          onChange={(event) =>
+            updateSettings("team", { assignmentMode: event.target.value })
+          }
+        >
+          <option value="Assigned users only">Assigned users only</option>
+          <option value="Location and project restricted">
+            Location and project restricted
+          </option>
+          <option value="Project-wide access">Project-wide access</option>
+        </Select>
+      </div>
+    );
+  }
+  if (step === 7) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        <Select
+          value={settingText(draft, "governance", "approvalWorkflow")}
+          onChange={(event) =>
+            updateSettings("governance", {
+              approvalWorkflow: event.target.value,
+            })
+          }
+        >
+          <option value="Submitted → Under Review → Approved">
+            Submitted → Under Review → Approved
+          </option>
+          <option value="Submitted → Supervisor Review → Data Manager Review → Approved">
+            Supervisor and Data Manager review
+          </option>
+          <option value="Submitted → Returned / Rejected / Approved">
+            Simple review with return and reject
+          </option>
+        </Select>
+        <Input
+          placeholder="Consent policy"
+          value={settingText(draft, "governance", "consentPolicy")}
+          onChange={(event) =>
+            updateSettings("governance", { consentPolicy: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Data retention rule"
+          value={settingText(draft, "governance", "retentionRule")}
+          onChange={(event) =>
+            updateSettings("governance", { retentionRule: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Export rule"
+          value={settingText(draft, "governance", "exportRule")}
+          onChange={(event) =>
+            updateSettings("governance", { exportRule: event.target.value })
+          }
+        />
+        <Input
+          placeholder="Sensitive data controls"
+          value={settingText(draft, "governance", "sensitiveDataControls")}
+          onChange={(event) =>
+            updateSettings("governance", {
+              sensitiveDataControls: event.target.value,
+            })
+          }
+        />
+        <label className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-sm">
+          <input
+            checked={settingBoolean(
+              draft,
+              "governance",
+              "approvedDataOnly",
+              true,
+            )}
+            onChange={(event) =>
+              updateSettings("governance", {
+                approvedDataOnly: event.target.checked,
+              })
+            }
+            type="checkbox"
+          />
+          Only approved submissions update beneficiaries, indicators, and reports
+        </label>
+      </div>
+    );
+  }
+  if (step === 8 || step === 9) {
+    return (
+      <div className="space-y-3">
+        {step === 9 ? (
+          <Select
+            value={draft.status ?? "draft"}
+            onChange={(event) =>
+              onChange({ ...draft, status: event.target.value })
+            }
+          >
+            {projectStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <Signal label="Project" value={draft.name || "Not named"} />
+          <Signal
+            label="Code"
+            value={(
+              draft.project_code ||
+              projectCodeFromName(draft.name) ||
+              "Not set"
+            ).toLowerCase()}
+          />
+          <Signal
+            label="Project type"
+            value={draft.program_type || "Not selected"}
+            tone={draft.program_type ? "success" : "warning"}
+          />
+          <Signal
+            label="Primary entity"
+            value={
+              settingText(draft, "beneficiary", "primaryEntityType") ||
+              "Not selected"
+            }
+            tone={
+              settingText(draft, "beneficiary", "primaryEntityType")
+                ? "success"
+                : "warning"
+            }
+          />
+        </div>
+        <ReadinessChecklist checks={readiness.checks} onSelectStep={setStep} />
+        {step === 9 && readiness.failedCritical ? (
+          <p className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+            Activation is blocked until critical readiness checks pass. Save as
+            draft or open the required section from the checklist.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border bg-panel px-3 py-2 text-xs">
-      <span>{label}</span>
-      <Badge tone={passed ? "success" : warning ? "warning" : "danger"}>
-        {passed ? "Ready" : warning ? "Later" : "Required"}
-      </Badge>
+    <div className="rounded-2xl border border-dashed bg-muted/30 p-5 text-sm text-muted-foreground">
+      This project setup step is ready for future configuration.
     </div>
   );
 }
 
-function WizardPlanningStep({ step }: { step: number }) {
-  const content: Record<number, [string, string[]]> = {
-    2: [
-      "Project Structure",
-      ["Departments", "Teams", "Supervisors", "Field officers"],
-    ],
-    3: [
-      "Indicators",
-      ["Baseline values", "Targets", "Indicator library selection"],
-    ],
-    4: ["Forms", ["Attach forms", "Create forms", "Assign form templates"]],
-    5: ["Governance", ["Permissions", "Approval rules", "Retention rules"]],
-  };
-  const [title, items] = content[step];
+function ProjectSetupFileCard({
+  accept,
+  fileName,
+  inputId,
+  lines,
+  onFileSelected,
+  title,
+}: {
+  accept: string;
+  fileName: string;
+  inputId: string;
+  lines: string[];
+  onFileSelected: (file: File) => void;
+  title: string;
+}) {
   return (
-    <div className="rounded-2xl border bg-muted/30 p-5">
-      <h3 className="font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Detailed configuration happens from the project workspace tabs after
-        creation to avoid duplicating specialist modules.
-      </p>
-      <div className="mt-4 grid gap-2 md:grid-cols-2">
-        {items.map((item) => (
-          <div
-            className="rounded-xl border bg-panel px-3 py-2 text-sm"
-            key={item}
+    <label
+      className="cursor-pointer rounded-2xl border bg-background/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+      htmlFor={inputId}
+    >
+      <span className="flex items-center gap-2 font-semibold">
+        <UploadCloud aria-hidden="true" className="text-primary" size={16} />
+        {title}
+      </span>
+      <span className="mt-3 block space-y-1.5">
+        {lines.map((line) => (
+          <span className="block text-xs text-muted-foreground" key={line}>
+            {line}
+          </span>
+        ))}
+      </span>
+      <span className="mt-3 block rounded-lg border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
+        {fileName ? `Selected: ${fileName}` : "Choose file"}
+      </span>
+      <input
+        accept={accept}
+        className="sr-only"
+        id={inputId}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onFileSelected(file);
+        }}
+        type="file"
+      />
+    </label>
+  );
+}
+
+function ReadinessChecklist({
+  checks,
+  onSelectStep,
+}: {
+  checks: ReadinessCheck[];
+  onSelectStep: (step: number) => void;
+}) {
+  return (
+    <div className="rounded-2xl border bg-muted/35 p-3">
+      <p className="font-medium">Project readiness checklist</p>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {checks.map((check) => (
+          <button
+            className="flex items-center justify-between gap-2 rounded-lg border bg-panel px-3 py-2 text-left text-xs transition hover:border-primary"
+            key={check.label}
+            onClick={() => onSelectStep(check.targetStep)}
+            type="button"
           >
-            {item}
-          </div>
+            <span>{check.label}</span>
+            <Badge
+              tone={
+                check.status === "passed"
+                  ? "success"
+                  : check.status === "warning"
+                    ? "warning"
+                    : "danger"
+              }
+            >
+              {check.status === "passed"
+                ? "Ready"
+                : check.status === "warning"
+                  ? "Review"
+                  : "Required"}
+            </Badge>
+          </button>
         ))}
       </div>
     </div>
