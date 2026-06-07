@@ -51,6 +51,7 @@ export type BeneficiaryEntity = {
   lastVisit?: string;
   qualityFlags: number;
   duplicateStatus: "Clear" | "Possible Duplicate" | "Likely Duplicate" | "Confirmed Duplicate";
+  profileJson: Record<string, unknown>;
 };
 
 export type EntityRegistrationDraft = {
@@ -147,6 +148,24 @@ export const previewEntities: BeneficiaryEntity[] = [
     dateOfBirth: "1983-02-18",
     district: "Mezam",
     duplicateStatus: "Clear",
+    profileJson: {
+      fieldLineage: {
+        phone_number: {
+          approvalDate: new Date(now - 70 * 24 * 60 * 60 * 1000).toISOString(),
+          sourceClientSubmissionId: "MOB-2026-0001",
+          sourceFormId: "farmer-registration",
+          value: "+237 600 100 001",
+        },
+      },
+      projectEnrollments: [
+        {
+          enrollmentDate: new Date(now - 80 * 24 * 60 * 60 * 1000).toISOString(),
+          projectId: "project-agri",
+          sourceClientSubmissionId: "MOB-2026-0001",
+          status: "active",
+        },
+      ],
+    },
     entityId: "FRM-2026-000001",
     entityType: "Farmer",
     firstName: "Musa",
@@ -179,6 +198,21 @@ export const previewEntities: BeneficiaryEntity[] = [
     dateOfBirth: "1987-08-07",
     district: "Mezam",
     duplicateStatus: "Possible Duplicate",
+    profileJson: {
+      profileUpdateProposals: [
+        {
+          changes: {
+            phone_number: {
+              current: "+237 600 100 001",
+              proposed: "+237 600 100 001",
+            },
+          },
+          clientSubmissionId: "MOB-2026-0004",
+          createdAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          status: "pending_review",
+        },
+      ],
+    },
     entityId: "FRM-2026-000137",
     entityType: "Farmer",
     firstName: "Moussa",
@@ -210,6 +244,16 @@ export const previewEntities: BeneficiaryEntity[] = [
     dateOfBirth: "1995-11-11",
     district: "Mezam",
     duplicateStatus: "Clear",
+    profileJson: {
+      fieldLineage: {
+        display_name: {
+          approvalDate: new Date(now - 25 * 60 * 1000).toISOString(),
+          sourceClientSubmissionId: "IMP-2026-0003",
+          sourceFormId: "baseline-household",
+          value: "Esther Fomunyam",
+        },
+      },
+    },
     entityId: "BEN-2026-000044",
     entityType: "Beneficiary",
     firstName: "Esther",
@@ -239,6 +283,7 @@ export const previewEntities: BeneficiaryEntity[] = [
     country: "Cameroon",
     district: "Wouri",
     duplicateStatus: "Clear",
+    profileJson: {},
     entityId: "FAC-2026-000012",
     entityType: "Facility",
     firstName: "",
@@ -266,6 +311,7 @@ export const previewEntities: BeneficiaryEntity[] = [
     country: "Cameroon",
     district: "Wouri",
     duplicateStatus: "Clear",
+    profileJson: {},
     entityId: "SCH-2026-000005",
     entityType: "School",
     firstName: "",
@@ -320,6 +366,7 @@ export function mapBeneficiaryRead(row: BeneficiaryRead): BeneficiaryEntity {
     longitude: row.longitude ?? undefined,
     nationalId: String(profile.nationalId ?? ""),
     phoneNumber: row.phone_number ?? undefined,
+    profileJson: profile,
     projectId: row.project_id ?? "",
     projectName: String(profile.projectName ?? "Project enrollment"),
     qualityFlags: row.duplicate_risk_score > 15 ? 1 : 0,

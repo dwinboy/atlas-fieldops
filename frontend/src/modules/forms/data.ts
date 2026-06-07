@@ -60,6 +60,7 @@ export type FormListItem = {
   has_quality_issues: boolean;
   recently_updated: boolean;
   updated_at: string;
+  controls_json?: DataFormRead["controls_json"];
 };
 
 export type FormsSummary = {
@@ -291,5 +292,6 @@ export function normalizeBackendForm(form: DataFormRead, index = 0): FormListIte
     has_quality_issues: qualityRules > 0 && form.status !== "archived",
     recently_updated: index < 3,
     updated_at: new Date().toISOString(),
+    controls_json: form.controls_json,
   };
 }

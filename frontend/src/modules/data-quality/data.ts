@@ -5,13 +5,14 @@ export type DataQualitySection =
   | "outliers"
   | "gps-issues"
   | "missing-data"
+  | "reconciliation"
   | "validation-failures"
   | "risk-alerts"
   | "rules";
 
 export type QualitySeverity = "Low" | "Medium" | "High" | "Critical";
 export type QualityIssueStatus = "Detected" | "Assigned" | "Under Investigation" | "Escalated" | "Governance Review" | "Resolved" | "Closed";
-export type QualityIssueType = "Duplicate" | "Outlier" | "GPS Issue" | "Missing Data" | "Validation Failure" | "Risk Alert";
+export type QualityIssueType = "Duplicate" | "Outlier" | "GPS Issue" | "Missing Data" | "Reconciliation" | "Validation Failure" | "Risk Alert";
 export type QualityScope = "Organization" | "Project" | "Form" | "Submission" | "Enumerator" | "Supervisor";
 export type QualityRuleType = "Completeness" | "Consistency" | "GPS" | "Duplicate" | "Outlier" | "Timeliness" | "Custom";
 
@@ -34,6 +35,7 @@ export type QualitySummary = {
   missingDataRecords: number;
   openInvestigations: number;
   openQualityIssues: number;
+  reconciliationIssues: number;
   overallScore: number;
   resolvedIssues: number;
   validationFailures: number;
@@ -145,6 +147,7 @@ export const dataQualitySections: {
   { id: "outliers", label: "Outliers", route: "/data-quality/outliers", description: "Review statistical, business-rule, location, and behavioral outliers." },
   { id: "gps-issues", label: "GPS Issues", route: "/data-quality/gps-issues", description: "Monitor missing GPS, boundary violations, duplicate coordinates, low accuracy, and suspicious locations." },
   { id: "missing-data", label: "Missing Data", route: "/data-quality/missing-data", description: "Track missing required fields, consent, attachments, GPS, and incomplete sections." },
+  { id: "reconciliation", label: "Reconciliation", route: "/data-quality/reconciliation", description: "Resolve unlinked submissions, duplicate beneficiaries, profile conflicts, imported unmatched records, and repeated collection issues." },
   { id: "validation-failures", label: "Validation Failures", route: "/data-quality/validation-failures", description: "Review range, logic, cross-field, conditional, and reference-data rule failures." },
   { id: "risk-alerts", label: "Risk Alerts", route: "/data-quality/risk-alerts", description: "Investigate suspicious patterns, fraud signals, manipulation, mass duplicates, and abnormal activity." },
   { id: "rules", label: "Quality Rules", route: "/data-quality/rules", description: "Manage reusable completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules." },

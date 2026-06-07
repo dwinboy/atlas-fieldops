@@ -6,10 +6,11 @@ from io import StringIO
 from uuid import UUID
 from typing import cast
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
-from app.models.collection import Project
+from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project
 from app.models.operations import (
     Beneficiary,
     CaseRecord,
@@ -24,6 +25,7 @@ from app.models.operations import (
     ProjectBudgetLine,
     WorkflowDefinition,
 )
+from app.repositories.audit import AuditRepository
 from app.repositories.operations import OperationsRepository
 from app.repositories.identity import IdentityRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.operations import (
@@ -883,6 +885,7 @@ def mark_record_as_imported(record: object, *, job: object, user_id: UUID, row_n
 class OperationsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self.audit = AuditRepository(session)
         self.repository = OperationsRepository(session)
         self.identity = IdentityRepository(session)
         self.roles = RoleRepository(session)
@@ -960,8 +963,54 @@ class OperationsService:
         )
         return beneficiary
 
-    async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
-        return await self.repository.list_beneficiaries(organization_id)
+    async def list_beneficiaries(
+        self,
+        organization_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        scope_type: str = "organization",
+        project_id: UUID | None = None,
+    ) -> list[Beneficiary]:
+        project_ids: set[UUID] | None = {project_id} if project_id is not None else None
+        if scope_type == "own" and actor_user_id is not None:
+            officer_result = await self.session.execute(
+                select(FieldOfficerProfile).where(
+                    FieldOfficerProfile.organization_id == organization_id,
+                    FieldOfficerProfile.user_id == actor_user_id,
+                    FieldOfficerProfile.deleted_at.is_(None),
+                    FieldOfficerProfile.is_active.is_(True),
+                )
+            )
+            officer = officer_result.scalar_one_or_none()
+            if officer is None:
+                return []
+            assignment_result = await self.session.execute(
+                select(OfficerAssignment).where(
+                    OfficerAssignment.organization_id == organization_id,
+                    OfficerAssignment.officer_id == officer.id,
+                    OfficerAssignment.deleted_at.is_(None),
+                    OfficerAssignment.is_active.is_(True),
+                )
+            )
+            assignments = list(assignment_result.scalars())
+            assigned_projects = {assignment.project_id for assignment in assignments}
+            project_ids = assigned_projects if project_ids is None else project_ids & assigned_projects
+            beneficiaries = await self.repository.list_beneficiaries(organization_id, project_ids=project_ids)
+            assignment_regions = {
+                assignment.region.strip().lower()
+                for assignment in assignments
+                if assignment.region
+            }
+            if assignment_regions:
+                beneficiaries = [
+                    beneficiary
+                    for beneficiary in beneficiaries
+                    if (beneficiary.region or "").strip().lower() in assignment_regions
+                    or (beneficiary.district or "").strip().lower() in assignment_regions
+                    or (beneficiary.community or "").strip().lower() in assignment_regions
+                ]
+            return beneficiaries
+        return await self.repository.list_beneficiaries(organization_id, project_ids=project_ids)
 
     async def merge_beneficiaries(
         self,
@@ -1037,6 +1086,22 @@ class OperationsService:
                 },
             ),
         )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="beneficiary.duplicates_merged",
+            resource_type="beneficiary",
+            resource_id=str(master.id),
+            metadata={
+                "master_beneficiary_id": str(master.id),
+                "master_beneficiary_uid": master.beneficiary_uid,
+                "duplicate_beneficiary_id": str(duplicate.id),
+                "duplicate_beneficiary_uid": duplicate.beneficiary_uid,
+                "moved_submissions": moved_submissions,
+                "moved_quality_signals": moved_quality_signals,
+                "reason": payload.reason,
+            },
+        )
         return BeneficiaryMergeRead(
             master_beneficiary=BeneficiaryRead.model_validate(master),
             duplicate_beneficiary=BeneficiaryRead.model_validate(duplicate),
@@ -1059,10 +1124,21 @@ class OperationsService:
         )
         return [DataQualitySignalRead.model_validate(signal) for signal in signals]
 
-    async def search_beneficiaries(self, organization_id: UUID, query: str) -> list[Beneficiary]:
+    async def search_beneficiaries(
+        self,
+        organization_id: UUID,
+        query: str,
+        *,
+        actor_user_id: UUID | None = None,
+        scope_type: str = "organization",
+    ) -> list[Beneficiary]:
         query_text = normalized_text(query)
         query_phone = normalized_phone(query)
-        beneficiaries = await self.repository.list_beneficiaries(organization_id)
+        beneficiaries = await self.list_beneficiaries(
+            organization_id,
+            actor_user_id=actor_user_id,
+            scope_type=scope_type,
+        )
         if not query_text:
             return beneficiaries[:50]
         return [

@@ -59,6 +59,7 @@ export function computeQualitySummary(issues: QualityIssue[], score: QualityScor
     missingDataRecords: issues.filter((issue) => issue.type === "Missing Data").length,
     openInvestigations: issues.filter((issue) => issue.status === "Assigned" || issue.status === "Under Investigation" || issue.status === "Escalated" || issue.status === "Governance Review").length,
     openQualityIssues: issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed").length,
+    reconciliationIssues: issues.filter((issue) => issue.type === "Reconciliation").length,
     overallScore: calculateQualityScore(score),
     resolvedIssues: issues.filter((issue) => issue.status === "Resolved" || issue.status === "Closed").length,
     validationFailures: issues.filter((issue) => issue.type === "Validation Failure").length,
@@ -71,6 +72,7 @@ export function filterIssuesBySection(issues: QualityIssue[], section: DataQuali
   if (section === "outliers") return issues.filter((issue) => issue.type === "Outlier");
   if (section === "gps-issues") return issues.filter((issue) => issue.type === "GPS Issue");
   if (section === "missing-data") return issues.filter((issue) => issue.type === "Missing Data");
+  if (section === "reconciliation") return issues.filter((issue) => issue.type === "Reconciliation");
   if (section === "validation-failures") return issues.filter((issue) => issue.type === "Validation Failure");
   if (section === "risk-alerts") return issues.filter((issue) => issue.type === "Risk Alert");
   return issues;

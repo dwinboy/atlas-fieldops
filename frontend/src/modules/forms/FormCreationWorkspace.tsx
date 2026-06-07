@@ -805,7 +805,7 @@ function rowsFromWorksheetXml(xml: string, sharedStrings: string[]): string[][] 
   });
 }
 
-async function readSpreadsheetRows(file: File): Promise<string[][]> {
+export async function readSpreadsheetRows(file: File): Promise<string[][]> {
   const lowerName = file.name.toLowerCase();
   if (lowerName.endsWith(".xlsx")) {
     const buffer = await file.arrayBuffer();
@@ -1471,6 +1471,317 @@ function controlsDraftToApiControls(
         bad_question_detection_ready: true,
       },
     },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function firstRuleText(value: unknown): string {
+  const rules = Array.isArray(value) ? value : [];
+  const first = asRecord(rules[0]);
+  return stringValue(first.rule);
+}
+
+function workflowPresetFromControls(
+  stages: unknown,
+): FormControlsDraft["workflowPreset"] {
+  const workflowStages = Array.isArray(stages) ? stages : [];
+  if (workflowStages.length >= 3) return "two_step_review";
+  const reviewerRoles = workflowStages.flatMap((stage) =>
+    stringArrayValue(asRecord(stage).reviewer_roles),
+  );
+  return reviewerRoles.includes("data_manager")
+    ? "data_manager_review"
+    : "supervisor_review";
+}
+
+function dataQualityModeFromControls(
+  rules: unknown,
+): FormControlsDraft["dataQualityMode"] {
+  const qualityRules = Array.isArray(rules) ? rules.map(asRecord) : [];
+  if (qualityRules.some((rule) => booleanValue(rule.blocking, false))) {
+    return "strict";
+  }
+  return qualityRules.some((rule) => stringValue(rule.severity) === "low")
+    ? "advisory"
+    : "standard";
+}
+
+function mediaRequirementFromControls(
+  value: unknown,
+): FormControlsDraft["mediaRequirement"] {
+  const requirement = stringValue(asRecord(value).requirement, "none");
+  return ["none", "photo", "signature", "photo_signature", "any_attachment"].includes(
+    requirement,
+  )
+    ? (requirement as FormControlsDraft["mediaRequirement"])
+    : "none";
+}
+
+function controlsDraftFromApiControls(
+  apiControls: FormListItem["controls_json"] | null | undefined,
+): FormControlsDraft {
+  const controls = asRecord(apiControls);
+  if (!Object.keys(controls).length) return defaultControlsDraft;
+
+  const entity = asRecord(controls.entity_controls);
+  const governance = asRecord(controls.governance);
+  const instrument = asRecord(controls.instrument);
+  const purpose = asRecord(instrument.purpose);
+  const tracking = asRecord(instrument.tracking);
+  const seasonal = asRecord(instrument.seasonal_rules);
+  const wave = asRecord(instrument.survey_wave);
+  const dataSource = asRecord(instrument.data_source);
+  const geographic = asRecord(instrument.geographic_scope);
+  const certification = asRecord(instrument.certification);
+  const sampling = asRecord(instrument.sampling);
+  const localization = asRecord(instrument.localization);
+  const accessibility = asRecord(instrument.accessibility);
+  const attachment = asRecord(instrument.attachment_governance);
+  const duration = asRecord(instrument.interview_duration);
+  const enumeratorQuality = asRecord(instrument.enumerator_quality);
+  const eventSettings = asRecord(instrument.event_settings);
+  const profileHistory = asRecord(instrument.profile_history_policy);
+  const indicatorMappings = Array.isArray(instrument.indicator_mappings)
+    ? instrument.indicator_mappings.map(asRecord)
+    : [];
+  const profileRules = Array.isArray(instrument.profile_impact_rules)
+    ? instrument.profile_impact_rules.map(asRecord)
+    : [];
+  const gpsRule = (Array.isArray(controls.data_quality_rules)
+    ? controls.data_quality_rules.map(asRecord)
+    : []
+  ).find((rule) => stringValue(rule.rule_type) === "gps");
+  const duplicateRule = (Array.isArray(controls.data_quality_rules)
+    ? controls.data_quality_rules.map(asRecord)
+    : []
+  ).find((rule) => stringValue(rule.rule_type) === "duplicate");
+  const firstIndicator = indicatorMappings[0] ?? {};
+  const defaultAction = stringValue(profileHistory.default_action);
+  const profileUpdateMode: FormControlsDraft["profileUpdateMode"] =
+    stringValue(entity.profile_update_mode) === "after_submission" ||
+    defaultAction === "keep_history"
+      ? "after_submission"
+      : stringValue(entity.profile_update_mode) === "never" ||
+          defaultAction === "no_update"
+        ? "never"
+        : "with_supervisor_approval";
+  const profileMappings = { ...defaultControlsDraft.profileMappings };
+  for (const rule of profileRules) {
+    const impact = asRecord(rule.profile_impact);
+    const target = stringValue(impact.target_field);
+    const variable = stringValue(rule.variable_name);
+    if (target in profileMappings && variable) {
+      profileMappings[target as keyof FormControlsDraft["profileMappings"]] =
+        variable;
+    }
+  }
+
+  return {
+    ...defaultControlsDraft,
+    accessibilityMode: stringValue(
+      accessibility.mode,
+      defaultControlsDraft.accessibilityMode,
+    ) as FormControlsDraft["accessibilityMode"],
+    allowAnonymous: booleanValue(
+      entity.allows_anonymous,
+      defaultControlsDraft.allowAnonymous,
+    ),
+    assignmentMode: booleanValue(
+      governance.require_enumerator_assignment,
+      defaultControlsDraft.assignmentMode === "assigned_only",
+    )
+      ? "assigned_only"
+      : "project_team",
+    auditTrail: booleanValue(controls.audit && asRecord(controls.audit).immutable, true),
+    autoAssignmentRule: firstRuleText(instrument.auto_assignment_rules),
+    beneficiarySearch: booleanValue(entity.prefill_profile, true)
+      ? booleanValue(entity.requires_existing_entity, false)
+        ? "required"
+        : "optional"
+      : "disabled",
+    blockWithoutConsent: booleanValue(
+      governance.consent_required,
+      defaultControlsDraft.blockWithoutConsent,
+    ),
+    boundaryValidation: booleanValue(geographic.boundary_validation, false),
+    businessPurpose: stringValue(
+      purpose.business_purpose,
+      defaultControlsDraft.businessPurpose,
+    ),
+    changeSummary: "",
+    consentMode: booleanValue(governance.consent_required, true)
+      ? defaultControlsDraft.consentMode
+      : "not_required",
+    dataQualityMode: dataQualityModeFromControls(controls.data_quality_rules),
+    dataSourceType: stringValue(
+      dataSource.source_type,
+      defaultControlsDraft.dataSourceType,
+    ) as FormControlsDraft["dataSourceType"],
+    duplicateAction: stringValue(
+      entity.duplicate_action,
+      defaultControlsDraft.duplicateAction,
+    ) as FormControlsDraft["duplicateAction"],
+    duplicateFields:
+      stringArrayValue(entity.matching_fields).length > 0
+        ? stringArrayValue(entity.matching_fields)
+        : stringArrayValue(asRecord(duplicateRule).fields),
+    duplicateSeverity: stringValue(
+      asRecord(duplicateRule).severity,
+      defaultControlsDraft.duplicateSeverity,
+    ) as FormControlsDraft["duplicateSeverity"],
+    duplicateThreshold: numberValue(
+      entity.duplicate_threshold,
+      defaultControlsDraft.duplicateThreshold,
+    ),
+    entityType: stringValue(entity.entity_type, defaultControlsDraft.entityType),
+    eventMode: stringValue(
+      eventSettings.mode,
+      defaultControlsDraft.eventMode,
+    ) as FormControlsDraft["eventMode"],
+    expectedUse: stringValue(purpose.expected_use, defaultControlsDraft.expectedUse),
+    exportRestricted: booleanValue(
+      governance.export_restricted,
+      defaultControlsDraft.exportRestricted,
+    ),
+    fileTypes: stringArrayValue(attachment.allowed_formats).join(", ") ||
+      defaultControlsDraft.fileTypes,
+    formObjective: stringValue(
+      purpose.form_objective,
+      defaultControlsDraft.formObjective,
+    ),
+    geographicScope: stringValue(geographic.description),
+    gpsAccuracy: Number(
+      stringValue(asRecord(gpsRule).expression).match(/\d+/)?.[0] ??
+        defaultControlsDraft.gpsAccuracy,
+    ),
+    indicatorComponent: stringValue(
+      firstIndicator.indicator_component,
+      defaultControlsDraft.indicatorComponent,
+    ) as FormControlsDraft["indicatorComponent"],
+    indicatorLink: stringValue(firstIndicator.linked_indicator),
+    lifecycleStatus: stringValue(
+      governance.form_status,
+      defaultControlsDraft.lifecycleStatus,
+    ) as FormControlsDraft["lifecycleStatus"],
+    linkedOutcome: stringValue(purpose.linked_outcome),
+    linkedOutput: stringValue(purpose.linked_output),
+    localizationLanguages: stringArrayValue(localization.languages).join(", ") ||
+      defaultControlsDraft.localizationLanguages,
+    lockApprovedRecords: booleanValue(
+      governance.auto_lock_after_approval,
+      defaultControlsDraft.lockApprovedRecords,
+    ),
+    maxAttachmentSizeMb: numberValue(
+      attachment.maximum_file_size_mb,
+      defaultControlsDraft.maxAttachmentSizeMb,
+    ),
+    maximumDurationMinutes: numberValue(
+      duration.maximum_minutes,
+      defaultControlsDraft.maximumDurationMinutes,
+    ),
+    maximumSubmissionsPerDay: numberValue(
+      enumeratorQuality.maximum_submissions_per_day,
+      defaultControlsDraft.maximumSubmissionsPerDay,
+    ),
+    mediaRequirement: mediaRequirementFromControls(attachment),
+    meReviewerName: stringValue(
+      certification.me_reviewer,
+      defaultControlsDraft.meReviewerName,
+    ),
+    minimumDurationMinutes: numberValue(
+      duration.minimum_minutes,
+      defaultControlsDraft.minimumDurationMinutes,
+    ),
+    offlineEnabled: true,
+    offlineMediaCapture: true,
+    parentForm: stringValue(tracking.parent_form),
+    profileMappings,
+    profileUpdateMode,
+    programObjective: stringValue(purpose.program_objective),
+    referenceDataRequired: Array.isArray(controls.reference_bindings)
+      ? controls.reference_bindings.length > 0
+      : defaultControlsDraft.referenceDataRequired,
+    relatedForms: stringArrayValue(tracking.related_forms).join(", "),
+    requireConsent: booleanValue(
+      governance.consent_required,
+      defaultControlsDraft.requireConsent,
+    ),
+    resultArea: stringValue(purpose.result_area),
+    reviewApprover: stringValue(
+      certification.approver_role,
+      defaultControlsDraft.reviewApprover,
+    ) as FormControlsDraft["reviewApprover"],
+    reviewComments: stringValue(asRecord(instrument.lifecycle).review_comments),
+    reviewer: workflowPresetFromControls(controls.workflow_stages) ===
+      "data_manager_review"
+      ? "data_manager"
+      : defaultControlsDraft.reviewer,
+    requiresEntity: booleanValue(
+      entity.requires_existing_entity,
+      defaultControlsDraft.requiresEntity,
+    ),
+    requiresGps: booleanValue(
+      governance.require_gps_capture,
+      defaultControlsDraft.requiresGps,
+    ),
+    riskClassification: booleanValue(governance.sensitive_field_masking, false)
+      ? "sensitive"
+      : defaultControlsDraft.riskClassification,
+    samplingMethod: stringValue(
+      sampling.sampling_method,
+      defaultControlsDraft.samplingMethod,
+    ) as FormControlsDraft["samplingMethod"],
+    seasonEnd: stringValue(seasonal.season_end),
+    seasonName: stringValue(seasonal.season_name),
+    seasonStart: stringValue(seasonal.season_start),
+    technicalReviewerName: stringValue(
+      certification.technical_reviewer,
+      defaultControlsDraft.technicalReviewerName,
+    ),
+    finalApproverName: stringValue(
+      certification.final_approver,
+      defaultControlsDraft.finalApproverName,
+    ),
+    approvalDate: stringValue(certification.approval_date),
+    approvalNotes: stringValue(certification.approval_notes),
+    submissionFrequency: stringValue(
+      entity.submission_frequency,
+      defaultControlsDraft.submissionFrequency,
+    ) as FormControlsDraft["submissionFrequency"],
+    targetSampleSize: numberValue(
+      sampling.target_sample_size,
+      defaultControlsDraft.targetSampleSize,
+    ),
+    trackingSeries: stringValue(tracking.tracking_series),
+    translationStatus: stringValue(
+      localization.translation_status,
+      defaultControlsDraft.translationStatus,
+    ) as FormControlsDraft["translationStatus"],
+    triggerRule: firstRuleText(instrument.trigger_rules),
+    workflowPreset: workflowPresetFromControls(controls.workflow_stages),
   };
 }
 
@@ -2413,10 +2724,13 @@ export function FormCreationWorkspace({
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
   const [controlsDraft, setControlsDraft] =
-    useState<FormControlsDraft>(defaultControlsDraft);
+    useState<FormControlsDraft>(() =>
+      controlsDraftFromApiControls(initialForm?.controls_json),
+    );
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
@@ -2557,6 +2871,11 @@ export function FormCreationWorkspace({
   }, [initialForm, preview, setup.projectName, tenantProjects]);
 
   useEffect(() => {
+    setControlsDraft(controlsDraftFromApiControls(initialForm?.controls_json));
+    setPublishedForm(null);
+  }, [initialForm?.controls_json, initialForm?.id]);
+
+  useEffect(() => {
     if (!initialForm || !formSchemaQuery.data) return;
     setDraftForm(
       createEditableDraftFromSavedSchema(
@@ -2656,6 +2975,45 @@ export function FormCreationWorkspace({
         ? "Draft saved. You can publish when ready."
         : "Draft saved locally. Select an existing project before publishing.",
     );
+  }
+
+  async function saveControlsDraft(): Promise<void> {
+    if (!draftForm) return;
+    const nextForm: DynamicForm = {
+      ...draftForm,
+      history: [
+        ...(draftForm.history ?? []),
+        {
+          createdAt: new Date().toISOString(),
+          status: draftForm.status,
+          summary: `Controls reviewed: ${controlsDraft.permissionPreset} permissions, ${controlsDraft.workflowPreset} workflow, ${controlsDraft.dataQualityMode} data quality.`,
+          version: draftForm.version,
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+    handleBuilderFormChange(nextForm);
+    if (token && !preview && initialForm) {
+      setControlsSaving(true);
+      try {
+        await updateFormControls(
+          token,
+          initialForm.id,
+          controlsDraftToApiControls(controlsDraft, nextForm),
+        );
+        setPublishMessage("Controls saved to the form. Continue to preview when ready.");
+      } catch (error) {
+        setPublishMessage(
+          error instanceof Error
+            ? error.message
+            : "Controls could not be saved to the backend.",
+        );
+      } finally {
+        setControlsSaving(false);
+      }
+      return;
+    }
+    setPublishMessage("Controls saved for this draft. Continue to preview when ready.");
   }
 
   async function publishDraft(): Promise<void> {
@@ -3503,26 +3861,11 @@ export function FormCreationWorkspace({
             action={
               <div className="flex flex-wrap gap-2">
                 <Button
-                  onClick={() => {
-                    if (draftForm) {
-                      handleBuilderFormChange({
-                        ...draftForm,
-                        history: [
-                          ...(draftForm.history ?? []),
-                          {
-                            createdAt: new Date().toISOString(),
-                            status: draftForm.status,
-                            summary: `Controls reviewed: ${controlsDraft.permissionPreset} permissions, ${controlsDraft.workflowPreset} workflow, ${controlsDraft.dataQualityMode} data quality.`,
-                            version: draftForm.version,
-                          },
-                        ],
-                      });
-                    }
-                    setPublishMessage("Controls saved for this draft. Continue to preview when ready.");
-                  }}
+                  disabled={controlsSaving}
+                  onClick={() => void saveControlsDraft()}
                   variant="secondary"
                 >
-                  Save controls
+                  {controlsSaving ? "Saving controls" : "Save controls"}
                 </Button>
                 <Button onClick={() => setStage("preview")} variant="primary">
                   Next: Preview & Test

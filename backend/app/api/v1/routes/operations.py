@@ -247,7 +247,11 @@ async def list_beneficiaries(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BeneficiaryRead]:
-    beneficiaries = await OperationsService(session).list_beneficiaries(organization_uuid(principal))
+    beneficiaries = await OperationsService(session).list_beneficiaries(
+        organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        scope_type=principal.scope_type,
+    )
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
@@ -271,7 +275,12 @@ async def search_beneficiaries(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BeneficiaryRead]:
-    beneficiaries = await OperationsService(session).search_beneficiaries(organization_uuid(principal), q)
+    beneficiaries = await OperationsService(session).search_beneficiaries(
+        organization_uuid(principal),
+        q,
+        actor_user_id=user_uuid(principal),
+        scope_type=principal.scope_type,
+    )
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
@@ -358,7 +367,11 @@ async def mobile_assigned_entities(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BeneficiaryRead]:
-    beneficiaries = await OperationsService(session).list_beneficiaries(organization_uuid(principal))
+    beneficiaries = await OperationsService(session).list_beneficiaries(
+        organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        scope_type=principal.scope_type,
+    )
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 

@@ -85,12 +85,13 @@ async def project_beneficiaries(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BeneficiaryRead]:
-    beneficiaries = await OperationsService(session).list_beneficiaries(organization_uuid(principal))
-    return [
-        BeneficiaryRead.model_validate(beneficiary)
-        for beneficiary in beneficiaries
-        if beneficiary.project_id == project_id
-    ]
+    beneficiaries = await OperationsService(session).list_beneficiaries(
+        organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        scope_type=principal.scope_type,
+        project_id=project_id,
+    )
+    return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
 @router.get("/{project_id}/data-imports", response_model=list[ImportJobRead], summary="List project import batches")

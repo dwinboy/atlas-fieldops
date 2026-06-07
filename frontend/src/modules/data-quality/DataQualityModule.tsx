@@ -95,6 +95,14 @@ function signalSeverity(value: string): QualitySeverity {
 
 function signalIssueType(value: string): QualityIssueType {
   const normalized = value.toLowerCase();
+  if (
+    normalized.includes("profile_conflict") ||
+    normalized.includes("missing_entity_link") ||
+    normalized.includes("entity_link") ||
+    normalized.includes("unlinked") ||
+    normalized.includes("reconciliation") ||
+    normalized.includes("unmatched")
+  ) return "Reconciliation";
   if (normalized.includes("duplicate")) return "Duplicate";
   if (normalized.includes("gps")) return "GPS Issue";
   if (normalized.includes("missing")) return "Missing Data";
@@ -348,6 +356,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
       {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
+      {!selectedIssue && activeSection === "reconciliation" ? <IssueTable description="Resolve unlinked submissions, duplicate beneficiary candidates, profile conflicts, imported unmatched records, and repeated collection issues before they affect official results." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/reconciliation" title="Reconciliation Queue" /> : null}
       {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
@@ -395,6 +404,7 @@ function QualityLanding({
     { icon: FileWarning, label: "Open Quality Issues", value: summary.openQualityIssues, tone: summary.openQualityIssues ? "warning" : "success" },
     { icon: AlertTriangle, label: "Critical Issues", value: summary.criticalIssues, tone: summary.criticalIssues ? "danger" : "success" },
     { icon: GitCompare, label: "Duplicate Records", value: summary.duplicateRecords, tone: "warning" },
+    { icon: ClipboardCheck, label: "Reconciliation Queue", value: summary.reconciliationIssues, tone: summary.reconciliationIssues ? "warning" : "success" },
     { icon: LocateFixed, label: "GPS Issues", value: summary.gpsIssues, tone: "danger" },
     { icon: ShieldAlert, label: "Validation Failures", value: summary.validationFailures, tone: "warning" },
     { icon: ClipboardCheck, label: "Missing Data Records", value: summary.missingDataRecords, tone: "danger" },

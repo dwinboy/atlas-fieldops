@@ -36,10 +36,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { getFormSchema, governExport, listForms, listFormTemplates, listSubmissions, uploadImportFile } from "@/lib/api";
+import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
+import { getFormSchema, governExport, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, uploadImportFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { FormCreationWorkspace } from "@/modules/forms/FormCreationWorkspace";
+import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
   formDetailTabs,
   formsSections,
@@ -61,6 +61,7 @@ import {
 import { useWorkspaceStore } from "@/stores/workspace";
 import { getPreviewSubmissions } from "@/modules/submissions/utils";
 import type { SubmissionRecord } from "@/modules/submissions/data";
+import { previewEntities } from "@/modules/beneficiaries/data";
 
 type FormsModuleProps = {
   principal?: CurrentPrincipal | null;
@@ -96,58 +97,8 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
-function parseDelimitedRows(text: string): string[][] {
-  const firstLine = text.split(/\r?\n/).find((line) => line.trim()) ?? "";
-  const delimiter = firstLine.includes("\t")
-    ? "\t"
-    : firstLine.split(";").length > firstLine.split(",").length
-      ? ";"
-      : ",";
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-    if (char === '"' && inQuotes && next === '"') {
-      cell += '"';
-      index += 1;
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === delimiter && !inQuotes) {
-      row.push(cell.trim());
-      cell = "";
-      continue;
-    }
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell.trim());
-      if (row.some((value) => value.length)) rows.push(row);
-      row = [];
-      cell = "";
-      continue;
-    }
-    cell += char;
-  }
-  row.push(cell.trim());
-  if (row.some((value) => value.length)) rows.push(row);
-  return rows;
-}
-
 async function readFormUploadRows(file: File): Promise<string[][]> {
-  const lowerName = file.name.toLowerCase();
-  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls")) {
-    throw new Error(
-      "This form data view currently imports CSV or TSV files. Open the downloaded template in Excel, fill it, then save as CSV before uploading.",
-    );
-  }
-  return parseDelimitedRows(await file.text());
+  return readSpreadsheetRows(file);
 }
 
 type FormStats = {
@@ -183,8 +134,12 @@ function isImportedSubmission(submission: SubmissionRead | SubmissionRecord): bo
 }
 
 function submissionSourceLabel(submission: SubmissionRead | SubmissionRecord): string {
-  if (isImportedSubmission(submission)) return "Uploaded / Imported";
   if (submission.offline_created) return "Mobile";
+  if (isImportedSubmission(submission)) {
+    const sourceSystem = (submission.source_system ?? "").toLowerCase();
+    if (sourceSystem && sourceSystem !== "form spreadsheet upload") return "Imported";
+    return "Uploaded";
+  }
   return "Field Submitted";
 }
 
@@ -193,6 +148,31 @@ function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): st
     return submission.imported_by_user_id ?? "Uploaded user";
   }
   return submission.field_officer_id;
+}
+
+function beneficiaryCodeMap(
+  beneficiaries: BeneficiaryRead[] | null | undefined,
+  preview: boolean,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  if (preview) {
+    for (const entity of previewEntities) {
+      map.set(entity.id, entity.entityId);
+    }
+    return map;
+  }
+  for (const beneficiary of beneficiaries ?? []) {
+    map.set(beneficiary.id, beneficiary.beneficiary_uid);
+  }
+  return map;
+}
+
+function submissionEntityCode(
+  submission: SubmissionRead | SubmissionRecord,
+  beneficiaryCodes: Map<string, string>,
+): string {
+  if (!submission.entity_id) return "Not linked";
+  return beneficiaryCodes.get(submission.entity_id) ?? submission.entity_id;
 }
 
 function statusBucket(status: string): "approved" | "pending" | "rejectedReturned" | "other" {
@@ -439,7 +419,7 @@ function formatCell(value: unknown): string {
 function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): string[] {
   const warnings = new Set<string>();
   if (submission.status !== "approved") warnings.add("Pending review");
-  if (!submission.latitude || !submission.longitude) warnings.add("Missing GPS");
+  if (submission.latitude === null || submission.latitude === undefined || submission.longitude === null || submission.longitude === undefined) warnings.add("Missing GPS");
   if (submission.accuracy && submission.accuracy > 20) warnings.add("Low GPS accuracy");
   if ("duplicate_risk" in submission && submission.duplicate_risk && submission.duplicate_risk !== "none") warnings.add("Duplicate risk");
   if ("quality_flags" in submission) {
@@ -497,9 +477,19 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     queryFn: () => listSubmissions(token ?? ""),
     enabled,
   });
+  const beneficiariesQuery = useQuery({
+    queryKey: ["forms-module", "beneficiary-codes", token],
+    queryFn: () => listBeneficiaries(token ?? ""),
+    enabled,
+  });
   const templatesQuery = useQuery({
     queryKey: ["forms-module", "templates", token],
     queryFn: () => listFormTemplates(token ?? ""),
+    enabled,
+  });
+  const projectsQuery = useQuery({
+    queryKey: ["forms-module", "projects", token],
+    queryFn: () => listProjects(token ?? ""),
     enabled,
   });
 
@@ -516,20 +506,36 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         : [...(submissionsQuery.data ?? []), ...localSubmissions],
     [localSubmissions, preview, submissionsQuery.data],
   );
+  const linkedBeneficiaryCodes = useMemo(
+    () => beneficiaryCodeMap(beneficiariesQuery.data, preview),
+    [beneficiariesQuery.data, preview],
+  );
   const formStats = useMemo(() => buildFormStats(formSubmissions), [formSubmissions]);
+  const projectNameById = useMemo(
+    () =>
+      new Map(
+        (projectsQuery.data ?? []).map((project) => [project.id, project.name]),
+      ),
+    [projectsQuery.data],
+  );
   const forms = useMemo<FormListItem[]>(() => {
     const baseForms = preview
       ? [...localForms, ...previewForms]
       : (formsQuery.data ?? []).map(normalizeBackendForm);
     return baseForms.map((form) => {
       const stats = formStats.get(form.id);
-      if (!stats) return form;
+      const projectName =
+        form.project_id && projectNameById.has(form.project_id)
+          ? (projectNameById.get(form.project_id) ?? form.project_name)
+          : form.project_name;
+      if (!stats) return { ...form, project_name: projectName };
       return {
         ...form,
+        project_name: projectName,
         ...stats,
       };
     });
-  }, [formStats, formsQuery.data, localForms, preview]);
+  }, [formStats, formsQuery.data, localForms, preview, projectNameById]);
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const summary = computeFormsSummary(forms);
   const visibleForms = useMemo(
@@ -579,6 +585,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
 
   function openFormData(formId: string, query?: string): void {
     router.push(`/forms/${formId}/data${query ? `?${query}` : ""}`);
+  }
+
+  function openFormBuilder(form: FormListItem): void {
+    setSelectedFormId(null);
+    setBuilderFormId(form.id);
+    setCreationOpen(true);
   }
 
   const columns: TableColumn<FormListItem>[] = [
@@ -686,7 +698,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             View data
           </Button>
           <Button
-            onClick={() => openForm(form, "Builder")}
+            onClick={() => openFormBuilder(form)}
             size="sm"
             variant="ghost"
           >
@@ -724,6 +736,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     return (
       <FormDataGridWorkspace
         canExport={hasAnyPermission(principal, ["submissions.export", "reports.export", "forms.manage"])}
+        beneficiaryCodes={linkedBeneficiaryCodes}
         form={dataForm}
         formId={dataFormId}
         onBack={() => router.push("/forms/all")}
@@ -820,8 +833,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           forms={forms}
           onClose={() => setSelectedFormId(null)}
           onOpenBuilder={() => {
-            setBuilderFormId(selectedForm.id);
-            setCreationOpen(true);
+            openFormBuilder(selectedForm);
           }}
           onOpenDataQuality={() => setActiveView("dataQuality")}
           onOpenMapping={() => setActiveView("map")}
@@ -892,8 +904,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
                 router.push(`/field-operations?formId=${encodeURIComponent(form.id)}`);
               }}
               onEdit={(form) => {
-                setBuilderFormId(form.id);
-                setCreationOpen(true);
+                openFormBuilder(form);
               }}
               onOpenData={(form, query) => openFormData(form.id, query)}
               section={activeSection}
@@ -1514,6 +1525,7 @@ function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; qu
 
 function FormDataGridWorkspace({
   canExport,
+  beneficiaryCodes,
   form,
   formId,
   onBack,
@@ -1522,6 +1534,7 @@ function FormDataGridWorkspace({
   token,
 }: {
   canExport: boolean;
+  beneficiaryCodes: Map<string, string>;
   form: FormListItem | null;
   formId: string;
   onBack: () => void;
@@ -1552,6 +1565,7 @@ function FormDataGridWorkspace({
     const term = search.trim().toLowerCase();
     return submissions.filter((submission) => {
       const source = submissionSourceLabel(submission);
+      const entityCode = submissionEntityCode(submission, beneficiaryCodes);
       if (sourceFilter === "uploaded" && !isImportedSubmission(submission)) return false;
       if (sourceFilter === "field" && isImportedSubmission(submission)) return false;
       if (statusFilter !== "all") {
@@ -1569,11 +1583,11 @@ function FormDataGridWorkspace({
         source,
         submissionActorLabel(submission),
         submission.status,
-        submission.entity_id ?? "",
+        entityCode,
         ...Object.values(submission.payload_json ?? {}).map(formatCell),
       ].join(" ").toLowerCase().includes(term);
     });
-  }, [search, sourceFilter, statusFilter, submissions]);
+  }, [beneficiaryCodes, search, sourceFilter, statusFilter, submissions]);
   const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
 
   async function exportGrid(): Promise<void> {
@@ -1602,7 +1616,7 @@ function FormDataGridWorkspace({
         submitted_or_uploaded_by: submissionActorLabel(submission),
         date: submission.imported_at ?? submission.submitted_at,
         status: submission.status,
-        entity_code: submission.entity_id ?? "",
+        entity_code: submissionEntityCode(submission, beneficiaryCodes),
         project: form?.project_name ?? submission.project_id ?? "",
         form_version: submission.server_sequence,
         ...Object.fromEntries(
@@ -1833,7 +1847,7 @@ function FormDataGridWorkspace({
               {uploading ? "Uploading" : "Upload data"}
             </Button>
             <input
-              accept=".csv,.tsv,.txt"
+              accept=".csv,.tsv,.txt,.xlsx"
               className="hidden"
               onChange={(event) =>
                 void handleFormDataUpload(event.target.files?.[0] ?? null)
@@ -1953,7 +1967,7 @@ function FormDataGridWorkspace({
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
                   </td>
-                  <td className="whitespace-nowrap border-b px-2.5 py-2">{submission.entity_id ?? "Not linked"}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionEntityCode(submission, beneficiaryCodes)}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">v{submission.server_sequence}</td>
                   {questions.map((question) => (

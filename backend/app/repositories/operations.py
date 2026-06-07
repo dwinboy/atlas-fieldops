@@ -153,13 +153,21 @@ class OperationsRepository:
         await self.session.flush()
         return int(submission_result.rowcount or 0), int(signal_result.rowcount or 0)
 
-    async def list_beneficiaries(self, organization_id: UUID) -> list[Beneficiary]:
-        result = await self.session.execute(
-            select(Beneficiary)
-            .where(Beneficiary.organization_id == organization_id, Beneficiary.deleted_at.is_(None))
-            .order_by(Beneficiary.updated_at.desc())
-            .limit(500)
+    async def list_beneficiaries(
+        self,
+        organization_id: UUID,
+        *,
+        project_ids: set[UUID] | None = None,
+    ) -> list[Beneficiary]:
+        query = select(Beneficiary).where(
+            Beneficiary.organization_id == organization_id,
+            Beneficiary.deleted_at.is_(None),
         )
+        if project_ids is not None:
+            if not project_ids:
+                return []
+            query = query.where(Beneficiary.project_id.in_(project_ids))
+        result = await self.session.execute(query.order_by(Beneficiary.updated_at.desc()).limit(500))
         return list(result.scalars())
 
     async def list_quality_signals(

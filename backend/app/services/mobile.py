@@ -719,14 +719,7 @@ class MobileService:
         entity_type = payload.entity_type
         entity_settings = _entity_settings(form.controls_json or {})
         if entity_id is None and bool(entity_settings.get("createsNewEntity")):
-            entity = await self._create_entity_from_registration(
-                organization_id=organization_id,
-                project_id=form.project_id,
-                entity_type=str(entity_settings.get("entityType") or payload.entity_type or "Farmer"),
-                payload=payload,
-            )
-            entity_id = entity.id
-            entity_type = entity.beneficiary_type
+            entity_type = str(entity_settings.get("entityType") or payload.entity_type or "Farmer")
         now = datetime.now(UTC)
         location_payload = payload.location or {}
         latitude = location_payload.get("latitude")

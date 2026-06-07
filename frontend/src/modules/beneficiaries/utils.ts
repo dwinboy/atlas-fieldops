@@ -155,6 +155,16 @@ export function entityFromDraft(
     longitude: Number.isFinite(longitude) ? longitude : undefined,
     nationalId: draft.nationalId || undefined,
     phoneNumber: draft.phoneNumber || undefined,
+    profileJson: {
+      source: "Web",
+      projectEnrollments: [
+        {
+          enrollmentDate: new Date().toISOString(),
+          projectId: draft.projectId,
+          status: "active",
+        },
+      ],
+    },
     projectId: draft.projectId,
     projectName: draft.projectName,
     qualityFlags: 0,

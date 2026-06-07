@@ -928,6 +928,7 @@ function ProjectDetailWorkspace({
           onOpenRegistry={onOpenBeneficiaries}
           preview={preview}
           projectId={detail.id}
+          token={token}
         />
       ) : null}
       {tab === "Data Import" ? (

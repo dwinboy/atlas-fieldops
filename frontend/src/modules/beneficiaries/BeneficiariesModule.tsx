@@ -3,9 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ClipboardList,
   CheckCircle2,
   Download,
   FileUp,
+  GitBranch,
+  History,
   Link2,
   MapPin,
   Smartphone,
@@ -21,7 +24,14 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { listBeneficiaries, mergeBeneficiaries, type CurrentPrincipal } from "@/lib/api";
+import {
+  getProjectEntities,
+  listBeneficiaries,
+  listSubmissions,
+  mergeBeneficiaries,
+  type CurrentPrincipal,
+  type SubmissionRead,
+} from "@/lib/api";
 import {
   mapBeneficiaryRead,
   previewEntities,
@@ -30,6 +40,7 @@ import {
 } from "@/modules/beneficiaries/data";
 import { formatEntityDate } from "@/modules/beneficiaries/utils";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
+import { getPreviewSubmissions } from "@/modules/submissions/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 type BeneficiariesModuleProps = {
@@ -78,12 +89,31 @@ export function BeneficiariesModule({
     queryFn: () => listBeneficiaries(token ?? ""),
     queryKey: ["beneficiaries", token],
   });
+  const submissionsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listSubmissions(token ?? ""),
+    queryKey: ["beneficiaries", "linked-submissions", token],
+  });
 
   const backendEntities = (entitiesQuery.data ?? []).map(mapBeneficiaryRead);
   const entities = useMemo(
     () => [...localEntities, ...(preview ? previewEntities : backendEntities)],
     [backendEntities, localEntities, preview],
   );
+  const linkedSubmissionRows = useMemo<SubmissionRead[]>(
+    () => (preview ? getPreviewSubmissions() : submissionsQuery.data ?? []),
+    [preview, submissionsQuery.data],
+  );
+  const submissionsByEntity = useMemo(() => {
+    const map = new Map<string, SubmissionRead[]>();
+    for (const submission of linkedSubmissionRows) {
+      if (!submission.entity_id) continue;
+      const current = map.get(submission.entity_id) ?? [];
+      current.push(submission);
+      map.set(submission.entity_id, current);
+    }
+    return map;
+  }, [linkedSubmissionRows]);
   const duplicates = entities.filter(
     (entity) => entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0,
   );
@@ -336,6 +366,9 @@ export function BeneficiariesModule({
         <EntitySidePanel
           duplicates={duplicates}
           entity={selectedEntity ?? entities[0] ?? null}
+          linkedSubmissions={
+            submissionsByEntity.get((selectedEntity ?? entities[0])?.id ?? "") ?? []
+          }
           managerAccess={managerAccess}
           onMerge={openMergeReview}
         />
@@ -359,14 +392,19 @@ export function BeneficiariesModule({
 function EntitySidePanel({
   duplicates,
   entity,
+  linkedSubmissions,
   managerAccess,
   onMerge,
 }: {
   duplicates: BeneficiaryEntity[];
   entity: BeneficiaryEntity | null;
+  linkedSubmissions: SubmissionRead[];
   managerAccess: boolean;
   onMerge: (duplicate?: BeneficiaryEntity) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<
+    "Overview" | "Profile" | "Forms & Records" | "Timeline"
+  >("Overview");
   if (!entity) {
     return (
       <aside className="rounded-xl border border-dashed bg-panel p-4 text-sm text-muted-foreground">
@@ -392,17 +430,46 @@ function EntitySidePanel({
           </div>
           <Badge tone={statusTone(entity.status)}>{entity.status}</Badge>
         </div>
-        <div className="mt-4 grid gap-2 text-sm">
-          <Signal label="Project" value={entity.projectName} />
-          <Signal
-            label="Location"
-            value={`${entity.village}, ${entity.district}`}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <MetricButton
+            icon={ClipboardList}
+            label="Linked submissions"
+            onClick={() => setActiveTab("Forms & Records")}
+            value={linkedSubmissions.length}
           />
-          <Signal label="Phone" value={entity.phoneNumber ?? "Not recorded"} />
-          <Signal label="Household" value={entity.householdId ?? "N/A"} />
-          <Signal label="Consent" value={entity.consentStatus} />
-          <Signal label="Last visit" value={formatEntityDate(entity.lastVisit)} />
+          <MetricButton
+            icon={GitBranch}
+            label="Pending updates"
+            onClick={() => setActiveTab("Profile")}
+            value={profileUpdateProposals(entity).length}
+          />
         </div>
+        <div className="mt-4 flex gap-1 overflow-x-auto product-scrollbar">
+          {(["Overview", "Profile", "Forms & Records", "Timeline"] as const).map((tab) => (
+            <button
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                activeTab === tab
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              }`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              type="button"
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        {activeTab === "Overview" ? (
+          <BeneficiaryOverview entity={entity} linkedSubmissions={linkedSubmissions} />
+        ) : null}
+        {activeTab === "Profile" ? <BeneficiaryProfile entity={entity} /> : null}
+        {activeTab === "Forms & Records" ? (
+          <BeneficiaryRecords linkedSubmissions={linkedSubmissions} />
+        ) : null}
+        {activeTab === "Timeline" ? (
+          <BeneficiaryTimeline entity={entity} linkedSubmissions={linkedSubmissions} />
+        ) : null}
       </div>
       <div className="rounded-xl border bg-panel p-4 shadow-line">
         <div className="flex items-center gap-2">
@@ -416,9 +483,9 @@ function EntitySidePanel({
         </div>
         <div className="mt-3 grid gap-2">
           {[
-            ["Registration", "Complete"],
+            ["Registration", linkedSubmissions.some((submission) => submission.status === "approved") ? "Complete" : "Due"],
             ["Baseline", entity.formsCompleted > 1 ? "Complete" : "Due"],
-            ["Monitoring Visit", "Monthly check"],
+            ["Monitoring Visit", linkedSubmissions.length ? "In progress" : "Monthly check"],
             ["Endline", "Pending"],
           ].map(([label, value]) => (
             <div
@@ -467,6 +534,215 @@ function EntitySidePanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+function BeneficiaryOverview({
+  entity,
+  linkedSubmissions,
+}: {
+  entity: BeneficiaryEntity;
+  linkedSubmissions: SubmissionRead[];
+}) {
+  return (
+    <div className="mt-4 grid gap-2 text-sm">
+      <Signal label="Project" value={entity.projectName} />
+      <Signal label="Location" value={`${entity.village}, ${entity.district}`} />
+      <Signal label="Phone" value={entity.phoneNumber ?? "Not recorded"} />
+      <Signal label="Household" value={entity.householdId ?? "N/A"} />
+      <Signal label="Consent" value={entity.consentStatus} />
+      <Signal label="Last visit" value={formatEntityDate(entity.lastVisit)} />
+      <Signal
+        label="Approved records"
+        value={`${linkedSubmissions.filter((submission) => submission.status === "approved").length}`}
+      />
+      <Signal label="Data source" value={entity.registrationSource} />
+    </div>
+  );
+}
+
+function BeneficiaryProfile({ entity }: { entity: BeneficiaryEntity }) {
+  const lineage = fieldLineage(entity);
+  const proposals = profileUpdateProposals(entity);
+  const rows = [
+    ["Name", entity.fullName, "display_name"],
+    ["Phone", entity.phoneNumber ?? "Not recorded", "phone_number"],
+    ["Gender", entity.gender, "sex"],
+    ["Village", entity.village, "community"],
+    ["District", entity.district, "district"],
+    [
+      "GPS",
+      entity.latitude && entity.longitude
+        ? `${entity.latitude}, ${entity.longitude}`
+        : "Not recorded",
+      "latitude",
+    ],
+  ];
+  return (
+    <div className="mt-4 space-y-3">
+      {rows.map(([label, value, key]) => {
+        const source = lineage[key];
+        return (
+          <div className="rounded-lg border bg-background p-3" key={key}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 text-sm font-semibold">{value}</p>
+              </div>
+              <Badge tone={source ? "success" : "neutral"}>
+                {source ? "Lineage" : "Manual"}
+              </Badge>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {source
+                ? `Source submission ${String(source.sourceClientSubmissionId ?? source.sourceSubmissionId ?? "recorded")} · approved ${formatEntityDate(String(source.approvalDate ?? ""))}`
+                : "No form-source lineage is recorded for this field yet."}
+            </p>
+          </div>
+        );
+      })}
+      {proposals.length ? (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+          <p className="text-sm font-semibold">Profile update proposals</p>
+          <div className="mt-2 space-y-2">
+            {proposals.slice(0, 3).map((proposal, index) => (
+              <p className="text-xs leading-5 text-muted-foreground" key={index}>
+                {proposal.clientSubmissionId ?? proposal.submissionId ?? "Submission"} proposed {Object.keys(proposal.changes ?? {}).length} profile change(s). Review in Data Quality reconciliation.
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BeneficiaryRecords({
+  linkedSubmissions,
+}: {
+  linkedSubmissions: SubmissionRead[];
+}) {
+  if (!linkedSubmissions.length) {
+    return (
+      <p className="mt-4 rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
+        No approved or pending submissions are linked to this beneficiary yet.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-4 space-y-2">
+      {linkedSubmissions.map((submission) => (
+        <div className="rounded-lg border bg-background p-3" key={submission.id}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">{submission.form_id.replaceAll("-", " ")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {submission.client_submission_id} · {submissionSourceLabel(submission)}
+              </p>
+            </div>
+            <Badge tone={submission.status === "approved" ? "success" : "warning"}>
+              {submission.status.replaceAll("_", " ")}
+            </Badge>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+            <Signal label="Submitted/uploaded by" value={submissionActorLabel(submission)} />
+            <Signal label="Date" value={formatEntityDate(submission.imported_at ?? submission.submitted_at)} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BeneficiaryTimeline({
+  entity,
+  linkedSubmissions,
+}: {
+  entity: BeneficiaryEntity;
+  linkedSubmissions: SubmissionRead[];
+}) {
+  const events = [
+    {
+      label: "Beneficiary Created",
+      meta: `${entity.registrationSource} · ${entity.entityId}`,
+      time: entity.registrationDate,
+    },
+    ...linkedSubmissions.map((submission) => ({
+      label: submission.status === "approved" ? "Approved Record Linked" : "Submission Linked",
+      meta: `${submission.client_submission_id} · ${submission.form_id.replaceAll("-", " ")}`,
+      time: submission.imported_at ?? submission.submitted_at,
+    })),
+  ].sort((left, right) => new Date(right.time).getTime() - new Date(left.time).getTime());
+  return (
+    <div className="mt-4 space-y-3">
+      {events.map((event, index) => (
+        <div className="flex gap-3" key={`${event.label}-${event.time}-${index}`}>
+          <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-primary/10 text-primary">
+            <History aria-hidden="true" size={14} />
+          </span>
+          <div>
+            <p className="text-sm font-medium">{event.label}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{event.meta}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{formatEntityDate(event.time)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function fieldLineage(entity: BeneficiaryEntity): Record<string, Record<string, unknown>> {
+  const value = entity.profileJson.fieldLineage;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, Record<string, unknown>>)
+    : {};
+}
+
+function profileUpdateProposals(entity: BeneficiaryEntity): {
+  changes?: Record<string, unknown>;
+  clientSubmissionId?: string;
+  submissionId?: string;
+}[] {
+  const value = entity.profileJson.profileUpdateProposals;
+  return Array.isArray(value)
+    ? value.filter((item): item is { changes?: Record<string, unknown>; clientSubmissionId?: string; submissionId?: string } => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+function submissionSourceLabel(submission: SubmissionRead): string {
+  if (submission.is_imported) {
+    return submission.source_system ? `Imported from ${submission.source_system}` : "Imported";
+  }
+  if (submission.offline_created) return "Mobile";
+  return "Field submitted";
+}
+
+function submissionActorLabel(submission: SubmissionRead): string {
+  if (submission.is_imported) return submission.imported_by_user_id ?? "Uploaded user";
+  return submission.field_officer_id || "Field officer";
+}
+
+function MetricButton({
+  icon: Icon,
+  label,
+  onClick,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  value: number;
+}) {
+  return (
+    <button
+      className="rounded-lg border bg-background p-3 text-left transition hover:bg-muted"
+      onClick={onClick}
+      type="button"
+    >
+      <Icon aria-hidden="true" className="text-primary" size={16} />
+      <p className="mt-2 text-lg font-semibold">{value}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+    </button>
   );
 }
 
@@ -627,15 +903,22 @@ export function ProjectBeneficiariesPanel({
   onOpenRegistry,
   preview = false,
   projectId,
+  token = null,
 }: {
   onOpenRegistry?: () => void;
   preview?: boolean;
   projectId: string;
+  token?: string | null;
 }) {
+  const projectEntitiesQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token" && !preview && projectId),
+    queryFn: () => getProjectEntities(token ?? "", projectId),
+    queryKey: ["project-beneficiaries", token, projectId],
+  });
   const projectEntities = preview
     ? previewEntities.filter((entity) => entity.projectId === projectId)
-    : [];
-  const rows = preview ? (projectEntities.length ? projectEntities : previewEntities.slice(0, 3)) : [];
+    : (projectEntitiesQuery.data ?? []).map(mapBeneficiaryRead);
+  const rows = preview ? (projectEntities.length ? projectEntities : previewEntities.slice(0, 3)) : projectEntities;
   return (
     <div className="space-y-4 rounded-2xl border bg-background/50 p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -692,6 +975,9 @@ export function ProjectBeneficiariesPanel({
           </div>
         )}
       </div>
+      {!preview && projectEntitiesQuery.isFetching ? (
+        <p className="text-xs text-muted-foreground">Loading project beneficiary records...</p>
+      ) : null}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   FileSearch,
   Flag,
   History,
+  Link2,
   MapPin,
   MessageSquareWarning,
   Paperclip,
@@ -1103,54 +1104,82 @@ function SubmissionDetailWorkspace({
 
 function OverviewTab({ submission }: { submission: SubmissionRecord }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <Panel title="Submission Summary">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Signal
-            label="Submission ID"
-            value={submission.client_submission_id}
-          />
-          <Signal label="Project" value={submission.project_name} />
-          <Signal label="Form" value={submission.form_name} />
-          <Signal label="Form Version" value={`v${submission.form_version}`} />
-          <Signal label="Enumerator" value={submission.field_officer_id} />
-          <Signal label="Supervisor" value={submission.supervisor} />
-          <Signal
-            label="Submitted"
-            value={formatDateTime(submission.submitted_at)}
-          />
-          <Signal
-            label="GPS Status"
-            value={submission.gps_status}
-            tone={submission.gps_status === "valid" ? "success" : "warning"}
-          />
-        </div>
-      </Panel>
-      <Panel title="Workflow, Quality, and Notes">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Signal
-            label="Current Status"
-            value={formatSubmissionStatus(submission.status)}
-            tone={statusTone(submission.status)}
-          />
-          <Signal label="Review Stage" value={submission.review_stage} />
-          <Signal label="Reviewer" value={submission.reviewer} />
-          <Signal
-            label="Quality Score"
-            value={`${submission.quality_score}%`}
-            tone={qualityTone(submission.quality_score)}
-          />
-          <Signal
-            label="Quality Flags"
-            value={`${submission.quality_flags.filter((flag) => flag.status === "open").length} open`}
-            tone={submission.quality_flags.length ? "warning" : "success"}
-          />
-          <Signal
-            label="SLA Due"
-            value={formatDateTime(submission.sla_due_at)}
-            tone={slaTone(slaStatus(submission.sla_due_at))}
-          />
-        </div>
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Submission Summary">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Signal
+              label="Submission ID"
+              value={submission.client_submission_id}
+            />
+            <Signal label="Project" value={submission.project_name} />
+            <Signal label="Form" value={submission.form_name} />
+            <Signal label="Form Version" value={`v${submission.form_version}`} />
+            <Signal label="Enumerator" value={submission.field_officer_id} />
+            <Signal label="Supervisor" value={submission.supervisor} />
+            <Signal
+              label="Submitted"
+              value={formatDateTime(submission.submitted_at)}
+            />
+            <Signal
+              label="GPS Status"
+              value={submission.gps_status}
+              tone={submission.gps_status === "valid" ? "success" : "warning"}
+            />
+          </div>
+        </Panel>
+        <Panel title="Workflow, Quality, and Notes">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Signal
+              label="Current Status"
+              value={formatSubmissionStatus(submission.status)}
+              tone={statusTone(submission.status)}
+            />
+            <Signal label="Review Stage" value={submission.review_stage} />
+            <Signal label="Reviewer" value={submission.reviewer} />
+            <Signal
+              label="Quality Score"
+              value={`${submission.quality_score}%`}
+              tone={qualityTone(submission.quality_score)}
+            />
+            <Signal
+              label="Quality Flags"
+              value={`${submission.quality_flags.filter((flag) => flag.status === "open").length} open`}
+              tone={submission.quality_flags.length ? "warning" : "success"}
+            />
+            <Signal
+              label="SLA Due"
+              value={formatDateTime(submission.sla_due_at)}
+              tone={slaTone(slaStatus(submission.sla_due_at))}
+            />
+          </div>
+        </Panel>
+      </div>
+      <Panel title="Beneficiary Link">
+        {submission.entity_id ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-success/30 bg-success/10 p-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Link2 aria-hidden="true" className="text-success" size={16} />
+                <p className="text-sm font-semibold">Linked to beneficiary/entity</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {submission.entity_type ?? "Beneficiary"} · {submission.entity_id}
+              </p>
+            </div>
+            <Badge tone="success">Timeline ready</Badge>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert aria-hidden="true" className="text-warning" size={16} />
+              <p className="text-sm font-semibold">This submission is not linked to a beneficiary.</p>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              If this form collects beneficiary data, approve-time processing will send it to Data Quality reconciliation so a data manager can link it to an existing beneficiary or create a controlled new record.
+            </p>
+          </div>
+        )}
       </Panel>
     </div>
   );

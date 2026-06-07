@@ -881,6 +881,7 @@ class SubmissionService:
     }
 
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.forms = FormRepository(session)
         self.officers = FieldOfficerRepository(session)
         self.surveys = SurveyRepository(session)
@@ -1084,6 +1085,12 @@ class SubmissionService:
         )
         if not is_entity_linked and not creates_or_updates:
             return
+        existing_processing = (submission.payload_json or {}).get("_beneficiary_processing")
+        if isinstance(existing_processing, dict) and existing_processing.get("status") in {
+            "processed",
+            "reconciliation_required",
+        }:
+            return
 
         values = self._flat_payload_values(submission.payload_json or {})
         entity_type = str(controls.get("entity_type") or controls.get("entityType") or submission.entity_type or "Beneficiary")
@@ -1104,7 +1111,93 @@ class SubmissionService:
             village=village,
         )
         if existing is None:
+            possible_duplicate = await self._possible_duplicate_for_submission(
+                organization_id=organization_id,
+                submission=submission,
+                display_name=display_name,
+                phone=phone,
+                national_id=national_id,
+                household_id=household_id,
+                village=village,
+            )
+            if possible_duplicate is not None:
+                beneficiary, score, matched_fields = possible_duplicate
+                processing_time = datetime.now(UTC).isoformat()
+                submission.payload_json = {
+                    **(submission.payload_json or {}),
+                    "_beneficiary_processing": {
+                        "status": "reconciliation_required",
+                        "reason": "Possible duplicate beneficiary detected before creation.",
+                        "candidate_beneficiary_id": str(beneficiary.id),
+                        "candidate_beneficiary_uid": beneficiary.beneficiary_uid,
+                        "duplicate_score": score,
+                        "matched_fields": matched_fields,
+                        "processed_at": processing_time,
+                    },
+                }
+                self.session.add(
+                    DataQualitySignal(
+                        organization_id=organization_id,
+                        submission_id=submission.id,
+                        beneficiary_id=beneficiary.id,
+                        signal_type="possible_duplicate_entity",
+                        severity="high" if score >= 90 else "medium",
+                        confidence=score / 100,
+                        summary="Approved submission may belong to an existing beneficiary.",
+                        status="open",
+                        evidence_json={
+                            "beneficiary_uid": beneficiary.beneficiary_uid,
+                            "client_submission_id": submission.client_submission_id,
+                            "matched_fields": matched_fields,
+                            "score": score,
+                            "recommended_queue": "reconciliation",
+                        },
+                    )
+                )
+                await self.audit.append(
+                    organization_id=organization_id,
+                    actor_user_id=actor_user_id,
+                    action="beneficiary.duplicate_detected_before_creation",
+                    resource_type="submission",
+                    resource_id=str(submission.id),
+                    metadata={
+                        "candidate_beneficiary_id": str(beneficiary.id),
+                        "candidate_beneficiary_uid": beneficiary.beneficiary_uid,
+                        "score": score,
+                        "matched_fields": matched_fields,
+                    },
+                )
+                await self.session.flush()
+                return
             if bool(controls.get("requires_existing_entity") or controls.get("requiresExistingEntity")):
+                processing_time = datetime.now(UTC).isoformat()
+                submission.payload_json = {
+                    **(submission.payload_json or {}),
+                    "_beneficiary_processing": {
+                        "status": "reconciliation_required",
+                        "reason": "Approved entity-linked submission requires an existing beneficiary but no match was found.",
+                        "processed_at": processing_time,
+                    },
+                }
+                self.session.add(
+                    DataQualitySignal(
+                        organization_id=organization_id,
+                        submission_id=submission.id,
+                        beneficiary_id=None,
+                        signal_type="missing_entity_link",
+                        severity="high",
+                        confidence=1.0,
+                        summary="Approved entity-linked submission is not linked to a beneficiary.",
+                        status="open",
+                        evidence_json={
+                            "client_submission_id": submission.client_submission_id,
+                            "form_id": str(submission.form_id),
+                            "project_id": str(submission.project_id),
+                            "entity_type": entity_type,
+                            "recommended_queue": "reconciliation",
+                        },
+                    )
+                )
                 await self.audit.append(
                     organization_id=organization_id,
                     actor_user_id=actor_user_id,
@@ -1113,7 +1206,9 @@ class SubmissionService:
                     resource_id=str(submission.id),
                     metadata={"client_submission_id": submission.client_submission_id, "entity_type": entity_type},
                 )
+                await self.session.flush()
                 return
+            created_at = datetime.now(UTC).isoformat()
             beneficiary = Beneficiary(
                 organization_id=organization_id,
                 project_id=submission.project_id,
@@ -1134,9 +1229,31 @@ class SubmissionService:
                     "sourceSubmissionId": str(submission.id),
                     "sourceClientSubmissionId": submission.client_submission_id,
                     "createdFromFormId": str(submission.form_id),
-                    "approvalLinkedAt": datetime.now(UTC).isoformat(),
+                    "approvalLinkedAt": created_at,
                     "national_id": national_id,
                     "household_id": household_id,
+                    "fieldLineage": self._profile_field_lineage(
+                        submission=submission,
+                        actor_user_id=actor_user_id,
+                        field_values={
+                            "display_name": display_name,
+                            "phone_number": phone,
+                            "sex": self._string_value(values, "gender", "sex"),
+                            "region": self._string_value(values, "region"),
+                            "district": self._string_value(values, "district"),
+                            "community": village,
+                            "latitude": submission.latitude,
+                            "longitude": submission.longitude,
+                        },
+                        recorded_at=created_at,
+                    ),
+                    "projectEnrollments": [
+                        self._project_enrollment_profile(
+                            submission=submission,
+                            status="active",
+                            recorded_at=created_at,
+                        )
+                    ],
                     "raw_approved_values": values,
                 },
                 is_imported=submission.is_imported,
@@ -1151,6 +1268,16 @@ class SubmissionService:
             await self.session.flush()
             submission.entity_id = beneficiary.id
             submission.entity_type = beneficiary.beneficiary_type
+            submission.payload_json = {
+                **(submission.payload_json or {}),
+                "_beneficiary_processing": {
+                    "status": "processed",
+                    "action": "created",
+                    "beneficiary_id": str(beneficiary.id),
+                    "beneficiary_uid": beneficiary.beneficiary_uid,
+                    "processed_at": created_at,
+                },
+            }
             self._record_beneficiary_lineage(
                 organization_id=organization_id,
                 actor_user_id=actor_user_id,
@@ -1182,7 +1309,9 @@ class SubmissionService:
             return
 
         original_profile = dict(existing.profile_json or {})
+        linked_at = datetime.now(UTC).isoformat()
         proposed_changes: dict[str, object] = {}
+        lineage_values: dict[str, object] = {}
         for field_name, next_value in {
             "display_name": display_name,
             "phone_number": phone,
@@ -1195,26 +1324,45 @@ class SubmissionService:
             current_value = getattr(existing, field_name)
             if current_value in {None, ""} and next_value not in {None, ""}:
                 setattr(existing, field_name, next_value)
+                lineage_values[field_name] = next_value
             elif next_value not in {None, ""} and current_value != next_value:
                 proposed_changes[field_name] = {"current": current_value, "proposed": next_value}
         existing.last_visit_at = submission.submitted_at
         existing.project_id = existing.project_id or submission.project_id
+        profile_update_proposals = original_profile.get("profileUpdateProposals")
+        project_enrollments = self._project_enrollments_with_submission(
+            existing=original_profile.get("projectEnrollments"),
+            submission=submission,
+            recorded_at=linked_at,
+        )
         existing.profile_json = {
             **original_profile,
             "lastApprovedSubmissionId": str(submission.id),
             "lastApprovedFormId": str(submission.form_id),
-            "lastApprovalLinkedAt": datetime.now(UTC).isoformat(),
+            "lastApprovalLinkedAt": linked_at,
             "national_id": original_profile.get("national_id") or national_id,
             "household_id": original_profile.get("household_id") or household_id,
+            "fieldLineage": {
+                **(original_profile.get("fieldLineage") if isinstance(original_profile.get("fieldLineage"), dict) else {}),
+                **self._profile_field_lineage(
+                    submission=submission,
+                    actor_user_id=actor_user_id,
+                    field_values=lineage_values,
+                    recorded_at=linked_at,
+                ),
+            },
+            "projectEnrollments": project_enrollments,
             "profileUpdateProposals": [
-                *(original_profile.get("profileUpdateProposals") if isinstance(original_profile.get("profileUpdateProposals"), list) else []),
+                *(profile_update_proposals if isinstance(profile_update_proposals, list) else []),
                 *(
                     [
                         {
                             "submissionId": str(submission.id),
                             "clientSubmissionId": submission.client_submission_id,
                             "changes": proposed_changes,
-                            "createdAt": datetime.now(UTC).isoformat(),
+                            "createdAt": linked_at,
+                            "status": "pending_review",
+                            "source": "Approved Submission",
                         }
                     ]
                     if proposed_changes
@@ -1224,6 +1372,17 @@ class SubmissionService:
         }
         submission.entity_id = existing.id
         submission.entity_type = existing.beneficiary_type
+        submission.payload_json = {
+            **(submission.payload_json or {}),
+            "_beneficiary_processing": {
+                "status": "processed",
+                "action": "linked",
+                "beneficiary_id": str(existing.id),
+                "beneficiary_uid": existing.beneficiary_uid,
+                "profile_update_proposals": len(proposed_changes),
+                "processed_at": linked_at,
+            },
+        }
         self._record_beneficiary_lineage(
             organization_id=organization_id,
             actor_user_id=actor_user_id,
@@ -1271,6 +1430,66 @@ class SubmissionService:
                 "profile_update_proposals": len(proposed_changes),
             },
         )
+
+    def _profile_field_lineage(
+        self,
+        *,
+        submission: Submission,
+        actor_user_id: UUID,
+        field_values: dict[str, object],
+        recorded_at: str,
+    ) -> dict[str, dict[str, object]]:
+        return {
+            key: {
+                "value": value,
+                "sourceFormId": str(submission.form_id),
+                "sourceSubmissionId": str(submission.id),
+                "sourceClientSubmissionId": submission.client_submission_id,
+                "sourceUserId": str(submission.field_officer_id),
+                "approvedByUserId": str(actor_user_id),
+                "approvalDate": recorded_at,
+            }
+            for key, value in field_values.items()
+            if value is not None and value != ""
+        }
+
+    def _project_enrollment_profile(
+        self,
+        *,
+        submission: Submission,
+        status: str,
+        recorded_at: str,
+    ) -> dict[str, object]:
+        return {
+            "projectId": str(submission.project_id) if submission.project_id else None,
+            "status": status,
+            "enrollmentDate": recorded_at,
+            "sourceSubmissionId": str(submission.id),
+            "sourceClientSubmissionId": submission.client_submission_id,
+            "assignedFieldOfficerId": str(submission.field_officer_id),
+        }
+
+    def _project_enrollments_with_submission(
+        self,
+        *,
+        existing: object,
+        submission: Submission,
+        recorded_at: str,
+    ) -> list[object]:
+        enrollments = list(existing) if isinstance(existing, list) else []
+        project_id = str(submission.project_id) if submission.project_id else None
+        if project_id and not any(
+            isinstance(item, dict) and item.get("projectId") == project_id
+            for item in enrollments
+        ):
+            enrollments.append(
+                self._project_enrollment_profile(
+                    submission=submission,
+                    status="active",
+                    recorded_at=recorded_at,
+                )
+            )
+        return enrollments
 
     def _record_beneficiary_visit(
         self,
@@ -1420,7 +1639,97 @@ class SubmissionService:
             same_village = normalized_village and (beneficiary.community or "").strip().lower() == normalized_village
             if same_name and same_village:
                 return beneficiary
+            if (
+                same_name
+                and submission.latitude is not None
+                and submission.longitude is not None
+                and beneficiary.latitude is not None
+                and beneficiary.longitude is not None
+                and self._gps_distance_meters(
+                    submission.latitude,
+                    submission.longitude,
+                    beneficiary.latitude,
+                    beneficiary.longitude,
+                )
+                <= 50
+            ):
+                return beneficiary
         return None
+
+    async def _possible_duplicate_for_submission(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        display_name: str,
+        phone: str | None,
+        national_id: str | None,
+        household_id: str | None,
+        village: str | None,
+    ) -> tuple[Beneficiary, int, list[str]] | None:
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        normalized_phone = self._normalize_phone(phone)
+        normalized_name = display_name.strip().lower()
+        normalized_village = (village or "").strip().lower()
+        best: tuple[Beneficiary, int, list[str]] | None = None
+        for beneficiary in result.scalars():
+            profile = beneficiary.profile_json or {}
+            score = 0
+            matched_fields: list[str] = []
+            if normalized_phone and self._normalize_phone(beneficiary.phone_number) == normalized_phone:
+                score += 80
+                matched_fields.append("Phone number")
+            if national_id and str(profile.get("national_id") or profile.get("nationalId") or "").strip().lower() == national_id.strip().lower():
+                score += 100
+                matched_fields.append("National ID")
+            if household_id and str(profile.get("household_id") or profile.get("householdId") or "").strip().lower() == household_id.strip().lower():
+                score += 90
+                matched_fields.append("Household ID")
+            same_name = bool(normalized_name and beneficiary.display_name.strip().lower() == normalized_name)
+            same_village = bool(normalized_village and (beneficiary.community or "").strip().lower() == normalized_village)
+            if same_name:
+                score += 45
+                matched_fields.append("Full name")
+            if same_name and same_village:
+                score += 60
+                matched_fields.append("Name + village")
+            if (
+                submission.latitude is not None
+                and submission.longitude is not None
+                and beneficiary.latitude is not None
+                and beneficiary.longitude is not None
+            ):
+                distance = self._gps_distance_meters(
+                    submission.latitude,
+                    submission.longitude,
+                    beneficiary.latitude,
+                    beneficiary.longitude,
+                )
+                if distance <= 50:
+                    score += 40
+                    matched_fields.append(f"GPS within {max(1, round(distance))}m")
+            score = min(score, 100)
+            if score < 60:
+                continue
+            if best is None or score > best[1]:
+                best = (beneficiary, score, matched_fields)
+        return best
+
+    def _gps_distance_meters(
+        self,
+        latitude_a: float,
+        longitude_a: float,
+        latitude_b: float,
+        longitude_b: float,
+    ) -> float:
+        lat_meters = (latitude_a - latitude_b) * 111_320
+        lon_meters = (longitude_a - longitude_b) * 111_320
+        return (lat_meters**2 + lon_meters**2) ** 0.5
 
     async def _next_beneficiary_uid(self, *, organization_id: UUID, entity_type: str) -> str:
         prefix = {
