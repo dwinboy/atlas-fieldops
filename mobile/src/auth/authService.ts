@@ -25,12 +25,24 @@ export class AuthService {
   async login(email: string, password: string, organizationSlug: string): Promise<MobileSession> {
     const token = await this.apis.auth.login({ email, password, organizationSlug });
     const deviceId = generatedDeviceId(email, organizationSlug);
-    await this.devices.register(token.accessToken, {
-      deviceId,
-      deviceName: "Atlas FieldOps Android",
-      osVersion: null,
-    });
-    const syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
+
+    try {
+      await this.devices.register(token.accessToken, {
+        deviceId,
+        deviceName: "Atlas FieldOps Android",
+        osVersion: null,
+      });
+    } catch (err) {
+      throw new Error(`Step 2 device registration: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    let syncPackage: Awaited<ReturnType<BootstrapSyncService["syncAssignedWork"]>>;
+    try {
+      syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
+    } catch (err) {
+      throw new Error(`Step 3 sync: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     new AuditEventService(this.database).queue("mobile.login", { deviceId, organizationSlug });
     const session: MobileSession = {
       accessToken: token.accessToken,
