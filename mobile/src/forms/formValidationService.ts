@@ -77,9 +77,11 @@ export class FormValidationService {
     }
 
     if (question.type === "Date" || question.type === "DateTime") {
-      const parsed = new Date(String(value));
-      if (Number.isNaN(parsed.getTime())) {
-        addIssue("Enter a valid date.");
+      const parsed = parseFieldDate(String(value), question.type);
+      if (!parsed) {
+        addIssue(question.type === "DateTime"
+          ? "Enter a valid date and time using YYYY-MM-DD HH:MM, for example 2026-06-08 14:30."
+          : "Enter a valid date using YYYY-MM-DD, for example 2026-06-08. You can type DD/MM/YYYY and the app will convert it.");
         return issues;
       }
       const allowsFuture = question.validationRules.some((rule) => rule.ruleType === "Custom" && rule.value === "allowFuture:true");
@@ -164,4 +166,38 @@ export class FormValidationService {
     }
     return { answered, total, percent: total === 0 ? 0 : Math.round((answered / total) * 100) };
   }
+}
+
+function parseFieldDate(value: string, questionType: MobileQuestion["type"]): Date | null {
+  const raw = value.trim();
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return buildStrictDate(Number(year), Number(month), Number(day));
+  }
+
+  const dateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
+  if (dateTime && questionType === "DateTime") {
+    const [, year, month, day, hour, minute] = dateTime;
+    return buildStrictDate(Number(year), Number(month), Number(day), Number(hour), Number(minute));
+  }
+
+  return null;
+}
+
+function buildStrictDate(year: number, month: number, day: number, hour = 0, minute = 0): Date | null {
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  const parsed = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hour ||
+    parsed.getMinutes() !== minute
+  ) {
+    return null;
+  }
+  return parsed;
 }

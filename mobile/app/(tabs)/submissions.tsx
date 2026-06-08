@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -19,8 +19,16 @@ const FILTER_TABS: Array<{ key: FilterTab; label: string }> = [
 
 export default function SubmissionsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: string }>();
   const { refreshKey, isSyncing, syncQueue } = useAppContext();
   const [filter, setFilter] = useState<FilterTab>("all");
+
+  useEffect(() => {
+    const requestedFilter = normalizeFilter(params.filter);
+    if (requestedFilter && requestedFilter !== filter) {
+      setFilter(requestedFilter);
+    }
+  }, [params.filter, filter]);
 
   const submissions = useMemo(() => {
     const all = localDatabase.draftSubmissions.list().sort(
@@ -192,4 +200,9 @@ export default function SubmissionsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function normalizeFilter(value: string | undefined): FilterTab | null {
+  if (!value) return null;
+  return FILTER_TABS.some((tab) => tab.key === value) ? (value as FilterTab) : null;
 }

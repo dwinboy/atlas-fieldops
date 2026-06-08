@@ -240,15 +240,34 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Date / DateTime ───────────────────────────────────────────────────────
   if (type === "Date" || type === "DateTime") {
+    const dateValue = String(value ?? "");
     return (
-      <TextInput
-        onChangeText={(t) => answer(t)}
-        placeholder={type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}
-        placeholderTextColor="#b0c5bc"
-        style={inputStyle}
-        value={String(value ?? "")}
-        keyboardType="numbers-and-punctuation"
-      />
+      <View style={{ gap: 8 }}>
+        <TextInput
+          onChangeText={(text) => answer(normalizeDateEntry(text, type))}
+          placeholder={type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}
+          placeholderTextColor="#b0c5bc"
+          style={inputStyle}
+          value={dateValue}
+          keyboardType="numbers-and-punctuation"
+        />
+        <Text style={{ color: "#49635a", fontSize: 12 }}>
+          Use {type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}. Example: {type === "DateTime" ? "2026-06-08 14:30" : "2026-06-08"}.
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <Pressable
+            onPress={() => answer(type === "DateTime" ? nowDateTimeValue() : todayDateValue())}
+            style={smallDateButton}
+          >
+            <Text style={smallDateButtonText}>{type === "DateTime" ? "Use now" : "Use today"}</Text>
+          </Pressable>
+          {dateValue ? (
+            <Pressable onPress={() => answer("")} style={smallDateButton}>
+              <Text style={smallDateButtonText}>Clear date</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
     );
   }
 
@@ -401,6 +420,35 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
   );
 }
 
+function normalizeDateEntry(text: string, type: MobileQuestion["type"]): string {
+  const normalized = text.trim();
+  if (!normalized) return "";
+  const dateOnly = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dateOnly) {
+    const [, day, month, year] = dateOnly;
+    return `${year}-${pad2(month)}-${pad2(day)}`;
+  }
+  const dateWithTime = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (dateWithTime && type === "DateTime") {
+    const [, day, month, year, hour, minute] = dateWithTime;
+    return `${year}-${pad2(month)}-${pad2(day)} ${pad2(hour)}:${minute}`;
+  }
+  return text;
+}
+
+function pad2(value: string): string {
+  return value.padStart(2, "0");
+}
+
+function todayDateValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nowDateTimeValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
 const inputStyle = {
   backgroundColor: "#f6faf8",
   borderColor: "#dbe7e2",
@@ -409,4 +457,19 @@ const inputStyle = {
   color: "#12332b",
   fontSize: 15,
   padding: 14,
+} as const;
+
+const smallDateButton = {
+  backgroundColor: "#f0f5f3",
+  borderColor: "#dbe7e2",
+  borderRadius: 10,
+  borderWidth: 1,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+} as const;
+
+const smallDateButtonText = {
+  color: "#12332b",
+  fontSize: 12,
+  fontWeight: "700",
 } as const;

@@ -29,13 +29,19 @@ export default function HomeScreen() {
   const userName = user?.fullName ?? user?.email ?? "Field Officer";
   const orgName = org?.name ?? org?.slug ?? "";
 
-  const stats: Array<{ label: string; value: number; tone?: "warn" | "ok" | "neutral" }> = [
-    { label: "Assignments", value: assignments.length, tone: "neutral" },
-    { label: "Ready forms", value: readyCount, tone: readyCount > 0 ? "ok" : "neutral" },
-    { label: "Beneficiaries", value: entityCount, tone: "neutral" },
-    { label: "Drafts", value: draftCount, tone: draftCount > 0 ? "warn" : "neutral" },
-    { label: "Sync queue", value: queueCount, tone: queueCount > 0 ? "warn" : "ok" },
-    { label: "Synced today", value: syncedToday, tone: "ok" },
+  const stats: Array<{
+    label: string;
+    value: number;
+    tone?: "warn" | "ok" | "neutral";
+    route: string;
+    hint: string;
+  }> = [
+    { label: "Assignments", value: assignments.length, tone: "neutral", route: "/(tabs)/assignments", hint: "Open assigned work" },
+    { label: "Ready forms", value: readyCount, tone: readyCount > 0 ? "ok" : "neutral", route: "/(tabs)/forms", hint: "View downloaded forms" },
+    { label: "Beneficiaries", value: entityCount, tone: "neutral", route: "/beneficiaries", hint: "View assigned records" },
+    { label: "Drafts", value: draftCount, tone: draftCount > 0 ? "warn" : "neutral", route: "/(tabs)/submissions?filter=draft", hint: "Continue saved drafts" },
+    { label: "Sync queue", value: queueCount, tone: queueCount > 0 ? "warn" : "ok", route: "/(tabs)/sync", hint: "Review uploads" },
+    { label: "Synced today", value: syncedToday, tone: "ok", route: "/(tabs)/submissions?filter=synced", hint: "See synced records" },
   ];
 
   return (
@@ -89,8 +95,19 @@ export default function HomeScreen() {
 
         {/* Stats grid */}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          {stats.map(({ label, value, tone }) => (
-            <View key={label} style={[card("neutral"), { minWidth: "30%", flexGrow: 1 }]}>
+          {stats.map(({ label, value, tone, route, hint }) => (
+            <Pressable
+              key={label}
+              onPress={() => router.push(route as never)}
+              style={({ pressed }) => [
+                card("neutral"),
+                {
+                  minWidth: "30%",
+                  flexGrow: 1,
+                  opacity: pressed ? 0.78 : 1,
+                },
+              ]}
+            >
               <Text style={{ color: "#49635a", fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
                 {label}
               </Text>
@@ -102,7 +119,8 @@ export default function HomeScreen() {
               }}>
                 {value}
               </Text>
-            </View>
+              <Text style={{ color: "#8aa79b", fontSize: 11, marginTop: 2 }}>{hint}</Text>
+            </Pressable>
           ))}
         </View>
 
