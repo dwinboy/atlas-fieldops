@@ -475,7 +475,7 @@ const sidebarSections: NavigationSection[] = [
         hint: "Product guidance",
         description:
           "Beginner-friendly guidance for major Atlas FieldOps workflows.",
-        route: "/help",
+        route: "/app/help",
         domain: "SYSTEM",
         icon: BookOpenCheck,
         tone: "support",

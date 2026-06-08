@@ -57,6 +57,7 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
   const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/app/help") return "help";
   if (path === "/app") return null;
   if (path === "/dashboard") return "dashboard";
   if (path.startsWith("/projects")) return "programs";
