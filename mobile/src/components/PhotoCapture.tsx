@@ -7,18 +7,19 @@ type PhotoCaptureProps = {
   onChange: (result: PhotoResult) => void;
   required?: boolean;
   label?: string;
+  mediaType?: "photo" | "video";
 };
 
-export function PhotoCapture({ value, onChange, required = false, label = "Photo" }: PhotoCaptureProps) {
+export function PhotoCapture({ value, onChange, required = false, label = "Photo", mediaType = "photo" }: PhotoCaptureProps) {
   const { isCapturing, error, takePhoto, pickFromGallery } = usePhotoCapture();
 
   async function handleCamera() {
-    const result = await takePhoto();
+    const result = await takePhoto(mediaType);
     if (result) onChange(result);
   }
 
   async function handleGallery() {
-    const result = await pickFromGallery();
+    const result = await pickFromGallery(mediaType);
     if (result) onChange(result);
   }
 
@@ -27,13 +28,21 @@ export function PhotoCapture({ value, onChange, required = false, label = "Photo
       {/* Preview */}
       {value ? (
         <View style={{ gap: 8 }}>
-          <Image
-            source={{ uri: value.uri }}
-            style={{ width: "100%", height: 220, borderRadius: 12, backgroundColor: "#f0f5f3" }}
-            resizeMode="cover"
-          />
+          {mediaType === "video" ? (
+            <View style={{ alignItems: "center", backgroundColor: "#f0f5f3", borderRadius: 12, gap: 8, minHeight: 160, justifyContent: "center", padding: 16 }}>
+              <Text style={{ fontSize: 36 }}>🎥</Text>
+              <Text style={{ color: "#12332b", fontWeight: "800" }}>Video selected</Text>
+              <Text style={{ color: "#49635a", fontSize: 12, textAlign: "center" }} numberOfLines={2}>{value.uri}</Text>
+            </View>
+          ) : (
+            <Image
+              source={{ uri: value.uri }}
+              style={{ width: "100%", height: 220, borderRadius: 12, backgroundColor: "#f0f5f3" }}
+              resizeMode="cover"
+            />
+          )}
           <Text style={{ color: "#49635a", fontSize: 12 }}>
-            {value.fileName} · {value.width}×{value.height}
+            {value.fileName}{mediaType === "photo" ? ` · ${value.width}×${value.height}` : ""}
             {value.fileSize ? ` · ${(value.fileSize / 1024).toFixed(0)} KB` : ""}
           </Text>
         </View>
@@ -48,7 +57,7 @@ export function PhotoCapture({ value, onChange, required = false, label = "Photo
           alignItems: "center",
           gap: 6,
         }}>
-          <Text style={{ fontSize: 32 }}>📷</Text>
+          <Text style={{ fontSize: 32 }}>{mediaType === "video" ? "🎥" : "📷"}</Text>
           <Text style={{ color: required ? "#9a3412" : "#49635a", fontWeight: "600", fontSize: 14 }}>
             {required ? `${label} required` : `No ${label.toLowerCase()} captured`}
           </Text>
@@ -74,7 +83,7 @@ export function PhotoCapture({ value, onChange, required = false, label = "Photo
           {isCapturing ? (
             <ActivityIndicator color="white" size="small" />
           ) : (
-            <Text style={{ fontSize: 16 }}>📷</Text>
+            <Text style={{ fontSize: 16 }}>{mediaType === "video" ? "🎥" : "📷"}</Text>
           )}
           <Text style={{ color: "white", fontWeight: "700" }}>
             {value ? "Retake" : "Camera"}
@@ -97,7 +106,7 @@ export function PhotoCapture({ value, onChange, required = false, label = "Photo
             paddingVertical: 12,
           }}
         >
-          <Text style={{ fontSize: 16 }}>🖼</Text>
+          <Text style={{ fontSize: 16 }}>{mediaType === "video" ? "🎞" : "🖼"}</Text>
           <Text style={{ color: "#12332b", fontWeight: "700" }}>Gallery</Text>
         </Pressable>
       </View>

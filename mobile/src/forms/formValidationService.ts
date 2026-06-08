@@ -45,6 +45,21 @@ export class FormValidationService {
   }
 
   private isMissing(value: unknown, questionType: MobileQuestion["type"]): boolean {
+    if (questionType === "RepeatGroup" || questionType === "Ranking" || questionType === "MultiSelect") {
+      return !Array.isArray(value) || value.length === 0;
+    }
+    if (questionType === "Matrix") {
+      return !value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0;
+    }
+    if (questionType === "Audio" || questionType === "FileUpload" || questionType === "Signature") {
+      if (typeof value === "string") return value.trim().length === 0;
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const reference = (value as { reference?: unknown; uri?: unknown; localUri?: unknown }).reference
+          ?? (value as { uri?: unknown }).uri
+          ?? (value as { localUri?: unknown }).localUri;
+        return String(reference ?? "").trim().length === 0;
+      }
+    }
     return (
       value === null ||
       value === undefined ||
@@ -90,6 +105,13 @@ export class FormValidationService {
       }
     }
 
+    if (question.type === "Time") {
+      const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value).trim());
+      if (!valid) {
+        addIssue("Enter a valid 24-hour time using HH:MM, for example 14:30.");
+      }
+    }
+
     if (["Text", "LongText", "Barcode", "QRCode", "Consent"].includes(question.type)) {
       const text = String(value);
       for (const rule of question.validationRules) {
@@ -124,6 +146,38 @@ export class FormValidationService {
       const invalid = values.filter((item) => !allowed.has(item));
       if (invalid.length) {
         addIssue("Remove choices that are not in the approved option list.");
+      }
+    }
+
+    if (question.type === "Ranking" && question.options.length) {
+      const values = Array.isArray(value) ? value.map(String) : [];
+      const allowed = new Set(question.options.map((option) => option.value));
+      const invalid = values.filter((item) => !allowed.has(item));
+      const duplicates = values.filter((item, index) => values.indexOf(item) !== index);
+      if (invalid.length) {
+        addIssue("Ranking includes a choice that is not in the approved option list.");
+      }
+      if (duplicates.length) {
+        addIssue("Each ranked choice can only appear once.");
+      }
+    }
+
+    if (question.type === "RepeatGroup") {
+      const rows = Array.isArray(value) ? value : [];
+      const minRepeats = question.repeatSettings?.minRepeats ?? null;
+      const maxRepeats = question.repeatSettings?.maxRepeats ?? null;
+      if (minRepeats !== null && rows.length < minRepeats) {
+        addIssue(`Add at least ${minRepeats} row(s).`);
+      }
+      if (maxRepeats !== null && rows.length > maxRepeats) {
+        addIssue(`Remove extra rows. Maximum allowed is ${maxRepeats}.`);
+      }
+    }
+
+    if (question.type === "Matrix") {
+      const matrix = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+      if (question.required && Object.values(matrix).some((item) => Array.isArray(item) && item.length === 0)) {
+        addIssue("Complete each matrix row before submitting.");
       }
     }
 

@@ -152,6 +152,15 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Warning",
                 }
             )
+    if field_type == "matrix_multi":
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "matrixMode:multi",
+                "message": "Multiple matrix choices are allowed per row.",
+                "severity": "Warning",
+            }
+        )
     if field_type == "email":
         rules.append(
             {
@@ -251,6 +260,26 @@ def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[
     return rules
 
 
+def _mobile_default_value(field: dict[str, Any]) -> Any:
+    field_type = str(field.get("type") or "").lower()
+    default_value = field.get("defaultValue")
+    if field_type not in {"matrix_single", "matrix_multi", "repeat_group", "repeatable_group", "ranking"}:
+        return default_value
+
+    metadata: dict[str, Any] = default_value if isinstance(default_value, dict) else {}
+    if default_value is not None and not isinstance(default_value, dict):
+        metadata["value"] = default_value
+    if field_type in {"matrix_single", "matrix_multi"}:
+        metadata.setdefault("mode", "multi" if field_type == "matrix_multi" else "single")
+        metadata.setdefault("rows", field.get("rows") or field.get("matrixRows") or field.get("statements") or [])
+        metadata.setdefault("columns", field.get("columns") or field.get("matrixColumns") or field.get("options") or [])
+    if field_type in {"repeat_group", "repeatable_group"}:
+        metadata.setdefault("fields", field.get("fields") or field.get("questions") or field.get("children") or [])
+    if field_type == "ranking":
+        metadata.setdefault("options", field.get("options") or [])
+    return metadata
+
+
 def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     controls = controls_json or {}
     reference_bindings = controls.get("reference_bindings") if isinstance(controls.get("reference_bindings"), list) else []
@@ -285,7 +314,7 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
                     "type": _mobile_question_type(str(field.get("type") or "text")),
                     "required": bool(field.get("required", False)),
                     "readOnly": bool(field.get("readOnly", False)),
-                    "defaultValue": field.get("defaultValue"),
+                    "defaultValue": _mobile_default_value(field),
                     "options": _field_options(list(field.get("options") or [])),
                     "validationRules": _validation_rules(field),
                     "logicRules": _logic_rules(field, variable_to_id),
