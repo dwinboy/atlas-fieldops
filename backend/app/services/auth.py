@@ -1,5 +1,10 @@
+import base64
+import hashlib
+import hmac
+import json
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
@@ -7,7 +12,8 @@ from app.core.permissions import default_scope_for_roles
 from app.core.permissions import normalize_permission
 from app.core.permissions import permissions_for_roles
 from app.core.config import settings
-from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, verify_password
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, get_jwt_secret, verify_password
+from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, Role, User, UserAccessGrant
 from app.repositories.users import UserRepository
 from app.schemas.auth import TokenResponse
@@ -17,8 +23,13 @@ class AuthenticationError(Exception):
     pass
 
 
+MOBILE_QR_LOGIN_TYPE = "atlas_fieldops_mobile_field_officer_login"
+MOBILE_QR_LOGIN_PREFIX = "afqr"
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.users = UserRepository(session)
 
     async def login(self, *, email: str, password: str, organization_slug: str) -> TokenResponse:
@@ -44,6 +55,39 @@ class AuthService:
             raise AuthenticationError("Inactive account")
         return self._issue_token_response(user, organization, role, grants)
 
+    async def login_with_mobile_qr(self, qr_token: str) -> TokenResponse:
+        payload = self._decode_mobile_qr_token(qr_token)
+        try:
+            user_id = UUID(str(payload.get("user_id")))
+            organization_id = UUID(str(payload.get("organization_id")))
+            field_officer_id = UUID(str(payload.get("field_officer_id")))
+        except Exception as exc:
+            raise AuthenticationError("Invalid mobile QR code") from exc
+
+        identity = await self.users.find_for_token(user_id=user_id, organization_id=organization_id)
+        if identity is None:
+            raise AuthenticationError("Invalid mobile QR code")
+        user, organization, membership, role, grants = identity
+        if not user.is_active or not membership.is_active or not organization.is_active:
+            raise AuthenticationError("Inactive account")
+        if payload.get("credential_version") != self._credential_version(user):
+            raise AuthenticationError("Mobile QR code expired")
+        profile_result = await self.session.execute(
+            select(FieldOfficerProfile).where(
+                FieldOfficerProfile.id == field_officer_id,
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.user_id == user_id,
+                FieldOfficerProfile.deleted_at.is_(None),
+                FieldOfficerProfile.is_active.is_(True),
+            )
+        )
+        profile = profile_result.scalar_one_or_none()
+        if profile is None:
+            raise AuthenticationError("Mobile QR code is not assigned to an active field officer")
+        if canonical_role(role.name) != "field_officer":
+            raise AuthenticationError("Mobile QR code is only available for field officers")
+        return self._issue_token_response(user, organization, role, grants)
+
     async def refresh(self, refresh_token: str) -> TokenResponse:
         try:
             payload = decode_refresh_token(refresh_token)
@@ -58,6 +102,80 @@ class AuthService:
         if not user.is_active or not membership.is_active or not organization.is_active:
             raise AuthenticationError("Inactive account")
         return self._issue_token_response(user, organization, role, grants)
+
+    def create_mobile_qr_login_payload(self, *, profile: FieldOfficerProfile, user: User) -> str:
+        token_payload = {
+            "type": MOBILE_QR_LOGIN_TYPE,
+            "organization_id": str(profile.organization_id),
+            "user_id": str(user.id),
+            "field_officer_id": str(profile.id),
+            "credential_version": self._credential_version(user),
+        }
+        token = self._encode_mobile_qr_token(token_payload)
+        return f"atlasfieldops://mobile-login?token={token}"
+
+    @staticmethod
+    def _credential_version(user: User) -> str:
+        return hashlib.sha256(user.password_hash.encode("utf-8")).hexdigest()[:24]
+
+    @staticmethod
+    def _base64_url_encode(value: bytes) -> str:
+        return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")
+
+    @staticmethod
+    def _base64_url_decode(value: str) -> bytes:
+        padding = "=" * (-len(value) % 4)
+        return base64.urlsafe_b64decode(f"{value}{padding}".encode("utf-8"))
+
+    def _encode_mobile_qr_token(self, payload: dict[str, str]) -> str:
+        payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        encoded_payload = self._base64_url_encode(payload_bytes)
+        signature = hmac.new(
+            get_jwt_secret().encode("utf-8"),
+            encoded_payload.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        encoded_signature = self._base64_url_encode(signature)
+        return f"{MOBILE_QR_LOGIN_PREFIX}.{encoded_payload}.{encoded_signature}"
+
+    def _decode_mobile_qr_token(self, qr_token: str) -> dict[str, str]:
+        token = self._extract_mobile_qr_token(qr_token)
+        parts = token.split(".")
+        if len(parts) != 3 or parts[0] != MOBILE_QR_LOGIN_PREFIX:
+            raise AuthenticationError("Invalid mobile QR code")
+        _prefix, encoded_payload, encoded_signature = parts
+        expected_signature = hmac.new(
+            get_jwt_secret().encode("utf-8"),
+            encoded_payload.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        provided_signature = self._base64_url_decode(encoded_signature)
+        if not hmac.compare_digest(expected_signature, provided_signature):
+            raise AuthenticationError("Invalid mobile QR code")
+        try:
+            payload = json.loads(self._base64_url_decode(encoded_payload).decode("utf-8"))
+        except Exception as exc:
+            raise AuthenticationError("Invalid mobile QR code") from exc
+        if not isinstance(payload, dict) or payload.get("type") != MOBILE_QR_LOGIN_TYPE:
+            raise AuthenticationError("Invalid mobile QR code")
+        return {str(key): str(value) for key, value in payload.items()}
+
+    @staticmethod
+    def _extract_mobile_qr_token(qr_token: str) -> str:
+        value = qr_token.strip()
+        if not value:
+            raise AuthenticationError("Invalid mobile QR code")
+        if value.startswith("{"):
+            try:
+                data = json.loads(value)
+            except Exception as exc:
+                raise AuthenticationError("Invalid mobile QR code") from exc
+            token = data.get("token") or data.get("qr_token") or data.get("qrToken")
+            if isinstance(token, str):
+                return token.strip()
+        if "token=" in value:
+            return value.split("token=", 1)[1].split("&", 1)[0].strip()
+        return value
 
     def _issue_token_response(
         self,

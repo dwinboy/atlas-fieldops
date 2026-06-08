@@ -8,6 +8,7 @@ import {
   Download,
   MapPinned,
   Plus,
+  QrCode,
   RadioTower,
   RefreshCw,
   Route,
@@ -18,6 +19,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -351,10 +353,38 @@ function OfficerProfileWorkspace({
   temporaryPassword: string | null;
 }) {
   const [tab, setTab] = useState<OfficerProfileTab>("overview");
+  const [mobileQrCodeUrl, setMobileQrCodeUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setTab("overview");
   }, [detail?.officer.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const payload = detail?.security.mobile_qr_login_payload;
+    if (!payload) {
+      setMobileQrCodeUrl(null);
+      return;
+    }
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 220,
+    })
+      .then((dataUrl) => {
+        if (!cancelled) {
+          setMobileQrCodeUrl(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMobileQrCodeUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail?.security.mobile_qr_login_payload]);
 
   const assignmentColumns: TableColumn<FieldOfficerAssignmentDetailRead>[] = [
     {
@@ -554,6 +584,65 @@ Password: ${temporaryPassword}`}
               <ProfileSignal label="Password Last Changed" value={formatTime(detail.security.password_last_changed_at)} />
               <ProfileSignal label="Failed Login Attempts" value={detail.security.failed_login_attempts} />
             </div>
+            <div className="rounded-lg border bg-background p-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <QrCode aria-hidden="true" className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Mobile QR login</p>
+                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                      Field officers can scan this code from the Atlas FieldOps mobile app instead of typing credentials. The code never contains the password and becomes invalid after a password reset, account suspension, or profile deactivation.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge tone={detail.security.mobile_qr_login_enabled ? "success" : "warning"}>
+                        {detail.security.mobile_qr_login_enabled ? "Ready for mobile login" : "QR login unavailable"}
+                      </Badge>
+                      <Badge tone="neutral">Field officer only</Badge>
+                    </div>
+                  </div>
+                </div>
+                {detail.security.mobile_qr_login_payload && canManage ? (
+                  <Button
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(detail.security.mobile_qr_login_payload ?? "");
+                    }}
+                    variant="secondary"
+                  >
+                    Copy QR payload
+                  </Button>
+                ) : null}
+              </div>
+              {detail.security.mobile_qr_login_payload ? (
+                <div className="mt-3 flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 md:flex-row md:items-center">
+                  {mobileQrCodeUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      alt={`Mobile QR login for ${officer.full_name}`}
+                      className="h-40 w-40 rounded-lg border bg-white p-2"
+                      src={mobileQrCodeUrl}
+                    />
+                  ) : (
+                    <div className="flex h-40 w-40 items-center justify-center rounded-lg border bg-panel text-center text-xs text-muted-foreground">
+                      QR preview unavailable
+                    </div>
+                  )}
+                  <div className="max-w-xl text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">How to use</p>
+                    <p className="mt-1">
+                      Open the mobile app, choose <span className="font-semibold text-foreground">Scan QR code</span>, and scan this code. If scanning is not possible, reset the password and share temporary credentials instead.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
+                  {detail.security.mobile_qr_login_enabled
+                    ? "QR login is active, but only users with officer management permission can display or copy the scannable code."
+                    : "QR login will appear when the officer account, organization membership, and field officer profile are active."}
+                </p>
+              )}
+            </div>
             <div className="rounded-lg border bg-muted/20 p-3">
               <p className="text-sm font-semibold">Credential controls</p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -713,6 +802,8 @@ export function FieldOperationsModule({
         failed_login_attempts: 0,
         geography_id: null,
         last_login_at: selectedPreviewOfficer.last_seen_at,
+        mobile_qr_login_enabled: false,
+        mobile_qr_login_payload: null,
         password_last_changed_at: null,
         project_id: null,
         role: "field_officer",

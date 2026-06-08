@@ -57,6 +57,7 @@ from app.schemas.collection import (
     XlsFormSurveyRow,
     XlsFormWorkbook,
 )
+from app.services.auth import AuthService
 from app.services.template_library import TemplateLibraryService
 
 
@@ -498,6 +499,7 @@ class FieldOfficerService:
         *,
         organization_id: UUID,
         profile_id: UUID,
+        include_mobile_qr: bool = False,
     ) -> FieldOfficerProfileDetailRead:
         profile = await self.officers.get(organization_id=organization_id, profile_id=profile_id)
         if profile is None:
@@ -785,8 +787,13 @@ class FieldOfficerService:
             password_last_changed_at=next((log.created_at for log in audit_logs if log.action == "user.password_reset"), None),
             last_login_at=sessions[0].created_at if sessions else profile.last_seen_at,
             failed_login_attempts=sum(1 for session in sessions if session.status == "failed"),
+            mobile_qr_login_enabled=profile.is_active and user.is_active and membership.is_active,
+            mobile_qr_login_payload=AuthService(self.session).create_mobile_qr_login_payload(profile=profile, user=user)
+            if include_mobile_qr and profile.is_active and user.is_active and membership.is_active
+            else None,
             credential_actions=[
                 "Generate temporary password",
+                "Show mobile QR login",
                 "Reset password",
                 "Force password change",
                 "Revoke sessions",

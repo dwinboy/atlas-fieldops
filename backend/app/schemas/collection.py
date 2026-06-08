@@ -732,6 +732,8 @@ class FieldOfficerSecurityRead(BaseModel):
     password_last_changed_at: datetime | None = None
     last_login_at: datetime | None = None
     failed_login_attempts: int = 0
+    mobile_qr_login_enabled: bool = False
+    mobile_qr_login_payload: str | None = None
     credential_actions: list[str] = Field(default_factory=list)
 
 

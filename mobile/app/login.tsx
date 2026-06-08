@@ -1,4 +1,5 @@
 "use client";
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -18,6 +19,7 @@ import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
 import { useAppContext } from "@/context/AppContext";
 
 const authService = new AuthService(new ExpoSecureSessionStore());
+type LoginMode = "password" | "qr";
 
 function messageIsError(message: string) {
   const normalized = message.toLowerCase();
@@ -44,6 +46,9 @@ export default function LoginScreen() {
   const [orgSlug, setOrgSlug] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [mode, setMode] = useState<LoginMode>("password");
+  const [qrScanned, setQrScanned] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   async function handleLogin() {
     if (!email.trim() || !password || !orgSlug.trim()) {
@@ -61,6 +66,31 @@ export default function LoginScreen() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleQrLogin(data: string) {
+    if (!data.trim()) {
+      setMessage("This QR code is empty. Ask your supervisor to show your mobile QR code again.");
+      return;
+    }
+    setQrScanned(true);
+    setIsLoading(true);
+    setMessage("Signing in with QR code...");
+    try {
+      const s = await authService.loginWithQr(data);
+      setSession(s);
+      router.replace("/(tabs)/home");
+    } catch (err) {
+      setQrScanned(false);
+      setMessage(err instanceof Error ? err.message : "QR login failed. Ask your supervisor to confirm your account is active.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleBarcodeScanned(result: BarcodeScanningResult) {
+    if (qrScanned || isLoading) return;
+    void handleQrLogin(result.data);
   }
 
   const isErrorMessage = message ? messageIsError(message) : false;
@@ -92,64 +122,159 @@ export default function LoginScreen() {
             gap: 12,
             padding: 20,
           }}>
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Organization code</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setOrgSlug}
-                placeholder="e.g. acme-ngo"
-                placeholderTextColor="#b0c5bc"
-                style={inputStyle}
-                value={orgSlug}
-              />
+            <View style={{ backgroundColor: "#f6faf8", borderRadius: 14, flexDirection: "row", gap: 4, padding: 4 }}>
+              {(["password", "qr"] as LoginMode[]).map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => {
+                    setMode(item);
+                    setMessage("");
+                    setQrScanned(false);
+                  }}
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: mode === item ? "#12332b" : "transparent",
+                    borderRadius: 10,
+                    flex: 1,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: mode === item ? "white" : "#49635a", fontSize: 13, fontWeight: "800" }}>
+                    {item === "password" ? "Password" : "Scan QR code"}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
 
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Email</Text>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                placeholderTextColor="#b0c5bc"
-                style={inputStyle}
-                value={email}
-              />
-            </View>
+            {mode === "password" ? (
+              <>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Organization code</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={setOrgSlug}
+                    placeholder="e.g. acme-ngo"
+                    placeholderTextColor="#b0c5bc"
+                    style={inputStyle}
+                    value={orgSlug}
+                  />
+                </View>
 
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Password</Text>
-              <TextInput
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#b0c5bc"
-                secureTextEntry
-                style={inputStyle}
-                value={password}
-              />
-            </View>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Email</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    onChangeText={setEmail}
+                    placeholder="you@example.com"
+                    placeholderTextColor="#b0c5bc"
+                    style={inputStyle}
+                    value={email}
+                  />
+                </View>
 
-            <Pressable
-              disabled={isLoading}
-              onPress={handleLogin}
-              style={{
-                alignItems: "center",
-                backgroundColor: isLoading ? "#8aa79b" : "#12332b",
-                borderRadius: 14,
-                flexDirection: "row",
-                justifyContent: "center",
-                marginTop: 4,
-                minHeight: 52,
-                padding: 14,
-                gap: 10,
-              }}
-            >
-              {isLoading && <ActivityIndicator color="white" size="small" />}
-              <Text style={{ color: "white", fontWeight: "800", fontSize: 16 }}>
-                {isLoading ? "Signing in…" : "Sign in"}
-              </Text>
-            </Pressable>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Password</Text>
+                  <TextInput
+                    onChangeText={setPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#b0c5bc"
+                    secureTextEntry
+                    style={inputStyle}
+                    value={password}
+                  />
+                </View>
+
+                <Pressable
+                  disabled={isLoading}
+                  onPress={handleLogin}
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: isLoading ? "#8aa79b" : "#12332b",
+                    borderRadius: 14,
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    marginTop: 4,
+                    minHeight: 52,
+                    padding: 14,
+                    gap: 10,
+                  }}
+                >
+                  {isLoading && <ActivityIndicator color="white" size="small" />}
+                  <Text style={{ color: "white", fontWeight: "800", fontSize: 16 }}>
+                    {isLoading ? "Signing in…" : "Sign in"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <View style={{ gap: 12 }}>
+                <Text style={{ color: "#49635a", fontSize: 14, lineHeight: 20 }}>
+                  Scan the mobile QR code from your field officer profile. Ask your supervisor or manager to open your profile if you do not have the code.
+                </Text>
+                {cameraPermission?.granted ? (
+                  <View style={{ borderColor: "#dbe7e2", borderRadius: 16, borderWidth: 1, height: 280, overflow: "hidden" }}>
+                    <CameraView
+                      barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                      onBarcodeScanned={qrScanned || isLoading ? undefined : handleBarcodeScanned}
+                      style={{ flex: 1 }}
+                    />
+                    <View style={{
+                      alignSelf: "center",
+                      borderColor: "rgba(255,255,255,0.9)",
+                      borderRadius: 18,
+                      borderWidth: 3,
+                      height: 180,
+                      position: "absolute",
+                      top: 50,
+                      width: 180,
+                    }} />
+                  </View>
+                ) : (
+                  <View style={{ backgroundColor: "#f6faf8", borderColor: "#dbe7e2", borderRadius: 16, borderWidth: 1, gap: 10, padding: 16 }}>
+                    <Text style={{ color: "#12332b", fontSize: 15, fontWeight: "800" }}>Camera permission needed</Text>
+                    <Text style={{ color: "#49635a", fontSize: 14, lineHeight: 20 }}>
+                      Atlas FieldOps needs camera access only to scan your login QR code.
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        void requestCameraPermission();
+                      }}
+                      style={{
+                        alignItems: "center",
+                        backgroundColor: "#12332b",
+                        borderRadius: 14,
+                        minHeight: 48,
+                        justifyContent: "center",
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ color: "white", fontWeight: "800" }}>Allow camera</Text>
+                    </Pressable>
+                  </View>
+                )}
+                {qrScanned ? (
+                  <Pressable
+                    disabled={isLoading}
+                    onPress={() => {
+                      setQrScanned(false);
+                      setMessage("");
+                    }}
+                    style={{
+                      alignItems: "center",
+                      borderColor: "#dbe7e2",
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      minHeight: 48,
+                      justifyContent: "center",
+                      padding: 12,
+                    }}
+                  >
+                    <Text style={{ color: "#12332b", fontWeight: "800" }}>Scan again</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
           </View>
 
           {message ? (

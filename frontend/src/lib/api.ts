@@ -909,6 +909,8 @@ export type FieldOfficerSecurityRead = {
   password_last_changed_at: string | null;
   last_login_at: string | null;
   failed_login_attempts: number;
+  mobile_qr_login_enabled: boolean;
+  mobile_qr_login_payload: string | null;
   credential_actions: string[];
 };
 

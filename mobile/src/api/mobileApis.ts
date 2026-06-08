@@ -63,6 +63,26 @@ export class AuthApi {
     };
   }
 
+  async loginWithQr(qrToken: string) {
+    const token = await this.http.request<{
+      access_token: string;
+      token_type: string;
+      refresh_token?: string | null;
+      expires_in?: number | null;
+    }>("/auth/mobile-qr-login", {
+      method: "POST",
+      body: {
+        qr_token: qrToken,
+      },
+    });
+    return {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token ?? null,
+      expiresIn: token.expires_in ?? null,
+      tokenType: token.token_type,
+    };
+  }
+
   async refresh(refreshToken: string) {
     const token = await this.http.request<{
       access_token: string;

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.app_db import get_session
 from app.api.v1.dependencies import get_current_principal
-from app.schemas.auth import CurrentPrincipal, LoginRequest, RefreshTokenRequest, TokenResponse
+from app.schemas.auth import CurrentPrincipal, LoginRequest, MobileQrLoginRequest, RefreshTokenRequest, TokenResponse
 from app.services.auth import AuthService, AuthenticationError
 
 router = APIRouter()
@@ -24,6 +24,17 @@ async def login(
         )
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials") from exc
+
+
+@router.post("/mobile-qr-login", response_model=TokenResponse, summary="Create mobile access token from field officer QR code")
+async def mobile_qr_login(
+    payload: MobileQrLoginRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TokenResponse:
+    try:
+        return await AuthService(session).login_with_mobile_qr(payload.qr_token)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc) or "Invalid mobile QR code") from exc
 
 
 @router.get("/me", response_model=CurrentPrincipal, summary="Current authenticated principal")

@@ -43,6 +43,7 @@ async def get_field_officer_profile(
         profile = await FieldOfficerService(session).get_officer_profile(
             organization_id=UUID(principal.organization_id),
             profile_id=field_officer_id,
+            include_mobile_qr=principal.platform_admin or Permission.OFFICER_MANAGE.value in principal.permissions,
         )
         await session.commit()
         return profile
