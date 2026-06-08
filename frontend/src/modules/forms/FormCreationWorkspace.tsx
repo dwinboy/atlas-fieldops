@@ -5769,7 +5769,7 @@ export function FormCreationWorkspace({
                     size="sm"
                     variant="secondary"
                   >
-                    Why can't I publish?
+                    Why can&apos;t I publish?
                   </Button>
                 ) : null}
               </>
@@ -8486,7 +8486,7 @@ export function FormCreationWorkspace({
                       onClick={() => setPublishHelpOpen(true)}
                       variant="secondary"
                     >
-                      Why can't I publish?
+                      Why can&apos;t I publish?
                     </Button>
                   ) : null}
                 </div>
