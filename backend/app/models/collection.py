@@ -64,7 +64,7 @@ class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
 
 class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "officer_assignments"
-    __table_args__ = (UniqueConstraint("organization_id", "officer_id", "project_id"),)
+    __table_args__ = (UniqueConstraint("organization_id", "officer_id", "project_id", "form_id"),)
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)

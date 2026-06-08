@@ -519,9 +519,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     [projectsQuery.data],
   );
   const forms = useMemo<FormListItem[]>(() => {
-    const baseForms = preview
-      ? [...localForms, ...previewForms]
+    const rawForms = preview
+      ? [...previewForms, ...localForms]
       : (formsQuery.data ?? []).map(normalizeBackendForm);
+    const baseForms = Array.from(
+      new Map(rawForms.map((form) => [form.id, form])).values(),
+    );
     return baseForms.map((form) => {
       const stats = formStats.get(form.id);
       const projectName =
@@ -1020,10 +1023,10 @@ function FormsDashboard({
         <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h2 className="font-semibold">Most Used Forms</h2>
           <div className="mt-4 space-y-3">
-            {mostUsed.map((form) => (
+            {mostUsed.map((form, index) => (
               <button
                 className="w-full rounded-xl border bg-background/50 p-3 text-left transition hover:bg-muted/50"
-                key={form.id}
+                key={`${form.id}-most-used-${index}`}
                 onClick={() => onOpenForm(form)}
                 type="button"
               >
@@ -1150,13 +1153,13 @@ function FormsAnalyticsSection({
                 </tr>
               </thead>
               <tbody>
-                {topForms.map((form) => {
+                {topForms.map((form, index) => {
                   const rows = formSubmissionsFor(submissions, form.id);
                   const approvedRows = rows.filter((submission) => submission.status === "approved").length;
                   const gpsRows = rows.filter((submission) => submission.latitude && submission.longitude).length;
                   const mobileRows = rows.filter((submission) => submission.offline_created).length;
                   return (
-                    <tr className="odd:bg-background even:bg-muted/20" key={form.id}>
+                    <tr className="odd:bg-background even:bg-muted/20" key={`${form.id}-top-form-${index}`}>
                       <td className="border-b px-2 py-2">
                         <button className="text-left font-medium hover:text-primary" onClick={() => onOpenForm(form, "Analytics")} type="button">
                           {form.name}
@@ -1245,10 +1248,10 @@ function FormsGovernanceDashboard({
               <Badge tone={group.forms.length ? "warning" : "success"}>{group.forms.length}</Badge>
             </div>
             <div className="mt-3 space-y-2">
-              {group.forms.slice(0, 5).map((form) => (
+              {group.forms.slice(0, 5).map((form, index) => (
                 <button
                   className="flex w-full items-center justify-between gap-3 rounded-lg border bg-background/70 p-2 text-left transition hover:border-primary/35 hover:bg-primary/5"
-                  key={form.id}
+                  key={`${form.id}-${group.label}-${index}`}
                   onClick={() => onOpenForm(form, group.tab)}
                   type="button"
                 >
@@ -1300,7 +1303,7 @@ function FormStatusCards({
   }
   return (
     <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
-      {forms.map((form) => {
+      {forms.map((form, index) => {
         const readiness = Math.max(
           20,
           Math.min(100, Math.round((form.quality_score + (form.project_id ? 15 : -15)) / 1.15)),
@@ -1318,7 +1321,7 @@ function FormStatusCards({
         return (
           <article
             className="rounded-lg border bg-panel p-3 shadow-line transition hover:border-primary/35 hover:shadow-soft"
-            key={form.id}
+            key={`${form.id}-card-${index}`}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
               openPrimary();

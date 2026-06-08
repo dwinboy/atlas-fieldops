@@ -108,11 +108,17 @@ class FieldOfficerRepository:
         region: str | None,
         is_active: bool,
     ) -> OfficerAssignment:
+        form_filter = (
+            OfficerAssignment.form_id.is_(None)
+            if form_id is None
+            else OfficerAssignment.form_id == form_id
+        )
         result = await self.session.execute(
             select(OfficerAssignment).where(
                 OfficerAssignment.organization_id == organization_id,
                 OfficerAssignment.officer_id == officer_id,
                 OfficerAssignment.project_id == project_id,
+                form_filter,
                 OfficerAssignment.deleted_at.is_(None),
             )
         )

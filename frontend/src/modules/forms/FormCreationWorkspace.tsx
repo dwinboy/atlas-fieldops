@@ -34,6 +34,7 @@ import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createFieldOfficerAssignment,
   createForm,
   createSurvey,
   getFormSchema,
@@ -70,6 +71,15 @@ type CreationStage =
   | "review";
 type StartMethod = "blank" | "template" | "duplicate" | "import";
 type CollectionMethod = "web" | "mobile" | "web_mobile";
+
+type PublishSuccessSummary = {
+  deliveredOfficerCount: number;
+  deliveryErrors: string[];
+  formName: string;
+  projectName: string;
+  selectedOfficerCount: number;
+  version: number;
+};
 
 type StarterTemplate = {
   description: string;
@@ -697,6 +707,11 @@ function slugFromText(value: string, fallback: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 80) || fallback
   );
+}
+
+function messageFromUnknownError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "The request could not be completed.";
 }
 
 function attachStarterField(
@@ -2808,6 +2823,9 @@ export function FormCreationWorkspace({
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
+  const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
+  const [publishSuccessSummary, setPublishSuccessSummary] =
+    useState<PublishSuccessSummary | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const selectedProject = useMemo(
@@ -3122,6 +3140,40 @@ export function FormCreationWorkspace({
     setPublishMessage("Controls saved for this draft. Continue to preview when ready.");
   }
 
+  async function assignPublishedFormToSelectedOfficers(
+    formId: string,
+    projectId: string,
+  ): Promise<{ deliveredOfficerCount: number; deliveryErrors: string[] }> {
+    const selectedOfficerIds =
+      controlsDraft.assignmentMode === "assigned_only"
+        ? controlsDraft.assignedFieldOfficerIds
+        : [];
+    if (!token || preview || !selectedOfficerIds.length) {
+      return { deliveredOfficerCount: 0, deliveryErrors: [] };
+    }
+
+    const deliveryErrors: string[] = [];
+    let deliveredOfficerCount = 0;
+    for (const officerId of selectedOfficerIds) {
+      const officer = fieldOfficerOptions.find((option) => option.id === officerId);
+      try {
+        await createFieldOfficerAssignment(token, {
+          form_id: formId,
+          is_active: true,
+          officer_id: officerId,
+          project_id: projectId,
+          region: selectedProject?.region ?? null,
+        });
+        deliveredOfficerCount += 1;
+      } catch (error) {
+        deliveryErrors.push(
+          `${officer?.full_name ?? "Selected field officer"}: ${messageFromUnknownError(error)}`,
+        );
+      }
+    }
+    return { deliveredOfficerCount, deliveryErrors };
+  }
+
   async function publishDraft(): Promise<void> {
     if (!draftForm) return;
     if (!projectLinked || !selectedProjectId) {
@@ -3181,17 +3233,35 @@ export function FormCreationWorkspace({
           saved.id,
           controlsDraftToApiControls(controlsDraft, nextPublishedForm),
         );
+        const assignmentDelivery = await assignPublishedFormToSelectedOfficers(
+          saved.id,
+          selectedProjectId,
+        );
         setPublishedForm(nextPublishedForm);
         setDraftForm(nextPublishedForm);
         upsertLocalForm(workspaceFormFromDraft(nextPublishedForm, setup, selectedProjectId));
+        setPublishSuccessSummary({
+          deliveredOfficerCount: assignmentDelivery.deliveredOfficerCount,
+          deliveryErrors: assignmentDelivery.deliveryErrors,
+          formName: saved.name,
+          projectName: selectedProject?.name ?? "the selected project",
+          selectedOfficerCount:
+            controlsDraft.assignmentMode === "assigned_only"
+              ? controlsDraft.assignedFieldOfficerIds.length
+              : 0,
+          version: saved.current_version,
+        });
+        setPublishSuccessOpen(true);
         setPublishMessage(
-          initialForm
-            ? `${saved.name} was saved as version ${saved.current_version}. Existing submissions remain linked to their original version.`
-            : `${saved.name} was published under ${selectedProject?.name ?? "the selected project"}.`,
+          assignmentDelivery.deliveryErrors.length
+            ? `${saved.name} was published, but ${assignmentDelivery.deliveryErrors.length} field officer assignment needs attention.`
+            : controlsDraft.assignmentMode === "assigned_only"
+              ? `${saved.name} was published and sent to ${assignmentDelivery.deliveredOfficerCount} selected field officer${assignmentDelivery.deliveredOfficerCount === 1 ? "" : "s"}.`
+              : `${saved.name} was published under ${selectedProject?.name ?? "the selected project"}.`,
         );
         setStage("review");
       } catch (error) {
-        setPublishMessage(error instanceof Error ? error.message : "The form could not be published.");
+        setPublishMessage(messageFromUnknownError(error));
       } finally {
         setPublishing(false);
       }
@@ -3222,6 +3292,24 @@ export function FormCreationWorkspace({
         setup,
         selectedProjectId,
       ),
+    );
+    setPublishSuccessSummary({
+      deliveredOfficerCount:
+        controlsDraft.assignmentMode === "assigned_only"
+          ? controlsDraft.assignedFieldOfficerIds.length
+          : 0,
+      deliveryErrors: [],
+      formName: nextPublishedForm.name,
+      projectName: selectedProject?.name ?? "the selected project",
+      selectedOfficerCount:
+        controlsDraft.assignmentMode === "assigned_only"
+          ? controlsDraft.assignedFieldOfficerIds.length
+          : 0,
+      version: nextPublishedForm.activeVersion,
+    });
+    setPublishSuccessOpen(true);
+    setPublishMessage(
+      `${nextPublishedForm.name} was published locally for preview. Connect to the backend to make it available for live field assignments.`,
     );
   }
 
@@ -5652,6 +5740,94 @@ export function FormCreationWorkspace({
           ) : null}
         </section>
       ) : null}
+
+      <Modal
+        contentClassName="max-w-2xl"
+        description="Confirmation that the governed form version is published and available for the selected field team."
+        onOpenChange={setPublishSuccessOpen}
+        open={publishSuccessOpen}
+        title="Form published successfully"
+      >
+        {publishSuccessSummary ? (
+          <div className="space-y-4 p-5">
+            <div className="rounded-xl border border-success/30 bg-success/10 p-5 text-center">
+              <CheckCircle2
+                aria-hidden="true"
+                className="mx-auto text-success"
+                size={48}
+              />
+              <h2 className="mt-3 text-2xl font-semibold">
+                Form published successfully
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {publishSuccessSummary.formName} is now published as version{" "}
+                {publishSuccessSummary.version} for{" "}
+                {publishSuccessSummary.projectName}.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Published version
+                </p>
+                <p className="mt-1 text-xl font-semibold">
+                  v{publishSuccessSummary.version}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Selected officers
+                </p>
+                <p className="mt-1 text-xl font-semibold">
+                  {publishSuccessSummary.selectedOfficerCount}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Sent to mobile
+                </p>
+                <p className="mt-1 text-xl font-semibold">
+                  {publishSuccessSummary.deliveredOfficerCount}
+                </p>
+              </div>
+            </div>
+            {publishSuccessSummary.deliveryErrors.length ? (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+                <p className="text-sm font-semibold">
+                  Some field officer assignments need attention
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {publishSuccessSummary.deliveryErrors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-background/70 p-3 text-sm text-muted-foreground">
+                The published form is available for the selected field officers
+                through Field Operations and mobile sync.
+              </div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                onClick={() => setPublishSuccessOpen(false)}
+                variant="secondary"
+              >
+                Continue editing controls
+              </Button>
+              <Button
+                onClick={() => {
+                  setPublishSuccessOpen(false);
+                  onBack();
+                }}
+                variant="primary"
+              >
+                View forms
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </section>
   );
 }
