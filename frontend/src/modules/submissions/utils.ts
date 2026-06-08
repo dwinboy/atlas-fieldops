@@ -58,6 +58,8 @@ export function reviewStageFromStatus(status: string): SubmissionWorkflowStage {
 
 export function calculateQualityScore(submission: SubmissionRead): number {
   const payload = submission.payload_json ?? {};
+  const mobileIntegrity = mobileIntegrityPayload(payload);
+  const mobileScore = typeof mobileIntegrity?.score === "number" ? mobileIntegrity.score : null;
   const values = Object.entries(payload)
     .filter(([key]) => !key.startsWith("_"))
     .map(([, value]) => value);
@@ -65,7 +67,8 @@ export function calculateQualityScore(submission: SubmissionRead): number {
   const gpsPenalty = !submission.latitude || !submission.longitude ? 25 : submission.accuracy && submission.accuracy > 20 ? 15 : 0;
   const statusPenalty = submission.status === "rejected" ? 35 : ["correction_requested", "needs_correction"].includes(submission.status) ? 20 : 0;
   const duplicatePenalty = Object.keys(payload).some((key) => key.includes("phone") || key.includes("household") || key.includes("beneficiary")) ? 0 : 5;
-  return Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
+  const calculatedScore = Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
+  return mobileScore === null ? calculatedScore : Math.min(calculatedScore, mobileScore);
 }
 
 function submissionValidationIssues(submission: SubmissionRead): string[] {
@@ -73,6 +76,40 @@ function submissionValidationIssues(submission: SubmissionRead): string[] {
   const rawIssues = payload._validation_issues;
   if (!Array.isArray(rawIssues)) return [];
   return rawIssues.filter((issue): issue is string => typeof issue === "string" && issue.trim().length > 0);
+}
+
+function mobileIntegrityPayload(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const rawIntegrity = payload._mobile_integrity;
+  if (!rawIntegrity || typeof rawIntegrity !== "object" || Array.isArray(rawIntegrity)) return null;
+  return rawIntegrity as Record<string, unknown>;
+}
+
+function mobileIntegritySignals(payload: Record<string, unknown>): {
+  code: string;
+  message: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+}[] {
+  const integrity = mobileIntegrityPayload(payload);
+  const rawSignals = Array.isArray(integrity?.signals) ? integrity.signals : [];
+  return rawSignals
+    .map((rawSignal) => {
+      if (!rawSignal || typeof rawSignal !== "object" || Array.isArray(rawSignal)) return null;
+      const signal = rawSignal as Record<string, unknown>;
+      const severity = typeof signal.severity === "string" ? signal.severity.toLowerCase() : "";
+      return {
+        code: typeof signal.code === "string" ? signal.code : "FIELD_INTEGRITY_SIGNAL",
+        message: typeof signal.message === "string" ? signal.message : "Mobile field integrity signal needs reviewer attention.",
+        severity:
+          severity === "critical"
+            ? "Critical"
+            : severity === "warning"
+              ? "High"
+              : severity === "info"
+                ? "Low"
+                : "Medium",
+      };
+    })
+    .filter((signal): signal is { code: string; message: string; severity: "Low" | "Medium" | "High" | "Critical" } => Boolean(signal));
 }
 
 export function normalizeSubmission(submission: SubmissionRead): SubmissionRecord {
@@ -88,6 +125,15 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       id: `${submission.id}-validation-${index}`,
       message,
       severity: "High",
+      status: "open",
+    });
+  });
+  mobileIntegritySignals(submission.payload_json ?? {}).forEach((signal, index) => {
+    qualityFlags.push({
+      check: `Mobile Integrity: ${signal.code.replaceAll("_", " ")}`,
+      id: `${submission.id}-mobile-integrity-${index}`,
+      message: signal.message,
+      severity: signal.severity,
       status: "open",
     });
   });

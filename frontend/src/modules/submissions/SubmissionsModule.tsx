@@ -114,6 +114,28 @@ type ResponseRow = {
   options?: FormFieldMeta["options"];
 };
 
+type MobileIntegritySignal = {
+  action?: string;
+  code: string;
+  detectedAt?: string;
+  evidence?: Record<string, unknown>;
+  message: string;
+  severity: "info" | "warning" | "critical";
+};
+
+type MobileIntegrityPayload = {
+  gpsAccuracyMeters?: number | null;
+  gpsCapturedAt?: string | null;
+  interviewDurationSeconds?: number | null;
+  mediaCount?: number | null;
+  offlineStartedAt?: string | null;
+  offlineSubmittedAt?: string | null;
+  requiredMediaCount?: number | null;
+  riskLevel?: "low" | "medium" | "high";
+  score?: number | null;
+  signals: MobileIntegritySignal[];
+};
+
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
@@ -136,10 +158,102 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function severityTone(severity: string): BadgeProps["tone"] {
-  if (severity === "Critical") return "danger";
-  if (severity === "High") return "warning";
-  if (severity === "Medium") return "accent";
+  const normalized = severity.toLowerCase();
+  if (normalized === "critical") return "danger";
+  if (normalized === "high" || normalized === "warning") return "warning";
+  if (normalized === "medium") return "accent";
   return "neutral";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getMobileIntegrity(submission: SubmissionRecord): MobileIntegrityPayload | null {
+  const rawIntegrity = asRecord(submission.payload_json?._mobile_integrity);
+  if (!rawIntegrity) return null;
+
+  const rawSignals = Array.isArray(rawIntegrity.signals) ? rawIntegrity.signals : [];
+  const signals = rawSignals
+    .map((rawSignal): MobileIntegritySignal | null => {
+      const signal = asRecord(rawSignal);
+      if (!signal) return null;
+      const severity = stringValue(signal.severity)?.toLowerCase();
+      return {
+        action: stringValue(signal.action),
+        code: stringValue(signal.code) ?? "FIELD_INTEGRITY_SIGNAL",
+        detectedAt: stringValue(signal.detectedAt) ?? stringValue(signal.detected_at),
+        evidence: asRecord(signal.evidence) ?? undefined,
+        message: stringValue(signal.message) ?? "Field integrity signal needs review.",
+        severity:
+          severity === "critical" || severity === "warning" || severity === "info"
+            ? severity
+            : "warning",
+      };
+    })
+    .filter((signal): signal is MobileIntegritySignal => Boolean(signal));
+
+  const riskLevel = stringValue(rawIntegrity.riskLevel) ?? stringValue(rawIntegrity.risk_level);
+  return {
+    gpsAccuracyMeters:
+      numberValue(rawIntegrity.gpsAccuracyMeters) ?? numberValue(rawIntegrity.gps_accuracy_meters),
+    gpsCapturedAt:
+      stringValue(rawIntegrity.gpsCapturedAt) ?? stringValue(rawIntegrity.gps_captured_at) ?? null,
+    interviewDurationSeconds:
+      numberValue(rawIntegrity.interviewDurationSeconds) ?? numberValue(rawIntegrity.interview_duration_seconds),
+    mediaCount: numberValue(rawIntegrity.mediaCount) ?? numberValue(rawIntegrity.media_count),
+    offlineStartedAt:
+      stringValue(rawIntegrity.offlineStartedAt) ?? stringValue(rawIntegrity.offline_started_at) ?? null,
+    offlineSubmittedAt:
+      stringValue(rawIntegrity.offlineSubmittedAt) ?? stringValue(rawIntegrity.offline_submitted_at) ?? null,
+    requiredMediaCount:
+      numberValue(rawIntegrity.requiredMediaCount) ?? numberValue(rawIntegrity.required_media_count),
+    riskLevel:
+      riskLevel === "high" || riskLevel === "medium" || riskLevel === "low"
+        ? riskLevel
+        : signals.some((signal) => signal.severity === "critical")
+          ? "high"
+          : signals.length
+            ? "medium"
+            : "low",
+    score: numberValue(rawIntegrity.score),
+    signals,
+  };
+}
+
+function getMobileIntegrityStatus(submission: SubmissionRecord): string {
+  return stringValue(submission.payload_json?._mobile_integrity_status) ?? "not_evaluated";
+}
+
+function mobileIntegrityTone(integrity: MobileIntegrityPayload | null): BadgeProps["tone"] {
+  if (!integrity) return "neutral";
+  if (integrity.riskLevel === "high" || integrity.signals.some((signal) => signal.severity === "critical")) return "danger";
+  if (integrity.riskLevel === "medium" || integrity.signals.length) return "warning";
+  return "success";
+}
+
+function mobileIntegrityLabel(integrity: MobileIntegrityPayload | null): string {
+  if (!integrity) return "Not sent";
+  if (integrity.riskLevel === "high") return "High risk";
+  if (integrity.riskLevel === "medium") return "Review";
+  return "Clear";
+}
+
+function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "Not recorded";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
 }
 
 function downloadCsv(
@@ -551,6 +665,20 @@ export function SubmissionsModule({
           {submission.quality_score}%
         </Badge>
       ),
+    },
+    {
+      key: "integrity",
+      header: "Integrity",
+      align: "right",
+      value: (submission) => mobileIntegrityLabel(getMobileIntegrity(submission)),
+      render: (submission) => {
+        const integrity = getMobileIntegrity(submission);
+        return (
+          <Badge tone={mobileIntegrityTone(integrity)}>
+            {mobileIntegrityLabel(integrity)}
+          </Badge>
+        );
+      },
     },
     {
       key: "actions",
@@ -1103,6 +1231,7 @@ function SubmissionDetailWorkspace({
 }
 
 function OverviewTab({ submission }: { submission: SubmissionRecord }) {
+  const integrity = getMobileIntegrity(submission);
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1181,6 +1310,7 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
           </div>
         )}
       </Panel>
+      <MobileIntegrityPanel integrity={integrity} submission={submission} />
     </div>
   );
 }
@@ -1725,74 +1855,193 @@ function WorkflowTab({
 }
 
 function QualityTab({ submission }: { submission: SubmissionRecord }) {
+  const integrity = getMobileIntegrity(submission);
   return (
-    <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
-      <Panel title="Quality Score">
-        <div className="rounded-2xl border bg-background/60 p-5 text-center">
-          <p className="text-4xl font-semibold">{submission.quality_score}%</p>
-          <Badge className="mt-3" tone={qualityTone(submission.quality_score)}>
-            {submission.quality_score >= 90
-              ? "Excellent"
-              : submission.quality_score >= 70
-                ? "Good"
-                : submission.quality_score >= 50
-                  ? "Needs Review"
-                  : "Critical"}
-          </Badge>
-        </div>
-        <div className="mt-3 space-y-2">
-          <Signal
-            label="Duplicate risk"
-            value={submission.duplicate_risk}
-            tone={submission.duplicate_risk === "none" ? "success" : "warning"}
-          />
-          <Signal
-            label="GPS validation"
-            value={submission.gps_status}
-            tone={submission.gps_status === "valid" ? "success" : "warning"}
-          />
-        </div>
-      </Panel>
-      <Panel title="Quality Flags">
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            These checks guide reviewer decisions only. A reviewer must still approve, reject, return, or archive the submission.
-          </p>
-          {submission.quality_flags.map((flag) => (
-            <div
-              className="rounded-xl border bg-background/60 p-3"
-              key={flag.id}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{flag.check}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {flag.message}
-                  </p>
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
+        <Panel title="Quality Score">
+          <div className="rounded-2xl border bg-background/60 p-5 text-center">
+            <p className="text-4xl font-semibold">{submission.quality_score}%</p>
+            <Badge className="mt-3" tone={qualityTone(submission.quality_score)}>
+              {submission.quality_score >= 90
+                ? "Excellent"
+                : submission.quality_score >= 70
+                  ? "Good"
+                  : submission.quality_score >= 50
+                    ? "Needs Review"
+                    : "Critical"}
+            </Badge>
+          </div>
+          <div className="mt-3 space-y-2">
+            <Signal
+              label="Duplicate risk"
+              value={submission.duplicate_risk}
+              tone={submission.duplicate_risk === "none" ? "success" : "warning"}
+            />
+            <Signal
+              label="GPS validation"
+              value={submission.gps_status}
+              tone={submission.gps_status === "valid" ? "success" : "warning"}
+            />
+            <Signal
+              label="Field integrity"
+              value={mobileIntegrityLabel(integrity)}
+              tone={mobileIntegrityTone(integrity)}
+            />
+          </div>
+        </Panel>
+        <Panel title="Quality Flags">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              These checks guide reviewer decisions only. A reviewer must still approve, reject, return, or archive the submission.
+            </p>
+            {submission.quality_flags.map((flag) => (
+              <div
+                className="rounded-xl border bg-background/60 p-3"
+                key={flag.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{flag.check}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {flag.message}
+                    </p>
+                  </div>
+                  <Badge tone={severityTone(flag.severity)}>
+                    {flag.severity}
+                  </Badge>
                 </div>
-                <Badge tone={severityTone(flag.severity)}>
-                  {flag.severity}
-                </Badge>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary">
+                    Resolve
+                  </Button>
+                  <Button size="sm" variant="ghost">
+                    Override
+                  </Button>
+                  <Button size="sm" variant="ghost">
+                    Add note
+                  </Button>
+                </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary">
-                  Resolve
-                </Button>
-                <Button size="sm" variant="ghost">
-                  Override
-                </Button>
-                <Button size="sm" variant="ghost">
-                  Add note
-                </Button>
-              </div>
-            </div>
-          ))}
-          {!submission.quality_flags.length ? (
-            <EmptyMini label="No open quality flags for this submission." />
-          ) : null}
-        </div>
-      </Panel>
+            ))}
+            {!submission.quality_flags.length ? (
+              <EmptyMini label="No open quality flags for this submission." />
+            ) : null}
+          </div>
+        </Panel>
+      </div>
+      <MobileIntegrityPanel integrity={integrity} submission={submission} />
     </div>
+  );
+}
+
+function MobileIntegrityPanel({
+  integrity,
+  submission,
+}: {
+  integrity: MobileIntegrityPayload | null;
+  submission: SubmissionRecord;
+}) {
+  const status = getMobileIntegrityStatus(submission);
+  return (
+    <Panel
+      title="Mobile Field Integrity"
+      action={<Badge tone={mobileIntegrityTone(integrity)}>{mobileIntegrityLabel(integrity)}</Badge>}
+    >
+      {!integrity ? (
+        <div className="rounded-xl border border-dashed bg-muted/20 p-4">
+          <p className="text-sm font-medium">No mobile integrity package was sent with this submission.</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Older web, import, or legacy records may not include mobile evidence. Review normal quality flags, GPS, source, and responses before approval.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Signal
+              label="Integrity score"
+              value={integrity.score === null || integrity.score === undefined ? "Not scored" : `${integrity.score}%`}
+              tone={mobileIntegrityTone(integrity)}
+            />
+            <Signal
+              label="System status"
+              value={humanizeKey(status)}
+              tone={mobileIntegrityTone(integrity)}
+            />
+            <Signal
+              label="Interview duration"
+              value={formatDurationSeconds(integrity.interviewDurationSeconds)}
+              tone={integrity.signals.some((signal) => signal.code === "INTERVIEW_TOO_FAST") ? "warning" : "success"}
+            />
+            <Signal
+              label="GPS accuracy"
+              value={integrity.gpsAccuracyMeters === null || integrity.gpsAccuracyMeters === undefined ? "Not recorded" : `${integrity.gpsAccuracyMeters}m`}
+              tone={integrity.signals.some((signal) => signal.code.includes("GPS")) ? "warning" : "success"}
+            />
+            <Signal
+              label="Media evidence"
+              value={`${integrity.mediaCount ?? 0} of ${integrity.requiredMediaCount ?? 0} required`}
+              tone={(integrity.mediaCount ?? 0) >= (integrity.requiredMediaCount ?? 0) ? "success" : "warning"}
+            />
+            <Signal
+              label="Offline started"
+              value={formatDateTime(integrity.offlineStartedAt)}
+            />
+            <Signal
+              label="Offline submitted"
+              value={formatDateTime(integrity.offlineSubmittedAt)}
+            />
+            <Signal
+              label="GPS captured"
+              value={formatDateTime(integrity.gpsCapturedAt)}
+            />
+          </div>
+
+          <div className="rounded-xl border bg-background/60 p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="font-medium">Supervisor review guidance</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Integrity signals do not approve or reject the record. They show what the reviewer should verify before making a decision.
+                </p>
+              </div>
+              <Badge tone={integrity.signals.length ? "warning" : "success"}>
+                {integrity.signals.length} signal{integrity.signals.length === 1 ? "" : "s"}
+              </Badge>
+            </div>
+            <div className="mt-3 space-y-2">
+              {integrity.signals.map((signal) => (
+                <div
+                  className="rounded-lg border bg-panel p-3"
+                  key={`${signal.code}-${signal.detectedAt ?? signal.message}`}
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">{humanizeKey(signal.code)}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{signal.message}</p>
+                      {signal.action ? (
+                        <p className="mt-2 text-xs font-medium text-foreground">
+                          Recommended reviewer action: {signal.action}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Badge tone={severityTone(signal.severity)}>{humanizeKey(signal.severity)}</Badge>
+                  </div>
+                  {signal.evidence && Object.keys(signal.evidence).length ? (
+                    <pre className="mt-3 max-h-36 overflow-auto rounded-lg bg-muted/45 p-2 text-xs text-muted-foreground">
+                      {JSON.stringify(signal.evidence, null, 2)}
+                    </pre>
+                  ) : null}
+                </div>
+              ))}
+              {!integrity.signals.length ? (
+                <EmptyMini label="No unusual mobile integrity signals were detected." />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }
 
