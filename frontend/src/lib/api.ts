@@ -1750,6 +1750,10 @@ export type FormGovernancePolicy = {
   auto_archive_after_project_closure: boolean;
   export_approval_required?: boolean;
   export_approval_role?: string | null;
+  approved_data_freeze_required?: boolean;
+  decision_use?: string;
+  reporting_period?: string;
+  source_of_truth_rule?: string;
 };
 
 export type FormCollectionAccessSettings = {
@@ -1821,6 +1825,7 @@ export type FormInstrumentSettings = {
   certification?: Record<string, unknown>;
   sampling?: Record<string, unknown>;
   performance_analytics?: Record<string, unknown>;
+  validation_standards?: Record<string, unknown>;
   localization?: Record<string, unknown>;
   mobile_package?: Record<string, unknown>;
   testing?: Record<string, unknown>;

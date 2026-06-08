@@ -97,6 +97,14 @@ type StarterTemplate = {
   name: string;
 };
 
+type RecommendedQuestion = {
+  label: string;
+  options?: string[];
+  required?: boolean;
+  type: FieldType;
+  validation?: FormField["validation"];
+};
+
 type FormControlsDraft = {
   accessibilityMode: "standard" | "large_text" | "high_contrast";
   allowAnonymous: boolean;
@@ -114,8 +122,12 @@ type FormControlsDraft = {
   consentMode: "digital" | "written" | "verbal" | "guardian" | "not_required";
   coordinateMasking: boolean;
   dataQualityMode: "standard" | "strict" | "advisory";
+  decisionUse: "operational_decision" | "indicator_reporting" | "donor_reporting" | "case_management" | "research_learning";
   dataSourceType: "primary" | "secondary" | "administrative" | "imported" | "mixed";
+  dataFreezeRequired: boolean;
   dataRetentionPolicy: "project_life" | "donor_period" | "seven_years" | "custom";
+  disaggregationFields: string[];
+  disaggregationRequired: boolean;
   duplicateAction: "block" | "warn" | "review";
   duplicateFields: string[];
   duplicateGpsDetection: boolean;
@@ -133,6 +145,7 @@ type FormControlsDraft = {
   gpsAccuracy: number;
   indicatorComponent: "none" | "numerator" | "denominator" | "disaggregation" | "evidence";
   indicatorLink: string;
+  invalidAgeAction: "warn" | "block" | "review";
   lifecycleStatus: "draft" | "testing" | "review" | "approved" | "published" | "suspended" | "archived";
   linkedOutcome: string;
   linkedOutput: string;
@@ -164,7 +177,9 @@ type FormControlsDraft = {
   referenceDataRequired: boolean;
   relatedForms: string;
   requireConsent: boolean;
+  preventFutureDates: boolean;
   repeatGroupPolicy: "allowed" | "review_large" | "restricted";
+  reportingPeriod: "none" | "monthly" | "quarterly" | "seasonal" | "annual" | "donor_schedule";
   respondentIdentification:
     | "existing_beneficiary"
     | "new_registration"
@@ -179,6 +194,7 @@ type FormControlsDraft = {
   requiresGps: boolean;
   riskClassification: "low" | "medium" | "high" | "sensitive";
   samplingMethod: "none" | "random" | "stratified" | "cluster" | "purposive" | "systematic";
+  sourceOfTruthRule: "registration_controls_profile" | "latest_approved_controls_profile" | "manager_approved_profile_updates";
   submissionEditPolicy: "before_review" | "returned_only" | "change_request";
   seasonEnd: string;
   seasonName: string;
@@ -212,6 +228,41 @@ type PublishReadinessItem = FormReadinessItem & {
   category: string;
   jumpTo: CreationStage;
   status: "passed" | "warning" | "failed";
+};
+
+type PublishQuickFixId =
+  | "access_defaults"
+  | "add_standard_questions"
+  | "add_consent_question"
+  | "add_gps_question"
+  | "add_media_question"
+  | "apply_profile_mapping"
+  | "baseline_defaults"
+  | "evidence_defaults"
+  | "fix_broken_logic"
+  | "fix_question_variables"
+  | "fix_question_wording"
+  | "frequency_window_defaults"
+  | "governance_defaults"
+  | "mark_core_required"
+  | "mne_context_defaults"
+  | "mobile_readiness_defaults"
+  | "monitoring_defaults"
+  | "registration_defaults";
+
+type PublishAssistantAdvice = {
+  actionLabel: string;
+  fix: string;
+  id: string;
+  item: PublishReadinessItem | null;
+  jumpTo?: CreationStage;
+  label: string;
+  mneTip: string;
+  platformAction: string;
+  quickFixId?: PublishQuickFixId;
+  severity: "Required" | "Warning";
+  targetControlStep?: ControlStep;
+  why: string;
 };
 
 export type FormSetupDraft = {
@@ -662,8 +713,12 @@ const defaultControlsDraft: FormControlsDraft = {
   consentMode: "digital",
   coordinateMasking: false,
   dataQualityMode: "standard",
+  decisionUse: "operational_decision",
+  dataFreezeRequired: true,
   dataSourceType: "primary",
   dataRetentionPolicy: "seven_years",
+  disaggregationFields: ["sex", "age_group", "location"],
+  disaggregationRequired: true,
   duplicateAction: "review",
   duplicateFields: ["phone_number", "household_id", "full_name", "village"],
   duplicateGpsDetection: true,
@@ -681,6 +736,7 @@ const defaultControlsDraft: FormControlsDraft = {
   gpsAccuracy: 20,
   indicatorComponent: "none",
   indicatorLink: "",
+  invalidAgeAction: "review",
   lifecycleStatus: "draft",
   linkedOutcome: "",
   linkedOutput: "",
@@ -712,7 +768,9 @@ const defaultControlsDraft: FormControlsDraft = {
   referenceDataRequired: true,
   relatedForms: "",
   requireConsent: true,
+  preventFutureDates: true,
   repeatGroupPolicy: "review_large",
+  reportingPeriod: "quarterly",
   respondentIdentification: "existing_or_new",
   resultArea: "",
   reviewComments: "",
@@ -723,6 +781,7 @@ const defaultControlsDraft: FormControlsDraft = {
   requiresGps: true,
   riskClassification: "medium",
   samplingMethod: "none",
+  sourceOfTruthRule: "manager_approved_profile_updates",
   submissionEditPolicy: "change_request",
   seasonEnd: "",
   seasonName: "",
@@ -829,6 +888,150 @@ function attachStarterField(
     required,
     variableName: variableNameFromLabel(label, field.id),
   };
+}
+
+function formOperationalFamily(formType: string): "registration" | "baseline" | "monitoring" | "attendance" | "custom" {
+  const normalized = formType.toLowerCase();
+  if (/registration|register|intake|enrol/.test(normalized)) return "registration";
+  if (/baseline|endline|assessment|evaluation/.test(normalized)) return "baseline";
+  if (/monitor|follow|visit|case update/.test(normalized)) return "monitoring";
+  if (/attendance|distribution|training|service|input|cash|kit/.test(normalized)) return "attendance";
+  return "custom";
+}
+
+function recommendedQuestionsForFormType(
+  setup: FormSetupDraft,
+  controls: FormControlsDraft,
+): RecommendedQuestion[] {
+  const common: RecommendedQuestion[] = [
+    {
+      label: "Submission date",
+      required: true,
+      type: "date",
+      validation: controls.preventFutureDates ? { blockFutureDates: true } : undefined,
+    },
+  ];
+  const family = formOperationalFamily(setup.formType);
+  if (family === "registration") {
+    return [
+      { label: "Consent confirmed", options: ["Yes", "No"], required: true, type: "radio" },
+      { label: `${controls.entityType || "Beneficiary"} full name`, required: true, type: "text" },
+      { label: "Phone number", type: "phone" },
+      { label: "Gender", options: ["Female", "Male", "Other", "Prefer not to say"], required: true, type: "radio" },
+      {
+        label: "Date of birth",
+        type: "date",
+        validation: controls.preventFutureDates ? { blockFutureDates: true } : undefined,
+      },
+      { label: "Village", required: true, type: "text" },
+      { label: "Household ID", type: "text" },
+      { label: "Registration GPS", required: controls.requiresGps, type: "gps", validation: { accuracyMax: controls.gpsAccuracy } },
+      ...common,
+    ];
+  }
+  if (family === "baseline") {
+    return [
+      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Consent confirmed", options: ["Yes", "No"], required: controls.requireConsent, type: "radio" },
+      { label: "Baseline interview date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
+      { label: "Enumerator notes", type: "textarea" },
+      { label: "Baseline GPS", required: controls.requiresGps, type: "gps", validation: { accuracyMax: controls.gpsAccuracy } },
+      ...common,
+    ];
+  }
+  if (family === "monitoring") {
+    return [
+      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Monitoring visit date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
+      { label: "Service or activity received", required: true, type: "select", options: ["Training", "Input distribution", "Follow-up visit", "Other"] },
+      { label: "Follow-up needed", required: true, type: "radio", options: ["Yes", "No"] },
+      { label: "Monitoring GPS", required: controls.requiresGps, type: "gps", validation: { accuracyMax: controls.gpsAccuracy } },
+      ...common,
+    ];
+  }
+  if (family === "attendance") {
+    return [
+      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Event or activity date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
+      { label: "Item or service received", required: true, type: "select", options: ["Training", "Input", "Cash", "Service", "Other"] },
+      { label: "Quantity received", type: "number", validation: { min: 0 } },
+      { label: "Recipient signature", type: "signature" },
+      ...common,
+    ];
+  }
+  return common;
+}
+
+function fieldLabelMatches(field: FormField, patterns: RegExp[]): boolean {
+  const haystack = `${field.label} ${field.variableName ?? ""}`.toLowerCase();
+  return patterns.some((pattern) => pattern.test(haystack));
+}
+
+function missingRecommendedQuestions(
+  form: DynamicForm | null | undefined,
+  setup: FormSetupDraft,
+  controls: FormControlsDraft,
+): RecommendedQuestion[] {
+  const fields = form?.fields ?? [];
+  return recommendedQuestionsForFormType(setup, controls).filter((question) => {
+    const normalized = variableNameFromLabel(question.label, question.label);
+    const words = normalized.split("_").filter((word) => word.length > 2);
+    return !fields.some((field) =>
+      words.some((word) =>
+        `${field.label} ${field.variableName ?? ""}`.toLowerCase().includes(word),
+      ),
+    );
+  });
+}
+
+function suggestedProfileMappingsFromFields(
+  fields: FormField[],
+): Partial<FormControlsDraft["profileMappings"]> {
+  const findVariable = (patterns: RegExp[]) =>
+    fields.find((field) => fieldLabelMatches(field, patterns))?.variableName;
+  return {
+    dob: findVariable([/\bdob\b/, /date.*birth/, /birth.*date/]),
+    fullName: findVariable([/full.*name/, /beneficiary.*name/, /farmer.*name/, /respondent.*name/]),
+    gender: findVariable([/gender/, /\bsex\b/]),
+    gps: findVariable([/gps/, /location/, /coordinate/]),
+    phone: findVariable([/phone/, /mobile/, /contact/]),
+    village: findVariable([/village/, /community/, /location/]),
+  };
+}
+
+function weakQuestionLabels(fields: FormField[]): FormField[] {
+  return fields.filter((field) => {
+    const label = field.label.trim();
+    return (
+      !label ||
+      /^untitled|^question\s*\d+$/i.test(label) ||
+      /\b(and|or)\b/i.test(label) && label.split(/\s+/).length > 10 ||
+      /please\s+provide\s+all|describe everything|other information/i.test(label)
+    );
+  });
+}
+
+function improvedQuestionLabel(field: FormField, index: number): string {
+  const label = field.label.trim();
+  if (!label || /^untitled/i.test(label) || /^question\s*\d+$/i.test(label)) {
+    return `Question ${index + 1}: describe the required response`;
+  }
+  if (/please\s+provide\s+all|describe everything|other information/i.test(label)) {
+    return "Additional relevant details";
+  }
+  if (/\b(and|or)\b/i.test(label) && label.split(/\s+/).length > 10) {
+    return label
+      .replace(/\s+(and|or)\s+.*$/i, "")
+      .replace(/[?.!,;:]+$/g, "")
+      .trim();
+  }
+  return label;
+}
+
+function coreRequiredField(field: FormField): boolean {
+  return /consent|beneficiary|respondent|name|code|phone|household|village|community|gps|location|date|service|activity|quantity/i.test(
+    `${field.label} ${field.variableName ?? ""}`,
+  );
 }
 
 function decodeXmlText(value: string): string {
@@ -1406,6 +1609,40 @@ function controlsDraftToApiControls(
           .map((entry) => entry.variable_name),
         expression: controls.piiHandling,
       },
+      {
+        id: "future_date_prevention",
+        label: "Future date prevention",
+        rule_type: "date_validation",
+        enabled: controls.preventFutureDates,
+        severity: "high",
+        blocking: controls.dataQualityMode === "strict",
+        fields: form.fields
+          .filter((field) => field.type === "date")
+          .map((field) => field.variableName ?? field.id),
+        expression: "date_value <= today",
+      },
+      {
+        id: "invalid_age_review",
+        label: "Invalid age review",
+        rule_type: "age_validation",
+        enabled: controls.invalidAgeAction !== "warn",
+        severity: controls.invalidAgeAction === "block" ? "critical" : "high",
+        blocking: controls.invalidAgeAction === "block",
+        fields: form.fields
+          .filter((field) => /age|date of birth|dob/i.test(field.label))
+          .map((field) => field.variableName ?? field.id),
+        expression: "age between 0 and 120, date_of_birth not in future",
+      },
+      {
+        id: "disaggregation_completeness",
+        label: "Disaggregation completeness",
+        rule_type: "disaggregation",
+        enabled: controls.disaggregationRequired,
+        severity: "medium",
+        blocking: false,
+        fields: controls.disaggregationFields,
+        expression: "required for donor and indicator breakdowns",
+      },
     ],
     governance: {
       form_status:
@@ -1450,6 +1687,10 @@ function controlsDraftToApiControls(
           : controls.exportApprovalMode === "manager_approval"
             ? "me_manager"
             : null,
+      approved_data_freeze_required: controls.dataFreezeRequired,
+      decision_use: controls.decisionUse,
+      reporting_period: controls.reportingPeriod,
+      source_of_truth_rule: controls.sourceOfTruthRule,
     },
     audit: {
       immutable: controls.auditTrail,
@@ -1516,6 +1757,8 @@ function controlsDraftToApiControls(
         business_purpose: controls.businessPurpose,
         program_objective: controls.programObjective,
         expected_use: controls.expectedUse,
+        decision_use: controls.decisionUse,
+        reporting_period: controls.reportingPeriod,
         result_area: controls.resultArea,
         linked_outcome: controls.linkedOutcome,
         linked_output: controls.linkedOutput,
@@ -1539,6 +1782,7 @@ function controlsDraftToApiControls(
       })),
       profile_history_policy: {
         default_action:
+          controls.sourceOfTruthRule === "manager_approved_profile_updates" ||
           controls.profileUpdateMode === "with_supervisor_approval"
             ? "require_approval"
             : controls.profileUpdateMode === "after_submission"
@@ -1546,6 +1790,7 @@ function controlsDraftToApiControls(
               : "no_update",
         preserve_old_value: true,
         require_reason_for_change: true,
+        source_of_truth_rule: controls.sourceOfTruthRule,
       },
       respondent_identity: {
         mode: controls.respondentIdentification,
@@ -1568,6 +1813,7 @@ function controlsDraftToApiControls(
         pii_handling: controls.piiHandling,
         data_retention_policy: controls.dataRetentionPolicy,
         export_approval_mode: controls.exportApprovalMode,
+        data_freeze_required: controls.dataFreezeRequired,
         mask_exports:
           controls.piiHandling === "mask_exports" ||
           controls.piiHandling === "restricted",
@@ -1627,6 +1873,8 @@ function controlsDraftToApiControls(
       },
       data_source: {
         source_type: controls.dataSourceType,
+        reporting_period: controls.reportingPeriod,
+        approved_data_only: controls.dataFreezeRequired,
       },
       geographic_scope: {
         description: controls.geographicScope,
@@ -1699,6 +1947,14 @@ function controlsDraftToApiControls(
         question_skip_rate: true,
         average_duration: true,
         validation_failures: true,
+        disaggregation_fields: controls.disaggregationFields,
+        decision_use: controls.decisionUse,
+      },
+      validation_standards: {
+        prevent_future_dates: controls.preventFutureDates,
+        invalid_age_action: controls.invalidAgeAction,
+        disaggregation_required: controls.disaggregationRequired,
+        disaggregation_fields: controls.disaggregationFields,
       },
       localization: {
         languages: controls.localizationLanguages
@@ -1842,6 +2098,7 @@ function controlsDraftFromApiControls(
   const submissionPolicy = asRecord(instrument.submission_policy);
   const privacy = asRecord(instrument.privacy);
   const mobilePackage = asRecord(instrument.mobile_package);
+  const validationStandards = asRecord(instrument.validation_standards);
   const testing = asRecord(instrument.testing);
   const repeatGroups = asRecord(instrument.repeat_group_policy);
   const indicatorMappings = Array.isArray(instrument.indicator_mappings)
@@ -1931,6 +2188,14 @@ function controlsDraftFromApiControls(
       ? defaultControlsDraft.consentMode
       : "not_required",
     dataQualityMode: dataQualityModeFromControls(controls.data_quality_rules),
+    decisionUse: stringValue(
+      purpose.decision_use,
+      defaultControlsDraft.decisionUse,
+    ) as FormControlsDraft["decisionUse"],
+    dataFreezeRequired: booleanValue(
+      privacy.data_freeze_required,
+      booleanValue(governance.approved_data_freeze_required, defaultControlsDraft.dataFreezeRequired),
+    ),
     dataSourceType: stringValue(
       dataSource.source_type,
       defaultControlsDraft.dataSourceType,
@@ -1939,6 +2204,14 @@ function controlsDraftFromApiControls(
       privacy.data_retention_policy,
       defaultControlsDraft.dataRetentionPolicy,
     ) as FormControlsDraft["dataRetentionPolicy"],
+    disaggregationFields:
+      stringArrayValue(validationStandards.disaggregation_fields).length > 0
+        ? stringArrayValue(validationStandards.disaggregation_fields)
+        : defaultControlsDraft.disaggregationFields,
+    disaggregationRequired: booleanValue(
+      validationStandards.disaggregation_required,
+      defaultControlsDraft.disaggregationRequired,
+    ),
     duplicateAction: stringValue(
       entity.duplicate_action,
       defaultControlsDraft.duplicateAction,
@@ -1989,6 +2262,10 @@ function controlsDraftFromApiControls(
       defaultControlsDraft.indicatorComponent,
     ) as FormControlsDraft["indicatorComponent"],
     indicatorLink: stringValue(firstIndicator.linked_indicator),
+    invalidAgeAction: stringValue(
+      validationStandards.invalid_age_action,
+      defaultControlsDraft.invalidAgeAction,
+    ) as FormControlsDraft["invalidAgeAction"],
     lifecycleStatus: stringValue(
       governance.form_status,
       defaultControlsDraft.lifecycleStatus,
@@ -2045,11 +2322,19 @@ function controlsDraftFromApiControls(
     ) as FormControlsDraft["piiHandling"],
     profileMappings,
     profileUpdateMode,
+    preventFutureDates: booleanValue(
+      validationStandards.prevent_future_dates,
+      defaultControlsDraft.preventFutureDates,
+    ),
     programObjective: stringValue(purpose.program_objective),
     referenceDataRequired: Array.isArray(controls.reference_bindings)
       ? controls.reference_bindings.length > 0
       : defaultControlsDraft.referenceDataRequired,
     relatedForms: stringArrayValue(tracking.related_forms).join(", "),
+    reportingPeriod: stringValue(
+      purpose.reporting_period,
+      stringValue(dataSource.reporting_period, defaultControlsDraft.reportingPeriod),
+    ) as FormControlsDraft["reportingPeriod"],
     requireConsent: booleanValue(
       governance.consent_required,
       defaultControlsDraft.requireConsent,
@@ -2087,6 +2372,10 @@ function controlsDraftFromApiControls(
       sampling.sampling_method,
       defaultControlsDraft.samplingMethod,
     ) as FormControlsDraft["samplingMethod"],
+    sourceOfTruthRule: stringValue(
+      profileHistory.source_of_truth_rule,
+      stringValue(governance.source_of_truth_rule, defaultControlsDraft.sourceOfTruthRule),
+    ) as FormControlsDraft["sourceOfTruthRule"],
     submissionEditPolicy: stringValue(
       submissionPolicy.edit_policy,
       defaultControlsDraft.submissionEditPolicy,
@@ -2483,6 +2772,29 @@ export function validateFormForPublish(
   const hasConsentQuestion = fields.some((field) =>
     /consent|agree|permission/i.test(field.label),
   );
+  const mobileCollection = setup.collectionMethod !== "web";
+  const hasAgeOrDobField = fields.some((field) =>
+    /age|date of birth|dob/i.test(field.label),
+  );
+  const hasDateField = fields.some((field) => field.type === "date");
+  const hasDisaggregationField = fields.some((field) =>
+    controls.disaggregationFields.some((disaggregation) =>
+      new RegExp(disaggregation.replace(/_/g, " "), "i").test(field.label),
+    ),
+  );
+  const missingStandardQuestions = missingRecommendedQuestions(form, setup, controls);
+  const weakLabels = weakQuestionLabels(fields);
+  const suggestedProfileMappings = suggestedProfileMappingsFromFields(fields);
+  const unmappedSuggestedProfileFields = Object.entries(suggestedProfileMappings).filter(
+    ([key, value]) =>
+      Boolean(value) &&
+      !controls.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
+  );
+  const mobileRiskScore =
+    fields.length +
+    (hasMedia ? 12 : 0) +
+    (hasRepeatGroup ? 15 : 0) +
+    (controls.referenceDataRequired ? 8 : 0);
   const hasBrokenLogic = fields.some((field) =>
     (field.logic ?? []).some(
       (rule) =>
@@ -2604,6 +2916,16 @@ export function validateFormForPublish(
       warning: true,
     }),
     item({
+      category: "Purpose",
+      complete: Boolean(controls.decisionUse && controls.reportingPeriod !== "none"),
+      description:
+        "Define how this form will be used for decisions, indicators, donor reporting, case management, or learning, and select its reporting period.",
+      id: "decision-use",
+      jumpTo: "controls",
+      label: "Decision use and reporting period selected",
+      required: true,
+    }),
+    item({
       category: "Structure",
       complete: sections.length > 0,
       description:
@@ -2621,6 +2943,17 @@ export function validateFormForPublish(
       jumpTo: "builder",
       label: "At least one question exists",
       required: true,
+    }),
+    item({
+      category: "Structure",
+      complete: missingStandardQuestions.length === 0,
+      description:
+        "The assistant checks the form type against standard M&E starter questions such as consent, beneficiary identity, dates, GPS, service details, and visit notes.",
+      id: "standard-questions",
+      jumpTo: "builder",
+      label: "Standard M&E questions reviewed",
+      required: fields.length > 0 && formOperationalFamily(setup.formType) !== "custom",
+      warning: fields.length === 0 || formOperationalFamily(setup.formType) === "custom",
     }),
     item({
       category: "Structure",
@@ -2644,6 +2977,17 @@ export function validateFormForPublish(
       jumpTo: "builder",
       label: "Variable names are unique",
       required: true,
+    }),
+    item({
+      category: "Question validation",
+      complete: weakLabels.length === 0,
+      description:
+        "Question labels should be specific, neutral, and focused on one answer. Avoid vague, leading, or double-barrelled questions.",
+      id: "question-wording",
+      jumpTo: "builder",
+      label: "Question wording reviewed",
+      required: false,
+      warning: true,
     }),
     item({
       category: "Data dictionary",
@@ -2711,6 +3055,17 @@ export function validateFormForPublish(
       warning: !needsEntityMapping,
     }),
     item({
+      category: "Entity settings",
+      complete: !needsEntityMapping || unmappedSuggestedProfileFields.length === 0,
+      description:
+        "The platform can suggest beneficiary profile mappings from question labels such as name, phone, gender, village, DOB, and GPS.",
+      id: "mapping-suggestions",
+      jumpTo: "controls",
+      label: "Suggested profile mappings applied",
+      required: false,
+      warning: true,
+    }),
+    item({
       category: "Submission rules",
       complete: Boolean(controls.submissionFrequency),
       description:
@@ -2758,6 +3113,23 @@ export function validateFormForPublish(
       label: "Indicator mapping reviewed",
       required: false,
       warning: true,
+    }),
+    item({
+      category: "Indicator mapping",
+      complete:
+        !controls.disaggregationRequired ||
+        (controls.disaggregationFields.length > 0 && hasDisaggregationField),
+      description:
+        "Forms used for indicators or donor reporting should capture disaggregation fields such as sex, age group, disability, and location.",
+      id: "disaggregation",
+      jumpTo: "controls",
+      label: "Disaggregation fields reviewed",
+      required:
+        controls.decisionUse === "indicator_reporting" ||
+        controls.decisionUse === "donor_reporting",
+      warning:
+        controls.decisionUse !== "indicator_reporting" &&
+        controls.decisionUse !== "donor_reporting",
     }),
     item({
       category: "Duration and quality",
@@ -2861,6 +3233,26 @@ export function validateFormForPublish(
       required: true,
     }),
     item({
+      category: "Data quality",
+      complete: !hasDateField || controls.preventFutureDates,
+      description:
+        "Date questions should normally block or flag future dates unless the form is explicitly scheduling future activities.",
+      id: "future-dates",
+      jumpTo: "controls",
+      label: "Future date prevention reviewed",
+      required: hasDateField,
+    }),
+    item({
+      category: "Data quality",
+      complete: !hasAgeOrDobField || controls.invalidAgeAction !== "warn",
+      description:
+        "Age and date-of-birth questions should flag impossible ages and future birth dates before data reaches review.",
+      id: "age-validation",
+      jumpTo: "controls",
+      label: "Age validation reviewed",
+      required: hasAgeOrDobField,
+    }),
+    item({
       category: "Workflow",
       complete: Boolean(
         controls.workflowPreset && controls.reviewer && controls.reviewApprover,
@@ -2900,12 +3292,14 @@ export function validateFormForPublish(
           ? controls.assignedFieldOfficerIds.length > 0
           : Boolean(controls.assignmentMode),
       description:
-        "Choose whether this form is restricted to selected field officers, the project team, or controlled web entry.",
+        mobileCollection
+          ? "Mobile or web-and-mobile forms restricted to assigned users must select the field officers who should receive the form."
+          : "Choose whether this form is restricted to selected field officers, the project team, or controlled web entry.",
       id: "assignment",
       jumpTo: "controls",
       label: "Field officer access configured",
-      required: false,
-      warning: true,
+      required: controls.assignmentMode === "assigned_only" && mobileCollection,
+      warning: !(controls.assignmentMode === "assigned_only" && mobileCollection),
     }),
     item({
       category: "Offline readiness",
@@ -2929,6 +3323,17 @@ export function validateFormForPublish(
       id: "mobile-package",
       jumpTo: "controls",
       label: "Mobile package rules reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Mobile package",
+      complete: !mobileCollection || mobileRiskScore < 95 || controls.mobilePackageMode !== "standard",
+      description:
+        "Large forms, media, repeat groups, and reference data can be heavy for low-cost Android devices and should use a low-bandwidth, large-registry, or media-heavy package.",
+      id: "mobile-complexity",
+      jumpTo: "controls",
+      label: "Mobile complexity reviewed",
       required: false,
       warning: true,
     }),
@@ -3085,6 +3490,16 @@ export function validateFormForPublish(
       required: true,
     }),
     item({
+      category: "Governance",
+      complete: controls.dataFreezeRequired && controls.sourceOfTruthRule !== undefined,
+      description:
+        "Official reports should freeze approved data and define which form is allowed to update each beneficiary profile field.",
+      id: "source-of-truth",
+      jumpTo: "controls",
+      label: "Source-of-truth and data freeze rules configured",
+      required: true,
+    }),
+    item({
       category: "Mapping settings",
       complete:
         !hasGps ||
@@ -3098,6 +3513,827 @@ export function validateFormForPublish(
       required: hasGps,
     }),
   ];
+}
+
+function humanizeControlValue(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function quickFixForFormType(formType: string): PublishQuickFixId | undefined {
+  const normalized = formType.toLowerCase();
+  if (/registration|register|intake|enrol/.test(normalized)) {
+    return "registration_defaults";
+  }
+  if (/baseline|endline|assessment|evaluation/.test(normalized)) {
+    return "baseline_defaults";
+  }
+  if (/monitor|follow|visit|case update/.test(normalized)) {
+    return "monitoring_defaults";
+  }
+  return undefined;
+}
+
+function buildPublishAssistantAdvice({
+  checklist,
+  controls,
+  fieldOfficerCount,
+  form,
+  projectLinked,
+  setup,
+}: {
+  checklist: PublishReadinessItem[];
+  controls: FormControlsDraft;
+  fieldOfficerCount: number;
+  form: DynamicForm | null;
+  projectLinked: boolean;
+  setup: FormSetupDraft;
+}): PublishAssistantAdvice[] {
+  const fields = form?.fields ?? [];
+  const failedItems = checklist.filter((item) => item.required && !item.complete);
+  const warningItems = checklist.filter((item) => !item.required && !item.complete);
+  const formTypeQuickFix = quickFixForFormType(setup.formType);
+  const missingStandardQuestions = missingRecommendedQuestions(form, setup, controls);
+  const weakLabels = weakQuestionLabels(fields);
+  const suggestedMappings = suggestedProfileMappingsFromFields(fields);
+  const unmappedSuggestedMappings = Object.entries(suggestedMappings).filter(
+    ([key, value]) =>
+      Boolean(value) &&
+      !controls.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
+  );
+  const advice: PublishAssistantAdvice[] = [];
+
+  if (!form) {
+    advice.push({
+      actionLabel: "Start or import a form",
+      fix:
+        "Choose Blank form, Use template, Duplicate existing form, or Import spreadsheet. Once the questions exist, save the draft before returning to publish.",
+      id: "no-draft",
+      item: null,
+      jumpTo: "start",
+      label: "No form draft exists yet",
+      mneTip:
+        "A published instrument must contain the questionnaire structure that field officers will receive on mobile.",
+      platformAction:
+        "Use the current Start Method step to create the draft from blank, a template, a duplicate, or spreadsheet import.",
+      severity: "Required",
+      why:
+        "There is no saved form draft in this workspace, so the platform has nothing to validate, approve, version, assign, or send to field officers.",
+    });
+  }
+
+  if (controls.lifecycleStatus !== "approved") {
+    const currentStatus = humanizeControlValue(controls.lifecycleStatus);
+    advice.push({
+      actionLabel: "Open governance review",
+      fix:
+        currentStatus === "Review"
+          ? "Review the readiness list, complete technical and M&E certification, add approval notes, then click Approve Form."
+          : "Move the form through Testing and Review first. After the technical and M&E checks are complete, approve the form before publishing.",
+      id: "lifecycle-not-approved",
+      item: checklist.find((item) => item.id === "lifecycle-approved") ?? null,
+      jumpTo: "controls",
+      label: `Form is ${currentStatus}, not Approved`,
+      mneTip:
+        "Expert recommendation: do not publish until a technical reviewer and M&E reviewer have checked the form purpose, beneficiary rules, consent, workflow, data quality, and mobile readiness.",
+      platformAction:
+        "Manager decision needed: the platform can open Governance controls, but a responsible reviewer must approve the form.",
+      severity: "Required",
+      targetControlStep: "governance",
+      why:
+        "Publishing creates the official field-ready version. Atlas FieldOps only enables that action after the form lifecycle reaches Approved.",
+    });
+  }
+
+  failedItems.forEach((item) => {
+    const fieldCount = fields.length;
+    const selectedDuplicateFields = controls.duplicateFields
+      .map(humanizeControlValue)
+      .join(", ");
+    const mappedProfileFields = Object.entries(controls.profileMappings)
+      .filter(([, value]) => Boolean(value))
+      .map(([key]) => humanizeControlValue(key));
+    const base: PublishAssistantAdvice = {
+      actionLabel: item.jumpTo === "builder" ? "Open Builder" : "Open this setting",
+      fix: item.description,
+      id: item.id,
+      item,
+      jumpTo: item.jumpTo,
+      label: item.label,
+      mneTip:
+        "Resolve this before publishing so collection, review, beneficiary updates, and reporting stay governed.",
+      platformAction:
+        item.jumpTo === "builder"
+          ? "Open the Builder to fix the question or structure issue."
+          : item.jumpTo === "setup"
+            ? "Open Basic Information to correct the setup field."
+            : "Open the matching Controls tab to update the form rule.",
+      severity: "Required",
+      why: item.description,
+    };
+
+    switch (item.id) {
+      case "name":
+        advice.push({
+          ...base,
+          fix:
+            "Go to Basic Information and enter a clear form name such as Farmer Registration, Baseline Survey, Monitoring Visit, or Training Attendance.",
+          mneTip:
+            "Expert recommendation: use a short operational name that includes the activity or survey stage, for example Farmer Registration, Baseline Survey, Monitoring Visit, or Distribution Record.",
+          platformAction:
+            "Manager decision needed: the platform can open Basic Information, but the form owner should choose the correct operational name.",
+          why:
+            "The form has no operational name. Users would struggle to find it in Draft Forms, assignments, mobile sync, and reports.",
+        });
+        break;
+      case "form-type":
+        advice.push({
+          ...base,
+          fix:
+            "Select the form type in Basic Information. Registration, Baseline, Monitoring, Attendance, Distribution, Assessment, Complaint, Endline, Follow-up, and Custom forms have different readiness expectations.",
+          mneTip:
+            "Expert recommendation: choose the form type based on what the submission represents in the program lifecycle, not only by the questions it contains.",
+          platformAction:
+            "Manager decision needed: the platform can open Basic Information, but the M&E manager must choose the correct instrument type.",
+          why:
+            "The platform cannot apply the right M&E readiness logic until it knows what kind of instrument this is.",
+        });
+        break;
+      case "owner":
+        advice.push({
+          ...base,
+          fix:
+            "Add the responsible owner in Basic Information. This is usually the M&E Manager, Data Manager, or project lead accountable for the instrument.",
+          mneTip:
+            "Expert recommendation: assign ownership to the person accountable for methodology, version changes, data quality, and approval decisions.",
+          platformAction:
+            "Manager decision needed: the platform can open Basic Information, but the organization must name the accountable owner.",
+          why:
+            "Every published form needs an accountable person for governance, quality, and future updates.",
+        });
+        break;
+      case "language":
+        advice.push({
+          ...base,
+          fix:
+            "Choose the primary language in Basic Information. Add translation settings later if the same instrument will be used in multiple languages.",
+          mneTip:
+            "Expert recommendation: keep one governed instrument with translations unless the local-language questionnaire truly changes meaning or methodology.",
+          platformAction:
+            "Manager decision needed: the platform can open Basic Information, but the M&E manager should confirm the working language for field teams.",
+          why:
+            "Mobile display, translation completeness, and field training depend on the primary language being known.",
+        });
+        break;
+      case "project":
+        advice.push({
+          ...base,
+          fix: projectLinked
+            ? "The project link is detected. Refresh the readiness review and try publishing again."
+            : "Select an existing project in Basic Information. If no project exists, create it in Projects first; this form cannot be safely published without a project.",
+          mneTip:
+            "Expert recommendation: always attach a form to the project that owns the beneficiaries, indicators, assignments, locations, approvals, and reports.",
+          platformAction:
+            "Manager decision needed: the platform can open project selection, but the user must select the correct project context.",
+          why:
+            "This form is not linked to a project. Published forms must belong to a project so field data does not become disconnected from program operations.",
+        });
+        break;
+      case "purpose":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to fill a safe starter purpose, then edit the text to match the project objective. If you prefer manual entry, open Controls > Essentials and complete Form Objective, Business Purpose, and Expected Use.",
+          mneTip:
+            "Purpose fields help future reviewers understand why the data was collected and how it should be used.",
+          platformAction:
+            "The platform can fill starter M&E purpose text, then you can edit it to match your project.",
+          quickFixId: "mne_context_defaults",
+          targetControlStep: "essentials",
+          why:
+            "The form is missing its M&E business context. A governed instrument needs a reason for collection before it reaches the field.",
+        });
+        break;
+      case "decision-use":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set a practical decision use and reporting period. Manually choose Indicator Reporting or Donor Reporting when answers feed a results framework; choose Operational Decision for routine management forms.",
+          mneTip:
+            "Every field instrument should answer: what decision, report, beneficiary action, or management review will use this data?",
+          platformAction:
+            "The platform can apply a practical M&E decision-use and reporting-period default.",
+          quickFixId: "mne_context_defaults",
+          targetControlStep: "essentials",
+          why:
+            "The form does not yet say how the data will be used or what reporting cycle it belongs to, so users cannot judge whether indicators, approvals, and reports are correctly configured.",
+        });
+        break;
+      case "sections":
+        advice.push({
+          ...base,
+          fix:
+            "Open Builder and add at least one section, for example Respondent Information, Household Details, Farm Information, Service Received, or Enumerator Notes.",
+          mneTip:
+            "Expert recommendation: group questions by field workflow, usually Consent, Respondent or Beneficiary Details, Location, Service or Measurement, and Enumerator Notes.",
+          platformAction:
+            "Manager decision needed: the platform can open Builder, but the M&E manager should choose section names that match the actual field interview.",
+          why:
+            "The form has no sections. Field officers would receive an unstructured instrument.",
+        });
+        break;
+      case "questions":
+        advice.push({
+          ...base,
+          fix:
+            "Open Builder and add the questions field officers must answer. If you already have an Excel questionnaire, use the spreadsheet import option to create questions faster.",
+          mneTip:
+            "Expert recommendation: at minimum include consent, identity or beneficiary link, date, location where relevant, core measurements, and enumerator notes.",
+          platformAction:
+            "Manager decision needed: the platform can open Builder or import from Excel, but the program team must confirm which data is actually needed.",
+          why:
+            "The form currently has no questions. A blank form cannot collect data or sync useful responses.",
+        });
+        break;
+      case "standard-questions":
+        advice.push({
+          ...base,
+          fix: missingStandardQuestions.length
+            ? `Click Apply platform fix to add these questions now: ${missingStandardQuestions
+                .slice(0, 6)
+                .map((question) => question.label)
+                .join(", ")}. Then check wording in Builder.`
+            : "No automatic question insertion is needed. Open Builder only if you want to inspect the structure manually.",
+          mneTip:
+            "Standard questions protect the basic field loop: consent, identity, date, location, service/activity, and follow-up evidence.",
+          platformAction:
+            "The platform can add the missing standard M&E questions into a new builder section for you to edit.",
+          quickFixId: "add_standard_questions",
+          why:
+            "This form appears to be missing one or more questions normally needed for its M&E purpose.",
+        });
+        break;
+      case "variables":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to regenerate stable unique variable names from the question labels. Then keep those variable names stable after publishing.",
+          mneTip:
+            "Variable names are the bridge between form answers, Excel exports, indicators, and donor reporting.",
+          platformAction:
+            "The platform can repair missing or duplicate variable names automatically.",
+          quickFixId: "fix_question_variables",
+          why:
+            "One or more questions have missing or duplicate variable names, which can break exports, analytics, and imported data matching.",
+        });
+        break;
+      case "data-dictionary":
+        advice.push({
+          ...base,
+          fix:
+            "Open Controls > Essentials and review the data dictionary. Make sure each question has a label, variable name, type, allowed values where needed, and sensitivity level.",
+          mneTip:
+            "A data dictionary helps teams understand what each field means after staff changes or when reports are audited.",
+          targetControlStep: "essentials",
+          why:
+            "The data dictionary cannot be generated cleanly because question metadata is incomplete.",
+        });
+        break;
+      case "question-wording":
+        advice.push({
+          ...base,
+          fix: weakLabels.length
+            ? `Open Builder and rename these labels: ${weakLabels
+                .slice(0, 5)
+                .map((field) => field.label)
+                .join(", ")}. Make each one neutral, specific, and focused on one answer.`
+            : "No wording risk was found. No action is required.",
+          mneTip:
+            "Poor wording causes inconsistent answers even when the form is technically valid.",
+          platformAction:
+            "The platform can clean obvious placeholder or overloaded labels, then opens the Builder for final human wording review.",
+          quickFixId: "fix_question_wording",
+          why:
+            "One or more questions may be vague, leading, untitled, or double-barrelled.",
+        });
+        break;
+      case "disaggregation":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to add standard disaggregation categories. Then make sure the Builder contains matching questions for sex, age group, location, disability status, or any donor-required category.",
+          mneTip:
+            "Disaggregation should be designed before field rollout so teams do not sort records manually later.",
+          platformAction:
+            "The platform can set standard disaggregation categories; you still need matching questions in the Builder.",
+          quickFixId: "mne_context_defaults",
+          targetControlStep: "essentials",
+          why:
+            "This form is intended for reporting, but it does not yet prove that required breakdown categories are captured.",
+        });
+        break;
+      case "required-questions":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to mark detected consent, identity, date, location, service, and activity questions as required. Then review any sensitive questions manually.",
+          mneTip:
+            "For sensitive questions, add choices such as Don't know or Refused instead of forcing inaccurate answers.",
+          platformAction:
+            "The platform can mark obvious core questions as required and allow Don't know / Refused metadata for review.",
+          quickFixId: "mark_core_required",
+          why:
+            `None of the ${fieldCount} question${fieldCount === 1 ? "" : "s"} is required, so incomplete submissions could pass into review.`,
+        });
+        break;
+      case "logic":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to remove logic rules that point to deleted questions. Then retest skip logic in Preview.",
+          mneTip:
+            "Broken skip logic can hide required questions or send field officers to the wrong section.",
+          platformAction:
+            "The platform can safely remove broken references; it will not invent new logic rules without user confirmation.",
+          quickFixId: "fix_broken_logic",
+          why:
+            "One or more logic rules refer to a question that no longer exists.",
+        });
+        break;
+      case "entity-settings":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set entity behavior for this form type. Then confirm the entity type and whether the form creates a new entity, updates an existing entity, requires an existing entity, or allows anonymous collection.",
+          mneTip:
+            "Registration forms usually create a beneficiary. Baseline, monitoring, endline, training, and distribution forms usually require an existing beneficiary.",
+          platformAction:
+            "The platform can apply recommended beneficiary rules for this form type, then you can fine-tune the entity type and mappings.",
+          quickFixId: formTypeQuickFix,
+          targetControlStep: "beneficiaries",
+          why:
+            "The beneficiary/entity rule is incomplete, so the system cannot know whether approved submissions should create, update, or link to beneficiary records.",
+        });
+        break;
+      case "respondent-identity":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set respondent identification from the form type. Registration should create a new beneficiary; baseline and monitoring should normally require an existing beneficiary.",
+          mneTip:
+            "This prevents disconnected submissions and reduces duplicate beneficiary records.",
+          platformAction:
+            "The platform can set the respondent identification rule based on whether this is registration, baseline, monitoring, or follow-up.",
+          quickFixId: formTypeQuickFix,
+          targetControlStep: "beneficiaries",
+          why:
+            "The collection flow does not yet define how field officers identify the person, household, facility, or entity being surveyed.",
+        });
+        break;
+      case "entity-mapping":
+        advice.push({
+          ...base,
+          fix:
+            mappedProfileFields.length > 0
+              ? `Add more profile mappings now. You already mapped: ${mappedProfileFields.join(", ")}. At minimum map Full Name plus one strong identifier such as Phone, Household ID, Village, DOB, or GPS.`
+              : "Map form questions to beneficiary profile fields now: Full Name, Phone, Village, Gender, DOB, and GPS where those questions exist.",
+          mneTip:
+            "Approved registration submissions should create one clean beneficiary profile with traceable source fields.",
+          targetControlStep: "beneficiaries",
+          why:
+            "This entity-linked form does not have enough beneficiary profile mappings for safe creation or update.",
+        });
+        break;
+      case "mapping-suggestions":
+        advice.push({
+          ...base,
+          fix: unmappedSuggestedMappings.length
+            ? `Click Apply platform fix to map: ${unmappedSuggestedMappings
+                .map(([field]) => humanizeControlValue(field))
+                .join(", ")}. Then verify the mappings in Controls > Beneficiaries.`
+            : "No unmapped profile suggestions remain. No action is required.",
+          mneTip:
+            "Profile mappings let approved submissions update beneficiary records with traceable data lineage.",
+          platformAction:
+            "The platform can map obvious question labels to beneficiary profile fields now.",
+          quickFixId: "apply_profile_mapping",
+          targetControlStep: "beneficiaries",
+          why:
+            "The form contains questions that look like beneficiary profile fields but they are not mapped yet.",
+        });
+        break;
+      case "frequency":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set the frequency rule from the form type. Registration = Once Ever, Baseline = Once Per Project, Monitoring = Once Per Month or Quarter, Attendance/Distribution = Once Per Event.",
+          mneTip:
+            "Frequency rules stop repeated baselines and accidental double-counting in reports.",
+          platformAction:
+            "The platform can set a recommended frequency rule for this form type.",
+          quickFixId: formTypeQuickFix,
+          targetControlStep: "beneficiaries",
+          why:
+            "The form does not define how often the same beneficiary or event can be submitted.",
+        });
+        break;
+      case "frequency-window":
+        advice.push({
+          ...base,
+          fix:
+            `Click Apply platform fix to set the operating window for ${humanizeControlValue(controls.submissionFrequency)} submissions. The window is used for duplicate and repeat-submission checks.`,
+          mneTip:
+            "The window is what the system uses when warning about repeated submissions.",
+          platformAction:
+            "The platform can infer a safe frequency window from the selected frequency rule.",
+          quickFixId: "frequency_window_defaults",
+          targetControlStep: "beneficiaries",
+          why:
+            "A non-unlimited frequency rule needs an operating window so duplicate and frequency checks are meaningful.",
+        });
+        break;
+      case "duplicate-rules":
+        advice.push({
+          ...base,
+          fix: selectedDuplicateFields
+            ? `Open Controls > Beneficiaries. Current duplicate fields: ${selectedDuplicateFields}. Make sure the threshold is at least 50 and the action is Warn, Block, or Require Review.`
+            : "Open Controls > Beneficiaries and select duplicate matching fields such as Phone, National ID, Household ID, Name + Village, Name + DOB, or GPS. Then choose Warn, Block, or Require Review.",
+          mneTip:
+            "For real programs, Require Review is often safer than automatic creation when phone, ID, or name + village are similar.",
+          platformAction:
+            "The platform can apply a strong duplicate-review setup using phone, household ID, name, village, and GPS-related checks.",
+          quickFixId: "registration_defaults",
+          targetControlStep: "beneficiaries",
+          why:
+            "Duplicate prevention is not configured strongly enough, so approved registration data could create multiple beneficiary records for the same person or household.",
+        });
+        break;
+      case "duration":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set safe duration and daily-volume defaults, then adjust them if the questionnaire is shorter or longer than usual.",
+          mneTip:
+            "Very short submissions are useful fraud and quality signals, but thresholds must match the questionnaire length.",
+          platformAction:
+            "The platform can apply standard duration and daily-volume quality rules that you can adjust for shorter or longer forms.",
+          quickFixId: "evidence_defaults",
+          targetControlStep: "quality",
+          why:
+            "Interview duration rules are invalid or missing, so Data Quality cannot flag submissions completed too quickly or unusually slowly.",
+        });
+        break;
+      case "gps-question":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to add a GPS question. If this form should not collect location, open Controls > Evidence and turn off GPS Required instead.",
+          mneTip:
+            "Use GPS for field visits, facility verification, distributions, and household registrations when location matters.",
+          platformAction:
+            "The platform can add the missing GPS question with the configured accuracy threshold.",
+          quickFixId: "add_gps_question",
+          targetControlStep: "evidence",
+          why:
+            "GPS is marked as required, but the questionnaire does not contain a GPS question for field officers to capture.",
+        });
+        break;
+      case "gps-threshold":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set a 20 meter GPS accuracy threshold, then adjust it for rural weak-signal areas if needed.",
+          mneTip:
+            "Use a relaxed threshold in rural areas with weak signal, and a stricter threshold for facility or asset verification.",
+          platformAction:
+            "The platform can set a safe rural-friendly GPS and offline evidence default.",
+          quickFixId: "evidence_defaults",
+          targetControlStep: "evidence",
+          why:
+            "The GPS accuracy threshold is missing or outside the allowed range.",
+        });
+        break;
+      case "media":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to add the required media question. If evidence is not actually required, open Controls > Evidence and set media requirement to None.",
+          mneTip:
+            "Only require media when it is operationally necessary; large files can slow sync in low-bandwidth field locations.",
+          platformAction:
+            "The platform can add the missing photo or signature question according to the media rule.",
+          quickFixId: "add_media_question",
+          targetControlStep: "evidence",
+          why:
+            "The media rule requires evidence, but the form does not include a matching media capture question.",
+        });
+        break;
+      case "consent":
+        advice.push({
+          ...base,
+          fix:
+            "Click Apply platform fix to add a Consent confirmed question. If consent is not required for this instrument, open Controls > Evidence and disable Require Consent.",
+          mneTip:
+            "Consent should be explicit for beneficiary registration, household surveys, health, child protection, and other sensitive collection.",
+          platformAction:
+            "The platform can add a consent question and keep consent blocking enabled.",
+          quickFixId: "add_consent_question",
+          targetControlStep: "evidence",
+          why:
+            "Consent is required, but the form does not yet have a complete consent configuration.",
+        });
+        break;
+      case "data-quality":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set Standard quality mode. Choose Strict manually for sensitive or donor-critical forms; choose Advisory only for pilots.",
+          mneTip:
+            "Data quality settings decide whether validation issues block field submission or arrive as reviewer warnings.",
+          platformAction:
+            "The platform can apply standard data quality controls for point-of-entry checks and reviewer warnings.",
+          quickFixId: "evidence_defaults",
+          targetControlStep: "quality",
+          why:
+            "The form does not define how missing data, outliers, GPS issues, and validation failures should be handled.",
+        });
+        break;
+      case "future-dates":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to enable future-date prevention. If this is a scheduling form with planned future dates, keep it off and document that exception in the form purpose.",
+          mneTip:
+            "Birth dates, submission dates, training dates, and service dates should almost never be in the future.",
+          platformAction:
+            "The platform can enable future-date prevention now.",
+          quickFixId: "evidence_defaults",
+          targetControlStep: "quality",
+          why:
+            "The form contains date questions but has no protection against impossible future dates.",
+        });
+        break;
+      case "age-validation":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to send invalid ages to reviewer decision. Switch to Block manually only when the form is mature and the age rules are certain.",
+          mneTip:
+            "Age errors spread quickly into disaggregation, eligibility, vulnerability, and donor reports.",
+          platformAction:
+            "The platform can set invalid age handling to reviewer decision.",
+          quickFixId: "evidence_defaults",
+          targetControlStep: "quality",
+          why:
+            "The form asks for age or date of birth but does not yet define how impossible ages should be handled.",
+        });
+        break;
+      case "workflow":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set supervisor review and M&E manager approval. Then change the reviewer roles only if your organization uses a different approval chain.",
+          mneTip:
+            "The app can flag what looks wrong, but a reviewer should decide whether to approve, return, or reject the data.",
+          platformAction:
+            "The platform can apply the standard supervisor-review workflow, then you can change reviewer and approver roles.",
+          quickFixId: "access_defaults",
+          targetControlStep: "access",
+          why:
+            "The approval workflow is incomplete, so submitted records may not reach the correct reviewer path.",
+        });
+        break;
+      case "permissions":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set standard collection/review permissions. Switch to Restricted manually for sensitive beneficiary, health, child protection, or protection forms.",
+          mneTip:
+            "Permissions protect who can edit, assign, collect, review, approve, export, and archive the form.",
+          platformAction:
+            "The platform can apply standard form permissions for collection, review, approval, and export governance.",
+          quickFixId: "access_defaults",
+          targetControlStep: "access",
+          why:
+            "The form does not yet define its access rules.",
+        });
+        break;
+      case "assignment":
+        advice.push({
+          ...base,
+          actionLabel: "Open field officer access",
+          fix:
+            fieldOfficerCount > 0
+              ? "Use Apply platform fix to select all active field officers, then remove anyone who should not receive the form. If everyone in the project team can collect, change assignment mode to Project Team."
+              : "Create or activate field officers in Users & Teams or Field Operations first, then return to this form and select who should receive it.",
+          mneTip:
+            "A mobile form should not be published to the field without a clear collector list or project-team collection rule.",
+          platformAction:
+            fieldOfficerCount > 0
+              ? "The platform can select all active field officers now; you can remove any who should not receive the form."
+              : "The platform is ready for assignments, but there are no active field officers available to select yet.",
+          quickFixId: fieldOfficerCount > 0 ? "access_defaults" : undefined,
+          targetControlStep: "access",
+          why:
+            "This form is restricted to assigned users, but no field officer is selected. Mobile sync would have no collector target for this form.",
+        });
+        break;
+      case "export-governance":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to require manager-approved exports and audit logging. Change to Data Manager Approval manually if your organization separates M&E and data stewardship.",
+          mneTip:
+            "Export governance is important when datasets include PII, donor-sensitive figures, or unpublished results.",
+          platformAction:
+            "The platform can apply manager-approved export governance and audit logging.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "Exports are restricted, but no export approval path is configured.",
+        });
+        break;
+      case "retention":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to set seven-year retention. Change it manually if the donor agreement or national law requires a different period.",
+          mneTip:
+            "Retention rules help organizations know when data should stay active, be archived, or be prepared for anonymization.",
+          platformAction:
+            "The platform can apply a seven-year retention default suitable for many donor-funded programs.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "The form does not define how long approved records should be retained.",
+        });
+        break;
+      case "testing":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to require a test submission before review. Use pilot assignment manually for high-risk, large, or new field workflows.",
+          mneTip:
+            "Test the form before field rollout so skip logic, required fields, reference data, and mobile display problems are found early.",
+          platformAction:
+            "The platform can require a test submission before review and approval.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "The form does not define what testing must happen before approval.",
+        });
+        break;
+      case "lifecycle-approved":
+        advice.push({
+          ...base,
+          fix:
+            "Open Controls > Governance, complete certification, move the form to Review, then approve it. After approval, return to Review and publish.",
+          mneTip:
+            "Keep publishing separate from approval so organizations can sign off before field officers receive the form.",
+          targetControlStep: "governance",
+          why:
+            "The form lifecycle has not reached Approved.",
+        });
+        break;
+      case "certification":
+        advice.push({
+          ...base,
+          fix:
+            "Open Controls > Governance and complete Technical Reviewer, M&E Reviewer, Final Approver, and Approval Notes.",
+          mneTip:
+            "Certification records who checked the questionnaire, methodology, beneficiary rules, and approval workflow.",
+          targetControlStep: "governance",
+          why:
+            "The form does not yet have complete review certification.",
+        });
+        break;
+      case "version":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to prepare version metadata, then edit the change summary to describe the real field release or revision.",
+          mneTip:
+            "Published versions are immutable; version notes protect comparability when questionnaires change over time.",
+          platformAction:
+            "The platform can prepare version metadata; you should still edit the change summary to describe the real update.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "Version information is missing, so the platform cannot create a clear governed publish history.",
+        });
+        break;
+      case "governance":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to enable audit trail, approved-record locking, export approval, retention, and source-of-truth defaults.",
+          mneTip:
+            "This supports donor auditability, data stewardship, and trustworthy reports.",
+          platformAction:
+            "The platform can enable audit trail, approved-record locking, retention, and export approval defaults.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "Governance defaults are not complete enough for production publishing.",
+        });
+        break;
+      case "source-of-truth":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to enable report data freeze and manager-approved profile updates. This keeps identity fields controlled by registration unless a reviewer accepts a later change.",
+          mneTip:
+            "This prevents past reports and official beneficiary profiles from changing silently after approval.",
+          platformAction:
+            "The platform can enable approved-data freeze and manager-approved profile updates.",
+          quickFixId: "governance_defaults",
+          targetControlStep: "governance",
+          why:
+            "The form does not yet define how approved data contributes to official reports and beneficiary profile fields.",
+        });
+        break;
+      case "mobile-complexity":
+        advice.push({
+          ...base,
+          fix:
+            "Use Apply platform fix to switch to safer mobile/offline settings. Then manually reduce media size, repeat-group size, or reference lists if the field package is still heavy.",
+          mneTip:
+            "A form can be methodologically correct but fail in the field if it is too heavy for weak Android devices or low connectivity.",
+          platformAction:
+            "The platform can apply mobile reliability defaults for low-bandwidth field collection.",
+          quickFixId: "mobile_readiness_defaults",
+          targetControlStep: "evidence",
+          why:
+            "The form has enough questions, media, repeat groups, or reference data to require explicit mobile readiness settings.",
+        });
+        break;
+      case "mapping":
+        advice.push({
+          ...base,
+          fix:
+            "Open Controls > Evidence and confirm GPS accuracy settings. If the form includes GPS, set a threshold and review boundary or duplicate GPS settings.",
+          mneTip:
+            "GPS quality controls help detect static GPS, outside-area collection, and weak location evidence.",
+          targetControlStep: "evidence",
+          why:
+            "The mapping/GPS configuration is incomplete for a form that captures location.",
+        });
+        break;
+      default:
+        advice.push(base);
+    }
+  });
+
+  warningItems.slice(0, 6).forEach((item) => {
+    const warningQuickFix: PublishQuickFixId | undefined =
+      item.id === "assignment" || item.id === "review-escalation"
+        ? "access_defaults"
+        : item.id === "standard-questions"
+          ? "add_standard_questions"
+          : item.id === "mapping-suggestions"
+            ? "apply_profile_mapping"
+            : item.id === "mobile-complexity"
+              ? "mobile_readiness_defaults"
+              : ["offline", "mobile-package", "reference-data", "enumerator-quality", "repeat-groups"].includes(item.id)
+          ? "evidence_defaults"
+          : ["results-linkage", "indicator-mapping"].includes(item.id)
+            ? "mne_context_defaults"
+            : ["export-governance", "privacy"].includes(item.id)
+              ? "governance_defaults"
+              : undefined;
+    advice.push({
+      actionLabel: item.jumpTo === "builder" ? "Review in Builder" : "Review setting",
+      fix: item.description,
+      id: `warning-${item.id}`,
+      item,
+      jumpTo: item.jumpTo,
+      label: item.label,
+      mneTip:
+        item.id === "assignment" && controls.assignmentMode === "assigned_only"
+          ? fieldOfficerCount > 0
+            ? "Select the exact field officers who should receive this form on mobile."
+            : "Create or activate field officer accounts before restricting this form to assigned users."
+          : warningQuickFix
+            ? "Expert recommendation: apply the platform fix first, then confirm the setting matches the project methodology and donor requirements."
+            : "Expert recommendation: review this item before field rollout because it depends on project design, organizational policy, or donor expectations.",
+      platformAction:
+        item.id === "assignment" && fieldOfficerCount > 0
+          ? "The platform can select all active field officers now; you can remove users who should not receive the form."
+          : warningQuickFix
+            ? "The platform can apply a concrete default for this issue, then you can adjust it."
+            : item.jumpTo === "builder"
+              ? "Manager decision needed: wording, methodology, and structure need human judgement. The platform will open the Builder."
+              : item.jumpTo === "setup"
+                ? "Manager decision needed: the platform will open Basic Information so you can correct the field."
+                : "Manager decision needed: the platform will open the matching Controls tab.",
+      quickFixId: warningQuickFix,
+      severity: "Warning",
+      why: item.description,
+    });
+  });
+
+  return advice;
 }
 
 export function FormCreationWorkspace({
@@ -3188,6 +4424,9 @@ export function FormCreationWorkspace({
     existingForms[0]?.id ?? "",
   );
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
+  const [savedBackendFormId, setSavedBackendFormId] = useState<string | null>(
+    initialForm?.id ?? null,
+  );
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
   const [controlsDraft, setControlsDraft] =
     useState<FormControlsDraft>(() =>
@@ -3198,9 +4437,11 @@ export function FormCreationWorkspace({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
+  const [publishHelpOpen, setPublishHelpOpen] = useState(false);
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
   const [publishSuccessSummary, setPublishSuccessSummary] =
     useState<PublishSuccessSummary | null>(null);
@@ -3227,6 +4468,33 @@ export function FormCreationWorkspace({
   );
   const criticalFailures = checklist.filter(
     (item) => item.required && !item.complete,
+  );
+  const publishDisabled =
+    !draftForm || controlsDraft.lifecycleStatus !== "approved" || criticalFailures.length > 0 || publishing;
+  const publishAssistantAdvice = useMemo(
+    () =>
+      buildPublishAssistantAdvice({
+        checklist,
+        controls: controlsDraft,
+        fieldOfficerCount: fieldOfficerOptions.length,
+        form: draftForm,
+        projectLinked,
+        setup,
+      }),
+    [
+      checklist,
+      controlsDraft,
+      draftForm,
+      fieldOfficerOptions.length,
+      projectLinked,
+      setup,
+    ],
+  );
+  const requiredPublishAdvice = publishAssistantAdvice.filter(
+    (advice) => advice.severity === "Required",
+  );
+  const warningPublishAdvice = publishAssistantAdvice.filter(
+    (advice) => advice.severity === "Warning",
   );
   const readinessPassedCount = checklist.filter(
     (item) => item.status === "passed",
@@ -3293,6 +4561,22 @@ export function FormCreationWorkspace({
       })),
     [draftForm],
   );
+  const missingMneQuestions = useMemo(
+    () => missingRecommendedQuestions(draftForm, setup, controlsDraft),
+    [controlsDraft, draftForm, setup],
+  );
+  const wordingRiskFields = useMemo(
+    () => weakQuestionLabels(draftForm?.fields ?? []),
+    [draftForm],
+  );
+  const suggestedProfileMappingCount = useMemo(() => {
+    const suggestions = suggestedProfileMappingsFromFields(draftForm?.fields ?? []);
+    return Object.entries(suggestions).filter(
+      ([key, value]) =>
+        Boolean(value) &&
+        !controlsDraft.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
+    ).length;
+  }, [controlsDraft.profileMappings, draftForm]);
   const activeLifecycleId = publishedForm
     ? "publish"
     : stage === "setup" || stage === "start"
@@ -3369,11 +4653,423 @@ export function FormCreationWorkspace({
     }));
   }
 
+  function applyPublishQuickFix(quickFixId: PublishQuickFixId): void {
+    const addQuestionsToDraft = (
+      questions: RecommendedQuestion[],
+      sectionTitle: string,
+      successMessage: string,
+    ): void => {
+      if (!draftForm) {
+        setPublishMessage("Start a draft first, then the assistant can add questions.");
+        setStage("start");
+        return;
+      }
+      const existingPages = draftForm.pages ?? [];
+      const page = existingPages[0] ?? createPage("Page 1");
+      const section = createSection(page.id, sectionTitle);
+      const usedVariables = new Set(
+        draftForm.fields
+          .map((field) => field.variableName)
+          .filter((value): value is string => Boolean(value)),
+      );
+      const addedFields = questions.map((question) => {
+        const field = attachStarterField(
+          section,
+          question.type,
+          question.label,
+          Boolean(question.required),
+        );
+        return {
+          ...field,
+          options: question.options ?? field.options,
+          validation: question.validation ?? field.validation,
+          variableName: uniqueVariableName(question.label, usedVariables, field.id),
+        };
+      });
+      const nextForm: DynamicForm = {
+        ...draftForm,
+        fields: [...draftForm.fields, ...addedFields],
+        pages: existingPages.length ? existingPages : [page],
+        sections: [...draftForm.sections, section],
+        updatedAt: new Date().toISOString(),
+      };
+      setDraftForm(nextForm);
+      upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+      setPublishMessage(successMessage);
+      setStage("builder");
+      window.setTimeout(() => {
+        window.scrollTo({ behavior: "smooth", top: 0 });
+      }, 0);
+    };
+
+    if (quickFixId === "add_standard_questions") {
+      if (!draftForm) {
+        setPublishMessage("Start a draft first, then the assistant can add recommended M&E questions.");
+        setStage("start");
+        return;
+      }
+      const missingQuestions = missingRecommendedQuestions(draftForm, setup, controlsDraft);
+      if (!missingQuestions.length) {
+        setPublishMessage("No missing standard questions were detected for this form type.");
+        setStage("builder");
+        return;
+      }
+      addQuestionsToDraft(
+        missingQuestions,
+        "M&E standard readiness questions",
+        `${missingQuestions.length} recommended M&E question${missingQuestions.length === 1 ? "" : "s"} added. Review wording and validation in Builder.`,
+      );
+      return;
+    }
+
+    if (quickFixId === "add_gps_question") {
+      addQuestionsToDraft(
+        [
+          {
+            label: "Collection GPS",
+            required: controlsDraft.requiresGps,
+            type: "gps",
+            validation: { accuracyMax: controlsDraft.gpsAccuracy },
+          },
+        ],
+        "Location evidence",
+        "GPS question added. Review accuracy threshold and wording in Builder.",
+      );
+      return;
+    }
+
+    if (quickFixId === "add_media_question") {
+      const mediaQuestion: RecommendedQuestion =
+        controlsDraft.mediaRequirement === "signature" ||
+        controlsDraft.mediaRequirement === "photo_signature"
+          ? { label: "Respondent signature", required: true, type: "signature" }
+          : { label: "Evidence photo", required: true, type: "photo" };
+      addQuestionsToDraft(
+        [mediaQuestion],
+        "Media evidence",
+        "Required media question added. Review file size and evidence wording in Builder.",
+      );
+      return;
+    }
+
+    if (quickFixId === "add_consent_question") {
+      addQuestionsToDraft(
+        [{ label: "Consent confirmed", options: ["Yes", "No"], required: true, type: "radio" }],
+        "Consent",
+        "Consent question added. Review consent text and blocking rule before publishing.",
+      );
+      return;
+    }
+
+    if (quickFixId === "apply_profile_mapping") {
+      const suggestedMappings = suggestedProfileMappingsFromFields(draftForm?.fields ?? []);
+      setControlsDraft((current) => ({
+        ...current,
+        profileMappings: {
+          ...current.profileMappings,
+          ...Object.fromEntries(
+            Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
+          ),
+        } as FormControlsDraft["profileMappings"],
+        profileUpdateMode:
+          current.profileUpdateMode === "never"
+            ? "with_supervisor_approval"
+            : current.profileUpdateMode,
+        requiresEntity: true,
+      }));
+      setActiveControlStep("beneficiaries");
+      setStage("controls");
+      setPublishMessage("Suggested beneficiary profile mappings were applied. Review them before publishing.");
+      window.setTimeout(() => {
+        window.scrollTo({ behavior: "smooth", top: 0 });
+      }, 0);
+      return;
+    }
+
+    if (quickFixId === "fix_question_variables") {
+      if (!draftForm) return;
+      const used = new Set<string>();
+      const nextForm: DynamicForm = {
+        ...draftForm,
+        fields: draftForm.fields.map((field, index) => ({
+          ...field,
+          variableName: uniqueVariableName(field.label, used, `question_${index + 1}`),
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      setDraftForm(nextForm);
+      upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+      setPublishMessage("Question variable names were repaired and made unique.");
+      setStage("builder");
+      return;
+    }
+
+    if (quickFixId === "fix_question_wording") {
+      if (!draftForm) return;
+      const nextForm: DynamicForm = {
+        ...draftForm,
+        fields: draftForm.fields.map((field, index) => ({
+          ...field,
+          label: improvedQuestionLabel(field, index),
+          variableName: variableNameFromLabel(improvedQuestionLabel(field, index), field.id),
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      setDraftForm(nextForm);
+      upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+      setPublishMessage("Weak question labels were cleaned up. Review the wording in Builder before publishing.");
+      setStage("builder");
+      return;
+    }
+
+    if (quickFixId === "mark_core_required") {
+      if (!draftForm) return;
+      const nextForm: DynamicForm = {
+        ...draftForm,
+        fields: draftForm.fields.map((field) => ({
+          ...field,
+          required: field.required || coreRequiredField(field),
+          validation: coreRequiredField(field)
+            ? { ...field.validation, allowDontKnow: true, allowRefused: true }
+            : field.validation,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      setDraftForm(nextForm);
+      upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+      setPublishMessage("Core identification, date, location, service, and consent questions were marked required where detected.");
+      setStage("builder");
+      return;
+    }
+
+    if (quickFixId === "fix_broken_logic") {
+      if (!draftForm) return;
+      const validFieldIds = new Set(draftForm.fields.map((field) => field.id));
+      const nextForm: DynamicForm = {
+        ...draftForm,
+        fields: draftForm.fields.map((field) => ({
+          ...field,
+          logic: (field.logic ?? []).filter(
+            (rule) => !rule.targetId || validFieldIds.has(rule.targetId),
+          ),
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      setDraftForm(nextForm);
+      upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+      setPublishMessage("Broken logic references were removed. Retest skip logic in Preview before publishing.");
+      setStage("builder");
+      return;
+    }
+
+    setControlsDraft((current) => {
+      const commonBeneficiaryDefaults: Partial<FormControlsDraft> = {
+        allowAnonymous: false,
+        duplicateAction: "review",
+        duplicateFields: current.duplicateFields.length
+          ? current.duplicateFields
+          : ["phone_number", "household_id", "full_name", "village"],
+        duplicateGpsDetection: true,
+        duplicateSeverity: "high",
+        duplicateThreshold: Math.max(current.duplicateThreshold, 85),
+        entityType: current.entityType || "Beneficiary",
+        profileUpdateMode: "with_supervisor_approval",
+        requiresEntity: true,
+      };
+
+      switch (quickFixId) {
+        case "mne_context_defaults":
+          return {
+            ...current,
+            businessPurpose:
+              current.businessPurpose ||
+              "Support project monitoring, beneficiary management, evidence review, and donor-ready reporting.",
+            decisionUse:
+              /donor|report/i.test(current.expectedUse)
+                ? "donor_reporting"
+                : current.decisionUse || "operational_decision",
+            disaggregationFields: current.disaggregationFields.length
+              ? current.disaggregationFields
+              : ["sex", "age_group", "location", "disability_status"],
+            disaggregationRequired: true,
+            expectedUse:
+              current.expectedUse ||
+              "Approved submissions will feed beneficiary history, data quality review, dashboards, indicators, and reports.",
+            formObjective:
+              current.formObjective ||
+              `Collect reliable ${setup.formType || "field"} data for ${setup.projectName || "the selected project"}.`,
+            linkedOutcome:
+              current.linkedOutcome || "Improved project performance and accountable service delivery.",
+            linkedOutput:
+              current.linkedOutput || "Clean, approved field records available for review and reporting.",
+            programObjective:
+              current.programObjective || "Improve program delivery using timely, verified field evidence.",
+            reportingPeriod:
+              current.reportingPeriod === "none" ? "quarterly" : current.reportingPeriod,
+            resultArea: current.resultArea || setup.formType || "Program Monitoring",
+          };
+        case "registration_defaults":
+          return {
+            ...current,
+            ...commonBeneficiaryDefaults,
+            beneficiarySearch: "disabled",
+            frequencyWindow: "none",
+            respondentIdentification: "new_registration",
+            submissionFrequency: "once_ever",
+          };
+        case "baseline_defaults":
+          return {
+            ...current,
+            ...commonBeneficiaryDefaults,
+            beneficiarySearch: "required",
+            frequencyWindow: "reporting_period",
+            respondentIdentification: "existing_beneficiary",
+            submissionFrequency: "once_per_project",
+          };
+        case "monitoring_defaults":
+          return {
+            ...current,
+            ...commonBeneficiaryDefaults,
+            beneficiarySearch: "required",
+            frequencyWindow: "month",
+            respondentIdentification: "existing_beneficiary",
+            submissionFrequency: "once_per_month",
+          };
+        case "frequency_window_defaults":
+          return {
+            ...current,
+            frequencyWindow:
+              current.submissionFrequency === "once_per_month"
+                ? "month"
+                : current.submissionFrequency === "once_per_quarter"
+                  ? "reporting_period"
+                  : current.submissionFrequency === "once_per_season"
+                    ? "season"
+                    : current.submissionFrequency === "once_per_event"
+                      ? "day"
+                      : current.submissionFrequency === "once_per_project"
+                        ? "reporting_period"
+                        : current.frequencyWindow === "none"
+                          ? "reporting_period"
+                          : current.frequencyWindow,
+          };
+        case "access_defaults":
+          return {
+            ...current,
+            assignedFieldOfficerIds:
+              current.assignmentMode === "assigned_only" && fieldOfficerOptions.length
+                ? fieldOfficerOptions.map((officer) => officer.id)
+                : current.assignedFieldOfficerIds,
+            assignmentMode:
+              setup.collectionMethod === "web" ? current.assignmentMode : "assigned_only",
+            permissionPreset: current.permissionPreset || "standard",
+            reviewApprover: current.reviewApprover || "me_manager",
+            reviewReturner: current.reviewReturner || "supervisor",
+            reviewer: current.reviewer || "supervisor",
+            workflowPreset: current.workflowPreset || "supervisor_review",
+          };
+        case "evidence_defaults":
+          return {
+            ...current,
+            dataQualityMode: "standard",
+            gpsAccuracy: current.gpsAccuracy > 0 ? current.gpsAccuracy : 20,
+            invalidAgeAction: current.invalidAgeAction === "warn" ? "review" : current.invalidAgeAction,
+            maximumDurationMinutes: Math.max(current.maximumDurationMinutes, 90),
+            maximumSubmissionsPerDay: Math.max(current.maximumSubmissionsPerDay, 40),
+            minimumDurationMinutes: current.minimumDurationMinutes > 0 ? current.minimumDurationMinutes : 5,
+            mobilePackageMode: current.mobilePackageMode || "standard",
+            offlineEnabled: true,
+            offlineMaxDays: Math.max(current.offlineMaxDays, 7),
+            offlineMediaCapture: true,
+            preventFutureDates: true,
+            syncRequirement: current.syncRequirement || "daily_required",
+          };
+        case "mobile_readiness_defaults":
+          return {
+            ...current,
+            dataQualityMode: current.dataQualityMode === "advisory" ? "standard" : current.dataQualityMode,
+            maxAttachmentSizeMb: Math.min(current.maxAttachmentSizeMb, 5),
+            mediaRequirement:
+              current.mediaRequirement === "any_attachment"
+                ? "photo"
+                : current.mediaRequirement,
+            mobilePackageMode:
+              draftForm && draftForm.fields.length > 80
+                ? "large_registry"
+                : current.mediaRequirement !== "none"
+                  ? "media_heavy"
+                  : "low_bandwidth",
+            offlineEnabled: true,
+            offlineMaxDays: Math.max(current.offlineMaxDays, 7),
+            offlineMediaCapture: current.mediaRequirement !== "none",
+            referenceDataRequired: true,
+            syncRequirement: "daily_required",
+          };
+        case "governance_defaults":
+          return {
+            ...current,
+            auditTrail: true,
+            changeSummary:
+              current.changeSummary ||
+              `Prepared ${setup.formType || "form"} for first governed field release.`,
+            dataFreezeRequired: true,
+            dataRetentionPolicy: current.dataRetentionPolicy || "seven_years",
+            exportApprovalMode:
+              current.exportApprovalMode === "not_required"
+                ? "manager_approval"
+                : current.exportApprovalMode,
+            exportRestricted: true,
+            lockApprovedRecords: true,
+            riskClassification: current.riskClassification || "medium",
+            sourceOfTruthRule: "manager_approved_profile_updates",
+            storeConsentVersion: true,
+            testingRequirement: current.testingRequirement || "test_submission",
+            versionNumber: current.versionNumber || "1.0.0",
+          };
+        default:
+          return current;
+      }
+    });
+
+    const targetStep: ControlStep =
+      quickFixId === "access_defaults"
+        ? "access"
+        : quickFixId === "mobile_readiness_defaults"
+          ? "evidence"
+          : quickFixId === "evidence_defaults"
+          ? "quality"
+          : quickFixId === "governance_defaults"
+            ? "governance"
+            : quickFixId === "mne_context_defaults"
+              ? "essentials"
+              : "beneficiaries";
+    setActiveControlStep(targetStep);
+    setStage("controls");
+    setPublishMessage("Recommended M&E settings were applied. Review them, save controls, then run the readiness review again.");
+    window.setTimeout(() => {
+      window.scrollTo({ behavior: "smooth", top: 0 });
+    }, 0);
+  }
+
   function openReadinessItem(item: PublishReadinessItem): void {
     if (item.jumpTo === "controls") {
       setActiveControlStep(controlStepForReadinessCategory(item.category));
     }
     setStage(item.jumpTo);
+    window.setTimeout(() => {
+      window.scrollTo({ behavior: "smooth", top: 0 });
+    }, 0);
+  }
+
+  function openPublishAdvice(advice: PublishAssistantAdvice): void {
+    if (advice.item && !advice.targetControlStep) {
+      openReadinessItem(advice.item);
+      return;
+    }
+    if (advice.targetControlStep) {
+      setActiveControlStep(advice.targetControlStep);
+    }
+    setStage(advice.item?.jumpTo ?? advice.jumpTo ?? "review");
     window.setTimeout(() => {
       window.scrollTo({ behavior: "smooth", top: 0 });
     }, 0);
@@ -3513,14 +5209,75 @@ export function FormCreationWorkspace({
     setStage("builder");
   }
 
-  function saveDraftLocally(): void {
+  async function saveDraftLocally(): Promise<void> {
     if (!draftForm) return;
-    upsertLocalForm(workspaceFormFromDraft(draftForm, setup, selectedProjectId));
-    setPublishMessage(
-      projectLinked
-        ? "Draft saved. You can publish when ready."
-        : "Draft saved locally. Select an existing project before publishing.",
-    );
+    const localDraft = workspaceFormFromDraft(draftForm, setup, selectedProjectId);
+    upsertLocalForm(localDraft);
+    if (!token || preview || !selectedProjectId) {
+      setPublishMessage(
+        projectLinked
+          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
+          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
+      );
+      return;
+    }
+    setDraftSaving(true);
+    try {
+      const survey =
+        selectedSurvey ??
+        (await createSurvey(token, {
+          code: `FORM-${Date.now().toString(36).toUpperCase()}`,
+          description: "Auto-created survey context for a project-linked draft form.",
+          geographic_scope: selectedProject?.region ?? null,
+          project_id: selectedProjectId,
+          status: "active",
+          survey_type: "monitoring",
+          target_population: "Project participants",
+          title: "General Data Collection",
+        }));
+      const schema = toMobileSchema(draftForm) as Record<string, unknown>;
+      const saved = savedBackendFormId
+        ? await updateForm(token, savedBackendFormId, {
+            description:
+              setup.description || draftForm.sections[0]?.description || null,
+            name: draftForm.name,
+            publish: false,
+            schema,
+          })
+        : await createForm(token, {
+            description:
+              setup.description || draftForm.sections[0]?.description || null,
+            name: draftForm.name,
+            project_id: selectedProjectId,
+            publish: false,
+            schema,
+            slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
+            survey_id: survey.id,
+          });
+      const savedDraft: DynamicForm = {
+        ...draftForm,
+        activeVersion: saved.status === "published" ? saved.current_version : 0,
+        id: saved.id,
+        status: "draft",
+        updatedAt: new Date().toISOString(),
+        version: saved.current_version,
+      };
+      setSavedBackendFormId(saved.id);
+      setDraftForm(savedDraft);
+      await updateFormControls(
+        token,
+        saved.id,
+        controlsDraftToApiControls(controlsDraft, savedDraft),
+      );
+      upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
+      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+    } catch (error) {
+      setPublishMessage(
+        `Draft saved in this browser, but it was not saved to the organization workspace: ${messageFromUnknownError(error)}`,
+      );
+    } finally {
+      setDraftSaving(false);
+    }
   }
 
   async function saveControlsDraft(): Promise<void> {
@@ -3624,8 +5381,9 @@ export function FormCreationWorkspace({
             title: "General Data Collection",
           }));
         const schema = toMobileSchema(draftForm) as Record<string, unknown>;
-        const saved = initialForm
-          ? await updateForm(token, initialForm.id, {
+        const targetFormId = savedBackendFormId ?? initialForm?.id ?? null;
+        const saved = targetFormId
+          ? await updateForm(token, targetFormId, {
               description:
                 setup.description || draftForm.sections[0]?.description || null,
               name: draftForm.name,
@@ -3650,6 +5408,7 @@ export function FormCreationWorkspace({
           updatedAt: new Date().toISOString(),
           version: saved.current_version,
         };
+        setSavedBackendFormId(saved.id);
         await updateFormControls(
           token,
           saved.id,
@@ -3868,11 +5627,12 @@ export function FormCreationWorkspace({
             {compactBuilderMode ? (
               <>
                 <Button
-                  onClick={saveDraftLocally}
+                  disabled={draftSaving}
+                  onClick={() => void saveDraftLocally()}
                   size="sm"
                   variant="secondary"
                 >
-                  Save draft
+                  {draftSaving ? "Saving draft" : "Save draft"}
                 </Button>
                 <Button
                   onClick={() => setStage("setup")}
@@ -3993,15 +5753,26 @@ export function FormCreationWorkspace({
               </Button>
             ) : null}
             {stage === "review" && controlsDraft.lifecycleStatus === "approved" ? (
-              <Button
-                disabled={!draftForm || criticalFailures.length > 0 || publishing}
-                onClick={publishDraft}
-                size="sm"
-                variant="primary"
-              >
-                <Rocket aria-hidden="true" />
-                {publishing ? "Publishing" : "Publish Form"}
-              </Button>
+              <>
+                <Button
+                  disabled={publishDisabled}
+                  onClick={publishDraft}
+                  size="sm"
+                  variant="primary"
+                >
+                  <Rocket aria-hidden="true" />
+                  {publishing ? "Publishing" : "Publish Form"}
+                </Button>
+                {publishDisabled && !publishing ? (
+                  <Button
+                    onClick={() => setPublishHelpOpen(true)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Why can't I publish?
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
@@ -4565,6 +6336,95 @@ export function FormCreationWorkspace({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  M&E manager checks
+                </p>
+                <h3 className="mt-1 text-base font-semibold">
+                  Practical form problems the platform can help solve
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                  These checks look for missing standard questions, beneficiary mapping opportunities,
+                  weak wording, and mobile-readiness risks before the form reaches field officers.
+                </p>
+              </div>
+              <Badge tone={missingMneQuestions.length || suggestedProfileMappingCount || wordingRiskFields.length ? "warning" : "success"}>
+                {missingMneQuestions.length + suggestedProfileMappingCount + wordingRiskFields.length} item(s)
+              </Badge>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-4">
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-sm font-semibold">Standard questions</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {missingMneQuestions.length
+                    ? `${missingMneQuestions.length} recommended question(s) are missing for ${setup.formType}.`
+                    : "Core questions match this form type."}
+                </p>
+                {missingMneQuestions.length ? (
+                  <Button
+                    className="mt-3"
+                    onClick={() => applyPublishQuickFix("add_standard_questions")}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Add missing questions
+                  </Button>
+                ) : null}
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-sm font-semibold">Profile mapping</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {suggestedProfileMappingCount
+                    ? `${suggestedProfileMappingCount} beneficiary mapping suggestion(s) can be applied.`
+                    : "No obvious unmapped profile fields detected."}
+                </p>
+                {suggestedProfileMappingCount ? (
+                  <Button
+                    className="mt-3"
+                    onClick={() => applyPublishQuickFix("apply_profile_mapping")}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Apply mappings
+                  </Button>
+                ) : null}
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-sm font-semibold">Question wording</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {wordingRiskFields.length
+                    ? `${wordingRiskFields.length} question label(s) need human wording review.`
+                    : "No wording risks detected."}
+                </p>
+                {wordingRiskFields.length ? (
+                  <Button
+                    className="mt-3"
+                    onClick={() => setStage("builder")}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Review wording
+                  </Button>
+                ) : null}
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-sm font-semibold">Mobile reliability</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use low-bandwidth settings for large forms, media-heavy forms, or weak connectivity.
+                </p>
+                <Button
+                  className="mt-3"
+                  onClick={() => applyPublishQuickFix("mobile_readiness_defaults")}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Apply mobile defaults
+                </Button>
+              </div>
+            </div>
+          </section>
+          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
                   Control setup progress
                 </p>
                 <h3 className="mt-1 text-base font-semibold">
@@ -4837,6 +6697,45 @@ export function FormCreationWorkspace({
                       value={controlsDraft.expectedUse}
                     />
                   </label>
+                  <label className="text-sm font-medium">
+                    Decision use
+                    <Select
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          decisionUse:
+                            event.target.value as FormControlsDraft["decisionUse"],
+                        })
+                      }
+                      value={controlsDraft.decisionUse}
+                    >
+                      <option value="operational_decision">Operational decision</option>
+                      <option value="indicator_reporting">Indicator reporting</option>
+                      <option value="donor_reporting">Donor reporting</option>
+                      <option value="case_management">Case management</option>
+                      <option value="research_learning">Research / learning</option>
+                    </Select>
+                  </label>
+                  <label className="text-sm font-medium">
+                    Reporting period
+                    <Select
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          reportingPeriod:
+                            event.target.value as FormControlsDraft["reportingPeriod"],
+                        })
+                      }
+                      value={controlsDraft.reportingPeriod}
+                    >
+                      <option value="none">Not used for reporting</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="seasonal">Seasonal</option>
+                      <option value="annual">Annual</option>
+                      <option value="donor_schedule">Donor schedule</option>
+                    </Select>
+                  </label>
                 </div>
               </details>
 
@@ -4908,6 +6807,34 @@ export function FormCreationWorkspace({
                       )}
                     </div>
                   </div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      checked={controlsDraft.disaggregationRequired}
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          disaggregationRequired: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    Require disaggregation review
+                  </label>
+                  <label className="text-sm font-medium">
+                    Disaggregation fields
+                    <Input
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          disaggregationFields: event.target.value
+                            .split(",")
+                            .map((value) => value.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="sex, age_group, location, disability_status"
+                      value={controlsDraft.disaggregationFields.join(", ")}
+                    />
+                  </label>
                 </div>
               </details>
 
@@ -5674,6 +7601,35 @@ export function FormCreationWorkspace({
                     value={controlsDraft.maximumSubmissionsPerDay}
                   />
                 </label>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    checked={controlsDraft.preventFutureDates}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        preventFutureDates: event.target.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Prevent future dates for date questions
+                </label>
+                <label className="text-sm font-medium">
+                  Invalid age handling
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        invalidAgeAction:
+                          event.target.value as FormControlsDraft["invalidAgeAction"],
+                      })
+                    }
+                    value={controlsDraft.invalidAgeAction}
+                  >
+                    <option value="warn">Warn collector only</option>
+                    <option value="review">Send to reviewer decision</option>
+                    <option value="block">Block impossible ages</option>
+                  </Select>
+                </label>
               </div>
             </section>
 
@@ -6279,6 +8235,41 @@ export function FormCreationWorkspace({
                   />
                   Log form and data actions to audit trail
                 </label>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    checked={controlsDraft.dataFreezeRequired}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        dataFreezeRequired: event.target.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Freeze approved data used in reports
+                </label>
+                <label className="text-sm font-medium">
+                  Beneficiary profile source of truth
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        sourceOfTruthRule:
+                          event.target.value as FormControlsDraft["sourceOfTruthRule"],
+                      })
+                    }
+                    value={controlsDraft.sourceOfTruthRule}
+                  >
+                    <option value="registration_controls_profile">
+                      Registration form controls identity profile
+                    </option>
+                    <option value="latest_approved_controls_profile">
+                      Latest approved submission updates profile
+                    </option>
+                    <option value="manager_approved_profile_updates">
+                      Manager-approved profile updates only
+                    </option>
+                  </Select>
+                </label>
                 <label className="text-sm font-medium">
                   Export approval
                   <Select
@@ -6481,14 +8472,24 @@ export function FormCreationWorkspace({
           <StagePanel
             action={
               controlsDraft.lifecycleStatus === "approved" ? (
-                <Button
-                  disabled={!draftForm || criticalFailures.length > 0 || publishing}
-                  onClick={publishDraft}
-                  variant="primary"
-                >
-                  <Rocket aria-hidden="true" />
-                  {publishing ? "Publishing" : "Publish Form"}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={publishDisabled}
+                    onClick={publishDraft}
+                    variant="primary"
+                  >
+                    <Rocket aria-hidden="true" />
+                    {publishing ? "Publishing" : "Publish Form"}
+                  </Button>
+                  {publishDisabled && !publishing ? (
+                    <Button
+                      onClick={() => setPublishHelpOpen(true)}
+                      variant="secondary"
+                    >
+                      Why can't I publish?
+                    </Button>
+                  ) : null}
+                </div>
               ) : (
                 <Button onClick={approveForPublish} variant="primary">
                   Approve Form
@@ -6637,6 +8638,125 @@ export function FormCreationWorkspace({
           ) : null}
         </section>
       ) : null}
+
+      <Modal
+        contentClassName="max-w-3xl"
+        description="Smart M&E guidance that explains exact publish blockers and the next fix."
+        onOpenChange={setPublishHelpOpen}
+        open={publishHelpOpen}
+        title="Publish readiness assistant"
+      >
+        <div className="space-y-4 p-5">
+          <div className="flex gap-3 rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Sparkles aria-hidden="true" size={16} />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">
+                I checked {(draftForm?.name ?? setup.formName) || "this form"} against the M&E publish rules.
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {requiredPublishAdvice.length
+                  ? `I found ${requiredPublishAdvice.length} required ${requiredPublishAdvice.length === 1 ? "fix" : "fixes"} before this form can be published. Start with ${requiredPublishAdvice[0]?.label}.`
+                  : warningPublishAdvice.length
+                    ? `No required blockers are detected, but ${warningPublishAdvice.length} warning ${warningPublishAdvice.length === 1 ? "needs" : "need"} review before rollout.`
+                    : "No blockers are currently detected. If the publish button is still disabled, save the draft and refresh the review."}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                This assistant supports form readiness and M&E standard operations. It applies safe platform fixes where possible, and gives expert recommendations where the final decision depends on the project, donor, method, or organization policy.
+              </p>
+            </div>
+          </div>
+          {publishAssistantAdvice.length ? (
+            <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+              {publishAssistantAdvice.slice(0, 10).map((advice, index) => (
+                <div
+                  className={cn(
+                    "rounded-lg border bg-background/70 p-3",
+                    advice.severity === "Required"
+                      ? "border-danger/25"
+                      : "border-warning/25",
+                  )}
+                  key={`${advice.id}-${index}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{advice.label}</p>
+                      <div className="mt-2 grid gap-2 text-xs text-muted-foreground lg:grid-cols-4">
+                        <div>
+                          <p className="font-semibold text-foreground">Why</p>
+                          <p className="mt-1">{advice.why}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">Direct fix</p>
+                          <p className="mt-1">{advice.fix}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">M&E expert recommendation</p>
+                          <p className="mt-1">{advice.mneTip}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">
+                            {advice.quickFixId
+                              ? "What the platform will do"
+                              : "Project-specific decision"}
+                          </p>
+                          <p className="mt-1">{advice.platformAction}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Badge tone={advice.severity === "Required" ? "danger" : "warning"}>
+                      {advice.severity}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => {
+                        setPublishHelpOpen(false);
+                        openPublishAdvice(advice);
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      {advice.actionLabel}
+                    </Button>
+                    {advice.quickFixId ? (
+                      <Button
+                        onClick={() => {
+                          const quickFixId = advice.quickFixId;
+                          if (!quickFixId) return;
+                          setPublishHelpOpen(false);
+                          applyPublishQuickFix(quickFixId);
+                        }}
+                        size="sm"
+                        variant="primary"
+                      >
+                        Apply platform fix
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-success/25 bg-success/10 p-3 text-sm text-success">
+              No blockers are currently detected. Try publishing again.
+            </div>
+          )}
+          {publishAssistantAdvice[0] ? (
+            <Button
+              onClick={() => {
+                const firstAdvice = publishAssistantAdvice[0];
+                setPublishHelpOpen(false);
+                if (firstAdvice) openPublishAdvice(firstAdvice);
+              }}
+              variant="primary"
+            >
+              Go fix the first issue
+            </Button>
+          ) : null}
+        </div>
+      </Modal>
 
       <Modal
         contentClassName="max-w-2xl"

@@ -519,9 +519,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     [projectsQuery.data],
   );
   const forms = useMemo<FormListItem[]>(() => {
+    const backendForms = (formsQuery.data ?? []).map(normalizeBackendForm);
     const rawForms = preview
       ? [...previewForms, ...localForms]
-      : (formsQuery.data ?? []).map(normalizeBackendForm);
+      : [...localForms, ...backendForms];
     const baseForms = Array.from(
       new Map(rawForms.map((form) => [form.id, form])).values(),
     );
