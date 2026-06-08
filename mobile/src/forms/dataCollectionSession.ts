@@ -1,6 +1,7 @@
 import type { MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileSubmission } from "@/models/contracts";
 import { MobilePermissionService } from "@/permissions/mobilePermissionService";
 import { AuditEventService } from "@/services/auditEventService";
+import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { PrefillService } from "@/services/prefillService";
 import { FormValidationIssue, FormValidationService } from "@/forms/formValidationService";
 import { LocalDatabase } from "@/storage/localDatabase";
@@ -27,6 +28,7 @@ export class DataCollectionSessionService {
   private readonly queue: SyncQueueService;
   private readonly prefill = new PrefillService();
   private readonly validation = new FormValidationService();
+  private readonly integrity = new FieldIntegrityService();
   private readonly permissions: MobilePermissionService;
   private readonly audit: AuditEventService;
 
@@ -113,9 +115,17 @@ export class DataCollectionSessionService {
     if (issues.some((issue) => issue.severity === "Error")) {
       return { draft, issues, queued: false };
     }
-    const queuedDraft = this.drafts.markQueued(draftLocalId);
+    const integritySignals = this.integrity.evaluate(draft, formVersion, assignment ?? null);
+    const integrityDraft = this.drafts.updateIntegritySignals(draftLocalId, integritySignals);
+    const queuedDraft = this.drafts.markQueued(integrityDraft.localId);
     this.queue.enqueue("CREATE_SUBMISSION", { draftLocalId: queuedDraft.localId });
-    this.audit.queue("mobile.submission_queued", { draftLocalId: queuedDraft.localId, formId: queuedDraft.formId });
+    this.audit.queue("mobile.submission_queued", {
+      draftLocalId: queuedDraft.localId,
+      formId: queuedDraft.formId,
+      integrityRiskLevel: integritySignals.riskLevel,
+      integrityScore: integritySignals.score,
+      signalCount: integritySignals.signals.length,
+    });
     return { draft: queuedDraft, issues, queued: true };
   }
 }

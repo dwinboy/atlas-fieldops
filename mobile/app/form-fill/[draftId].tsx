@@ -15,12 +15,14 @@ import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { FormValidationService } from "@/forms/formValidationService";
 import { LogicEngine } from "@/forms/logicEngine";
 import type { FormValidationIssue } from "@/forms/formValidationService";
+import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { localDatabase } from "@/storage/localDatabase";
-import type { MobileFormSection, MobileFormVersion, MobileQuestion, MobileSubmission } from "@/models/contracts";
+import type { MobileCollectionIntegrity, MobileFormSection, MobileFormVersion, MobileQuestion, MobileSubmission } from "@/models/contracts";
 
 const dataCollection = new DataCollectionSessionService(localDatabase);
 const validationService = new FormValidationService();
 const logicEngine = new LogicEngine();
+const integrityService = new FieldIntegrityService();
 
 export default function FormFillScreen() {
   const { draftId } = useLocalSearchParams<{ draftId: string }>();
@@ -78,6 +80,11 @@ export default function FormFillScreen() {
     if (!draft?.entityId) return null;
     return localDatabase.entities.list().find((e) => e.id === draft.entityId)?.name ?? null;
   }, [draft]);
+
+  const assignment = useMemo(
+    () => (draft?.assignmentId ? localDatabase.assignments.list().find((item) => item.id === draft.assignmentId) ?? null : null),
+    [draft],
+  );
 
   const responseValue = useCallback(
     (questionId: string) => {
@@ -178,7 +185,8 @@ export default function FormFillScreen() {
   const sectionIssues = allIssues.filter((i) =>
     currentQuestions.some((q) => q.id === i.questionId),
   );
-  const reviewSummary = buildReviewSummary(draft, formVersion, progress, allIssues, entityName);
+  const integrity = integrityService.evaluate(draft, formVersion, assignment);
+  const reviewSummary = buildReviewSummary(draft, formVersion, progress, allIssues, entityName, integrity);
 
   if (reviewMode) {
     return (
@@ -214,6 +222,7 @@ export default function FormFillScreen() {
               <ReviewPill label="Complete" value={`${progress.percent}%`} tone={progress.percent >= 100 ? "ok" : "warn"} />
               <ReviewPill label="Answered" value={`${progress.answered}/${progress.total}`} tone="neutral" />
               <ReviewPill label="Errors" value={String(reviewSummary.errorCount)} tone={reviewSummary.errorCount ? "bad" : "ok"} />
+              <ReviewPill label="Integrity" value={`${integrity.score}%`} tone={integrity.riskLevel === "High" ? "bad" : integrity.riskLevel === "Medium" ? "warn" : "ok"} />
             </View>
           </View>
 
@@ -265,6 +274,33 @@ export default function FormFillScreen() {
               </Text>
             </View>
           )}
+
+          <View style={reviewCard}>
+            <Text style={reviewTitle}>Integrity signals for supervisor</Text>
+            {integrity.signals.length === 0 ? (
+              <Text style={{ color: "#49635a", fontSize: 13 }}>
+                No unusual field-work signals detected. Supervisors will still review according to the project workflow.
+              </Text>
+            ) : (
+              integrity.signals.map((signal) => (
+                <View
+                  key={signal.code}
+                  style={{
+                    backgroundColor: signal.severity === "Critical" ? "#fee2e2" : "#fff7ed",
+                    borderRadius: 10,
+                    gap: 3,
+                    marginTop: 8,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: signal.severity === "Critical" ? "#b42318" : "#9a3412", fontWeight: "800" }}>
+                    {signal.severity}: {signal.code.replaceAll("_", " ")}
+                  </Text>
+                  <Text style={{ color: "#49635a", fontSize: 12 }}>{signal.message}</Text>
+                </View>
+              ))
+            )}
+          </View>
         </ScrollView>
 
         <View style={{
@@ -499,6 +535,7 @@ function buildReviewSummary(
   progress: { answered: number; total: number; percent: number },
   issues: FormValidationIssue[],
   entityName: string | null,
+  integrity: MobileCollectionIntegrity,
 ) {
   const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
   const questions = formVersion.sections.flatMap((section) => section.questions);
@@ -541,6 +578,11 @@ function buildReviewSummary(
         label: "Validation",
         value: errorCount ? `${errorCount} error(s) to fix` : warningCount ? `${warningCount} warning(s)` : "No blocking issues",
         tone: errorCount ? "bad" as const : warningCount ? "warn" as const : "ok" as const,
+      },
+      {
+        label: "Integrity score",
+        value: `${integrity.score}% · ${integrity.riskLevel} risk`,
+        tone: integrity.riskLevel === "High" ? "bad" as const : integrity.riskLevel === "Medium" ? "warn" as const : "ok" as const,
       },
     ],
   };

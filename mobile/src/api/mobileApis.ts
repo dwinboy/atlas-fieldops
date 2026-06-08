@@ -191,6 +191,7 @@ export class SubmissionsApi {
         responses: submission.responses,
         attachments: submission.attachments,
         location: submission.location,
+        integritySignals: submission.integritySignals,
         deviceId: submission.deviceId,
         appVersion: submission.appVersion,
         createdAt: submission.createdAt,

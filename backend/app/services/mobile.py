@@ -1002,6 +1002,8 @@ class MobileService:
             payload={
                 "responses": response_payload,
                 "_mobile_location_status": "captured" if payload.location or derived_location else "not_required_or_missing",
+                "_mobile_integrity": payload.integrity_signals or {},
+                "_mobile_integrity_status": self._integrity_status(payload.integrity_signals),
             },
             captured_at=payload.created_at,
             submitted_at=payload.submitted_at or now,
@@ -1025,6 +1027,21 @@ class MobileService:
             synced_at=submission.sync_received_at,
             message="Submission synced to the web platform.",
         )
+
+    def _integrity_status(self, integrity_signals: dict[str, Any] | None) -> str:
+        if not integrity_signals:
+            return "not_evaluated"
+        risk_level = str(integrity_signals.get("riskLevel") or integrity_signals.get("risk_level") or "").lower()
+        signals = integrity_signals.get("signals")
+        critical = [
+            signal for signal in signals
+            if isinstance(signal, dict) and str(signal.get("severity") or "").lower() == "critical"
+        ] if isinstance(signals, list) else []
+        if risk_level == "high" or critical:
+            return "requires_supervisor_attention"
+        if risk_level == "medium":
+            return "review_recommended"
+        return "no_unusual_signal"
 
     def _location_from_responses(self, responses: list[dict[str, Any]]) -> dict[str, Any] | None:
         for response in responses:

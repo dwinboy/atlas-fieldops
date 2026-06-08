@@ -37,6 +37,7 @@ export class DraftSubmissionService {
       location: null,
       submittedAt: null,
       appVersion: input.appVersion ?? null,
+      integritySignals: null,
       syncStatus: "NotSynced",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -85,6 +86,19 @@ export class DraftSubmissionService {
       ...ready,
       status: "Queued",
       syncStatus: "Queued",
+      updatedAt: nowIso(),
+    });
+  }
+
+  updateIntegritySignals(draftLocalId: string, integritySignals: MobileSubmission["integritySignals"]): MobileSubmission {
+    const draft = this.database.draftSubmissions.get(draftLocalId);
+    if (!draft) {
+      throw new Error("Draft submission not found");
+    }
+    return this.database.draftSubmissions.upsert({
+      ...draft,
+      integritySignals,
+      syncStatus: "NotSynced",
       updatedAt: nowIso(),
     });
   }

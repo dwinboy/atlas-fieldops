@@ -214,6 +214,7 @@ class MobileSubmissionUpload(MobileSchema):
     responses: list[MobileSubmissionResponseUpload] = Field(default_factory=list)
     attachments: list[dict[str, Any]] = Field(default_factory=list)
     location: dict[str, Any] | None = None
+    integrity_signals: dict[str, Any] | None = None
     device_id: str | None = None
     app_version: str | None = None
     created_at: datetime

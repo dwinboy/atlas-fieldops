@@ -368,6 +368,28 @@ export type MobileSubmissionResponse = {
   updatedAt: ISODateTime;
 };
 
+export type MobileIntegritySignal = {
+  code: string;
+  severity: "Info" | "Warning" | "Critical";
+  message: string;
+  evidence: Record<string, unknown>;
+  createdAt: ISODateTime;
+};
+
+export type MobileCollectionIntegrity = {
+  score: number;
+  riskLevel: "Low" | "Medium" | "High";
+  startedAt: ISODateTime;
+  reviewedAt: ISODateTime;
+  durationSeconds: number;
+  expectedMinimumSeconds: number;
+  gpsCaptured: boolean;
+  gpsAccuracy: number | null;
+  mediaEvidenceCount: number;
+  requiredMediaCount: number;
+  signals: MobileIntegritySignal[];
+};
+
 export type MobileSubmission = LocalRecord & {
   id: string;
   projectId: UUID;
@@ -390,6 +412,7 @@ export type MobileSubmission = LocalRecord & {
   } | null;
   submittedAt: ISODateTime | null;
   appVersion: string | null;
+  integritySignals: MobileCollectionIntegrity | null;
 };
 
 export type MobileAttachment = LocalRecord & {
