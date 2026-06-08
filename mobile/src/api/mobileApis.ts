@@ -46,6 +46,7 @@ export class AuthApi {
       access_token: string;
       token_type: string;
       refresh_token?: string | null;
+      expires_in?: number | null;
     }>("/auth/login", {
       method: "POST",
       body: {
@@ -57,6 +58,25 @@ export class AuthApi {
     return {
       accessToken: token.access_token,
       refreshToken: token.refresh_token ?? null,
+      expiresIn: token.expires_in ?? null,
+      tokenType: token.token_type,
+    };
+  }
+
+  async refresh(refreshToken: string) {
+    const token = await this.http.request<{
+      access_token: string;
+      token_type: string;
+      refresh_token?: string | null;
+      expires_in?: number | null;
+    }>("/auth/refresh", {
+      method: "POST",
+      body: { refresh_token: refreshToken },
+    });
+    return {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token ?? refreshToken,
+      expiresIn: token.expires_in ?? null,
       tokenType: token.token_type,
     };
   }

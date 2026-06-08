@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -54,17 +53,12 @@ async def mobile_bootstrap(
 @router.post("/devices/register", response_model=MobileDeviceRegistrationRead, summary="Register mobile device")
 async def register_mobile_device(
     payload: MobileDeviceRegistrationCreate,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileDeviceRegistrationRead:
-    now = datetime.now(UTC)
-    return MobileDeviceRegistrationRead(
-        device_id=payload.device_id,
-        status="Active",
-        registered_at=now,
-        last_seen_at=now,
-        remote_logout_required=False,
-        remote_wipe_required=False,
-    )
+    result = await MobileService(session).register_device(principal, payload)
+    await session.commit()
+    return result
 
 
 @router.get("/version-policy", response_model=MobileVersionPolicyRead, summary="Read mobile app version policy")

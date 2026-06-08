@@ -29,15 +29,23 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   createFieldOfficerAssignment,
+  getFieldOfficerProfile,
   getOperationsSummary,
   importFieldOfficers,
   inviteFieldOfficer,
   listForms,
   listFieldOfficers,
   listProjects,
+  resetUserPassword,
   type CurrentPrincipal,
+  type FieldOfficerActivityEventRead,
+  type FieldOfficerAssignmentDetailRead,
+  type FieldOfficerDeviceDetailRead,
   type FieldOfficerInvite,
+  type FieldOfficerPermissionRead,
+  type FieldOfficerProfileDetailRead,
   type FieldOfficerRead,
+  type FieldOfficerSubmissionDetailRead,
   type OperationsSummary,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -138,6 +146,13 @@ const defaultTargetDraft: Omit<OperationalTarget, "achieved" | "id"> = {
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
+}
+
+function initialFieldOperationsSection(): FieldOperationsSection {
+  if (typeof window === "undefined") return "dashboard";
+  const path = window.location.pathname;
+  const section = fieldOperationsSections.find((item) => path.endsWith(item.route));
+  return section?.id ?? "dashboard";
 }
 
 function splitList(value: string): string[] {
@@ -261,6 +276,303 @@ function SectionPanel({
   );
 }
 
+type OfficerProfileTab =
+  | "overview"
+  | "assignments"
+  | "projects"
+  | "locations"
+  | "forms"
+  | "beneficiaries"
+  | "submissions"
+  | "performance"
+  | "data-quality"
+  | "devices"
+  | "activity"
+  | "permissions"
+  | "security"
+  | "audit";
+
+const officerProfileTabs: { id: OfficerProfileTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "assignments", label: "Assignments" },
+  { id: "projects", label: "Projects" },
+  { id: "locations", label: "Locations" },
+  { id: "forms", label: "Forms" },
+  { id: "beneficiaries", label: "Beneficiaries" },
+  { id: "submissions", label: "Submissions" },
+  { id: "performance", label: "Performance" },
+  { id: "data-quality", label: "Data Quality" },
+  { id: "devices", label: "Devices" },
+  { id: "activity", label: "Activity" },
+  { id: "permissions", label: "Permissions" },
+  { id: "security", label: "Security" },
+  { id: "audit", label: "Audit Trail" },
+];
+
+function ProfileSignal({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-2.5">
+      <p className="text-[11px] font-medium uppercase text-muted-foreground">{label}</p>
+      <div className="mt-1 text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function asText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Not set";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function OfficerProfileWorkspace({
+  canManage,
+  detail,
+  loading,
+  onClose,
+  onNavigate,
+  onResetPassword,
+  resetPending,
+  temporaryPassword,
+}: {
+  canManage: boolean;
+  detail?: FieldOfficerProfileDetailRead;
+  loading: boolean;
+  onClose: () => void;
+  onNavigate: (route: string) => void;
+  onResetPassword: () => void;
+  resetPending: boolean;
+  temporaryPassword: string | null;
+}) {
+  const [tab, setTab] = useState<OfficerProfileTab>("overview");
+
+  useEffect(() => {
+    setTab("overview");
+  }, [detail?.officer.id]);
+
+  const assignmentColumns: TableColumn<FieldOfficerAssignmentDetailRead>[] = [
+    {
+      key: "assignment",
+      header: "Assignment",
+      value: (assignment) => `${assignment.project_name} ${assignment.form_name ?? ""}`,
+      render: (assignment) => (
+        <div>
+          <p className="font-medium">{assignment.form_name ?? "Project access"}</p>
+          <p className="text-xs text-muted-foreground">{assignment.project_name}</p>
+        </div>
+      ),
+    },
+    { key: "location", header: "Location", value: (assignment) => assignment.region ?? "", render: (assignment) => assignment.region ?? "Project area" },
+    { key: "status", header: "Status", value: (assignment) => assignment.status, render: (assignment) => <Badge tone={statusTone(assignment.status)}>{assignment.status}</Badge> },
+    { key: "updated", header: "Updated", value: (assignment) => assignment.updated_at, render: (assignment) => formatTime(assignment.updated_at) },
+  ];
+
+  const submissionColumns: TableColumn<FieldOfficerSubmissionDetailRead>[] = [
+    { key: "submission", header: "Submission", value: (submission) => submission.client_submission_id, render: (submission) => <span className="font-mono text-xs">{submission.client_submission_id}</span> },
+    { key: "form", header: "Form", value: (submission) => submission.form_name ?? "", render: (submission) => submission.form_name ?? "Form" },
+    { key: "project", header: "Project", value: (submission) => submission.project_name ?? "", render: (submission) => submission.project_name ?? "Not linked" },
+    { key: "source", header: "Source", value: (submission) => submission.source, render: (submission) => <Badge tone="collect">{submission.source}</Badge> },
+    { key: "status", header: "Status", value: (submission) => submission.status, render: (submission) => <Badge tone={statusTone(submission.status)}>{submission.status}</Badge> },
+    { key: "date", header: "Date", value: (submission) => submission.submitted_at, render: (submission) => formatTime(submission.submitted_at) },
+  ];
+
+  const deviceColumns: TableColumn<FieldOfficerDeviceDetailRead>[] = [
+    { key: "device", header: "Device", value: (device) => `${device.device_name} ${device.device_id}`, render: (device) => <div><p className="font-medium">{device.device_name}</p><p className="font-mono text-xs text-muted-foreground">{device.device_id}</p></div> },
+    { key: "platform", header: "Platform", value: (device) => `${device.platform} ${device.os_version ?? ""}`, render: (device) => `${device.platform}${device.os_version ? ` · ${device.os_version}` : ""}` },
+    { key: "version", header: "App", value: (device) => device.app_version ?? "", render: (device) => device.app_version ?? "Unknown" },
+    { key: "sync", header: "Last Sync", value: (device) => device.last_sync_at ?? "", render: (device) => formatTime(device.last_sync_at) },
+    { key: "status", header: "Status", value: (device) => device.status, render: (device) => <Badge tone={statusTone(device.status)}>{device.status}</Badge> },
+  ];
+
+  const activityColumns: TableColumn<FieldOfficerActivityEventRead>[] = [
+    { key: "event", header: "Event", value: (event) => `${event.action} ${event.detail}`, render: (event) => <div><p className="font-medium">{event.action}</p><p className="text-xs text-muted-foreground">{event.detail}</p></div> },
+    { key: "device", header: "Device", value: (event) => event.device_id ?? "", render: (event) => event.device_id ?? "Not recorded" },
+    { key: "status", header: "Status", value: (event) => event.status, render: (event) => <Badge tone={statusTone(event.status)}>{event.status}</Badge> },
+    { key: "date", header: "Date", value: (event) => event.created_at, render: (event) => formatTime(event.created_at) },
+  ];
+
+  const permissionColumns: TableColumn<FieldOfficerPermissionRead>[] = [
+    { key: "permission", header: "Permission", value: (permission) => permission.label, render: (permission) => permission.label },
+    { key: "source", header: "Source", value: (permission) => permission.source, render: (permission) => permission.source },
+    { key: "status", header: "Status", value: (permission) => (permission.enabled ? "Allowed" : "Restricted"), render: (permission) => <Badge tone={permission.enabled ? "success" : "warning"}>{permission.enabled ? "Allowed" : "Restricted"}</Badge> },
+  ];
+
+  if (!detail) {
+    return (
+      <section className="rounded-xl border bg-panel p-4 shadow-line">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Field officer profile</h2>
+            <p className="text-sm text-muted-foreground">{loading ? "Loading profile..." : "Select a field officer to open their operational profile."}</p>
+          </div>
+          <Button onClick={onClose} variant="secondary">Close</Button>
+        </div>
+      </section>
+    );
+  }
+
+  const officer = detail.officer;
+  const performance = detail.performance;
+  const dataQuality = detail.data_quality;
+
+  return (
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+            {officer.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold">{officer.full_name}</h2>
+              <Badge tone={officer.is_active ? "success" : "danger"}>{detail.status}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {officer.employee_code ?? "No employee ID"} · {officer.email} · {officer.phone_number ?? "No phone"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {detail.organization_name ?? "Organization"} · {detail.team ?? "No team"} · Supervisor: {detail.supervisor ?? "Not assigned"}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={!canManage} onClick={onResetPassword} variant="secondary">
+            {resetPending ? "Generating..." : "Generate temporary password"}
+          </Button>
+          <Button onClick={onClose} variant="ghost">Close profile</Button>
+        </div>
+      </div>
+
+      {temporaryPassword ? (
+        <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3" aria-live="polite">
+          <p className="text-sm font-semibold">Temporary credential generated — show once</p>
+          <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-3 text-xs leading-6 font-mono">
+{`Email:    ${officer.email}
+Password: ${temporaryPassword}`}
+          </pre>
+          <p className="mt-2 text-xs text-muted-foreground">Share this directly with the officer. Stored passwords and hashes are never displayed.</p>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
+        {officerProfileTabs.map((item) => (
+          <button
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+              tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+            )}
+            key={item.id}
+            onClick={() => setTab(item.id)}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4">
+        {tab === "overview" ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+              {detail.metrics.map((metric) => (
+                <MetricCard
+                  key={metric.label}
+                  icon={<ShieldCheck aria-hidden="true" />}
+                  label={metric.label}
+                  onClick={metric.route ? () => onNavigate(metric.route ?? "") : undefined}
+                  tone={metric.tone ?? "neutral"}
+                  value={metric.label === "Last Sync" && metric.value !== "Never" ? formatTime(metric.value) : metric.value}
+                />
+              ))}
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <ProfileSignal label="Username" value={detail.security.username} />
+              <ProfileSignal label="Home Location" value={officer.home_region ?? "Unassigned"} />
+              <ProfileSignal label="Device" value={officer.device_id ?? "No device paired"} />
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "assignments" ? <DataTable columns={assignmentColumns} emptyLabel="No assignments for this officer." rows={detail.assignments} searchLabel="Search assignments" title="Assignments" /> : null}
+        {tab === "projects" ? <DataTable columns={assignmentColumns} emptyLabel="No project access assigned." rows={detail.projects} searchLabel="Search projects" title="Project access" /> : null}
+        {tab === "locations" ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {(detail.locations.length ? detail.locations : ["No assigned locations"]).map((location) => (
+              <ProfileSignal key={location} label="Assigned location" value={location} />
+            ))}
+          </div>
+        ) : null}
+        {tab === "forms" ? <DataTable columns={assignmentColumns} emptyLabel="No forms assigned." rows={detail.forms} searchLabel="Search forms" title="Available forms" /> : null}
+        {tab === "beneficiaries" ? (
+          <DataTable
+            columns={[
+              { key: "code", header: "Code", value: (row) => asText(row.beneficiary_code), render: (row) => <span className="font-mono text-xs">{asText(row.beneficiary_code)}</span> },
+              { key: "name", header: "Name", value: (row) => asText(row.name), render: (row) => asText(row.name) },
+              { key: "type", header: "Type", value: (row) => asText(row.type), render: (row) => asText(row.type) },
+              { key: "location", header: "Location", value: (row) => asText(row.location), render: (row) => asText(row.location) },
+              { key: "status", header: "Status", value: (row) => asText(row.status), render: (row) => <Badge tone={statusTone(asText(row.status))}>{asText(row.status)}</Badge> },
+            ]}
+            emptyLabel="No beneficiary records linked through this officer's submissions yet."
+            rows={detail.beneficiaries}
+            searchLabel="Search beneficiaries"
+            title="Assigned and linked beneficiaries"
+          />
+        ) : null}
+        {tab === "submissions" ? <DataTable columns={submissionColumns} emptyLabel="No submissions from this officer yet." rows={detail.submissions} searchLabel="Search submissions" title="Submissions" /> : null}
+        {tab === "performance" ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(performance).map(([key, value]) => (
+              <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={asText(value)} />
+            ))}
+          </div>
+        ) : null}
+        {tab === "data-quality" ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(dataQuality).map(([key, value]) => (
+              <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={typeof value === "object" ? JSON.stringify(value) : asText(value)} />
+            ))}
+          </div>
+        ) : null}
+        {tab === "devices" ? <DataTable columns={deviceColumns} emptyLabel="No registered devices for this officer." rows={detail.devices} searchLabel="Search devices" title="Mobile devices" /> : null}
+        {tab === "activity" ? <DataTable columns={activityColumns} emptyLabel="No activity recorded yet." rows={detail.activity} searchLabel="Search activity" title="Activity timeline" /> : null}
+        {tab === "permissions" ? <DataTable columns={permissionColumns} emptyLabel="No effective permissions available." rows={detail.permissions} searchLabel="Search permissions" title="Effective permissions" /> : null}
+        {tab === "security" ? (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <ProfileSignal label="Username" value={detail.security.username} />
+              <ProfileSignal label="Email" value={detail.security.email} />
+              <ProfileSignal label="Account Status" value={<Badge tone={statusTone(detail.security.account_status)}>{detail.security.account_status}</Badge>} />
+              <ProfileSignal label="Role" value={detail.security.role ?? "Not set"} />
+              <ProfileSignal label="Scope" value={detail.security.scope_type ?? "Not set"} />
+              <ProfileSignal label="Last Login" value={formatTime(detail.security.last_login_at)} />
+              <ProfileSignal label="Password Last Changed" value={formatTime(detail.security.password_last_changed_at)} />
+              <ProfileSignal label="Failed Login Attempts" value={detail.security.failed_login_attempts} />
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="text-sm font-semibold">Credential controls</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Administrators can generate a temporary password, force password changes, suspend accounts, and revoke sessions. Password hashes and stored passwords are never visible.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {detail.security.credential_actions.map((action) => (
+                  <Badge key={action} tone={action === "Generate temporary password" ? "success" : "neutral"}>{action}</Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {tab === "audit" ? <DataTable columns={activityColumns} emptyLabel="No audit events for this officer yet." rows={detail.audit_trail} searchLabel="Search audit trail" title="Audit trail" /> : null}
+      </div>
+    </section>
+  );
+}
+
 export function FieldOperationsModule({
   principal,
   token,
@@ -277,6 +589,8 @@ export function FieldOperationsModule({
     useState<FieldOfficerRead[]>(() => (preview ? previewOfficers : []));
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [lastInviteCredentials, setLastInviteCredentials] = useState<{ email: string; password: string; organizationCode: string } | null>(null);
+  const [selectedOfficerId, setSelectedOfficerId] = useState<string | null>(null);
+  const [profileTemporaryPassword, setProfileTemporaryPassword] = useState<string | null>(null);
   const [assignmentDraft, setAssignmentDraft] = useState(
     defaultAssignmentDraft,
   );
@@ -311,10 +625,19 @@ export function FieldOperationsModule({
       ),
     );
 
+  useEffect(() => {
+    setActiveSection(initialFieldOperationsSection());
+  }, []);
+
   const officersQuery = useQuery({
     queryKey: ["field-officers", token],
     queryFn: () => listFieldOfficers(token ?? ""),
     enabled,
+  });
+  const officerProfileQuery = useQuery({
+    queryKey: ["field-officer-profile", token, selectedOfficerId],
+    queryFn: () => getFieldOfficerProfile(token ?? "", selectedOfficerId ?? ""),
+    enabled: enabled && Boolean(selectedOfficerId),
   });
   const summaryQuery = useQuery({
     queryKey: ["operations", "summary", token],
@@ -340,6 +663,69 @@ export function FieldOperationsModule({
   }, [preview]);
 
   const officers = preview ? officerPreviewRows : (officersQuery.data ?? []);
+  const selectedPreviewOfficer = preview
+    ? officerPreviewRows.find((officer) => officer.id === selectedOfficerId)
+    : undefined;
+  const previewOfficerProfile = useMemo<FieldOfficerProfileDetailRead | undefined>(() => {
+    if (!selectedPreviewOfficer) return undefined;
+    return {
+      activity: [],
+      assignments: [],
+      audit_trail: [],
+      beneficiaries: [],
+      data_quality: { score: 100, issue_count: 0 },
+      devices: selectedPreviewOfficer.device_id
+        ? [{
+            app_version: "Preview",
+            device_id: selectedPreviewOfficer.device_id,
+            device_name: selectedPreviewOfficer.device_id,
+            last_seen_at: selectedPreviewOfficer.last_seen_at,
+            last_sync_at: selectedPreviewOfficer.last_sync_at,
+            os_version: null,
+            platform: "Android",
+            status: "Active",
+          }]
+        : [],
+      forms: [],
+      locations: selectedPreviewOfficer.home_region ? [selectedPreviewOfficer.home_region] : [],
+      metrics: [
+        { label: "Projects", value: "0", tone: "neutral" },
+        { label: "Assignments", value: "0", tone: "neutral" },
+        { label: "Beneficiaries", value: "0", tone: "neutral" },
+        { label: "Submissions", value: "0", tone: "neutral" },
+        { label: "Approval Rate", value: "0%", tone: "neutral" },
+        { label: "Data Quality", value: "100%", tone: "success" },
+        { label: "Last Sync", value: selectedPreviewOfficer.last_sync_at ?? "Never", tone: "neutral" },
+      ],
+      officer: selectedPreviewOfficer,
+      organization_name: principal?.organization_name ?? "Preview organization",
+      performance: { total_submissions: 0, approval_rate: 0, data_quality_score: 100 },
+      permissions: [
+        { enabled: true, key: "collect_data", label: "Can collect assigned data", source: "Preview role" },
+        { enabled: false, key: "export_data", label: "Can export own data", source: "Restricted by governance" },
+      ],
+      projects: [],
+      security: {
+        account_status: selectedPreviewOfficer.is_active ? "Active" : "Inactive",
+        credential_actions: ["Generate temporary password", "Reset password", "Suspend account"],
+        email: selectedPreviewOfficer.email,
+        failed_login_attempts: 0,
+        geography_id: null,
+        last_login_at: selectedPreviewOfficer.last_seen_at,
+        password_last_changed_at: null,
+        project_id: null,
+        role: "field_officer",
+        scope_type: "assigned",
+        temporary_password_issued: false,
+        username: selectedPreviewOfficer.email.split("@")[0],
+      },
+      status: selectedPreviewOfficer.is_active ? "Active" : "Inactive",
+      submissions: [],
+      supervisor: null,
+      team: selectedPreviewOfficer.home_region ?? "Preview field team",
+    };
+  }, [principal?.organization_name, selectedPreviewOfficer]);
+  const selectedOfficerProfile = preview ? previewOfficerProfile : officerProfileQuery.data;
   const availableProjects = useMemo(() => {
     const byId = new Map<string, (typeof localProjects)[number]>();
     for (const project of (preview ? localProjects : (projectsQuery.data ?? []))) {
@@ -496,6 +882,25 @@ export function FieldOperationsModule({
       pushToast({
         title: "Officer import failed",
         description: "Use CSV with email and full_name columns.",
+        tone: "danger",
+      }),
+  });
+
+  const resetProfilePasswordMutation = useMutation({
+    mutationFn: (userId: string) => resetUserPassword(token ?? "", userId),
+    onSuccess: async (response) => {
+      setProfileTemporaryPassword(response.temporary_password);
+      await officerProfileQuery.refetch();
+      pushToast({
+        title: "Temporary password generated",
+        description: "Share it directly with the field officer. It is shown once.",
+        tone: "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Password reset failed",
+        description: "Check your permission and try again.",
         tone: "danger",
       }),
   });
@@ -673,6 +1078,23 @@ export function FieldOperationsModule({
         <Badge tone={officer.is_active ? "success" : "danger"}>
           {officer.is_active ? "Active" : "Inactive"}
         </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      value: (officer) => officer.id,
+      render: (officer) => (
+        <Button
+          onClick={() => {
+            setSelectedOfficerId(officer.id);
+            setProfileTemporaryPassword(null);
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          View profile
+        </Button>
       ),
     },
   ];
@@ -1262,6 +1684,35 @@ export function FieldOperationsModule({
 
       {activeSection === "field-officers" ? (
         <div className="space-y-4">
+          {selectedOfficerId ? (
+            <OfficerProfileWorkspace
+              canManage={canManageFieldOperations}
+              detail={selectedOfficerProfile}
+              loading={officerProfileQuery.isFetching}
+              onClose={() => {
+                setSelectedOfficerId(null);
+                setProfileTemporaryPassword(null);
+              }}
+              onNavigate={(route) => router.push(route)}
+              onResetPassword={() => {
+                if (preview && selectedPreviewOfficer) {
+                  const password = generateTemporaryPassword();
+                  setProfileTemporaryPassword(password);
+                  pushToast({
+                    title: "Temporary password generated",
+                    description: "Preview credential generated locally.",
+                    tone: "success",
+                  });
+                  return;
+                }
+                if (selectedOfficerProfile?.officer.user_id) {
+                  resetProfilePasswordMutation.mutate(selectedOfficerProfile.officer.user_id);
+                }
+              }}
+              resetPending={resetProfilePasswordMutation.isPending}
+              temporaryPassword={profileTemporaryPassword}
+            />
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!canManageFieldOperations}

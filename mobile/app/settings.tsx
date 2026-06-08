@@ -15,6 +15,12 @@ export default function SettingsScreen() {
 
   const user = session?.bootstrap?.user;
   const org = session?.bootstrap?.organization;
+  const officer = session?.bootstrap?.fieldOfficerProfile;
+  const supervisor = session?.bootstrap?.supervisor;
+  const permissionSet = session?.bootstrap?.permissionSet;
+  const mobileRules = session?.bootstrap?.mobileRules;
+  const device = session?.bootstrap?.device;
+  const assignedCounts = session?.bootstrap?.assignedCounts;
 
   const deviceStats = useMemo(() => ({
     assignments: localDatabase.assignments.list().length,
@@ -74,35 +80,42 @@ export default function SettingsScreen() {
 
         {/* Account */}
         <Section title="Account">
-          <Row label="Name" value={user?.fullName ?? user?.email ?? "—"} />
+          <Row label="Name" value={officer?.fullName ?? user?.fullName ?? user?.email ?? "—"} />
+          <Row label="Username" value={officer?.username ?? user?.email?.split("@")[0] ?? "—"} />
           <Row label="Email" value={user?.email ?? "—"} />
           <Row label="Organization" value={org?.name ?? org?.slug ?? "—"} />
-          <Row label="Role" value={user?.role ?? "Field officer"} />
+          <Row label="Employee ID" value={officer?.employeeCode ?? "—"} />
+          <Row label="Role" value={user?.roles?.join(", ") || "Field officer"} />
+          <Row label="Status" value={officer?.status ?? session?.bootstrap?.blockedState.accountStatus ?? "—"} />
+          <Row label="Supervisor" value={supervisor?.fullName ?? officer?.supervisorName ?? "Not assigned"} />
         </Section>
 
         {/* Device data */}
         <Section title="Data on this device">
-          <Row label="Assignments" value={String(deviceStats.assignments)} />
-          <Row label="Forms" value={String(deviceStats.forms)} />
-          <Row label="Beneficiaries" value={String(deviceStats.entities)} />
+          <Row label="Assigned projects" value={String(assignedCounts?.projects ?? deviceStats.assignments)} />
+          <Row label="Assignments" value={String(assignedCounts?.assignments ?? deviceStats.assignments)} />
+          <Row label="Forms" value={String(assignedCounts?.forms ?? deviceStats.forms)} />
+          <Row label="Beneficiaries" value={String(assignedCounts?.beneficiaries ?? deviceStats.entities)} />
           <Row label="Active drafts" value={String(deviceStats.drafts)} />
           <Row label="Sync logs" value={String(deviceStats.syncLogs)} />
         </Section>
 
+        <Section title="Permissions">
+          <Row label="Collect data" value={permissionSet?.canCollectData ? "Allowed" : "Blocked"} />
+          <Row label="Work offline" value={permissionSet?.canWorkOffline ? "Allowed" : "Blocked"} />
+          <Row label="Use GPS" value={permissionSet?.canUseGps ? "Allowed" : "Blocked"} />
+          <Row label="Upload media" value={permissionSet?.canUploadMedia ? "Allowed" : "Blocked"} />
+          <Row label="Correct returned submissions" value={permissionSet?.canCorrectReturnedSubmissions ? "Allowed" : "Blocked"} />
+        </Section>
+
         {/* Sync policy info */}
         <Section title="Sync behaviour">
-          <View style={{ padding: 14, gap: 6 }}>
-            <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Automatic sync</Text>
-            <Text style={{ color: "#49635a", fontSize: 13 }}>
-              The app syncs queued submissions automatically when it returns to the foreground with an internet connection.
-            </Text>
-          </View>
-          <View style={{ padding: 14, gap: 6, borderTopColor: "#f0f5f3", borderTopWidth: 1 }}>
-            <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Offline mode</Text>
-            <Text style={{ color: "#49635a", fontSize: 13 }}>
-              All assigned work and collected records are available offline. Sync is not required to collect data.
-            </Text>
-          </View>
+          <Row label="Offline collection" value={mobileRules?.offlineCollectionAllowed ? "Allowed" : "Blocked"} />
+          <Row label="Sync required first" value={mobileRules?.syncRequired ? "Yes" : "No"} />
+          <Row label="Max offline days" value={String(mobileRules?.maxOfflineDays ?? 7)} />
+          <Row label="GPS required" value={mobileRules?.gpsRequired ? "Yes" : "No"} />
+          <Row label="Photo required" value={mobileRules?.photoRequired ? "Yes" : "No"} />
+          <Row label="Minimum app version" value={mobileRules?.minimumAppVersion ?? "—"} />
         </Section>
 
         {/* Storage actions */}
@@ -128,6 +141,9 @@ export default function SettingsScreen() {
           <Row label="Version" value={appVersion} />
           <Row label="Environment" value={buildEnv} />
           <Row label="Platform" value="Android" />
+          <Row label="Device ID" value={device?.deviceId ?? session?.bootstrap?.lastSync.deviceId ?? "Pending registration"} />
+          <Row label="Device status" value={device?.status ?? session?.bootstrap?.blockedState.deviceStatus ?? "—"} />
+          <Row label="Last sync" value={device?.lastSyncAt ?? session?.bootstrap?.lastSync.lastSyncedAt ?? "Never"} />
         </Section>
 
         {/* Log out */}

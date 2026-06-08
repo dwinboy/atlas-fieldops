@@ -15,13 +15,22 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import DeviceMetadata, LocationCapture, SubmissionCreate
 from app.schemas.mobile import (
     MobileAssignmentRead,
+    MobileAssignedCountsRead,
+    MobileBlockedStateRead,
     MobileBootstrapRead,
+    MobileDeviceRegistrationCreate,
+    MobileDeviceRegistrationRead,
+    MobileDeviceRecordRead,
     MobileEntityRead,
     MobileFormRead,
     MobileFormVersionRead,
     MobileLocationRead,
+    MobileOfflineRulesRead,
+    MobileOfficerProfileRead,
+    MobilePermissionSetRead,
     MobileProjectRead,
     MobileReferenceListRead,
+    MobileSupervisorProfileRead,
     MobileSubmissionUpload,
     MobileSubmissionUploadRead,
     MobileSyncPackageRead,
@@ -340,6 +349,28 @@ class MobileService:
         )
         return result.scalar_one_or_none()
 
+    async def register_device(
+        self,
+        principal: CurrentPrincipal,
+        payload: MobileDeviceRegistrationCreate,
+    ) -> MobileDeviceRegistrationRead:
+        organization_id = UUID(principal.organization_id)
+        user_id = UUID(principal.user_id)
+        now = datetime.now(UTC)
+        officer = await self._officer_profile(organization_id, user_id)
+        if officer is not None:
+            officer.device_id = payload.device_id
+            officer.last_seen_at = now
+            await self.session.flush()
+        return MobileDeviceRegistrationRead(
+            device_id=payload.device_id,
+            status="Active" if officer is None or officer.is_active else "Inactive",
+            registered_at=officer.created_at if officer is not None else now,
+            last_seen_at=now,
+            remote_logout_required=False,
+            remote_wipe_required=False,
+        )
+
     async def _assignments(self, organization_id: UUID, officer_id: UUID) -> list[OfficerAssignment]:
         result = await self.session.execute(
             select(OfficerAssignment).where(
@@ -501,7 +532,101 @@ class MobileService:
         )
         return {assignment_id: int(count) for assignment_id, count in result.all() if assignment_id is not None}
 
-    def _bootstrap(self, principal: CurrentPrincipal, projects: list[MobileProjectRead]) -> MobileBootstrapRead:
+    def _permission_set(self, principal: CurrentPrincipal) -> MobilePermissionSetRead:
+        permissions = set(principal.permissions)
+        can_sync = "sync.mobile" in permissions
+        can_submit = "submissions.create" in permissions
+        return MobilePermissionSetRead(
+            id=principal.user_id,
+            user_id=principal.user_id,
+            permissions=principal.permissions,
+            can_collect_data=can_submit,
+            can_work_offline=can_sync,
+            can_upload_media=can_sync,
+            can_use_gps=can_sync,
+            can_correct_returned_submissions=can_submit,
+        )
+
+    def _mobile_rules(self, principal: CurrentPrincipal) -> MobileOfflineRulesRead:
+        permissions = set(principal.permissions)
+        return MobileOfflineRulesRead(
+            id=f"mobile-rules:{principal.user_id}",
+            offline_collection_allowed="sync.mobile" in permissions,
+            sync_required=False,
+            max_offline_days=7,
+            gps_required=True,
+            photo_required=False,
+            minimum_app_version="1.0.0-test",
+            allowed_collection_hours={"start": None, "end": None},
+            maximum_submissions_per_day=None,
+            minimum_interview_duration_seconds=None,
+        )
+
+    def _officer_read(self, officer: FieldOfficerProfile | None, principal: CurrentPrincipal) -> MobileOfficerProfileRead | None:
+        if officer is None:
+            return None
+        return MobileOfficerProfileRead(
+            id=str(officer.id),
+            user_id=str(officer.user_id),
+            username=(principal.email or "").split("@")[0] or principal.email or str(officer.user_id),
+            email=principal.email,
+            full_name=principal.full_name,
+            employee_code=officer.employee_code,
+            phone=officer.phone_number,
+            team=officer.home_region,
+            supervisor_id=None,
+            supervisor_name=None,
+            status="Active" if officer.is_active else "Inactive",
+            last_sync_at=officer.last_sync_at,
+        )
+
+    def _device_read(self, officer: FieldOfficerProfile | None, principal: CurrentPrincipal) -> MobileDeviceRecordRead | None:
+        if officer is None or not officer.device_id:
+            return None
+        now = datetime.now(UTC)
+        return MobileDeviceRecordRead(
+            id=officer.device_id,
+            device_id=officer.device_id,
+            device_name="Atlas FieldOps Android",
+            platform="Android",
+            app_version="1.0.0-test",
+            os_version=None,
+            user_id=principal.user_id,
+            organization_id=principal.organization_id,
+            status="Active" if officer.is_active else "Inactive",
+            registered_at=officer.created_at,
+            last_seen_at=officer.last_seen_at or now,
+            last_sync_at=officer.last_sync_at,
+            last_login_at=officer.last_seen_at or now,
+            remote_logout_required=False,
+            remote_wipe_required=False,
+        )
+
+    def _blocked_state(self, officer: FieldOfficerProfile | None) -> MobileBlockedStateRead:
+        if officer is None:
+            return MobileBlockedStateRead(
+                blocked=True,
+                reason="This account is not configured as an assigned field officer. Contact your administrator.",
+                account_status="Unknown",
+                device_status="Unknown",
+            )
+        if not officer.is_active:
+            return MobileBlockedStateRead(
+                blocked=True,
+                reason="This field officer account is inactive or suspended. Contact your supervisor.",
+                account_status="Inactive",
+                device_status="Active",
+            )
+        return MobileBlockedStateRead(blocked=False, account_status="Active", device_status="Active")
+
+    def _bootstrap(
+        self,
+        principal: CurrentPrincipal,
+        projects: list[MobileProjectRead],
+        *,
+        officer: FieldOfficerProfile | None,
+        assigned_counts: MobileAssignedCountsRead | None = None,
+    ) -> MobileBootstrapRead:
         now = datetime.now(UTC)
         return MobileBootstrapRead(
             user={
@@ -519,9 +644,20 @@ class MobileService:
                 "timezone": "UTC",
                 "branding": {"logoUrl": None, "brandColor": None},
             },
+            field_officer_profile=self._officer_read(officer, principal),
+            supervisor=None,
+            permission_set=self._permission_set(principal),
+            mobile_rules=self._mobile_rules(principal),
+            device=self._device_read(officer, principal),
+            assigned_counts=assigned_counts or MobileAssignedCountsRead(projects=len(projects)),
+            blocked_state=self._blocked_state(officer),
             permissions=principal.permissions,
             assigned_projects=projects,
-            last_sync={"deviceId": None, "lastSyncedAt": None, "serverTime": now.isoformat()},
+            last_sync={
+                "deviceId": officer.device_id if officer is not None else None,
+                "lastSyncedAt": officer.last_sync_at.isoformat() if officer is not None and officer.last_sync_at else None,
+                "serverTime": now.isoformat(),
+            },
         )
 
     async def sync_package(self, principal: CurrentPrincipal) -> MobileSyncPackageRead:
@@ -529,7 +665,9 @@ class MobileService:
         user_id = UUID(principal.user_id)
         officer = await self._officer_profile(organization_id, user_id)
         if officer is None:
-            return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, []))
+            return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, [], officer=None))
+        officer.last_sync_at = datetime.now(UTC)
+        await self.session.flush()
 
         assignments = await self._assignments(organization_id, officer.id)
         controlled_forms = await self._forms_for_officer_access(organization_id, officer.id)
@@ -640,9 +778,18 @@ class MobileService:
             for entity in entities
         ]
         location_reads = self._locations_from_entities(organization_id, projects, entities)
+        assigned_counts = MobileAssignedCountsRead(
+            projects=len(project_reads),
+            assignments=len(assignment_reads),
+            forms=len(form_reads),
+            beneficiaries=len(entity_reads),
+            locations=len(location_reads),
+            returned_submissions=0,
+            pending_uploads=0,
+        )
 
         return MobileSyncPackageRead(
-            bootstrap=self._bootstrap(principal, project_reads),
+            bootstrap=self._bootstrap(principal, project_reads, officer=officer, assigned_counts=assigned_counts),
             assignments=assignment_reads,
             forms=form_reads,
             form_versions=version_reads,

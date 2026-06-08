@@ -1,9 +1,11 @@
 import { createMobileApis } from "@/api/mobileApis";
 import { MobileApiError } from "@/api/httpClient";
+import { mobileAppConfig } from "@/config/appConfig";
 import { AuditEventService } from "@/services/auditEventService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { DraftSubmissionService } from "@/submissions/draftSubmissionService";
 import { AttachmentSyncService } from "@/sync/attachmentSyncService";
+import { BootstrapSyncService } from "@/sync/bootstrapSyncService";
 import { ConflictService } from "@/sync/conflictService";
 import { NetworkStatusService } from "@/sync/networkStatus";
 import { SyncQueueService } from "@/sync/syncQueue";
@@ -61,10 +63,50 @@ export class SyncEngine {
     if (!token) {
       return this.finishLog(logLocalId, startedAt, mode, 0, 0, 0, "Sign in again before syncing submissions.");
     }
+    const syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token);
+    if (syncPackage.bootstrap.blockedState.blocked) {
+      const message = syncPackage.bootstrap.blockedState.reason ?? "This account or device is blocked for mobile sync.";
+      this.audit.queue("mobile.permission_denied", { reason: message });
+      return this.finishLog(logLocalId, startedAt, mode, 0, 0, 0, message, 1);
+    }
+    const device = syncPackage.bootstrap.device ?? this.database.deviceRecords.list()[0] ?? null;
+    if (device) {
+      try {
+        await this.apis.auth.registerDevice(token, {
+          deviceId: device.deviceId,
+          deviceName: device.deviceName,
+          platform: "Android",
+          appVersion: mobileAppConfig.appVersion,
+          osVersion: device.osVersion,
+          lastSeenAt: nowIso(),
+        });
+      } catch (error) {
+        this.audit.queue("mobile.sync_failed", { operation: "DEVICE_STATUS", message: friendlySyncError(error) });
+      }
+    }
     const pending = this.queue.pending();
     let synced = 0;
     let failed = 0;
     let conflicts = 0;
+    const queuedAuditEvents = this.database.auditEvents.list().filter((event) => event.syncStatus === "Queued");
+    if (queuedAuditEvents.length > 0) {
+      try {
+        await this.apis.audit.uploadAuditEvents(token, queuedAuditEvents);
+        const syncedAt = nowIso();
+        for (const event of queuedAuditEvents) {
+          this.database.auditEvents.upsert({
+            ...event,
+            syncStatus: "Synced",
+            lastSyncedAt: syncedAt,
+            updatedAt: syncedAt,
+          });
+        }
+        synced += queuedAuditEvents.length;
+      } catch (error) {
+        failed += queuedAuditEvents.length;
+        this.audit.queue("mobile.sync_failed", { operation: "UPLOAD_AUDIT_EVENTS", message: friendlySyncError(error) });
+      }
+    }
     const attachmentResult = await this.attachments.uploadQueued(token);
     synced += attachmentResult.uploaded;
     failed += attachmentResult.failed;

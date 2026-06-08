@@ -4,15 +4,17 @@ from datetime import UTC, datetime
 from io import StringIO
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.security import hash_password
+from app.models.audit import AuditLog
 from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
 from app.models.governance import DataVersion, LineageEvent
-from app.models.operations import Beneficiary, DataQualitySignal, VisitRecord
+from app.models.identity import Membership, Organization, Role, UserAccessGrant
+from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, SessionLog, VisitRecord
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
@@ -20,12 +22,20 @@ from app.schemas.collection import (
     DataFormCreate,
     DataFormSchemaRead,
     DataFormUpdate,
+    FieldOfficerActivityEventRead,
+    FieldOfficerAssignmentDetailRead,
+    FieldOfficerDeviceDetailRead,
+    FieldOfficerPermissionRead,
+    FieldOfficerProfileDetailRead,
     FormControlsSettings,
     FormCollectionCompatibility,
     FieldOfficerInvite,
     FieldOfficerImportIssue,
     FieldOfficerImportResponse,
     FieldOfficerRead,
+    FieldOfficerSecurityRead,
+    FieldOfficerSubmissionDetailRead,
+    FieldOfficerSummaryMetric,
     OfficerAssignmentCreate,
     FormSchema,
     SubmissionRead,
@@ -464,6 +474,360 @@ class FieldOfficerService:
             )
             for profile, user in rows
         ]
+
+    @staticmethod
+    def _source_label(submission: Submission) -> str:
+        if submission.is_imported:
+            return "Imported"
+        if submission.source_system:
+            return submission.source_system
+        if submission.offline_created:
+            return "Mobile"
+        return "Web Entry"
+
+    @staticmethod
+    def _quality_score(*, issue_count: int, submission_count: int) -> int:
+        if submission_count <= 0:
+            return 100
+        return max(0, min(100, 100 - round((issue_count / submission_count) * 30)))
+
+    async def get_officer_profile(
+        self,
+        *,
+        organization_id: UUID,
+        profile_id: UUID,
+    ) -> FieldOfficerProfileDetailRead:
+        profile = await self.officers.get(organization_id=organization_id, profile_id=profile_id)
+        if profile is None:
+            raise CollectionNotFoundError("Field officer not found")
+
+        account = await self.identity.get_user_account(
+            organization_id=organization_id,
+            user_id=profile.user_id,
+        )
+        if account is None:
+            raise CollectionNotFoundError("Field officer user account not found")
+        user, membership, role, grant = account
+
+        organization_result = await self.session.execute(
+            select(Organization.name).where(Organization.id == organization_id)
+        )
+        organization_name = organization_result.scalar_one_or_none()
+
+        assignments_result = await self.session.execute(
+            select(OfficerAssignment, Project, DataForm)
+            .join(Project, Project.id == OfficerAssignment.project_id)
+            .outerjoin(DataForm, DataForm.id == OfficerAssignment.form_id)
+            .where(
+                OfficerAssignment.organization_id == organization_id,
+                OfficerAssignment.officer_id == profile.id,
+                OfficerAssignment.deleted_at.is_(None),
+                Project.deleted_at.is_(None),
+            )
+            .order_by(OfficerAssignment.updated_at.desc())
+        )
+        assignment_rows = assignments_result.all()
+        assignments = [
+            FieldOfficerAssignmentDetailRead(
+                id=assignment.id,
+                project_id=project.id,
+                project_name=project.name,
+                form_id=form.id if form else None,
+                form_name=form.name if form else None,
+                region=assignment.region or project.region or project.country,
+                target=0,
+                completed=0,
+                status="Assigned" if assignment.is_active else "Inactive",
+                is_active=assignment.is_active,
+                updated_at=assignment.updated_at,
+            )
+            for assignment, project, form in assignment_rows
+        ]
+
+        submission_result = await self.session.execute(
+            select(Submission, Project, DataForm)
+            .outerjoin(Project, Project.id == Submission.project_id)
+            .join(DataForm, DataForm.id == Submission.form_id)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.field_officer_id == profile.id,
+                Submission.deleted_at.is_(None),
+            )
+            .order_by(Submission.submitted_at.desc())
+            .limit(100)
+        )
+        submission_rows = submission_result.all()
+        submissions = [
+            FieldOfficerSubmissionDetailRead(
+                id=submission.id,
+                client_submission_id=submission.client_submission_id,
+                project_id=submission.project_id,
+                project_name=project.name if project else None,
+                form_id=submission.form_id,
+                form_name=form.name if form else None,
+                entity_id=submission.entity_id,
+                status=submission.status,
+                source=self._source_label(submission),
+                submitted_at=submission.submitted_at,
+                sync_received_at=submission.sync_received_at,
+                quality_score=100,
+            )
+            for submission, project, form in submission_rows
+        ]
+
+        submission_ids = [submission.id for submission, _project, _form in submission_rows]
+        quality_counts: dict[str, int] = {}
+        quality_issue_count = 0
+        if submission_ids:
+            quality_result = await self.session.execute(
+                select(DataQualitySignal.signal_type, func.count(DataQualitySignal.id))
+                .where(
+                    DataQualitySignal.organization_id == organization_id,
+                    DataQualitySignal.submission_id.in_(submission_ids),
+                )
+                .group_by(DataQualitySignal.signal_type)
+            )
+            quality_counts = {str(signal_type): int(count) for signal_type, count in quality_result.all()}
+            quality_issue_count = sum(quality_counts.values())
+
+        beneficiary_result = await self.session.execute(
+            select(Beneficiary)
+            .join(Submission, Submission.entity_id == Beneficiary.id)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.field_officer_id == profile.id,
+                Submission.deleted_at.is_(None),
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+            .order_by(Beneficiary.updated_at.desc())
+            .limit(50)
+        )
+        beneficiaries = [
+            {
+                "id": str(beneficiary.id),
+                "beneficiary_code": beneficiary.beneficiary_uid,
+                "name": beneficiary.display_name,
+                "type": beneficiary.beneficiary_type,
+                "project_id": str(beneficiary.project_id) if beneficiary.project_id else None,
+                "location": " / ".join(
+                    part for part in [beneficiary.region, beneficiary.district, beneficiary.community] if part
+                ),
+                "status": beneficiary.enrollment_status,
+                "last_activity": beneficiary.last_visit_at.isoformat() if beneficiary.last_visit_at else None,
+            }
+            for beneficiary in beneficiary_result.scalars()
+        ]
+
+        device_result = await self.session.execute(
+            select(DeviceRegistry)
+            .where(
+                DeviceRegistry.organization_id == organization_id,
+                DeviceRegistry.deleted_at.is_(None),
+                (
+                    (DeviceRegistry.user_id == profile.user_id)
+                    | (DeviceRegistry.device_id == profile.device_id)
+                ),
+            )
+            .order_by(DeviceRegistry.last_seen_at.desc().nullslast(), DeviceRegistry.updated_at.desc())
+            .limit(20)
+        )
+        devices = [
+            FieldOfficerDeviceDetailRead(
+                device_id=device.device_id,
+                device_name=device.label or device.device_id,
+                platform=str(device.metadata_json.get("platform") or device.device_type or "mobile"),
+                app_version=str(device.metadata_json.get("app_version") or "") or None,
+                os_version=str(device.metadata_json.get("os_version") or "") or None,
+                status=device.status,
+                last_seen_at=device.last_seen_at,
+                last_sync_at=profile.last_sync_at if device.device_id == profile.device_id else None,
+            )
+            for device in device_result.scalars()
+        ]
+        if profile.device_id and all(device.device_id != profile.device_id for device in devices):
+            devices.insert(
+                0,
+                FieldOfficerDeviceDetailRead(
+                    device_id=profile.device_id,
+                    device_name=profile.device_id,
+                    platform="mobile",
+                    status="active" if profile.is_active else "inactive",
+                    last_seen_at=profile.last_seen_at,
+                    last_sync_at=profile.last_sync_at,
+                ),
+            )
+
+        session_result = await self.session.execute(
+            select(SessionLog)
+            .where(
+                SessionLog.organization_id == organization_id,
+                SessionLog.user_id == profile.user_id,
+            )
+            .order_by(SessionLog.created_at.desc())
+            .limit(20)
+        )
+        sessions = list(session_result.scalars())
+
+        audit_result = await self.session.execute(
+            select(AuditLog)
+            .where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_id.in_([str(profile.id), str(profile.user_id)]),
+            )
+            .order_by(AuditLog.created_at.desc())
+            .limit(30)
+        )
+        audit_logs = list(audit_result.scalars())
+        audit_events = [
+            FieldOfficerActivityEventRead(
+                id=str(log.id),
+                action=log.action,
+                detail=log.metadata_json,
+                created_at=log.created_at,
+                status="Audited",
+            )
+            for log in audit_logs
+        ]
+
+        activity_events: list[FieldOfficerActivityEventRead] = [
+            FieldOfficerActivityEventRead(
+                id=f"session-{session.id}",
+                action="Login session",
+                detail=f"{session.status} session from {session.location_hint or 'unknown location'}",
+                device_id=session.device_id,
+                created_at=session.created_at,
+                status=session.status,
+            )
+            for session in sessions
+        ]
+        activity_events.extend(
+            FieldOfficerActivityEventRead(
+                id=f"submission-{submission.id}",
+                action="Submission synced",
+                detail=f"{submission.client_submission_id} · {form.name if form else 'Form'}",
+                device_id=submission.device_id,
+                project_id=submission.project_id,
+                created_at=submission.sync_received_at,
+                status=submission.status,
+            )
+            for submission, _project, form in submission_rows[:20]
+        )
+        activity_events.extend(audit_events[:10])
+        activity_events.sort(key=lambda event: event.created_at, reverse=True)
+
+        total_submissions = len(submissions)
+        approved_submissions = sum(1 for submission in submissions if submission.status == "approved")
+        rejected_submissions = sum(1 for submission in submissions if submission.status == "rejected")
+        returned_submissions = sum(
+            1 for submission in submissions if submission.status in {"correction_requested", "returned"}
+        )
+        quality_score = self._quality_score(issue_count=quality_issue_count, submission_count=total_submissions)
+        approval_rate = round((approved_submissions / total_submissions) * 100) if total_submissions else 0
+
+        assigned_projects = {assignment.project_id for assignment in assignments if assignment.is_active}
+        assigned_forms = {assignment.form_id for assignment in assignments if assignment.form_id and assignment.is_active}
+        assigned_locations = sorted(
+            {
+                location
+                for location in [assignment.region for assignment in assignments]
+                if location
+            }
+        )
+
+        officer_read = FieldOfficerRead(
+            id=profile.id,
+            user_id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            phone_number=profile.phone_number,
+            employee_code=profile.employee_code,
+            home_region=profile.home_region,
+            last_sync_at=profile.last_sync_at,
+            last_seen_at=profile.last_seen_at,
+            last_latitude=profile.last_latitude,
+            last_longitude=profile.last_longitude,
+            device_id=profile.device_id,
+            is_active=profile.is_active and user.is_active and membership.is_active,
+        )
+
+        security = FieldOfficerSecurityRead(
+            username=user.email.split("@")[0],
+            email=user.email,
+            account_status="Active" if user.is_active and membership.is_active else "Inactive",
+            role=getattr(role, "name", None),
+            scope_type=getattr(grant, "scope_type", None) if grant else None,
+            project_id=getattr(grant, "project_id", None) if grant else None,
+            geography_id=getattr(grant, "geography_id", None) if grant else None,
+            temporary_password_issued=any(log.action in {"user.password_reset", "field_officer.invited"} for log in audit_logs),
+            password_last_changed_at=next((log.created_at for log in audit_logs if log.action == "user.password_reset"), None),
+            last_login_at=sessions[0].created_at if sessions else profile.last_seen_at,
+            failed_login_attempts=sum(1 for session in sessions if session.status == "failed"),
+            credential_actions=[
+                "Generate temporary password",
+                "Reset password",
+                "Force password change",
+                "Revoke sessions",
+                "Suspend account",
+            ],
+        )
+
+        permissions = [
+            FieldOfficerPermissionRead(key="collect_data", label="Can collect assigned data", enabled=True, source="Field Officer role"),
+            FieldOfficerPermissionRead(key="edit_drafts", label="Can edit own drafts", enabled=True, source="Form permissions"),
+            FieldOfficerPermissionRead(key="correct_returned", label="Can correct returned submissions", enabled=True, source="Workflow policy"),
+            FieldOfficerPermissionRead(key="view_beneficiaries", label="Can view assigned beneficiaries", enabled=True, source="Project access"),
+            FieldOfficerPermissionRead(key="upload_media", label="Can upload media", enabled=True, source="Mobile settings"),
+            FieldOfficerPermissionRead(key="export_data", label="Can export own data", enabled=False, source="Restricted by governance"),
+        ]
+
+        return FieldOfficerProfileDetailRead(
+            officer=officer_read,
+            organization_name=organization_name,
+            team=profile.home_region or "Unassigned field team",
+            supervisor=None,
+            status=security.account_status,
+            metrics=[
+                FieldOfficerSummaryMetric(label="Projects", value=str(len(assigned_projects)), tone="success", route="/projects"),
+                FieldOfficerSummaryMetric(label="Assignments", value=str(len(assignments)), tone="success", route="/field-operations/assignments"),
+                FieldOfficerSummaryMetric(label="Beneficiaries", value=str(len(beneficiaries)), tone="neutral", route="/beneficiaries"),
+                FieldOfficerSummaryMetric(label="Submissions", value=str(total_submissions), tone="success", route="/submissions"),
+                FieldOfficerSummaryMetric(label="Approval Rate", value=f"{approval_rate}%", tone="success" if approval_rate >= 80 else "warning", route="/submissions/approved"),
+                FieldOfficerSummaryMetric(label="Data Quality", value=f"{quality_score}%", tone="success" if quality_score >= 80 else "warning", route="/data-quality"),
+                FieldOfficerSummaryMetric(label="Last Sync", value=profile.last_sync_at.isoformat() if profile.last_sync_at else "Never", tone="neutral"),
+            ],
+            assignments=assignments,
+            projects=[assignment for assignment in assignments if assignment.is_active],
+            locations=assigned_locations,
+            forms=[assignment for assignment in assignments if assignment.form_id],
+            beneficiaries=beneficiaries,
+            submissions=submissions,
+            performance={
+                "total_submissions": total_submissions,
+                "approved_submissions": approved_submissions,
+                "rejected_submissions": rejected_submissions,
+                "returned_submissions": returned_submissions,
+                "approval_rate": approval_rate,
+                "rejection_rate": round((rejected_submissions / total_submissions) * 100) if total_submissions else 0,
+                "beneficiaries_covered": len(beneficiaries),
+                "assignments_completed": sum(1 for assignment in assignments if assignment.status == "Completed"),
+                "data_quality_score": quality_score,
+            },
+            data_quality={
+                "score": quality_score,
+                "issue_count": quality_issue_count,
+                "signals": quality_counts,
+                "duplicate_flags": quality_counts.get("duplicate", 0),
+                "gps_issues": quality_counts.get("gps", 0) + quality_counts.get("gps_boundary", 0),
+                "missing_data": quality_counts.get("missing", 0) + quality_counts.get("required", 0),
+                "returned_records": returned_submissions,
+            },
+            devices=devices,
+            activity=activity_events[:50],
+            permissions=permissions,
+            security=security,
+            audit_trail=audit_events,
+        )
 
     async def assign_officer(
         self,

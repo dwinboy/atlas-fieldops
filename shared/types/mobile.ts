@@ -14,7 +14,12 @@ export type MobileSyncStatus =
 
 export type MobileConflictStatus = "None" | "PendingReview" | "ServerWins" | "DeviceWins" | "Merged";
 
-export type MobileConflictType = "FormVersionChanged" | "EntityUpdated" | "AssignmentCancelled" | "SubmissionRejected";
+export type MobileConflictType =
+  | "FormVersionChanged"
+  | "EntityUpdated"
+  | "AssignmentCancelled"
+  | "SubmissionRejected"
+  | "AccountOrDeviceBlocked";
 
 export type MobileConflictRecord = LocalRecord & {
   id: string;
@@ -47,6 +52,72 @@ export type MobileUser = {
   fullName: string | null;
   roles: string[];
   permissions: string[];
+};
+
+export type MobileOfficerStatus = "Active" | "Inactive" | "Suspended" | "OnLeave";
+
+export type MobileOfficerProfile = LocalRecord & {
+  id: UUID;
+  userId: UUID;
+  username: string;
+  email: string | null;
+  fullName: string | null;
+  employeeCode: string | null;
+  phone: string | null;
+  team: string | null;
+  supervisorId: UUID | null;
+  supervisorName: string | null;
+  status: MobileOfficerStatus;
+  lastSyncAt: ISODateTime | null;
+};
+
+export type MobileSupervisorProfile = LocalRecord & {
+  id: UUID;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  team: string | null;
+};
+
+export type MobilePermissionSet = LocalRecord & {
+  id: UUID;
+  userId: UUID;
+  permissions: string[];
+  canCollectData: boolean;
+  canWorkOffline: boolean;
+  canUploadMedia: boolean;
+  canUseGps: boolean;
+  canCorrectReturnedSubmissions: boolean;
+};
+
+export type MobileOfflineRules = LocalRecord & {
+  id: string;
+  offlineCollectionAllowed: boolean;
+  syncRequired: boolean;
+  maxOfflineDays: number;
+  gpsRequired: boolean;
+  photoRequired: boolean;
+  minimumAppVersion: string;
+  allowedCollectionHours: { start: string | null; end: string | null };
+  maximumSubmissionsPerDay: number | null;
+  minimumInterviewDurationSeconds: number | null;
+};
+
+export type MobileAssignedCounts = {
+  projects: number;
+  assignments: number;
+  forms: number;
+  beneficiaries: number;
+  locations: number;
+  returnedSubmissions: number;
+  pendingUploads: number;
+};
+
+export type MobileBlockedState = {
+  blocked: boolean;
+  reason: string | null;
+  accountStatus: MobileOfficerStatus | "Unknown";
+  deviceStatus: MobileDeviceStatus | "Unknown";
 };
 
 export type MobileOrganization = {
@@ -424,6 +495,13 @@ export type MobileDeviceRegistration = {
 };
 
 export type MobileDeviceRecord = MobileDeviceRegistration & {
+  id: string;
+  localId: string;
+  serverId: string | null;
+  syncStatus: MobileSyncStatus;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+  lastSyncedAt: ISODateTime | null;
   userId: string;
   organizationId: string;
   status: MobileDeviceStatus;
@@ -432,6 +510,7 @@ export type MobileDeviceRecord = MobileDeviceRegistration & {
   lastLoginAt: ISODateTime | null;
   remoteLogoutRequired: boolean;
   remoteWipeRequired: boolean;
+  deviceIdForRecord?: string;
 };
 
 export type MobileCrashReport = {
@@ -533,6 +612,13 @@ export type DuplicateCheckResult = {
 export type MobileBootstrapPackage = {
   user: MobileUser;
   organization: MobileOrganization;
+  fieldOfficerProfile: MobileOfficerProfile | null;
+  supervisor: MobileSupervisorProfile | null;
+  permissionSet: MobilePermissionSet;
+  mobileRules: MobileOfflineRules;
+  device: MobileDeviceRecord | null;
+  assignedCounts: MobileAssignedCounts;
+  blockedState: MobileBlockedState;
   permissions: string[];
   assignedProjects: MobileProject[];
   lastSync: {

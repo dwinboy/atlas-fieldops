@@ -8,7 +8,14 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.collection import FieldOfficerImportResponse, FieldOfficerInvite, FieldOfficerRead, OfficerAssignmentCreate, OfficerAssignmentRead
+from app.schemas.collection import (
+    FieldOfficerImportResponse,
+    FieldOfficerInvite,
+    FieldOfficerProfileDetailRead,
+    FieldOfficerRead,
+    OfficerAssignmentCreate,
+    OfficerAssignmentRead,
+)
 from app.services.collection import CollectionNotFoundError, FieldOfficerService
 
 router = APIRouter()
@@ -20,6 +27,25 @@ async def list_field_officers(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[FieldOfficerRead]:
     return await FieldOfficerService(session).list_officers(UUID(principal.organization_id))
+
+
+@router.get(
+    "/{field_officer_id}",
+    response_model=FieldOfficerProfileDetailRead,
+    summary="Get a field officer operational profile",
+)
+async def get_field_officer_profile(
+    field_officer_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldOfficerProfileDetailRead:
+    try:
+        return await FieldOfficerService(session).get_officer_profile(
+            organization_id=UUID(principal.organization_id),
+            profile_id=field_officer_id,
+        )
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post(

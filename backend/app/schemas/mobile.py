@@ -24,6 +24,70 @@ class MobileUserRead(MobileSchema):
     permissions: list[str] = Field(default_factory=list)
 
 
+class MobileOfficerProfileRead(MobileSchema):
+    id: str
+    user_id: str
+    username: str
+    email: str | None = None
+    full_name: str | None = None
+    employee_code: str | None = None
+    phone: str | None = None
+    team: str | None = None
+    supervisor_id: str | None = None
+    supervisor_name: str | None = None
+    status: Literal["Active", "Inactive", "Suspended", "OnLeave"] = "Active"
+    last_sync_at: datetime | None = None
+
+
+class MobileSupervisorProfileRead(MobileSchema):
+    id: str
+    full_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    team: str | None = None
+
+
+class MobilePermissionSetRead(MobileSchema):
+    id: str
+    user_id: str
+    permissions: list[str] = Field(default_factory=list)
+    can_collect_data: bool = False
+    can_work_offline: bool = True
+    can_upload_media: bool = False
+    can_use_gps: bool = True
+    can_correct_returned_submissions: bool = False
+
+
+class MobileOfflineRulesRead(MobileSchema):
+    id: str = "mobile-rules"
+    offline_collection_allowed: bool = True
+    sync_required: bool = False
+    max_offline_days: int = 7
+    gps_required: bool = False
+    photo_required: bool = False
+    minimum_app_version: str = "1.0.0-test"
+    allowed_collection_hours: dict[str, str | None] = Field(default_factory=lambda: {"start": None, "end": None})
+    maximum_submissions_per_day: int | None = None
+    minimum_interview_duration_seconds: int | None = None
+
+
+class MobileAssignedCountsRead(MobileSchema):
+    projects: int = 0
+    assignments: int = 0
+    forms: int = 0
+    beneficiaries: int = 0
+    locations: int = 0
+    returned_submissions: int = 0
+    pending_uploads: int = 0
+
+
+class MobileBlockedStateRead(MobileSchema):
+    blocked: bool = False
+    reason: str | None = None
+    account_status: str = "Unknown"
+    device_status: str = "Unknown"
+
+
 class MobileOrganizationRead(MobileSchema):
     id: str
     name: str | None = None
@@ -193,9 +257,34 @@ class MobileAuditEventRead(MobileSchema):
     occurred_at: datetime
 
 
+class MobileDeviceRecordRead(MobileSchema):
+    id: str
+    device_id: str
+    device_name: str | None = None
+    platform: str = "Android"
+    app_version: str = "1.0.0-test"
+    os_version: str | None = None
+    user_id: str
+    organization_id: str
+    status: str = "Active"
+    registered_at: datetime
+    last_seen_at: datetime
+    last_sync_at: datetime | None = None
+    last_login_at: datetime | None = None
+    remote_logout_required: bool = False
+    remote_wipe_required: bool = False
+
+
 class MobileBootstrapRead(MobileSchema):
     user: MobileUserRead
     organization: MobileOrganizationRead
+    field_officer_profile: MobileOfficerProfileRead | None = None
+    supervisor: MobileSupervisorProfileRead | None = None
+    permission_set: MobilePermissionSetRead
+    mobile_rules: MobileOfflineRulesRead
+    device: MobileDeviceRecordRead | None = None
+    assigned_counts: MobileAssignedCountsRead = Field(default_factory=MobileAssignedCountsRead)
+    blocked_state: MobileBlockedStateRead = Field(default_factory=MobileBlockedStateRead)
     permissions: list[str] = Field(default_factory=list)
     assigned_projects: list[MobileProjectRead] = Field(default_factory=list)
     last_sync: dict[str, Any] = Field(default_factory=dict)

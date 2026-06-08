@@ -3,13 +3,18 @@ import type {
   MobileAuditEvent,
   MobileAttachment,
   MobileConflictRecord,
+  MobileDeviceRecord,
   MobileEntity,
   MobileForm,
   MobileFormVersion,
   MobileLocation,
   MobileNotification,
+  MobileOfflineRules,
+  MobileOfficerProfile,
+  MobilePermissionSet,
   MobileProject,
   MobileReferenceList,
+  MobileSupervisorProfile,
   MobileSubmission,
   MobileSyncLog,
   MobileSyncQueueItem,
@@ -21,13 +26,18 @@ type LocalCollectionMap = {
   attachments: MobileAttachment;
   auditEvents: MobileAuditEvent;
   conflicts: MobileConflictRecord;
+  deviceRecords: MobileDeviceRecord;
   entities: MobileEntity;
   forms: MobileForm;
   formVersions: MobileFormVersion;
   locations: MobileLocation;
+  mobileRules: MobileOfflineRules;
   notifications: MobileNotification;
+  officerProfiles: MobileOfficerProfile;
+  permissionSets: MobilePermissionSet;
   projects: MobileProject;
   referenceLists: MobileReferenceList;
+  supervisorProfiles: MobileSupervisorProfile;
   draftSubmissions: MobileSubmission;
   syncLogs: MobileSyncLog;
   syncQueue: MobileSyncQueueItem;
@@ -80,13 +90,18 @@ export class LocalDatabase {
   readonly attachments = new LocalRepository<LocalCollectionMap["attachments"]>();
   readonly auditEvents = new LocalRepository<LocalCollectionMap["auditEvents"]>();
   readonly conflicts = new LocalRepository<LocalCollectionMap["conflicts"]>();
+  readonly deviceRecords = new LocalRepository<LocalCollectionMap["deviceRecords"]>();
   readonly entities = new LocalRepository<LocalCollectionMap["entities"]>();
   readonly forms = new LocalRepository<LocalCollectionMap["forms"]>();
   readonly formVersions = new LocalRepository<LocalCollectionMap["formVersions"]>();
   readonly locations = new LocalRepository<LocalCollectionMap["locations"]>();
+  readonly mobileRules = new LocalRepository<LocalCollectionMap["mobileRules"]>();
   readonly notifications = new LocalRepository<LocalCollectionMap["notifications"]>();
+  readonly officerProfiles = new LocalRepository<LocalCollectionMap["officerProfiles"]>();
+  readonly permissionSets = new LocalRepository<LocalCollectionMap["permissionSets"]>();
   readonly projects = new LocalRepository<LocalCollectionMap["projects"]>();
   readonly referenceLists = new LocalRepository<LocalCollectionMap["referenceLists"]>();
+  readonly supervisorProfiles = new LocalRepository<LocalCollectionMap["supervisorProfiles"]>();
   readonly draftSubmissions = new LocalRepository<LocalCollectionMap["draftSubmissions"]>();
   readonly syncLogs = new LocalRepository<LocalCollectionMap["syncLogs"]>();
   readonly syncQueue = new LocalRepository<LocalCollectionMap["syncQueue"]>();
@@ -123,13 +138,18 @@ export class LocalDatabase {
       attachments: this.attachments.list(),
       auditEvents: this.auditEvents.list(),
       conflicts: this.conflicts.list(),
+      deviceRecords: this.deviceRecords.list(),
       entities: this.entities.list(),
       forms: this.forms.list(),
       formVersions: this.formVersions.list(),
       locations: this.locations.list(),
+      mobileRules: this.mobileRules.list(),
       notifications: this.notifications.list(),
+      officerProfiles: this.officerProfiles.list(),
+      permissionSets: this.permissionSets.list(),
       projects: this.projects.list(),
       referenceLists: this.referenceLists.list(),
+      supervisorProfiles: this.supervisorProfiles.list(),
       draftSubmissions: this.draftSubmissions.list(),
       syncLogs: this.syncLogs.list(),
       syncQueue: this.syncQueue.list(),
@@ -141,13 +161,18 @@ export class LocalDatabase {
     this.attachments.replaceAll(snapshot.attachments ?? []);
     this.auditEvents.replaceAll(snapshot.auditEvents ?? []);
     this.conflicts.replaceAll(snapshot.conflicts ?? []);
+    this.deviceRecords.replaceAll(snapshot.deviceRecords ?? []);
     this.entities.replaceAll(snapshot.entities ?? []);
     this.forms.replaceAll(snapshot.forms ?? []);
     this.formVersions.replaceAll(snapshot.formVersions ?? []);
     this.locations.replaceAll(snapshot.locations ?? []);
+    this.mobileRules.replaceAll(snapshot.mobileRules ?? []);
     this.notifications.replaceAll(snapshot.notifications ?? []);
+    this.officerProfiles.replaceAll(snapshot.officerProfiles ?? []);
+    this.permissionSets.replaceAll(snapshot.permissionSets ?? []);
     this.projects.replaceAll(snapshot.projects ?? []);
     this.referenceLists.replaceAll(snapshot.referenceLists ?? []);
+    this.supervisorProfiles.replaceAll(snapshot.supervisorProfiles ?? []);
     this.draftSubmissions.replaceAll(snapshot.draftSubmissions ?? []);
     this.syncLogs.replaceAll(snapshot.syncLogs ?? []);
     this.syncQueue.replaceAll(snapshot.syncQueue ?? []);
@@ -161,11 +186,16 @@ export class LocalDatabase {
         "assignments",
         "attachments",
         "conflicts",
+        "deviceRecords",
         "entities",
         "forms",
         "formVersions",
         "locations",
+        "mobileRules",
         "referenceLists",
+        "officerProfiles",
+        "permissionSets",
+        "supervisorProfiles",
         "draftSubmissions",
         "syncLogs",
         "syncQueue",

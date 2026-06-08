@@ -63,12 +63,12 @@ export class ConflictService {
   detectAssignmentCancellation(assignmentId: string): MobileConflictRecord | null {
     const assignment = this.database.assignments.list().find((item) => item.id === assignmentId);
     const openDrafts = this.database.draftSubmissions.list().filter((draft) => draft.assignmentId === assignmentId && draft.status !== "Synced");
-    if (assignment?.status === "Cancelled" && openDrafts.length > 0) {
+    if ((assignment?.status === "Cancelled" || assignment?.status === "Paused") && openDrafts.length > 0) {
       return this.recordConflict({
         conflictType: "AssignmentCancelled",
         localEntityType: "Assignment",
         localEntityId: assignmentId,
-        summary: "This assignment was cancelled on the server. Existing drafts may continue, but new submissions are blocked.",
+        summary: "This assignment is no longer active on the server. Existing drafts are preserved, but new submissions are blocked.",
         localValue: { drafts: openDrafts.map((draft) => draft.localId) },
         serverValue: { assignmentStatus: assignment.status },
       });

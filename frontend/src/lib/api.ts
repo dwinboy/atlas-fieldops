@@ -840,6 +840,107 @@ export type FieldOfficerRead = {
   is_active: boolean;
 };
 
+export type FieldOfficerSummaryMetric = {
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "warning" | "danger";
+  route?: string | null;
+};
+
+export type FieldOfficerAssignmentDetailRead = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  form_id: string | null;
+  form_name: string | null;
+  region: string | null;
+  target: number;
+  completed: number;
+  status: string;
+  is_active: boolean;
+  updated_at: string;
+};
+
+export type FieldOfficerSubmissionDetailRead = {
+  id: string;
+  client_submission_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  form_id: string;
+  form_name: string | null;
+  entity_id: string | null;
+  status: string;
+  source: string;
+  submitted_at: string;
+  sync_received_at: string;
+  quality_score: number;
+};
+
+export type FieldOfficerDeviceDetailRead = {
+  device_id: string;
+  device_name: string;
+  platform: string;
+  app_version: string | null;
+  os_version: string | null;
+  status: string;
+  last_seen_at: string | null;
+  last_sync_at: string | null;
+};
+
+export type FieldOfficerActivityEventRead = {
+  id: string;
+  action: string;
+  detail: string;
+  device_id: string | null;
+  project_id: string | null;
+  created_at: string;
+  status: string;
+};
+
+export type FieldOfficerSecurityRead = {
+  username: string;
+  email: string;
+  account_status: string;
+  role: string | null;
+  scope_type: string | null;
+  project_id: string | null;
+  geography_id: string | null;
+  temporary_password_issued: boolean;
+  password_last_changed_at: string | null;
+  last_login_at: string | null;
+  failed_login_attempts: number;
+  credential_actions: string[];
+};
+
+export type FieldOfficerPermissionRead = {
+  key: string;
+  label: string;
+  enabled: boolean;
+  source: string;
+};
+
+export type FieldOfficerProfileDetailRead = {
+  officer: FieldOfficerRead;
+  organization_name: string | null;
+  team: string | null;
+  supervisor: string | null;
+  status: string;
+  metrics: FieldOfficerSummaryMetric[];
+  assignments: FieldOfficerAssignmentDetailRead[];
+  projects: FieldOfficerAssignmentDetailRead[];
+  locations: string[];
+  forms: FieldOfficerAssignmentDetailRead[];
+  beneficiaries: Record<string, unknown>[];
+  submissions: FieldOfficerSubmissionDetailRead[];
+  performance: Record<string, unknown>;
+  data_quality: Record<string, unknown>;
+  devices: FieldOfficerDeviceDetailRead[];
+  activity: FieldOfficerActivityEventRead[];
+  permissions: FieldOfficerPermissionRead[];
+  security: FieldOfficerSecurityRead;
+  audit_trail: FieldOfficerActivityEventRead[];
+};
+
 export type FieldOfficerAssignmentCreate = {
   officer_id: string;
   project_id: string;
@@ -2495,6 +2596,10 @@ export async function simulateAccess(token: string, payload: {
 
 export async function listFieldOfficers(token: string): Promise<FieldOfficerRead[]> {
   return request<FieldOfficerRead[]>("/field-officers", { token });
+}
+
+export async function getFieldOfficerProfile(token: string, fieldOfficerId: string): Promise<FieldOfficerProfileDetailRead> {
+  return request<FieldOfficerProfileDetailRead>(`/field-officers/${fieldOfficerId}`, { token });
 }
 
 export async function inviteFieldOfficer(token: string, payload: FieldOfficerInvite): Promise<FieldOfficerRead> {

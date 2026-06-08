@@ -1,10 +1,14 @@
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
 from app.core.permissions import default_scope_for_roles
 from app.core.permissions import normalize_permission
 from app.core.permissions import permissions_for_roles
-from app.core.security import create_access_token, verify_password
+from app.core.config import settings
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, verify_password
+from app.models.identity import Organization, Role, User, UserAccessGrant
 from app.repositories.users import UserRepository
 from app.schemas.auth import TokenResponse
 
@@ -38,6 +42,30 @@ class AuthService:
             grants = platform_grants
         if not organization.is_active:
             raise AuthenticationError("Inactive account")
+        return self._issue_token_response(user, organization, role, grants)
+
+    async def refresh(self, refresh_token: str) -> TokenResponse:
+        try:
+            payload = decode_refresh_token(refresh_token)
+            user_id = UUID(str(payload.get("sub")))
+            organization_id = UUID(str(payload.get("organization_id")))
+        except Exception as exc:
+            raise AuthenticationError("Invalid refresh token") from exc
+        identity = await self.users.find_for_token(user_id=user_id, organization_id=organization_id)
+        if identity is None:
+            raise AuthenticationError("Invalid refresh token")
+        user, organization, membership, role, grants = identity
+        if not user.is_active or not membership.is_active or not organization.is_active:
+            raise AuthenticationError("Inactive account")
+        return self._issue_token_response(user, organization, role, grants)
+
+    def _issue_token_response(
+        self,
+        user: User,
+        organization: Organization,
+        role: Role,
+        grants: list[UserAccessGrant],
+    ) -> TokenResponse:
         primary_grant = grants[0] if grants else None
         scope_type = primary_grant.scope_type if primary_grant is not None else default_scope_for_roles([role.name]).value
         is_platform_admin = canonical_role(role.name) == "super_admin"
@@ -64,4 +92,14 @@ class AuthService:
             project_ids=[grant.project_id for grant in grants if grant.project_id],
             organization_unit_ids=[str(grant.organization_unit_id) for grant in grants if grant.organization_unit_id],
         )
-        return TokenResponse(access_token=token)
+        refresh = create_refresh_token(
+            subject=str(user.id),
+            organization_id=str(organization.id),
+            email=user.email,
+            organization_slug=organization.slug,
+        )
+        return TokenResponse(
+            access_token=token,
+            refresh_token=refresh,
+            expires_in=settings.access_token_expire_minutes * 60,
+        )

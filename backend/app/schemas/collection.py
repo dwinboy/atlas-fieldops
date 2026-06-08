@@ -663,6 +663,107 @@ class FieldOfficerRead(BaseModel):
     is_active: bool
 
 
+class FieldOfficerSummaryMetric(BaseModel):
+    label: str
+    value: str
+    tone: str = "neutral"
+    route: str | None = None
+
+
+class FieldOfficerAssignmentDetailRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    project_name: str
+    form_id: UUID | None = None
+    form_name: str | None = None
+    region: str | None = None
+    target: int = 0
+    completed: int = 0
+    status: str = "Assigned"
+    is_active: bool = True
+    updated_at: datetime
+
+
+class FieldOfficerSubmissionDetailRead(BaseModel):
+    id: UUID
+    client_submission_id: str
+    project_id: UUID | None = None
+    project_name: str | None = None
+    form_id: UUID
+    form_name: str | None = None
+    entity_id: UUID | None = None
+    status: str
+    source: str
+    submitted_at: datetime
+    sync_received_at: datetime
+    quality_score: int
+
+
+class FieldOfficerDeviceDetailRead(BaseModel):
+    device_id: str
+    device_name: str
+    platform: str
+    app_version: str | None = None
+    os_version: str | None = None
+    status: str
+    last_seen_at: datetime | None = None
+    last_sync_at: datetime | None = None
+
+
+class FieldOfficerActivityEventRead(BaseModel):
+    id: str
+    action: str
+    detail: str
+    device_id: str | None = None
+    project_id: UUID | None = None
+    created_at: datetime
+    status: str = "Recorded"
+
+
+class FieldOfficerSecurityRead(BaseModel):
+    username: str
+    email: str
+    account_status: str
+    role: str | None = None
+    scope_type: str | None = None
+    project_id: str | None = None
+    geography_id: str | None = None
+    temporary_password_issued: bool = False
+    password_last_changed_at: datetime | None = None
+    last_login_at: datetime | None = None
+    failed_login_attempts: int = 0
+    credential_actions: list[str] = Field(default_factory=list)
+
+
+class FieldOfficerPermissionRead(BaseModel):
+    key: str
+    label: str
+    enabled: bool
+    source: str
+
+
+class FieldOfficerProfileDetailRead(BaseModel):
+    officer: FieldOfficerRead
+    organization_name: str | None = None
+    team: str | None = None
+    supervisor: str | None = None
+    status: str
+    metrics: list[FieldOfficerSummaryMetric] = Field(default_factory=list)
+    assignments: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    projects: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    forms: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    beneficiaries: list[dict[str, Any]] = Field(default_factory=list)
+    submissions: list[FieldOfficerSubmissionDetailRead] = Field(default_factory=list)
+    performance: dict[str, Any] = Field(default_factory=dict)
+    data_quality: dict[str, Any] = Field(default_factory=dict)
+    devices: list[FieldOfficerDeviceDetailRead] = Field(default_factory=list)
+    activity: list[FieldOfficerActivityEventRead] = Field(default_factory=list)
+    permissions: list[FieldOfficerPermissionRead] = Field(default_factory=list)
+    security: FieldOfficerSecurityRead
+    audit_trail: list[FieldOfficerActivityEventRead] = Field(default_factory=list)
+
+
 class OfficerAssignmentCreate(BaseModel):
     officer_id: UUID
     project_id: UUID

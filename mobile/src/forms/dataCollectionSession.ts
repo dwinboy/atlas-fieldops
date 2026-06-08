@@ -1,4 +1,5 @@
 import type { MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileSubmission } from "@/models/contracts";
+import { MobilePermissionService } from "@/permissions/mobilePermissionService";
 import { AuditEventService } from "@/services/auditEventService";
 import { PrefillService } from "@/services/prefillService";
 import { FormValidationIssue, FormValidationService } from "@/forms/formValidationService";
@@ -26,11 +27,13 @@ export class DataCollectionSessionService {
   private readonly queue: SyncQueueService;
   private readonly prefill = new PrefillService();
   private readonly validation = new FormValidationService();
+  private readonly permissions: MobilePermissionService;
   private readonly audit: AuditEventService;
 
   constructor(private readonly database: LocalDatabase) {
     this.drafts = new DraftSubmissionService(database);
     this.queue = new SyncQueueService(database);
+    this.permissions = new MobilePermissionService(database);
     this.audit = new AuditEventService(database);
   }
 
@@ -46,6 +49,15 @@ export class DataCollectionSessionService {
     const formVersion = this.database.formVersions.list().find((item) => item.id === assignment.formVersionId);
     if (!form || !formVersion) {
       throw new Error("The assigned form is not downloaded on this device. Sync and try again.");
+    }
+    const permission = this.permissions.canStartCollection(assignment, formVersion);
+    if (!permission.allowed) {
+      this.audit.queue("mobile.permission_denied", {
+        assignmentId: assignment.id,
+        formId: form.id,
+        reason: permission.message,
+      });
+      throw new Error(permission.message ?? "You are not allowed to collect data for this form.");
     }
     const entity = entityLocalId ? this.database.entities.get(entityLocalId) : null;
     if (formVersion.entitySettings.requiresExistingEntity && !entity) {
@@ -84,6 +96,18 @@ export class DataCollectionSessionService {
     const formVersion = this.database.formVersions.list().find((item) => item.id === draft.formVersionId);
     if (!formVersion) {
       throw new Error("The form version for this draft is no longer available. Sync and try again.");
+    }
+    const assignment = draft.assignmentId ? this.database.assignments.list().find((item) => item.id === draft.assignmentId) : null;
+    if (assignment) {
+      const permission = this.permissions.canStartCollection(assignment, formVersion);
+      if (!permission.allowed) {
+        this.audit.queue("mobile.permission_denied", {
+          draftLocalId,
+          assignmentId: assignment.id,
+          reason: permission.message,
+        });
+        throw new Error(permission.message ?? "This draft cannot be submitted under the current mobile rules.");
+      }
     }
     const issues = this.validation.validate(formVersion, draft);
     if (issues.some((issue) => issue.severity === "Error")) {
