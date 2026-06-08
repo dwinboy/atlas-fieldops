@@ -237,7 +237,13 @@ function messageFromError(error: unknown): string {
       if (typeof parsed.detail === "string") return parsed.detail;
       if (Array.isArray(parsed.detail))
         return parsed.detail
-          .map((item) => item?.msg ?? "Invalid field")
+          .map((item) => {
+            const location = Array.isArray(item?.loc)
+              ? item.loc.filter((part: unknown) => part !== "body").join(".")
+              : "";
+            const message = item?.msg ?? "Invalid field";
+            return location ? `${location}: ${message}` : message;
+          })
           .join(" ");
     } catch {
       return error.message;
@@ -246,16 +252,53 @@ function messageFromError(error: unknown): string {
   return "Check the project code, required fields, and your project permissions.";
 }
 
+function optionalText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const text = value.map((item) => String(item).trim()).filter(Boolean).join(", ");
+    return text || null;
+  }
+  if (typeof value === "object") return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function requiredText(value: unknown): string {
+  return optionalText(value) ?? "";
+}
+
+function sanitizeProjectSettings(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 function normalizeProjectPayload(draft: ProjectCreate): ProjectCreate {
   const generatedCode = draft.project_code || projectCodeFromName(draft.name);
   return {
-    ...draft,
-    name: draft.name.trim(),
+    category: optionalText(draft.category),
+    community: optionalText(draft.community),
+    country: optionalText(draft.country),
+    description: optionalText(draft.description),
+    district: optionalText(draft.district),
+    donor: optionalText(draft.donor),
+    end_date: optionalText(draft.end_date),
+    implementing_organization: optionalText(draft.implementing_organization),
+    name: requiredText(draft.name),
+    owner: optionalText(draft.owner),
+    program_type: optionalText(draft.program_type),
     project_code: generatedCode
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-|-$/g, ""),
+    region: optionalText(draft.region),
+    settings_json: sanitizeProjectSettings(draft.settings_json),
+    start_date: optionalText(draft.start_date),
+    status: optionalText(draft.status)?.toLowerCase() ?? "draft",
   };
 }
 

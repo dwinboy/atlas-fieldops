@@ -1,8 +1,50 @@
 from datetime import datetime
+import re
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
+
+
+OPTIONAL_TEXT_FIELDS = (
+    "description",
+    "program_type",
+    "category",
+    "donor",
+    "implementing_organization",
+    "country",
+    "region",
+    "district",
+    "community",
+    "owner",
+)
+
+
+def normalize_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, list):
+        text = ", ".join(str(item).strip() for item in value if str(item).strip())
+        return text or None
+    if isinstance(value, dict):
+        text = ", ".join(f"{key}: {item}" for key, item in value.items() if item not in (None, ""))
+        return text or None
+    text = str(value).strip()
+    return text or None
+
+
+def normalize_required_text(value: Any) -> str:
+    text = normalize_optional_text(value)
+    return text or ""
+
+
+def normalize_project_code_value(value: Any) -> str:
+    text = normalize_required_text(value).lower().replace("_", "-")
+    text = re.sub(r"[^a-z0-9-]+", "-", text)
+    return text.strip("-")
 
 
 class ProjectCreate(BaseModel):
@@ -23,10 +65,30 @@ class ProjectCreate(BaseModel):
     settings_json: dict[str, Any] = Field(default_factory=dict)
     status: str = Field(default="draft", pattern=r"^(draft|planning|approved|active|suspended|completed|closed|archived)$")
 
-    @field_validator("project_code")
+    @field_validator("project_code", mode="before")
     @classmethod
-    def normalize_project_code(cls, value: str) -> str:
-        return value.strip().lower().replace(" ", "-").replace("_", "-")
+    def normalize_project_code(cls, value: Any) -> str:
+        return normalize_project_code_value(value)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def coerce_name(cls, value: Any) -> str:
+        return normalize_required_text(value)
+
+    @field_validator(*OPTIONAL_TEXT_FIELDS, mode="before")
+    @classmethod
+    def coerce_optional_text(cls, value: Any) -> str | None:
+        return normalize_optional_text(value)
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def blank_dates_to_none(cls, value: Any) -> Any:
+        return None if value == "" else value
+
+    @field_validator("settings_json", mode="before")
+    @classmethod
+    def ensure_settings_dict(cls, value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
 
 
 class ProjectUpdate(BaseModel):
@@ -47,12 +109,35 @@ class ProjectUpdate(BaseModel):
     settings_json: dict[str, Any] | None = None
     status: str | None = Field(default=None, pattern=r"^(draft|planning|approved|active|suspended|completed|closed|archived)$")
 
-    @field_validator("project_code")
+    @field_validator("project_code", mode="before")
     @classmethod
-    def normalize_optional_project_code(cls, value: str | None) -> str | None:
+    def normalize_optional_project_code(cls, value: Any) -> str | None:
         if value is None:
             return value
-        return value.strip().lower().replace(" ", "-").replace("_", "-")
+        text = normalize_optional_text(value)
+        return normalize_project_code_value(text) if text else None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def coerce_optional_name(cls, value: Any) -> str | None:
+        return normalize_optional_text(value)
+
+    @field_validator(*OPTIONAL_TEXT_FIELDS, mode="before")
+    @classmethod
+    def coerce_optional_update_text(cls, value: Any) -> str | None:
+        return normalize_optional_text(value)
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def blank_update_dates_to_none(cls, value: Any) -> Any:
+        return None if value == "" else value
+
+    @field_validator("settings_json", mode="before")
+    @classmethod
+    def ensure_update_settings_dict(cls, value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        return value if isinstance(value, dict) else {}
 
 
 class ProjectSummaryRead(BaseModel):
