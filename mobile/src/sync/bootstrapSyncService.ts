@@ -15,6 +15,12 @@ export class BootstrapSyncService {
   async syncAssignedWork(token: string): Promise<MobileSyncPackage> {
     const syncPackage = await this.apis.sync.syncPackage(token);
     const bootstrap = syncPackage.bootstrap;
+    if (!bootstrap?.user?.id) {
+      throw new Error("Mobile setup is incomplete for this account. Ask your administrator to refresh the field officer profile and mobile access.");
+    }
+    if (!bootstrap.permissionSet?.id || !bootstrap.mobileRules?.id || !bootstrap.blockedState) {
+      throw new Error("Mobile permissions are not ready for this field officer. Ask your administrator to review mobile access settings.");
+    }
 
     if (bootstrap.fieldOfficerProfile) {
       this.database.officerProfiles.upsert(this.database.importServerRecord(bootstrap.fieldOfficerProfile));

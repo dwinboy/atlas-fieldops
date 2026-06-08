@@ -40,10 +40,12 @@ async def get_field_officer_profile(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FieldOfficerProfileDetailRead:
     try:
-        return await FieldOfficerService(session).get_officer_profile(
+        profile = await FieldOfficerService(session).get_officer_profile(
             organization_id=UUID(principal.organization_id),
             profile_id=field_officer_id,
         )
+        await session.commit()
+        return profile
     except CollectionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

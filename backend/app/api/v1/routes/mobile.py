@@ -47,7 +47,9 @@ async def mobile_bootstrap(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileBootstrapRead:
-    return (await MobileService(session).sync_package(principal)).bootstrap
+    package = await MobileService(session).sync_package(principal)
+    await session.commit()
+    return package.bootstrap
 
 
 @router.post("/devices/register", response_model=MobileDeviceRegistrationRead, summary="Register mobile device")
@@ -167,7 +169,9 @@ async def mobile_sync_package(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileSyncPackageRead:
-    return await MobileService(session).sync_package(principal)
+    package = await MobileService(session).sync_package(principal)
+    await session.commit()
+    return package
 
 
 @router.post("/sync", response_model=MobileSyncUploadRead, summary="Upload mobile sync queue")

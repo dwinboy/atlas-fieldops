@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_publisher
+from app.core.permissions import canonical_role
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
@@ -498,6 +499,24 @@ class FieldOfficerService:
         profile_id: UUID,
     ) -> FieldOfficerProfileDetailRead:
         profile = await self.officers.get(organization_id=organization_id, profile_id=profile_id)
+        if profile is None:
+            profile = await self.officers.get_for_user(organization_id=organization_id, user_id=profile_id)
+        if profile is None:
+            account = await self.identity.get_user_account(
+                organization_id=organization_id,
+                user_id=profile_id,
+            )
+            if account is not None:
+                user, _membership, role, _grant = account
+                if canonical_role(getattr(role, "name", "")) == "field_officer":
+                    profile = await self.officers.create_profile(
+                        organization_id=organization_id,
+                        user_id=user.id,
+                        employee_code=f"FO-{str(user.id)[:8].upper()}",
+                        phone_number=None,
+                        home_region=None,
+                    )
+                    await self.session.flush()
         if profile is None:
             raise CollectionNotFoundError("Field officer not found")
 

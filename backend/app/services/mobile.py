@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project
 from app.models.collection import Submission
@@ -344,10 +345,32 @@ class MobileService:
                 FieldOfficerProfile.organization_id == organization_id,
                 FieldOfficerProfile.user_id == user_id,
                 FieldOfficerProfile.deleted_at.is_(None),
-                FieldOfficerProfile.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none()
+
+    async def _ensure_officer_profile(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        principal: CurrentPrincipal,
+    ) -> FieldOfficerProfile | None:
+        officer = await self._officer_profile(organization_id, user_id)
+        if officer is not None:
+            return officer
+        if "field_officer" not in {canonical_role(role) for role in principal.roles}:
+            return None
+        officer = FieldOfficerProfile(
+            organization_id=organization_id,
+            user_id=user_id,
+            employee_code=f"FO-{str(user_id)[:8].upper()}",
+            phone_number=None,
+            home_region=None,
+            is_active=True,
+        )
+        self.session.add(officer)
+        await self.session.flush()
+        return officer
 
     async def register_device(
         self,
@@ -357,7 +380,7 @@ class MobileService:
         organization_id = UUID(principal.organization_id)
         user_id = UUID(principal.user_id)
         now = datetime.now(UTC)
-        officer = await self._officer_profile(organization_id, user_id)
+        officer = await self._ensure_officer_profile(organization_id, user_id, principal)
         if officer is not None:
             officer.device_id = payload.device_id
             officer.last_seen_at = now
@@ -663,7 +686,7 @@ class MobileService:
     async def sync_package(self, principal: CurrentPrincipal) -> MobileSyncPackageRead:
         organization_id = UUID(principal.organization_id)
         user_id = UUID(principal.user_id)
-        officer = await self._officer_profile(organization_id, user_id)
+        officer = await self._ensure_officer_profile(organization_id, user_id, principal)
         if officer is None:
             return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, [], officer=None))
         officer.last_sync_at = datetime.now(UTC)
