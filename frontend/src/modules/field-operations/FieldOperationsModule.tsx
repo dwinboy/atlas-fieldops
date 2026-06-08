@@ -605,6 +605,7 @@ export function FieldOperationsModule({
   const [workPlanDraft, setWorkPlanDraft] = useState(defaultWorkPlanDraft);
   const [targetDraft, setTargetDraft] = useState(defaultTargetDraft);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const officerProfileRef = useRef<HTMLDivElement | null>(null);
   const localAssignments = useWorkspaceStore((state) => state.localAssignments);
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localProjects = useWorkspaceStore((state) => state.localProjects);
@@ -726,6 +727,18 @@ export function FieldOperationsModule({
     };
   }, [principal?.organization_name, selectedPreviewOfficer]);
   const selectedOfficerProfile = preview ? previewOfficerProfile : officerProfileQuery.data;
+
+  const openOfficerProfile = (officerId: string) => {
+    setActiveSection("field-officers");
+    setSelectedOfficerId(officerId);
+    setProfileTemporaryPassword(null);
+    window.setTimeout(() => {
+      officerProfileRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  };
   const availableProjects = useMemo(() => {
     const byId = new Map<string, (typeof localProjects)[number]>();
     for (const project of (preview ? localProjects : (projectsQuery.data ?? []))) {
@@ -1086,10 +1099,7 @@ export function FieldOperationsModule({
       value: (officer) => officer.id,
       render: (officer) => (
         <Button
-          onClick={() => {
-            setSelectedOfficerId(officer.id);
-            setProfileTemporaryPassword(null);
-          }}
+          onClick={() => openOfficerProfile(officer.id)}
           size="sm"
           variant="secondary"
         >
@@ -1684,35 +1694,67 @@ export function FieldOperationsModule({
 
       {activeSection === "field-officers" ? (
         <div className="space-y-4">
-          {selectedOfficerId ? (
-            <OfficerProfileWorkspace
-              canManage={canManageFieldOperations}
-              detail={selectedOfficerProfile}
-              loading={officerProfileQuery.isFetching}
-              onClose={() => {
-                setSelectedOfficerId(null);
-                setProfileTemporaryPassword(null);
-              }}
-              onNavigate={(route) => router.push(route)}
-              onResetPassword={() => {
-                if (preview && selectedPreviewOfficer) {
-                  const password = generateTemporaryPassword();
-                  setProfileTemporaryPassword(password);
-                  pushToast({
-                    title: "Temporary password generated",
-                    description: "Preview credential generated locally.",
-                    tone: "success",
-                  });
-                  return;
-                }
-                if (selectedOfficerProfile?.officer.user_id) {
-                  resetProfilePasswordMutation.mutate(selectedOfficerProfile.officer.user_id);
-                }
-              }}
-              resetPending={resetProfilePasswordMutation.isPending}
-              temporaryPassword={profileTemporaryPassword}
-            />
-          ) : null}
+          <div ref={officerProfileRef}>
+            {selectedOfficerId ? (
+              officerProfileQuery.isError && !preview ? (
+                <section className="rounded-xl border border-danger/30 bg-danger/5 p-4 shadow-line">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold">Field officer profile could not open</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {officerProfileQuery.error instanceof Error
+                          ? officerProfileQuery.error.message
+                          : "The profile request failed. Refresh the roster and try again."}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => officerProfileQuery.refetch()} variant="secondary">
+                        <RefreshCw aria-hidden="true" />
+                        Retry
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setSelectedOfficerId(null);
+                          setProfileTemporaryPassword(null);
+                        }}
+                        variant="ghost"
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <OfficerProfileWorkspace
+                  canManage={canManageFieldOperations}
+                  detail={selectedOfficerProfile}
+                  loading={officerProfileQuery.isFetching}
+                  onClose={() => {
+                    setSelectedOfficerId(null);
+                    setProfileTemporaryPassword(null);
+                  }}
+                  onNavigate={(route) => router.push(route)}
+                  onResetPassword={() => {
+                    if (preview && selectedPreviewOfficer) {
+                      const password = generateTemporaryPassword();
+                      setProfileTemporaryPassword(password);
+                      pushToast({
+                        title: "Temporary password generated",
+                        description: "Preview credential generated locally.",
+                        tone: "success",
+                      });
+                      return;
+                    }
+                    if (selectedOfficerProfile?.officer.user_id) {
+                      resetProfilePasswordMutation.mutate(selectedOfficerProfile.officer.user_id);
+                    }
+                  }}
+                  resetPending={resetProfilePasswordMutation.isPending}
+                  temporaryPassword={profileTemporaryPassword}
+                />
+              )
+            ) : null}
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!canManageFieldOperations}
