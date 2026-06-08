@@ -1,4 +1,5 @@
 import csv
+import json
 import re
 from datetime import UTC, datetime
 from io import StringIO
@@ -651,19 +652,21 @@ class FieldOfficerService:
             .order_by(DeviceRegistry.last_seen_at.desc().nullslast(), DeviceRegistry.updated_at.desc())
             .limit(20)
         )
-        devices = [
-            FieldOfficerDeviceDetailRead(
-                device_id=device.device_id,
-                device_name=device.label or device.device_id,
-                platform=str(device.metadata_json.get("platform") or device.device_type or "mobile"),
-                app_version=str(device.metadata_json.get("app_version") or "") or None,
-                os_version=str(device.metadata_json.get("os_version") or "") or None,
-                status=device.status,
-                last_seen_at=device.last_seen_at,
-                last_sync_at=profile.last_sync_at if device.device_id == profile.device_id else None,
+        devices = []
+        for device in device_result.scalars():
+            metadata = device.metadata_json if isinstance(device.metadata_json, dict) else {}
+            devices.append(
+                FieldOfficerDeviceDetailRead(
+                    device_id=device.device_id,
+                    device_name=device.label or device.device_id,
+                    platform=str(metadata.get("platform") or device.device_type or "mobile"),
+                    app_version=str(metadata.get("app_version") or "") or None,
+                    os_version=str(metadata.get("os_version") or "") or None,
+                    status=device.status,
+                    last_seen_at=device.last_seen_at,
+                    last_sync_at=profile.last_sync_at if device.device_id == profile.device_id else None,
+                )
             )
-            for device in device_result.scalars()
-        ]
         if profile.device_id and all(device.device_id != profile.device_id for device in devices):
             devices.insert(
                 0,
@@ -702,7 +705,7 @@ class FieldOfficerService:
             FieldOfficerActivityEventRead(
                 id=str(log.id),
                 action=log.action,
-                detail=log.metadata_json,
+                detail=self._metadata_detail(log.metadata_json),
                 created_at=log.created_at,
                 status="Audited",
             )
@@ -907,6 +910,17 @@ class FieldOfficerService:
             },
         )
         return assignment
+
+    @staticmethod
+    def _metadata_detail(metadata: object) -> str:
+        if isinstance(metadata, str):
+            return metadata
+        if metadata is None:
+            return "{}"
+        try:
+            return json.dumps(metadata, sort_keys=True)
+        except TypeError:
+            return str(metadata)
 
 
 class FormService:
