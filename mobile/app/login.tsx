@@ -19,6 +19,22 @@ import { useAppContext } from "@/context/AppContext";
 
 const authService = new AuthService(new ExpoSecureSessionStore());
 
+function messageIsError(message: string) {
+  const normalized = message.toLowerCase();
+  return [
+    "failed",
+    "enter",
+    "invalid",
+    "blocked",
+    "denied",
+    "error",
+    "cannot",
+    "could not",
+    "expired",
+    "check credentials",
+  ].some((term) => normalized.includes(term));
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const { setSession } = useAppContext();
@@ -46,6 +62,8 @@ export default function LoginScreen() {
       setIsLoading(false);
     }
   }
+
+  const isErrorMessage = message ? messageIsError(message) : false;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }}>
@@ -136,15 +154,15 @@ export default function LoginScreen() {
 
           {message ? (
             <View style={{
-              backgroundColor: message.includes("failed") || message.includes("Enter") ? "#fff7ed" : "#f0fdf4",
-              borderColor: message.includes("failed") || message.includes("Enter") ? "#fed7aa" : "#bbf7d0",
+              backgroundColor: isErrorMessage ? "#fff7ed" : "#f0fdf4",
+              borderColor: isErrorMessage ? "#fed7aa" : "#bbf7d0",
               borderRadius: 12,
               borderWidth: 1,
               marginTop: 16,
               padding: 14,
             }}>
               <Text style={{
-                color: message.includes("failed") || message.includes("Enter") ? "#9a3412" : "#15803d",
+                color: isErrorMessage ? "#9a3412" : "#15803d",
                 fontSize: 14,
                 fontWeight: "600",
               }}>

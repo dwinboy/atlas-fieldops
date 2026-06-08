@@ -56,6 +56,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="forms"
+        options={{
+          title: "Forms",
+          tabBarIcon: ({ focused }) => <TabIcon symbol="📄" label="Forms" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="submissions"
         options={{
           title: "Submissions",
@@ -67,13 +74,6 @@ export default function TabsLayout() {
         options={{
           title: "Sync Center",
           tabBarIcon: ({ focused }) => <TabIcon symbol="🔄" label="Sync" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="forms"
-        options={{
-          title: "Forms",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="📄" label="Forms" focused={focused} />,
         }}
       />
     </Tabs>

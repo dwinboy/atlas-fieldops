@@ -54,9 +54,11 @@ export class DraftSubmissionService {
       throw new Error("Draft submission not found");
     }
     const responses = draft.responses.filter((item) => item.questionId !== response.questionId);
+    const capturedLocation = locationFromResponseValue(response.value);
     const updated = {
       ...draft,
       responses: [...responses, response],
+      location: capturedLocation ?? draft.location,
       syncStatus: "NotSynced" as const,
       updatedAt: nowIso(),
     };
@@ -114,4 +116,29 @@ export class DraftSubmissionService {
       updatedAt: nowIso(),
     });
   }
+}
+
+function locationFromResponseValue(value: unknown): MobileSubmission["location"] | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as {
+    latitude?: unknown;
+    longitude?: unknown;
+    altitude?: unknown;
+    accuracy?: unknown;
+    timestamp?: unknown;
+  };
+  const latitude = Number(candidate.latitude);
+  const longitude = Number(candidate.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  return {
+    latitude,
+    longitude,
+    altitude: candidate.altitude == null ? null : Number(candidate.altitude),
+    accuracy: candidate.accuracy == null ? null : Number(candidate.accuracy),
+    timestamp: typeof candidate.timestamp === "string" ? candidate.timestamp : nowIso(),
+  };
 }

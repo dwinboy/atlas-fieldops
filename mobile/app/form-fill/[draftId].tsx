@@ -113,7 +113,22 @@ export default function FormFillScreen() {
     try {
       const result = dataCollection.submitDraft(draftId);
       if (!result.queued) {
-        // Has validation errors — scroll to top so user sees them
+        const errors = result.issues.filter((issue) => issue.severity === "Error");
+        const firstIssue = errors[0] ?? result.issues[0];
+        if (firstIssue) {
+          const targetSectionIndex = sections.findIndex((section) =>
+            section.questions.some((question) => question.id === firstIssue.questionId),
+          );
+          if (targetSectionIndex >= 0) {
+            setSectionIndex(targetSectionIndex);
+          }
+        }
+        Alert.alert(
+          "Check required answers",
+          errors.length > 0
+            ? `${errors.length} question(s) need attention. I moved you to the first section with an issue.`
+            : "Review the highlighted questions before submitting.",
+        );
         return;
       }
       refresh();

@@ -4,11 +4,7 @@
 
 Generate an Android build connected to the production backend API:
 
-`https://backend-production-13c9.up.railway.app/api/v1`
-
-The public web application remains:
-
-`https://atlasfieldops.com`
+`https://atlasfieldops.com/api/v1`
 
 The APK is for direct phone testing. The AAB is for future Play Store release.
 
@@ -19,8 +15,8 @@ The APK is for direct phone testing. The AAB is for future Play Store release.
 - Android package: `com.atlasfieldops.mobile`
 - App name: Atlas FieldOps
 - Version name: `1.0.0-test`
-- Version code: `1`
-- Runtime production API URL: `https://backend-production-13c9.up.railway.app/api/v1`
+- Version code: `2`
+- Runtime production API URL: `https://atlasfieldops.com/api/v1`
 
 ## Environment Files
 
@@ -36,8 +32,8 @@ Production values:
 ```bash
 APP_ENV=production
 EXPO_PUBLIC_APP_ENV=production
-API_BASE_URL=https://backend-production-13c9.up.railway.app/api/v1
-EXPO_PUBLIC_API_BASE_URL=https://backend-production-13c9.up.railway.app/api/v1
+API_BASE_URL=https://atlasfieldops.com/api/v1
+EXPO_PUBLIC_API_BASE_URL=https://atlasfieldops.com/api/v1
 EXPO_PUBLIC_APP_VERSION=1.0.0-test
 ```
 

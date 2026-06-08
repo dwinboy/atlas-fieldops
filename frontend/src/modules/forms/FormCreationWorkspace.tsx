@@ -71,6 +71,14 @@ type CreationStage =
   | "review";
 type StartMethod = "blank" | "template" | "duplicate" | "import";
 type CollectionMethod = "web" | "mobile" | "web_mobile";
+type ControlStep =
+  | "essentials"
+  | "beneficiaries"
+  | "quality"
+  | "access"
+  | "evidence"
+  | "governance"
+  | "advanced";
 
 type PublishSuccessSummary = {
   deliveredOfficerCount: number;
@@ -93,6 +101,7 @@ type FormControlsDraft = {
   accessibilityMode: "standard" | "large_text" | "high_contrast";
   allowAnonymous: boolean;
   allowManualCoordinates: boolean;
+  approvalEscalationHours: number;
   assignmentMode: "assigned_only" | "project_team" | "open_link";
   assignedFieldOfficerIds: string[];
   auditTrail: boolean;
@@ -106,6 +115,7 @@ type FormControlsDraft = {
   coordinateMasking: boolean;
   dataQualityMode: "standard" | "strict" | "advisory";
   dataSourceType: "primary" | "secondary" | "administrative" | "imported" | "mixed";
+  dataRetentionPolicy: "project_life" | "donor_period" | "seven_years" | "custom";
   duplicateAction: "block" | "warn" | "review";
   duplicateFields: string[];
   duplicateGpsDetection: boolean;
@@ -114,9 +124,11 @@ type FormControlsDraft = {
   entityType: string;
   eventMode: "none" | "creates_event" | "selects_event" | "attendance";
   expectedUse: string;
+  exportApprovalMode: "not_required" | "manager_approval" | "data_manager_approval";
   exportRestricted: boolean;
   fileTypes: string;
   formObjective: string;
+  frequencyWindow: "none" | "day" | "week" | "month" | "season" | "reporting_period";
   geographicScope: string;
   gpsAccuracy: number;
   indicatorComponent: "none" | "numerator" | "denominator" | "disaggregation" | "evidence";
@@ -131,10 +143,13 @@ type FormControlsDraft = {
   mediaRequirement: "none" | "photo" | "signature" | "photo_signature" | "any_attachment";
   meReviewerName: string;
   minimumDurationMinutes: number;
+  mobilePackageMode: "standard" | "low_bandwidth" | "large_registry" | "media_heavy";
   offlineEnabled: boolean;
+  offlineMaxDays: number;
   offlineMediaCapture: boolean;
   lockApprovedRecords: boolean;
   permissionPreset: "standard" | "restricted" | "open";
+  piiHandling: "standard" | "mask_exports" | "encrypt_sensitive" | "restricted";
   parentForm: string;
   programObjective: string;
   profileMappings: {
@@ -149,6 +164,12 @@ type FormControlsDraft = {
   referenceDataRequired: boolean;
   relatedForms: string;
   requireConsent: boolean;
+  repeatGroupPolicy: "allowed" | "review_large" | "restricted";
+  respondentIdentification:
+    | "existing_beneficiary"
+    | "new_registration"
+    | "existing_or_new"
+    | "anonymous_allowed";
   resultArea: string;
   reviewApprover: "me_manager" | "data_manager" | "supervisor";
   reviewReturner: "supervisor" | "data_manager" | "me_manager";
@@ -158,11 +179,14 @@ type FormControlsDraft = {
   requiresGps: boolean;
   riskClassification: "low" | "medium" | "high" | "sensitive";
   samplingMethod: "none" | "random" | "stratified" | "cluster" | "purposive" | "systematic";
+  submissionEditPolicy: "before_review" | "returned_only" | "change_request";
   seasonEnd: string;
   seasonName: string;
   seasonStart: string;
   storeConsentVersion: boolean;
+  syncRequirement: "manual_allowed" | "daily_required" | "before_new_assignment";
   technicalReviewerName: string;
+  testingRequirement: "preview_only" | "test_submission" | "pilot_assignment";
   finalApproverName: string;
   approvalDate: string;
   approvalNotes: string;
@@ -453,6 +477,72 @@ const lifecycleSteps: {
   },
 ];
 
+const controlSteps: {
+  categories: string[];
+  decisions: string[];
+  helper: string;
+  id: ControlStep;
+  label: string;
+  mustDo: string;
+}[] = [
+  {
+    categories: ["Form purpose", "Form information", "Indicators", "Question validation"],
+    decisions: ["Why are we collecting this?", "Which result or indicator will use it?", "Is the form structure ready?"],
+    helper: "Purpose, indicators, dictionary, and lifecycle status.",
+    id: "essentials",
+    label: "1. Essentials",
+    mustDo: "Explain why this form exists and confirm the core M&E context.",
+  },
+  {
+    categories: ["Entity settings", "Beneficiary", "Submission rules", "Submission frequency"],
+    decisions: ["Who or what is this record about?", "Does it create or update a beneficiary?", "How often can it be submitted?"],
+    helper: "Entity rules, beneficiary search, and profile mappings.",
+    id: "beneficiaries",
+    label: "2. Beneficiaries",
+    mustDo: "Decide whether this form creates, updates, or requires a beneficiary.",
+  },
+  {
+    categories: ["Duplicate prevention", "Data quality", "Enumerator quality", "Duration", "Repeat groups"],
+    decisions: ["What should block collection?", "What should warn reviewers?", "How should suspicious entries be flagged?"],
+    helper: "Duplicate checks, validation behavior, and suspicious activity rules.",
+    id: "quality",
+    label: "3. Quality",
+    mustDo: "Choose how errors and duplicate risks are handled before review.",
+  },
+  {
+    categories: ["Permissions", "Workflow", "Assignment rules", "Review escalation"],
+    decisions: ["Who can collect this form?", "Who reviews and approves?", "When should slow reviews escalate?"],
+    helper: "Who can collect, review, approve, and see the form.",
+    id: "access",
+    label: "4. Access",
+    mustDo: "Select the field officers or project team who can use this form.",
+  },
+  {
+    categories: ["Reference data", "GPS", "Media", "Consent", "Offline readiness", "Mapping settings", "Mobile package"],
+    decisions: ["What evidence is required?", "Can it work offline?", "What must be downloaded to mobile?"],
+    helper: "GPS, consent, media, reference data, and mobile/offline readiness.",
+    id: "evidence",
+    label: "5. Evidence",
+    mustDo: "Set field evidence requirements and mobile readiness rules.",
+  },
+  {
+    categories: ["Governance", "Version information", "Privacy", "Retention", "Export governance", "Testing"],
+    decisions: ["How sensitive is the data?", "Can approved data be edited?", "What approval and export controls apply?"],
+    helper: "Risk, locking, audit trail, version notes, and reviewer sign-off.",
+    id: "governance",
+    label: "6. Governance",
+    mustDo: "Make approvals and published-version behavior safe and traceable.",
+  },
+  {
+    categories: ["Tracking", "Sampling", "Localization", "Trigger rules"],
+    decisions: ["Is this part of a form journey?", "Does it need sampling or waves?", "Should it trigger follow-up work?"],
+    helper: "Longitudinal tracking, sampling, translations, triggers, and automation.",
+    id: "advanced",
+    label: "7. Advanced",
+    mustDo: "Add optional study-management settings only when the program needs them.",
+  },
+];
+
 const startMethods: {
   description: string;
   id: StartMethod;
@@ -559,6 +649,7 @@ const defaultControlsDraft: FormControlsDraft = {
   accessibilityMode: "standard",
   allowAnonymous: false,
   allowManualCoordinates: false,
+  approvalEscalationHours: 48,
   assignmentMode: "assigned_only",
   assignedFieldOfficerIds: [],
   auditTrail: true,
@@ -572,6 +663,7 @@ const defaultControlsDraft: FormControlsDraft = {
   coordinateMasking: false,
   dataQualityMode: "standard",
   dataSourceType: "primary",
+  dataRetentionPolicy: "seven_years",
   duplicateAction: "review",
   duplicateFields: ["phone_number", "household_id", "full_name", "village"],
   duplicateGpsDetection: true,
@@ -580,9 +672,11 @@ const defaultControlsDraft: FormControlsDraft = {
   entityType: "Farmer",
   eventMode: "none",
   expectedUse: "Approved records feed beneficiary history, dashboards, indicators, and reports.",
+  exportApprovalMode: "manager_approval",
   exportRestricted: true,
   fileTypes: "jpg,png,pdf",
   formObjective: "Collect reliable field evidence for project decisions.",
+  frequencyWindow: "none",
   geographicScope: "",
   gpsAccuracy: 20,
   indicatorComponent: "none",
@@ -597,10 +691,13 @@ const defaultControlsDraft: FormControlsDraft = {
   mediaRequirement: "none",
   meReviewerName: "M&E Reviewer",
   minimumDurationMinutes: 5,
+  mobilePackageMode: "standard",
   offlineEnabled: true,
+  offlineMaxDays: 7,
   offlineMediaCapture: true,
   lockApprovedRecords: true,
   permissionPreset: "standard",
+  piiHandling: "mask_exports",
   parentForm: "",
   programObjective: "",
   profileMappings: {
@@ -615,6 +712,8 @@ const defaultControlsDraft: FormControlsDraft = {
   referenceDataRequired: true,
   relatedForms: "",
   requireConsent: true,
+  repeatGroupPolicy: "review_large",
+  respondentIdentification: "existing_or_new",
   resultArea: "",
   reviewComments: "",
   reviewApprover: "me_manager",
@@ -624,11 +723,14 @@ const defaultControlsDraft: FormControlsDraft = {
   requiresGps: true,
   riskClassification: "medium",
   samplingMethod: "none",
+  submissionEditPolicy: "change_request",
   seasonEnd: "",
   seasonName: "",
   seasonStart: "",
   storeConsentVersion: true,
+  syncRequirement: "daily_required",
   technicalReviewerName: "Technical Reviewer",
+  testingRequirement: "test_submission",
   finalApproverName: "M&E Manager",
   approvalDate: "",
   approvalNotes: "",
@@ -1280,6 +1382,30 @@ function controlsDraftToApiControls(
         fields: [],
         expression: `max_submissions_per_day <= ${controls.maximumSubmissionsPerDay}`,
       },
+      {
+        id: "repeat_group_volume",
+        label: "Repeat group volume review",
+        rule_type: "repeat_group",
+        enabled: controls.repeatGroupPolicy !== "allowed",
+        severity: controls.repeatGroupPolicy === "restricted" ? "high" : "medium",
+        blocking: controls.repeatGroupPolicy === "restricted",
+        fields: form.fields
+          .filter((field) => field.type === "repeat_group")
+          .map((field) => field.variableName ?? field.id),
+        expression: controls.repeatGroupPolicy,
+      },
+      {
+        id: "pii_protection",
+        label: "PII protection",
+        rule_type: "privacy",
+        enabled: controls.piiHandling !== "standard",
+        severity: controls.piiHandling === "restricted" ? "critical" : "high",
+        blocking: false,
+        fields: dataDictionary
+          .filter((entry) => entry.sensitivity === "PII")
+          .map((entry) => entry.variable_name),
+        expression: controls.piiHandling,
+      },
     ],
     governance: {
       form_status:
@@ -1288,16 +1414,25 @@ function controlsDraftToApiControls(
         controls.workflowPreset === "two_step_review" ? "standard" : "simple",
       required_review_levels:
         controls.workflowPreset === "two_step_review" ? 2 : 1,
-      submitted_records_editable: true,
+      submitted_records_editable: controls.submissionEditPolicy === "before_review",
       approved_records_editable: false,
-      rejected_records_resubmittable: true,
+      rejected_records_resubmittable: controls.submissionEditPolicy !== "change_request",
       duplicate_submissions_allowed: controls.submissionFrequency === "unlimited",
       duplicate_detection_fields: duplicateFields,
       require_gps_capture: controls.requiresGps,
       require_timestamp_capture: true,
       require_enumerator_assignment: controls.assignmentMode === "assigned_only",
       require_supervisor_review: true,
-      data_retention_days: controls.riskClassification === "sensitive" ? 3650 : 2555,
+      data_retention_days:
+        controls.dataRetentionPolicy === "seven_years"
+          ? 2555
+          : controls.dataRetentionPolicy === "donor_period"
+            ? 3650
+            : controls.dataRetentionPolicy === "project_life"
+              ? 1825
+              : controls.riskClassification === "sensitive"
+                ? 3650
+                : 2555,
       export_restricted: controls.exportRestricted,
       sensitive_field_masking:
         controls.riskClassification === "high" ||
@@ -1305,9 +1440,16 @@ function controlsDraftToApiControls(
       pii_tagging_required: controls.riskClassification !== "low",
       consent_required: controls.requireConsent,
       minimum_quality_score: controls.dataQualityMode === "strict" ? 90 : 75,
-      review_sla_hours: controls.workflowPreset === "two_step_review" ? 72 : 48,
+      review_sla_hours: controls.approvalEscalationHours,
       auto_lock_after_approval: controls.lockApprovedRecords,
       auto_archive_after_project_closure: true,
+      export_approval_required: controls.exportApprovalMode !== "not_required",
+      export_approval_role:
+        controls.exportApprovalMode === "data_manager_approval"
+          ? "data_manager"
+          : controls.exportApprovalMode === "manager_approval"
+            ? "me_manager"
+            : null,
     },
     audit: {
       immutable: controls.auditTrail,
@@ -1405,6 +1547,34 @@ function controlsDraftToApiControls(
         preserve_old_value: true,
         require_reason_for_change: true,
       },
+      respondent_identity: {
+        mode: controls.respondentIdentification,
+        beneficiary_search_required: controls.beneficiarySearch === "required",
+        allow_new_registration:
+          controls.respondentIdentification === "new_registration" ||
+          controls.respondentIdentification === "existing_or_new",
+        allow_anonymous: controls.allowAnonymous,
+      },
+      submission_policy: {
+        frequency_rule: controls.submissionFrequency,
+        frequency_window: controls.frequencyWindow,
+        edit_policy: controls.submissionEditPolicy,
+        approval_escalation_hours: controls.approvalEscalationHours,
+        returned_submission_editable:
+          controls.submissionEditPolicy === "returned_only" ||
+          controls.submissionEditPolicy === "change_request",
+      },
+      privacy: {
+        pii_handling: controls.piiHandling,
+        data_retention_policy: controls.dataRetentionPolicy,
+        export_approval_mode: controls.exportApprovalMode,
+        mask_exports:
+          controls.piiHandling === "mask_exports" ||
+          controls.piiHandling === "restricted",
+        encrypt_sensitive:
+          controls.piiHandling === "encrypt_sensitive" ||
+          controls.piiHandling === "restricted",
+      },
       attachment_governance: {
         requirement: controls.mediaRequirement,
         allowed_formats: controls.fileTypes
@@ -1428,6 +1598,11 @@ function controlsDraftToApiControls(
           controls.mediaRequirement === "photo" ||
           controls.mediaRequirement === "photo_signature",
         consent_compliance_required: controls.requireConsent,
+      },
+      repeat_group_policy: {
+        policy: controls.repeatGroupPolicy,
+        large_repeat_groups_need_review: controls.repeatGroupPolicy === "review_large",
+        restrict_nested_repeat_groups: controls.repeatGroupPolicy === "restricted",
       },
       event_settings: {
         mode: controls.eventMode,
@@ -1495,6 +1670,14 @@ function controlsDraftToApiControls(
         can_publish: controls.lifecycleStatus === "approved",
         review_comments: controls.reviewComments,
       },
+      testing: {
+        requirement: controls.testingRequirement,
+        preview_required: true,
+        test_submission_required:
+          controls.testingRequirement === "test_submission" ||
+          controls.testingRequirement === "pilot_assignment",
+        pilot_assignment_required: controls.testingRequirement === "pilot_assignment",
+      },
       certification: {
         technical_reviewer_required: true,
         me_reviewer_required: true,
@@ -1524,6 +1707,15 @@ function controlsDraftToApiControls(
           .filter(Boolean),
         default_language: "English",
         translation_status: controls.translationStatus,
+      },
+      mobile_package: {
+        mode: controls.mobilePackageMode,
+        offline_enabled: controls.offlineEnabled,
+        max_offline_days: controls.offlineMaxDays,
+        sync_requirement: controls.syncRequirement,
+        media_capture_offline: controls.offlineMediaCapture,
+        low_bandwidth_ready: controls.mobilePackageMode === "low_bandwidth",
+        large_registry_ready: controls.mobilePackageMode === "large_registry",
       },
       accessibility: {
         mode: controls.accessibilityMode,
@@ -1606,6 +1798,21 @@ function mediaRequirementFromControls(
     : "none";
 }
 
+function controlStepForReadinessCategory(category: string): ControlStep {
+  const normalizedCategory = category.toLowerCase();
+  return (
+    controlSteps.find((step) =>
+      step.categories.some((stepCategory) => {
+        const normalizedStepCategory = stepCategory.toLowerCase();
+        return (
+          normalizedCategory.includes(normalizedStepCategory) ||
+          normalizedStepCategory.includes(normalizedCategory)
+        );
+      }),
+    )?.id ?? "essentials"
+  );
+}
+
 function controlsDraftFromApiControls(
   apiControls: FormListItem["controls_json"] | null | undefined,
 ): FormControlsDraft {
@@ -1631,6 +1838,12 @@ function controlsDraftFromApiControls(
   const enumeratorQuality = asRecord(instrument.enumerator_quality);
   const eventSettings = asRecord(instrument.event_settings);
   const profileHistory = asRecord(instrument.profile_history_policy);
+  const respondentIdentity = asRecord(instrument.respondent_identity);
+  const submissionPolicy = asRecord(instrument.submission_policy);
+  const privacy = asRecord(instrument.privacy);
+  const mobilePackage = asRecord(instrument.mobile_package);
+  const testing = asRecord(instrument.testing);
+  const repeatGroups = asRecord(instrument.repeat_group_policy);
   const indicatorMappings = Array.isArray(instrument.indicator_mappings)
     ? instrument.indicator_mappings.map(asRecord)
     : [];
@@ -1676,6 +1889,13 @@ function controlsDraftFromApiControls(
       entity.allows_anonymous,
       defaultControlsDraft.allowAnonymous,
     ),
+    approvalEscalationHours: numberValue(
+      submissionPolicy.approval_escalation_hours,
+      numberValue(
+        governance.review_sla_hours,
+        defaultControlsDraft.approvalEscalationHours,
+      ),
+    ),
     assignmentMode:
       stringValue(collectionAccess.selection_mode) === "open_link" ||
       stringValue(collectionAccess.selection_mode) === "project_team" ||
@@ -1715,6 +1935,10 @@ function controlsDraftFromApiControls(
       dataSource.source_type,
       defaultControlsDraft.dataSourceType,
     ) as FormControlsDraft["dataSourceType"],
+    dataRetentionPolicy: stringValue(
+      privacy.data_retention_policy,
+      defaultControlsDraft.dataRetentionPolicy,
+    ) as FormControlsDraft["dataRetentionPolicy"],
     duplicateAction: stringValue(
       entity.duplicate_action,
       defaultControlsDraft.duplicateAction,
@@ -1737,6 +1961,10 @@ function controlsDraftFromApiControls(
       defaultControlsDraft.eventMode,
     ) as FormControlsDraft["eventMode"],
     expectedUse: stringValue(purpose.expected_use, defaultControlsDraft.expectedUse),
+    exportApprovalMode: stringValue(
+      privacy.export_approval_mode,
+      defaultControlsDraft.exportApprovalMode,
+    ) as FormControlsDraft["exportApprovalMode"],
     exportRestricted: booleanValue(
       governance.export_restricted,
       defaultControlsDraft.exportRestricted,
@@ -1747,6 +1975,10 @@ function controlsDraftFromApiControls(
       purpose.form_objective,
       defaultControlsDraft.formObjective,
     ),
+    frequencyWindow: stringValue(
+      submissionPolicy.frequency_window,
+      defaultControlsDraft.frequencyWindow,
+    ) as FormControlsDraft["frequencyWindow"],
     geographicScope: stringValue(geographic.description),
     gpsAccuracy: Number(
       stringValue(asRecord(gpsRule).expression).match(/\d+/)?.[0] ??
@@ -1790,9 +2022,27 @@ function controlsDraftFromApiControls(
       duration.minimum_minutes,
       defaultControlsDraft.minimumDurationMinutes,
     ),
-    offlineEnabled: true,
-    offlineMediaCapture: true,
+    mobilePackageMode: stringValue(
+      mobilePackage.mode,
+      defaultControlsDraft.mobilePackageMode,
+    ) as FormControlsDraft["mobilePackageMode"],
+    offlineEnabled: booleanValue(
+      mobilePackage.offline_enabled,
+      defaultControlsDraft.offlineEnabled,
+    ),
+    offlineMaxDays: numberValue(
+      mobilePackage.max_offline_days,
+      defaultControlsDraft.offlineMaxDays,
+    ),
+    offlineMediaCapture: booleanValue(
+      mobilePackage.media_capture_offline,
+      defaultControlsDraft.offlineMediaCapture,
+    ),
     parentForm: stringValue(tracking.parent_form),
+    piiHandling: stringValue(
+      privacy.pii_handling,
+      defaultControlsDraft.piiHandling,
+    ) as FormControlsDraft["piiHandling"],
     profileMappings,
     profileUpdateMode,
     programObjective: stringValue(purpose.program_objective),
@@ -1804,6 +2054,14 @@ function controlsDraftFromApiControls(
       governance.consent_required,
       defaultControlsDraft.requireConsent,
     ),
+    repeatGroupPolicy: stringValue(
+      repeatGroups.policy,
+      defaultControlsDraft.repeatGroupPolicy,
+    ) as FormControlsDraft["repeatGroupPolicy"],
+    respondentIdentification: stringValue(
+      respondentIdentity.mode,
+      defaultControlsDraft.respondentIdentification,
+    ) as FormControlsDraft["respondentIdentification"],
     resultArea: stringValue(purpose.result_area),
     reviewApprover: stringValue(
       certification.approver_role,
@@ -1829,13 +2087,25 @@ function controlsDraftFromApiControls(
       sampling.sampling_method,
       defaultControlsDraft.samplingMethod,
     ) as FormControlsDraft["samplingMethod"],
+    submissionEditPolicy: stringValue(
+      submissionPolicy.edit_policy,
+      defaultControlsDraft.submissionEditPolicy,
+    ) as FormControlsDraft["submissionEditPolicy"],
     seasonEnd: stringValue(seasonal.season_end),
     seasonName: stringValue(seasonal.season_name),
     seasonStart: stringValue(seasonal.season_start),
+    syncRequirement: stringValue(
+      mobilePackage.sync_requirement,
+      defaultControlsDraft.syncRequirement,
+    ) as FormControlsDraft["syncRequirement"],
     technicalReviewerName: stringValue(
       certification.technical_reviewer,
       defaultControlsDraft.technicalReviewerName,
     ),
+    testingRequirement: stringValue(
+      testing.requirement,
+      defaultControlsDraft.testingRequirement,
+    ) as FormControlsDraft["testingRequirement"],
     finalApproverName: stringValue(
       certification.final_approver,
       defaultControlsDraft.finalApproverName,
@@ -2209,6 +2479,7 @@ export function validateFormForPublish(
       field.type,
     ),
   );
+  const hasRepeatGroup = fields.some((field) => field.type === "repeat_group");
   const hasConsentQuestion = fields.some((field) =>
     /consent|agree|permission/i.test(field.label),
   );
@@ -2416,6 +2687,19 @@ export function validateFormForPublish(
       required: true,
     }),
     item({
+      category: "Beneficiary identity",
+      complete:
+        controls.respondentIdentification === "anonymous_allowed"
+          ? controls.allowAnonymous
+          : Boolean(controls.respondentIdentification),
+      description:
+        "Define whether the collector must select an existing beneficiary, create a new registration, or allow anonymous collection.",
+      id: "respondent-identity",
+      jumpTo: "controls",
+      label: "Respondent identity rule selected",
+      required: true,
+    }),
+    item({
       category: "Entity settings",
       complete: !needsEntityMapping || entityMappings.length >= 2,
       description:
@@ -2435,6 +2719,19 @@ export function validateFormForPublish(
       jumpTo: "controls",
       label: "Submission frequency rule selected",
       required: true,
+    }),
+    item({
+      category: "Submission rules",
+      complete:
+        controls.submissionFrequency === "unlimited" ||
+        controls.frequencyWindow !== "none",
+      description:
+        "Periodic or once-per-event forms should define the operating window used for duplicate and frequency checks.",
+      id: "frequency-window",
+      jumpTo: "controls",
+      label: "Frequency window reviewed",
+      required: controls.submissionFrequency !== "unlimited",
+      warning: controls.submissionFrequency === "unlimited",
     }),
     item({
       category: "Duplicate prevention",
@@ -2482,6 +2779,17 @@ export function validateFormForPublish(
       id: "enumerator-quality",
       jumpTo: "controls",
       label: "Enumerator quality controls reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Repeat groups",
+      complete: !hasRepeatGroup || controls.repeatGroupPolicy !== "allowed",
+      description:
+        "Large repeat groups should have a policy so household members, assets, trainings, or distributions do not overload mobile or reporting.",
+      id: "repeat-groups",
+      jumpTo: "controls",
+      label: "Repeat group handling reviewed",
       required: false,
       warning: true,
     }),
@@ -2565,6 +2873,17 @@ export function validateFormForPublish(
       required: true,
     }),
     item({
+      category: "Review escalation",
+      complete: controls.approvalEscalationHours > 0,
+      description:
+        "Set the number of hours before an overdue review should be escalated to managers.",
+      id: "review-escalation",
+      jumpTo: "controls",
+      label: "Review escalation time configured",
+      required: false,
+      warning: true,
+    }),
+    item({
       category: "Permissions",
       complete: Boolean(controls.permissionPreset),
       description:
@@ -2592,6 +2911,7 @@ export function validateFormForPublish(
       category: "Offline readiness",
       complete:
         controls.offlineEnabled &&
+        controls.offlineMaxDays > 0 &&
         (!controls.referenceDataRequired || setup.collectionMethod !== "web"),
       description:
         "Mobile-ready forms should support offline sync, reference data download, and media capture rules.",
@@ -2600,6 +2920,62 @@ export function validateFormForPublish(
       label: "Offline collection readiness reviewed",
       required: false,
       warning: true,
+    }),
+    item({
+      category: "Mobile package",
+      complete: Boolean(controls.mobilePackageMode && controls.syncRequirement),
+      description:
+        "Choose whether the mobile package is standard, low-bandwidth, media-heavy, or built for a large beneficiary registry.",
+      id: "mobile-package",
+      jumpTo: "controls",
+      label: "Mobile package rules reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Privacy",
+      complete:
+        controls.riskClassification === "low" ||
+        controls.piiHandling !== "standard",
+      description:
+        "Medium, high, or sensitive forms should define masking, encryption, or restricted access for personal data.",
+      id: "privacy",
+      jumpTo: "controls",
+      label: "PII handling reviewed",
+      required: controls.riskClassification === "sensitive",
+      warning: controls.riskClassification !== "sensitive",
+    }),
+    item({
+      category: "Export governance",
+      complete:
+        !controls.exportRestricted ||
+        controls.exportApprovalMode !== "not_required",
+      description:
+        "Restricted exports should require manager or data manager approval and be logged.",
+      id: "export-governance",
+      jumpTo: "controls",
+      label: "Export governance configured",
+      required: controls.exportRestricted,
+    }),
+    item({
+      category: "Retention",
+      complete: Boolean(controls.dataRetentionPolicy),
+      description:
+        "Set how long approved records are retained or archived for donor and organizational compliance.",
+      id: "retention",
+      jumpTo: "controls",
+      label: "Data retention rule selected",
+      required: true,
+    }),
+    item({
+      category: "Testing",
+      complete: Boolean(controls.testingRequirement),
+      description:
+        "Choose whether preview, test submission, or pilot assignment is required before review and publish.",
+      id: "testing",
+      jumpTo: "controls",
+      label: "Testing requirement selected",
+      required: true,
     }),
     item({
       category: "Tracking",
@@ -2817,6 +3193,8 @@ export function FormCreationWorkspace({
     useState<FormControlsDraft>(() =>
       controlsDraftFromApiControls(initialForm?.controls_json),
     );
+  const [activeControlStep, setActiveControlStep] =
+    useState<ControlStep>("essentials");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -2856,6 +3234,17 @@ export function FormCreationWorkspace({
   const readinessWarnings = checklist.filter(
     (item) => item.status === "warning",
   );
+  const reviewChecklist = useMemo(
+    () =>
+      [...checklist].sort((a, b) => {
+        const rank = (item: PublishReadinessItem) =>
+          item.complete ? 2 : item.required ? 0 : 1;
+        const rankDifference = rank(a) - rank(b);
+        if (rankDifference !== 0) return rankDifference;
+        return `${a.category}-${a.label}`.localeCompare(`${b.category}-${b.label}`);
+      }),
+    [checklist],
+  );
   const readinessScore = checklist.length
     ? Math.round((readinessPassedCount / checklist.length) * 100)
     : 0;
@@ -2871,6 +3260,29 @@ export function FormCreationWorkspace({
       : readinessScore >= 90
         ? "success"
         : "warning";
+  const activeControlStepIndex = Math.max(
+    controlSteps.findIndex((step) => step.id === activeControlStep),
+    0,
+  );
+  const activeControlStepConfig = controlSteps[activeControlStepIndex] ?? controlSteps[0];
+  const controlStepReadiness = useMemo(() => {
+    return Object.fromEntries(
+      controlSteps.map((step) => {
+        const items = checklist.filter((item) =>
+          step.categories.some((category) =>
+            item.category.toLowerCase().includes(category.toLowerCase()),
+          ),
+        );
+        const failures = items.filter((item) => item.required && !item.complete).length;
+        const warnings = items.filter((item) => item.status === "warning").length;
+        const passed = items.filter((item) => item.status === "passed").length;
+        return [step.id, { failures, items: items.length, passed, warnings }];
+      }),
+    ) as Record<
+      ControlStep,
+      { failures: number; items: number; passed: number; warnings: number }
+    >;
+  }, [checklist]);
   const questionMappingOptions = useMemo(
     () =>
       (draftForm?.fields ?? []).map((field) => ({
@@ -2955,6 +3367,16 @@ export function FormCreationWorkspace({
       ...current,
       assignedFieldOfficerIds: [],
     }));
+  }
+
+  function openReadinessItem(item: PublishReadinessItem): void {
+    if (item.jumpTo === "controls") {
+      setActiveControlStep(controlStepForReadinessCategory(item.category));
+    }
+    setStage(item.jumpTo);
+    window.setTimeout(() => {
+      window.scrollTo({ behavior: "smooth", top: 0 });
+    }, 0);
   }
 
   function openLifecycleStep(stepId: (typeof lifecycleSteps)[number]["id"]): void {
@@ -3530,8 +3952,22 @@ export function FormCreationWorkspace({
               </Button>
             ) : null}
             {stage === "controls" ? (
-              <Button onClick={() => setStage("preview")} size="sm" variant="primary">
-                Next: Preview & Test
+              <Button
+                onClick={() => {
+                  if (activeControlStepIndex + 1 < controlSteps.length) {
+                    setActiveControlStep(
+                      controlSteps[activeControlStepIndex + 1]?.id ?? "advanced",
+                    );
+                    return;
+                  }
+                  setStage("preview");
+                }}
+                size="sm"
+                variant="primary"
+              >
+                {activeControlStepIndex + 1 < controlSteps.length
+                  ? "Next controls"
+                  : "Next: Preview & Test"}
               </Button>
             ) : null}
             {stage === "preview" ? (
@@ -4061,8 +4497,21 @@ export function FormCreationWorkspace({
                 >
                   {controlsSaving ? "Saving controls" : "Save controls"}
                 </Button>
-                <Button onClick={() => setStage("preview")} variant="primary">
-                  Next: Preview & Test
+                <Button
+                  onClick={() => {
+                    if (activeControlStepIndex + 1 < controlSteps.length) {
+                      setActiveControlStep(
+                        controlSteps[activeControlStepIndex + 1]?.id ?? "advanced",
+                      );
+                      return;
+                    }
+                    setStage("preview");
+                  }}
+                  variant="primary"
+                >
+                  {activeControlStepIndex + 1 < controlSteps.length
+                    ? "Next controls"
+                    : "Next: Preview & Test"}
                 </Button>
               </div>
             }
@@ -4112,6 +4561,109 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
+          <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                  Control setup progress
+                </p>
+                <h3 className="mt-1 text-base font-semibold">
+                  {activeControlStepConfig.label}
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                  {activeControlStepConfig.mustDo}
+                </p>
+              </div>
+              <Badge tone="neutral">
+                Step {activeControlStepIndex + 1} of {controlSteps.length}
+              </Badge>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+              {controlSteps.map((step, index) => {
+                const stepReadiness = controlStepReadiness[step.id];
+                const tone =
+                  stepReadiness.failures > 0
+                    ? "danger"
+                    : stepReadiness.warnings > 0
+                      ? "warning"
+                      : stepReadiness.items > 0
+                        ? "success"
+                        : "neutral";
+                return (
+                  <button
+                    aria-current={activeControlStep === step.id ? "step" : undefined}
+                    className={cn(
+                      "rounded-lg border bg-background px-3 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                      activeControlStep === step.id &&
+                        "border-primary/50 bg-primary/10 shadow-line",
+                    )}
+                    key={step.id}
+                    onClick={() => setActiveControlStep(step.id)}
+                    type="button"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold">{step.label}</span>
+                      <Badge tone={tone}>
+                        {stepReadiness.failures > 0
+                          ? `${stepReadiness.failures} fix`
+                          : stepReadiness.warnings > 0
+                            ? `${stepReadiness.warnings} warn`
+                            : stepReadiness.items > 0
+                              ? "OK"
+                              : "Later"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 min-h-[2.5rem] text-xs text-muted-foreground">
+                      {step.helper}
+                    </p>
+                    <div className="mt-2 h-1 rounded-full bg-muted">
+                      <div
+                        className={cn(
+                          "h-1 rounded-full",
+                          tone === "danger"
+                            ? "bg-danger"
+                            : tone === "warning"
+                              ? "bg-warning"
+                              : tone === "success"
+                                ? "bg-success"
+                                : "bg-muted-foreground/40",
+                        )}
+                        style={{
+                          width: `${
+                            stepReadiness.items
+                              ? Math.max(
+                                  16,
+                                  Math.round(
+                                    (stepReadiness.passed / stepReadiness.items) * 100,
+                                  ),
+                                )
+                              : index < activeControlStepIndex
+                                ? 100
+                                : 16
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 rounded-lg border bg-background/70 p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                What to decide now
+              </p>
+              <div className="mt-2 grid gap-2 md:grid-cols-3">
+                {activeControlStepConfig.decisions.map((decision) => (
+                  <div
+                    className="rounded-md border bg-panel px-3 py-2 text-xs text-muted-foreground"
+                    key={decision}
+                  >
+                    {decision}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
           <section className="rounded-xl border bg-panel p-3.5 shadow-line">
             <div className="flex items-center gap-2">
               <Sparkles aria-hidden="true" className="text-primary" size={18} />
@@ -4200,7 +4752,13 @@ export function FormCreationWorkspace({
               </div>
             </div>
             <div className="mt-3 grid gap-3 xl:grid-cols-2">
-              <details className="rounded-lg border bg-background/70 p-3" open>
+              <details
+                className={cn(
+                  "rounded-lg border bg-background/70 p-3",
+                  activeControlStep !== "essentials" && "hidden",
+                )}
+                open
+              >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Purpose and results context
                 </summary>
@@ -4282,7 +4840,13 @@ export function FormCreationWorkspace({
                 </div>
               </details>
 
-              <details className="rounded-lg border bg-background/70 p-3" open>
+              <details
+                className={cn(
+                  "rounded-lg border bg-background/70 p-3",
+                  activeControlStep !== "essentials" && "hidden",
+                )}
+                open
+              >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Indicators and data dictionary
                 </summary>
@@ -4347,7 +4911,13 @@ export function FormCreationWorkspace({
                 </div>
               </details>
 
-              <details className="rounded-lg border bg-background/70 p-3">
+              <details
+                className={cn(
+                  "rounded-lg border bg-background/70 p-3",
+                  activeControlStep !== "advanced" && "hidden",
+                )}
+                open={activeControlStep === "advanced"}
+              >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Tracking, events, waves, and seasons
                 </summary>
@@ -4449,7 +5019,13 @@ export function FormCreationWorkspace({
                 </div>
               </details>
 
-              <details className="rounded-lg border bg-background/70 p-3">
+              <details
+                className={cn(
+                  "rounded-lg border bg-background/70 p-3",
+                  activeControlStep !== "advanced" && "hidden",
+                )}
+                open={activeControlStep === "advanced"}
+              >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Sampling, geography, duration, and localization
                 </summary>
@@ -4505,21 +5081,6 @@ export function FormCreationWorkspace({
                       }
                       type="number"
                       value={controlsDraft.targetSampleSize}
-                    />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Max submissions per day
-                    <Input
-                      className="mt-2"
-                      min={1}
-                      onChange={(event) =>
-                        updateControlsDraft({
-                          maximumSubmissionsPerDay:
-                            Number(event.target.value) || 1,
-                        })
-                      }
-                      type="number"
-                      value={controlsDraft.maximumSubmissionsPerDay}
                     />
                   </label>
                   <label className="text-sm font-medium">
@@ -4597,7 +5158,13 @@ export function FormCreationWorkspace({
                 </div>
               </details>
 
-              <details className="rounded-lg border bg-background/70 p-3 xl:col-span-2" open>
+              <details
+                className={cn(
+                  "rounded-lg border bg-background/70 p-3 xl:col-span-2",
+                  activeControlStep !== "advanced" && "hidden",
+                )}
+                open={activeControlStep === "advanced"}
+              >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Certification, triggers, accessibility, and AI-ready metadata
                 </summary>
@@ -4718,7 +5285,12 @@ export function FormCreationWorkspace({
             </div>
           </section>
           <div className="grid gap-3 lg:grid-cols-2">
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "access" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <ShieldCheck aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Permissions</h3>
@@ -4853,7 +5425,12 @@ export function FormCreationWorkspace({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "access" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <Workflow aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Workflow</h3>
@@ -4937,10 +5514,46 @@ export function FormCreationWorkspace({
                     <option value="me_manager">M&amp;E Manager</option>
                   </Select>
                 </label>
+                <label className="text-sm font-medium">
+                  Escalate review after hours
+                  <Input
+                    className="mt-2"
+                    min={1}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        approvalEscalationHours: Number(event.target.value) || 1,
+                      })
+                    }
+                    type="number"
+                    value={controlsDraft.approvalEscalationHours}
+                  />
+                </label>
+                <label className="text-sm font-medium">
+                  Returned/edit policy
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        submissionEditPolicy:
+                          event.target.value as FormControlsDraft["submissionEditPolicy"],
+                      })
+                    }
+                    value={controlsDraft.submissionEditPolicy}
+                  >
+                    <option value="before_review">Editable before review</option>
+                    <option value="returned_only">Editable only when returned</option>
+                    <option value="change_request">Approved data needs change request</option>
+                  </Select>
+                </label>
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "quality" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <ClipboardCheck aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Data Quality</h3>
@@ -5030,10 +5643,46 @@ export function FormCreationWorkspace({
                     value={controlsDraft.duplicateFields.join(", ")}
                   />
                 </label>
+                <label className="text-sm font-medium">
+                  Repeat group handling
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        repeatGroupPolicy:
+                          event.target.value as FormControlsDraft["repeatGroupPolicy"],
+                      })
+                    }
+                    value={controlsDraft.repeatGroupPolicy}
+                  >
+                    <option value="allowed">Allow repeat groups normally</option>
+                    <option value="review_large">Review large repeat groups</option>
+                    <option value="restricted">Restrict large or nested repeat groups</option>
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Maximum submissions per officer/day
+                  <Input
+                    className="mt-2"
+                    min={1}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        maximumSubmissionsPerDay: Number(event.target.value) || 1,
+                      })
+                    }
+                    type="number"
+                    value={controlsDraft.maximumSubmissionsPerDay}
+                  />
+                </label>
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "beneficiaries" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <Fingerprint aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Entity & Duplicate Controls</h3>
@@ -5076,6 +5725,24 @@ export function FormCreationWorkspace({
                     {["Farmer", "Household", "Beneficiary", "Facility", "School", "Group", "Custom Entity"].map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Respondent identity rule
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        respondentIdentification:
+                          event.target.value as FormControlsDraft["respondentIdentification"],
+                      })
+                    }
+                    value={controlsDraft.respondentIdentification}
+                  >
+                    <option value="existing_beneficiary">Select existing beneficiary</option>
+                    <option value="new_registration">Create new registration</option>
+                    <option value="existing_or_new">Existing or new beneficiary</option>
+                    <option value="anonymous_allowed">Anonymous allowed</option>
                   </Select>
                 </label>
                 <label className="text-sm font-medium sm:col-span-2">
@@ -5131,10 +5798,35 @@ export function FormCreationWorkspace({
                     <option value="unlimited">Unlimited</option>
                   </Select>
                 </label>
+                <label className="text-sm font-medium">
+                  Frequency window
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        frequencyWindow:
+                          event.target.value as FormControlsDraft["frequencyWindow"],
+                      })
+                    }
+                    value={controlsDraft.frequencyWindow}
+                  >
+                    <option value="none">No fixed window</option>
+                    <option value="day">Per day</option>
+                    <option value="week">Per week</option>
+                    <option value="month">Per month</option>
+                    <option value="season">Per season</option>
+                    <option value="reporting_period">Per reporting period</option>
+                  </Select>
+                </label>
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "beneficiaries" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <ListChecks aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Beneficiary Profile Mapping</h3>
@@ -5181,7 +5873,12 @@ export function FormCreationWorkspace({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "evidence" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <MonitorSmartphone aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Mapping Settings</h3>
@@ -5258,7 +5955,12 @@ export function FormCreationWorkspace({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "evidence" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <ClipboardList aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Consent & Media</h3>
@@ -5362,7 +6064,12 @@ export function FormCreationWorkspace({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "evidence" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <Smartphone aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Offline & Reference Data</h3>
@@ -5402,10 +6109,64 @@ export function FormCreationWorkspace({
                   />
                   Allow offline media capture
                 </label>
+                <label className="text-sm font-medium">
+                  Mobile package mode
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        mobilePackageMode:
+                          event.target.value as FormControlsDraft["mobilePackageMode"],
+                      })
+                    }
+                    value={controlsDraft.mobilePackageMode}
+                  >
+                    <option value="standard">Standard field package</option>
+                    <option value="low_bandwidth">Low bandwidth package</option>
+                    <option value="large_registry">Large beneficiary registry</option>
+                    <option value="media_heavy">Media-heavy collection</option>
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Maximum offline days
+                  <Input
+                    className="mt-2"
+                    min={1}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        offlineMaxDays: Number(event.target.value) || 1,
+                      })
+                    }
+                    type="number"
+                    value={controlsDraft.offlineMaxDays}
+                  />
+                </label>
+                <label className="text-sm font-medium sm:col-span-2">
+                  Sync requirement
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        syncRequirement:
+                          event.target.value as FormControlsDraft["syncRequirement"],
+                      })
+                    }
+                    value={controlsDraft.syncRequirement}
+                  >
+                    <option value="manual_allowed">Manual sync allowed</option>
+                    <option value="daily_required">Sync required daily</option>
+                    <option value="before_new_assignment">Sync before new assignment</option>
+                  </Select>
+                </label>
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "governance" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <Layers3 aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Risk & Versioning</h3>
@@ -5443,6 +6204,42 @@ export function FormCreationWorkspace({
                     value={controlsDraft.versionNumber}
                   />
                 </label>
+                <label className="text-sm font-medium">
+                  PII handling
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        piiHandling:
+                          event.target.value as FormControlsDraft["piiHandling"],
+                      })
+                    }
+                    value={controlsDraft.piiHandling}
+                  >
+                    <option value="standard">Standard access</option>
+                    <option value="mask_exports">Mask personal data in exports</option>
+                    <option value="encrypt_sensitive">Encrypt sensitive fields</option>
+                    <option value="restricted">Restricted sensitive form</option>
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Data retention
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        dataRetentionPolicy:
+                          event.target.value as FormControlsDraft["dataRetentionPolicy"],
+                      })
+                    }
+                    value={controlsDraft.dataRetentionPolicy}
+                  >
+                    <option value="project_life">Keep for project life</option>
+                    <option value="donor_period">Keep for donor compliance period</option>
+                    <option value="seven_years">Keep for seven years</option>
+                    <option value="custom">Custom retention rule</option>
+                  </Select>
+                </label>
                 <label className="text-sm font-medium sm:col-span-2">
                   Publish change summary
                   <Textarea
@@ -5457,7 +6254,12 @@ export function FormCreationWorkspace({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <section
+              className={cn(
+                "rounded-xl border bg-panel p-3.5 shadow-line",
+                activeControlStep !== "governance" && "hidden",
+              )}
+            >
               <div className="flex items-center gap-2">
                 <GitBranch aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Governance & Audit Trail</h3>
@@ -5477,6 +6279,40 @@ export function FormCreationWorkspace({
                   />
                   Log form and data actions to audit trail
                 </label>
+                <label className="text-sm font-medium">
+                  Export approval
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        exportApprovalMode:
+                          event.target.value as FormControlsDraft["exportApprovalMode"],
+                      })
+                    }
+                    value={controlsDraft.exportApprovalMode}
+                  >
+                    <option value="not_required">No additional approval</option>
+                    <option value="manager_approval">M&E manager approval</option>
+                    <option value="data_manager_approval">Data manager approval</option>
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Testing before review
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        testingRequirement:
+                          event.target.value as FormControlsDraft["testingRequirement"],
+                      })
+                    }
+                    value={controlsDraft.testingRequirement}
+                  >
+                    <option value="preview_only">Preview only</option>
+                    <option value="test_submission">Require test submission</option>
+                    <option value="pilot_assignment">Require pilot assignment</option>
+                  </Select>
+                </label>
                 <div className="rounded-lg border bg-background/70 p-3 text-xs text-muted-foreground">
                   Current control summary: {controlsDraft.permissionPreset} permissions,
                   {" "}{controlsDraft.workflowPreset.replaceAll("_", " ")},
@@ -5491,6 +6327,54 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
+          <section className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold">
+                {activeControlStepIndex + 1 < controlSteps.length
+                  ? `Next: ${controlSteps[activeControlStepIndex + 1]?.label}`
+                  : "Controls complete"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {activeControlStepIndex + 1 < controlSteps.length
+                  ? controlSteps[activeControlStepIndex + 1]?.mustDo
+                  : "Save the controls, then preview and test the form before review."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={activeControlStepIndex === 0}
+                onClick={() =>
+                  setActiveControlStep(
+                    controlSteps[Math.max(activeControlStepIndex - 1, 0)]?.id ??
+                      "essentials",
+                  )
+                }
+                type="button"
+                variant="secondary"
+              >
+                Previous controls
+              </Button>
+              {activeControlStepIndex + 1 < controlSteps.length ? (
+                <Button
+                  onClick={() =>
+                    setActiveControlStep(
+                      controlSteps[
+                        Math.min(activeControlStepIndex + 1, controlSteps.length - 1)
+                      ]?.id ?? "advanced",
+                    )
+                  }
+                  type="button"
+                  variant="primary"
+                >
+                  Next controls
+                </Button>
+              ) : (
+                <Button onClick={() => setStage("preview")} type="button" variant="primary">
+                  Continue to Preview
+                </Button>
+              )}
+            </div>
+          </section>
           {publishMessage ? (
             <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-muted-foreground">
               {publishMessage}
@@ -5644,7 +6528,7 @@ export function FormCreationWorkspace({
                   <button
                     className="rounded-full border border-danger/25 bg-danger/10 px-2 py-1 text-xs font-medium text-danger"
                     key={item.id}
-                    onClick={() => setStage(item.jumpTo)}
+                    onClick={() => openReadinessItem(item)}
                     type="button"
                   >
                     Fix {item.label}
@@ -5656,8 +6540,22 @@ export function FormCreationWorkspace({
               </div>
             </section>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {checklist.map((item) => {
+          <section className="overflow-hidden rounded-xl border bg-panel shadow-line">
+            <div className="flex flex-col gap-2 border-b bg-background/70 px-3 py-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Readiness review list</h3>
+                <p className="text-xs text-muted-foreground">
+                  Failures and warnings are shown first. Click any row to open the exact setup area.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone="danger">{criticalFailures.length} failed</Badge>
+                <Badge tone="warning">{readinessWarnings.length} warnings</Badge>
+                <Badge tone="success">{readinessPassedCount} passed</Badge>
+              </div>
+            </div>
+            <div className="divide-y">
+              {reviewChecklist.map((item) => {
               const passed = item.complete;
               const tone = passed
                 ? "success"
@@ -5665,56 +6563,55 @@ export function FormCreationWorkspace({
                   ? "danger"
                   : "warning";
               return (
-                <div
-                  className="rounded-xl border bg-panel p-3 shadow-line"
+                <button
+                  className="grid w-full gap-2 px-3 py-2 text-left transition hover:bg-primary/5 md:grid-cols-[140px_minmax(180px,0.75fr)_minmax(260px,1fr)_90px] md:items-center"
                   key={item.id}
+                  onClick={() => openReadinessItem(item)}
+                  type="button"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Badge tone={tone}>
-                        {passed
-                          ? "Passed"
-                          : item.required
-                            ? "Failed"
-                            : "Warning"}
-                      </Badge>
-                      <Badge className="ml-2" tone="neutral">
-                        {item.category}
-                      </Badge>
-                      <div className="mt-3 flex items-center gap-2">
-                        <h3 className="font-semibold">{item.label}</h3>
-                        <HelpHint
-                          label={`About ${item.label}`}
-                          title={item.label}
-                        >
-                          {item.description}
-                        </HelpHint>
-                      </div>
-                      {!passed ? (
-                        <Button
-                          className="mt-3"
-                          onClick={() => setStage(item.jumpTo)}
-                          size="sm"
-                          type="button"
-                          variant={item.required ? "primary" : "secondary"}
-                        >
-                          Open setting
-                        </Button>
-                      ) : null}
-                    </div>
-                    {passed ? (
-                      <CheckCircle2
-                        aria-hidden="true"
-                        className="text-success"
-                      />
-                    ) : (
-                      <XCircle aria-hidden="true" className="text-danger" />
-                    )}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={tone}>
+                      {passed
+                        ? "Passed"
+                        : item.required
+                          ? "Failed"
+                          : "Warning"}
+                    </Badge>
+                    <Badge tone="neutral">{item.category}</Badge>
                   </div>
-                </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold">{item.label}</span>
+                      <HelpHint label={`About ${item.label}`} title={item.label}>
+                        {item.description}
+                      </HelpHint>
+                    </div>
+                  </div>
+                  <p className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">
+                    {item.description}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-primary md:justify-end">
+                    {passed ? (
+                      <CheckCircle2 aria-hidden="true" className="text-success" size={16} />
+                    ) : (
+                      <XCircle aria-hidden="true" className="text-danger" size={16} />
+                    )}
+                    {item.jumpTo === "controls"
+                      ? controlSteps.find(
+                          (step) =>
+                            step.id === controlStepForReadinessCategory(item.category),
+                        )?.label ?? "Open"
+                      : item.jumpTo === "builder"
+                        ? "Builder"
+                        : item.jumpTo === "setup"
+                          ? "Setup"
+                          : "Open"}
+                  </div>
+                </button>
               );
-            })}
-          </div>
+              })}
+            </div>
+          </section>
           {publishedForm ? (
             <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
               <div className="flex items-start gap-3">

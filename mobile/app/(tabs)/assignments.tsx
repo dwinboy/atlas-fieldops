@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAppContext } from "@/context/AppContext";
@@ -41,7 +41,11 @@ export default function AssignmentsScreen() {
       : null;
 
     if (!assignment.formId || !assignment.formVersionId || !formVersion) {
-      return; // card shows explanation
+      Alert.alert(
+        "Form not ready",
+        "Sync assigned work. If this still appears, ask your supervisor to publish and assign the form again.",
+      );
+      return;
     }
 
     if (formVersion.entitySettings.requiresExistingEntity) {
@@ -51,7 +55,10 @@ export default function AssignmentsScreen() {
         const result = dataCollection.startForm(assignment.localId, null);
         router.push(`/form-fill/${result.draft.localId}`);
       } catch (err) {
-        // handled below via isReady check
+        Alert.alert(
+          "Cannot start assignment",
+          err instanceof Error ? err.message : "This assignment could not be opened. Sync assigned work and try again.",
+        );
       }
     }
   }

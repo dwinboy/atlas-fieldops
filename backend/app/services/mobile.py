@@ -577,7 +577,7 @@ class MobileService:
             offline_collection_allowed="sync.mobile" in permissions,
             sync_required=False,
             max_offline_days=7,
-            gps_required=True,
+            gps_required=False,
             photo_required=False,
             minimum_app_version="1.0.0-test",
             allowed_collection_hours={"start": None, "end": None},
@@ -694,6 +694,26 @@ class MobileService:
 
         assignments = await self._assignments(organization_id, officer.id)
         controlled_forms = await self._forms_for_officer_access(organization_id, officer.id)
+        assignment_keys = {
+            (assignment.project_id, assignment.form_id)
+            for assignment in assignments
+            if assignment.deleted_at is None
+        }
+        for form in controlled_forms:
+            if form.project_id is None or (form.project_id, form.id) in assignment_keys:
+                continue
+            assignment = OfficerAssignment(
+                organization_id=organization_id,
+                officer_id=officer.id,
+                project_id=form.project_id,
+                form_id=form.id,
+                region=None,
+                is_active=True,
+            )
+            self.session.add(assignment)
+            await self.session.flush()
+            assignments.append(assignment)
+            assignment_keys.add((form.project_id, form.id))
         project_ids = {assignment.project_id for assignment in assignments if assignment.is_active}
         project_ids.update(form.project_id for form in controlled_forms if form.project_id is not None)
         assigned_form_ids = {assignment.form_id for assignment in assignments if assignment.is_active and assignment.form_id is not None}
@@ -922,11 +942,16 @@ class MobileService:
         if entity_id is None and bool(entity_settings.get("createsNewEntity")):
             entity_type = str(entity_settings.get("entityType") or payload.entity_type or "Farmer")
         now = datetime.now(UTC)
-        location_payload = payload.location or {}
+        response_payload = [response.model_dump(mode="json", by_alias=True) for response in payload.responses]
+        derived_location = self._location_from_responses(response_payload)
+        location_payload = payload.location or derived_location or {}
         latitude = location_payload.get("latitude")
         longitude = location_payload.get("longitude")
         if latitude is None or longitude is None:
-            raise ValueError("Capture GPS before syncing this submission. The record was kept on the device for retry.")
+            if self._form_requires_gps(form_version.schema_json, form.controls_json or {}):
+                raise ValueError("Capture GPS before syncing this submission. The record was kept on the device for retry.")
+            latitude = 0
+            longitude = 0
         location = LocationCapture(
             latitude=float(latitude),
             longitude=float(longitude),
@@ -945,7 +970,10 @@ class MobileService:
             assignment_id=UUID(payload.assignment_id) if payload.assignment_id else None,
             frequency_period=payload.frequency_period,
             event_id=payload.event_id,
-            payload={"responses": [response.model_dump(mode="json", by_alias=True) for response in payload.responses]},
+            payload={
+                "responses": response_payload,
+                "_mobile_location_status": "captured" if payload.location or derived_location else "not_required_or_missing",
+            },
             captured_at=payload.created_at,
             submitted_at=payload.submitted_at or now,
             offline_created=True,
@@ -968,6 +996,47 @@ class MobileService:
             synced_at=submission.sync_received_at,
             message="Submission synced to the web platform.",
         )
+
+    def _location_from_responses(self, responses: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for response in responses:
+            value = response.get("value")
+            if not isinstance(value, dict):
+                continue
+            latitude = value.get("latitude")
+            longitude = value.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+            try:
+                parsed_latitude = float(latitude)
+                parsed_longitude = float(longitude)
+            except (TypeError, ValueError):
+                continue
+            if not (-90 <= parsed_latitude <= 90 and -180 <= parsed_longitude <= 180):
+                continue
+            return {
+                "latitude": parsed_latitude,
+                "longitude": parsed_longitude,
+                "altitude": value.get("altitude"),
+                "accuracy": value.get("accuracy"),
+                "timestamp": value.get("timestamp"),
+            }
+        return None
+
+    def _form_requires_gps(self, schema_json: dict[str, Any], controls_json: dict[str, Any]) -> bool:
+        quality = controls_json.get("quality") if isinstance(controls_json.get("quality"), dict) else {}
+        governance = controls_json.get("governance") if isinstance(controls_json.get("governance"), dict) else {}
+        if quality.get("gps_required") is True or governance.get("gps_required") is True:
+            return True
+        for section in schema_json.get("sections", []):
+            if not isinstance(section, dict):
+                continue
+            for field in section.get("fields", []):
+                if not isinstance(field, dict):
+                    continue
+                field_type = str(field.get("type") or "").lower()
+                if field_type in {"gps", "geolocation", "map", "geofence"} and bool(field.get("required")):
+                    return True
+        return False
 
     async def _create_entity_from_registration(
         self,

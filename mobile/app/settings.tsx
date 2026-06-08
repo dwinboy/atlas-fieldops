@@ -10,7 +10,7 @@ import { localDatabase } from "@/storage/localDatabase";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { session, logout } = useAppContext();
+  const { session, logout, refreshKey } = useAppContext();
   const [clearing, setClearing] = useState(false);
 
   const user = session?.bootstrap?.user;
@@ -28,7 +28,7 @@ export default function SettingsScreen() {
     entities: localDatabase.entities.list().length,
     drafts: localDatabase.draftSubmissions.list().filter((d) => d.status !== "Synced").length,
     syncLogs: localDatabase.syncLogs.list().length,
-  }), []);
+  }), [refreshKey]);
 
   async function handleLogout() {
     Alert.alert(

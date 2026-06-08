@@ -1748,6 +1748,8 @@ export type FormGovernancePolicy = {
   review_sla_hours: number;
   auto_lock_after_approval: boolean;
   auto_archive_after_project_closure: boolean;
+  export_approval_required?: boolean;
+  export_approval_role?: string | null;
 };
 
 export type FormCollectionAccessSettings = {
@@ -1799,9 +1801,13 @@ export type FormInstrumentSettings = {
   dependency_map?: Record<string, unknown>[];
   profile_impact_rules?: Record<string, unknown>[];
   profile_history_policy?: Record<string, unknown>;
+  respondent_identity?: Record<string, unknown>;
+  submission_policy?: Record<string, unknown>;
+  privacy?: Record<string, unknown>;
   attachment_governance?: Record<string, unknown>;
   interview_duration?: Record<string, unknown>;
   enumerator_quality?: Record<string, unknown>;
+  repeat_group_policy?: Record<string, unknown>;
   event_settings?: Record<string, unknown>;
   tracking?: Record<string, unknown>;
   seasonal_rules?: Record<string, unknown>;
@@ -1816,6 +1822,8 @@ export type FormInstrumentSettings = {
   sampling?: Record<string, unknown>;
   performance_analytics?: Record<string, unknown>;
   localization?: Record<string, unknown>;
+  mobile_package?: Record<string, unknown>;
+  testing?: Record<string, unknown>;
   accessibility?: Record<string, unknown>;
   ai_readiness?: Record<string, unknown>;
 };

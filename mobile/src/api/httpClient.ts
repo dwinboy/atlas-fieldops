@@ -68,7 +68,7 @@ export class MobileHttpClient {
     if (text && !looksLikeJson) {
       const htmlHint = text.toLowerCase().includes("<html") || text.toLowerCase().includes("<!doctype");
       const message = htmlHint
-        ? "The mobile app reached the website instead of the API. Update the app API URL to https://backend-production-13c9.up.railway.app/api/v1 and try again."
+        ? "The mobile app reached the website instead of the API. Update the app API URL to https://atlasfieldops.com/api/v1 and try again."
         : "Atlas FieldOps returned an unexpected server response. Try again or contact support.";
       throw new MobileApiError(message, response.status, { contentType, preview: text.slice(0, 160) });
     }
