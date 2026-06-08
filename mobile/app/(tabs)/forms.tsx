@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAppContext } from "@/context/AppContext";
+import type { MobileFormVersion } from "@/models/contracts";
 import { localDatabase } from "@/storage/localDatabase";
 
 export default function FormsScreen() {
@@ -77,6 +78,7 @@ export default function FormsScreen() {
             const isOfflineReady = !!version;
             const sections = sectionCount(form.id);
             const questions = questionCount(form.id);
+            const readiness = version ? mobileReadiness(version) : null;
 
             return (
               <View
@@ -95,13 +97,13 @@ export default function FormsScreen() {
                     {form.name ?? "Unnamed form"}
                   </Text>
                   <View style={{
-                    backgroundColor: isOfflineReady ? "#d7efe7" : "#f0f5f3",
+                    backgroundColor: readiness?.tone === "warn" ? "#fff7ed" : isOfflineReady ? "#d7efe7" : "#f0f5f3",
                     borderRadius: 20,
                     paddingHorizontal: 10,
                     paddingVertical: 3,
                   }}>
-                    <Text style={{ color: isOfflineReady ? "#0f766e" : "#49635a", fontWeight: "700", fontSize: 12 }}>
-                      {isOfflineReady ? "Offline ready" : "No version"}
+                    <Text style={{ color: readiness?.tone === "warn" ? "#9a3412" : isOfflineReady ? "#0f766e" : "#49635a", fontWeight: "700", fontSize: 12 }}>
+                      {readiness ? `${readiness.score}% ready` : "No version"}
                     </Text>
                   </View>
                 </View>
@@ -130,6 +132,24 @@ export default function FormsScreen() {
                   </Text>
                 )}
 
+                {readiness ? (
+                  <View style={{
+                    backgroundColor: readiness.tone === "warn" ? "#fff7ed" : "#f6faf8",
+                    borderColor: readiness.tone === "warn" ? "#fed7aa" : "#dbe7e2",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    gap: 4,
+                    padding: 10,
+                  }}>
+                    <Text style={{ color: readiness.tone === "warn" ? "#9a3412" : "#49635a", fontSize: 12, fontWeight: "700" }}>
+                      Field readiness
+                    </Text>
+                    {readiness.notes.map((note) => (
+                      <Text key={note} style={{ color: "#49635a", fontSize: 12 }}>• {note}</Text>
+                    ))}
+                  </View>
+                ) : null}
+
                 <Text style={{ color: "#8aa79b", fontSize: 11 }}>
                   Read-only on mobile • Managed from web platform
                 </Text>
@@ -146,4 +166,21 @@ export default function FormsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function mobileReadiness(version: MobileFormVersion | null): { score: number; tone: "ok" | "warn"; notes: string[] } {
+  if (!version) return { score: 0, tone: "warn", notes: ["No published version is stored on this device."] };
+  const questions = version.sections.flatMap((section) => section.questions);
+  const gpsCount = questions.filter((question) => question.type === "GPS").length;
+  const mediaCount = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type)).length;
+  const complexCount = questions.filter((question) => ["RepeatGroup", "Matrix", "Ranking", "CalculatedField"].includes(question.type)).length;
+  const requiredCount = questions.filter((question) => question.required).length;
+  const notes = [
+    `${questions.length} question(s), ${requiredCount} required`,
+    gpsCount ? `${gpsCount} GPS question(s): capture outside when possible` : "No GPS question required by this form",
+    mediaCount ? `${mediaCount} evidence question(s): check camera/storage before field work` : "No media evidence question required",
+    complexCount ? `${complexCount} advanced question(s): review before submit` : "Standard question flow",
+  ];
+  const score = version.offlineCompatible ? 100 : 85;
+  return { score, tone: score >= 95 ? "ok" : "warn", notes };
 }

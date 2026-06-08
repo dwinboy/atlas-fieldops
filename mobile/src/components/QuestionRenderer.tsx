@@ -86,6 +86,11 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
             <Text style={{ color: issue.severity === "Error" ? "#b42318" : "#9a3412", fontSize: 13, fontWeight: "600" }}>
               {issue.message}
             </Text>
+            {issue.fixHint ? (
+              <Text style={{ color: issue.severity === "Error" ? "#7f1d1d" : "#9a3412", fontSize: 12, marginTop: 4 }}>
+                How to fix: {issue.fixHint}
+              </Text>
+            ) : null}
           </View>
         ))}
     </View>

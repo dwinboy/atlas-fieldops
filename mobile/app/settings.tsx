@@ -71,6 +71,28 @@ export default function SettingsScreen() {
     );
   }
 
+  function handleDiagnostics() {
+    const queue = localDatabase.syncQueue.list();
+    const failed = queue.filter((item) => item.status === "Failed").length;
+    const queued = queue.filter((item) => item.status === "Queued" || item.status === "Syncing").length;
+    const lastLog = localDatabase.syncLogs.list().sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    Alert.alert(
+      "Field diagnostics",
+      [
+        `App: ${appVersion} (${buildEnv})`,
+        `Device: ${device?.deviceId ?? session?.bootstrap?.lastSync.deviceId ?? "Pending registration"}`,
+        `Status: ${device?.status ?? session?.bootstrap?.blockedState.deviceStatus ?? "Unknown"}`,
+        `Assignments: ${deviceStats.assignments}`,
+        `Forms: ${deviceStats.forms}`,
+        `Beneficiaries: ${deviceStats.entities}`,
+        `Unsynced drafts: ${deviceStats.drafts}`,
+        `Queued uploads: ${queued}`,
+        `Failed uploads: ${failed}`,
+        `Last sync: ${lastLog?.message ?? device?.lastSyncAt ?? session?.bootstrap?.lastSync.lastSyncedAt ?? "Never"}`,
+      ].join("\n"),
+    );
+  }
+
   const appVersion = Constants.expoConfig?.version ?? "—";
   const buildEnv = Constants.expoConfig?.extra?.appEnv ?? "production";
 
@@ -130,6 +152,22 @@ export default function SettingsScreen() {
               <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 14 }}>Clear synced data</Text>
               <Text style={{ color: "#49635a", fontSize: 12 }}>
                 Removes synced submissions and logs. Unsynced drafts are kept.
+              </Text>
+            </View>
+            <Text style={{ color: "#8aa79b" }}>›</Text>
+          </Pressable>
+        </Section>
+
+        <Section title="Field support">
+          <Pressable
+            onPress={handleDiagnostics}
+            style={{ padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
+          >
+            <Text style={{ fontSize: 20 }}>🩺</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 14 }}>Show diagnostics</Text>
+              <Text style={{ color: "#49635a", fontSize: 12 }}>
+                Share app status, queue counts, and last sync details with support. No form answers are shown.
               </Text>
             </View>
             <Text style={{ color: "#8aa79b" }}>›</Text>
