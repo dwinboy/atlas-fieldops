@@ -37,8 +37,12 @@ import {
   inviteFieldOfficer,
   listForms,
   listFieldOfficers,
+  listRoles,
+  listUsers,
   listProjects,
   resetUserPassword,
+  updateFieldOfficerProfile,
+  updateUser,
   type CurrentPrincipal,
   type FieldOfficerActivityEventRead,
   type FieldOfficerAssignmentDetailRead,
@@ -46,9 +50,13 @@ import {
   type FieldOfficerInvite,
   type FieldOfficerPermissionRead,
   type FieldOfficerProfileDetailRead,
+  type FieldOfficerProfileUpdate,
   type FieldOfficerRead,
   type FieldOfficerSubmissionDetailRead,
   type OperationsSummary,
+  type RoleRead,
+  type UserRead,
+  type UserUpdate,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -339,25 +347,67 @@ function OfficerProfileWorkspace({
   loading,
   onClose,
   onNavigate,
+  onUpdateProfile,
+  onUpdateUser,
   onResetPassword,
+  profileUpdatePending,
+  roles,
   resetPending,
   temporaryPassword,
+  userUpdatePending,
+  users,
 }: {
   canManage: boolean;
   detail?: FieldOfficerProfileDetailRead;
   loading: boolean;
   onClose: () => void;
   onNavigate: (route: string) => void;
+  onUpdateProfile: (payload: FieldOfficerProfileUpdate) => void;
+  onUpdateUser: (payload: UserUpdate) => void;
   onResetPassword: () => void;
+  profileUpdatePending: boolean;
+  roles: RoleRead[];
   resetPending: boolean;
   temporaryPassword: string | null;
+  userUpdatePending: boolean;
+  users: UserRead[];
 }) {
   const [tab, setTab] = useState<OfficerProfileTab>("overview");
   const [mobileQrCodeUrl, setMobileQrCodeUrl] = useState<string | null>(null);
+  const [profileDraft, setProfileDraft] = useState({
+    employee_code: "",
+    home_region: "",
+    is_active: true,
+    phone_number: "",
+    supervisor_user_id: "",
+  });
+  const [accessDraft, setAccessDraft] = useState({
+    role_name: "",
+    scope_type: "",
+    project_id: "",
+    geography_id: "",
+  });
 
   useEffect(() => {
     setTab("overview");
   }, [detail?.officer.id]);
+
+  useEffect(() => {
+    if (!detail) return;
+    setProfileDraft({
+      employee_code: detail.officer.employee_code ?? "",
+      home_region: detail.officer.home_region ?? "",
+      is_active: detail.officer.is_active,
+      phone_number: detail.officer.phone_number ?? "",
+      supervisor_user_id: detail.officer.supervisor_user_id ?? "",
+    });
+    setAccessDraft({
+      role_name: detail.security.role ?? "",
+      scope_type: detail.security.scope_type ?? "",
+      project_id: detail.security.project_id ?? "",
+      geography_id: detail.security.geography_id ?? "",
+    });
+  }, [detail]);
 
   useEffect(() => {
     let cancelled = false;
@@ -450,6 +500,15 @@ function OfficerProfileWorkspace({
   const officer = detail.officer;
   const performance = detail.performance;
   const dataQuality = detail.data_quality;
+  const supervisorCandidates = users.filter((user) => {
+    const roleName = String(user.role_name ?? "").toLowerCase();
+    return ["supervisor", "district_supervisor", "regional_manager", "project_manager", "me_manager", "national_admin", "owner", "organization_owner"].includes(roleName);
+  });
+  const roleChoices = roles.length
+    ? roles
+    : detail.security.role
+      ? [{ id: detail.security.role, name: detail.security.role, label: detail.security.role, description: "", organization_id: "", permissions: [], scope_type: detail.security.scope_type ?? "organization", is_system: false }]
+      : [];
 
   return (
     <section className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -526,6 +585,58 @@ Password: ${temporaryPassword}`}
               <ProfileSignal label="Home Location" value={officer.home_region ?? "Unassigned"} />
               <ProfileSignal label="Device" value={officer.device_id ?? "No device paired"} />
             </div>
+            {canManage ? (
+              <div className="rounded-xl border bg-background p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                  <label className="grid flex-1 gap-1.5 text-xs font-medium text-muted-foreground">
+                    Supervisor
+                    <Select
+                      value={profileDraft.supervisor_user_id}
+                      onChange={(event) => setProfileDraft((current) => ({ ...current, supervisor_user_id: event.target.value }))}
+                    >
+                      <option value="">No supervisor assigned</option>
+                      {supervisorCandidates.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.full_name} · {user.role_name ?? "manager"}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="grid flex-1 gap-1.5 text-xs font-medium text-muted-foreground">
+                    Field location/team
+                    <Input
+                      value={profileDraft.home_region}
+                      onChange={(event) => setProfileDraft((current) => ({ ...current, home_region: event.target.value }))}
+                      placeholder="District, region, or field team"
+                    />
+                  </label>
+                  <label className="grid flex-1 gap-1.5 text-xs font-medium text-muted-foreground">
+                    Phone
+                    <Input
+                      value={profileDraft.phone_number}
+                      onChange={(event) => setProfileDraft((current) => ({ ...current, phone_number: event.target.value }))}
+                      placeholder="Phone number"
+                    />
+                  </label>
+                  <Button
+                    disabled={profileUpdatePending}
+                    onClick={() =>
+                      onUpdateProfile({
+                        employee_code: profileDraft.employee_code || null,
+                        home_region: profileDraft.home_region || null,
+                        phone_number: profileDraft.phone_number || null,
+                        supervisor_user_id: profileDraft.supervisor_user_id || null,
+                        is_active: profileDraft.is_active,
+                      })
+                    }
+                    type="button"
+                    variant="primary"
+                  >
+                    {profileUpdatePending ? "Saving..." : "Save profile"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -654,6 +765,76 @@ Password: ${temporaryPassword}`}
                 ))}
               </div>
             </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-sm font-semibold">Role, scope, and permission assignment</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Permissions come from the selected role. Create or edit roles in Users & Teams when a field officer needs a different permission set.
+              </p>
+              {canManage ? (
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                    Role
+                    <Select
+                      value={accessDraft.role_name}
+                      onChange={(event) => setAccessDraft((current) => ({ ...current, role_name: event.target.value }))}
+                    >
+                      <option value="">Select role</option>
+                      {roleChoices.map((role) => (
+                        <option key={role.id} value={role.name}>
+                          {role.label || role.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                    Access scope
+                    <Select
+                      value={accessDraft.scope_type}
+                      onChange={(event) => setAccessDraft((current) => ({ ...current, scope_type: event.target.value }))}
+                    >
+                      {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => (
+                        <option key={scope} value={scope}>
+                          {scope.replace("_", " ")}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                    Scope ID
+                    <Input
+                      value={accessDraft.scope_type === "project" ? accessDraft.project_id : accessDraft.geography_id}
+                      onChange={(event) =>
+                        setAccessDraft((current) => ({
+                          ...current,
+                          geography_id: current.scope_type === "project" ? "" : event.target.value,
+                          project_id: current.scope_type === "project" ? event.target.value : "",
+                        }))
+                      }
+                      placeholder={accessDraft.scope_type === "project" ? "Project ID" : "Location/team code"}
+                    />
+                  </label>
+                  <Button
+                    disabled={userUpdatePending || !accessDraft.role_name}
+                    onClick={() =>
+                      onUpdateUser({
+                        geography_id: accessDraft.scope_type === "project" ? null : accessDraft.geography_id || null,
+                        project_id: accessDraft.scope_type === "project" ? accessDraft.project_id || null : null,
+                        role_name: accessDraft.role_name,
+                        scope_type: accessDraft.scope_type || undefined,
+                      })
+                    }
+                    type="button"
+                    variant="primary"
+                  >
+                    {userUpdatePending ? "Saving..." : "Save access"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
+                  You can review effective permissions here, but role and permission assignment requires user management permission.
+                </p>
+              )}
+            </div>
           </div>
         ) : null}
         {tab === "audit" ? <DataTable columns={activityColumns} emptyLabel="No audit events for this officer yet." rows={detail.audit_trail} searchLabel="Search audit trail" title="Audit trail" /> : null}
@@ -743,6 +924,16 @@ export function FieldOperationsModule({
     queryKey: ["field-operations", "forms", token],
     queryFn: () => listForms(token ?? ""),
     enabled,
+  });
+  const usersQuery = useQuery({
+    queryKey: ["field-operations", "users", token],
+    queryFn: () => listUsers(token ?? ""),
+    enabled: enabled && canManageFieldOperations,
+  });
+  const rolesQuery = useQuery({
+    queryKey: ["field-operations", "roles", token],
+    queryFn: () => listRoles(token ?? ""),
+    enabled: enabled && canManageFieldOperations,
   });
   useEffect(() => {
     if (preview) return;
@@ -1005,6 +1196,49 @@ export function FieldOperationsModule({
       pushToast({
         title: "Password reset failed",
         description: "Check your permission and try again.",
+        tone: "danger",
+      }),
+  });
+
+  const updateOfficerProfileMutation = useMutation({
+    mutationFn: (payload: FieldOfficerProfileUpdate) =>
+      updateFieldOfficerProfile(token ?? "", selectedOfficerId ?? "", payload),
+    onSuccess: async () => {
+      await Promise.all([officerProfileQuery.refetch(), officersQuery.refetch()]);
+      pushToast({
+        title: "Field officer profile updated",
+        description: "Supervisor, status, contact, and location settings are now saved.",
+        tone: "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Could not update field officer",
+        description: "Check supervisor role, officer management permission, and try again.",
+        tone: "danger",
+      }),
+  });
+
+  const updateOfficerAccessMutation = useMutation({
+    mutationFn: (payload: UserUpdate) => {
+      const userId = selectedOfficerProfile?.officer.user_id;
+      if (!userId) {
+        throw new Error("No field officer user is selected.");
+      }
+      return updateUser(token ?? "", userId, payload);
+    },
+    onSuccess: async () => {
+      await Promise.all([officerProfileQuery.refetch(), officersQuery.refetch(), usersQuery.refetch()]);
+      pushToast({
+        title: "Field officer access updated",
+        description: "Role, scope, and effective permissions were refreshed.",
+        tone: "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Could not update access",
+        description: "This role or scope may be too broad for your account.",
         tone: "danger",
       }),
   });
@@ -1825,6 +2059,28 @@ export function FieldOperationsModule({
                     setProfileTemporaryPassword(null);
                   }}
                   onNavigate={(route) => router.push(route)}
+                  onUpdateProfile={(payload) => {
+                    if (preview) {
+                      pushToast({
+                        title: "Preview profile updated",
+                        description: "Connect to the backend to save field officer supervisor changes.",
+                        tone: "success",
+                      });
+                      return;
+                    }
+                    updateOfficerProfileMutation.mutate(payload);
+                  }}
+                  onUpdateUser={(payload) => {
+                    if (preview) {
+                      pushToast({
+                        title: "Preview access updated",
+                        description: "Connect to the backend to save role and permission changes.",
+                        tone: "success",
+                      });
+                      return;
+                    }
+                    updateOfficerAccessMutation.mutate(payload);
+                  }}
                   onResetPassword={() => {
                     if (preview && selectedPreviewOfficer) {
                       const password = generateTemporaryPassword();
@@ -1840,8 +2096,12 @@ export function FieldOperationsModule({
                       resetProfilePasswordMutation.mutate(selectedOfficerProfile.officer.user_id);
                     }
                   }}
+                  profileUpdatePending={updateOfficerProfileMutation.isPending}
+                  roles={rolesQuery.data ?? []}
                   resetPending={resetProfilePasswordMutation.isPending}
                   temporaryPassword={profileTemporaryPassword}
+                  userUpdatePending={updateOfficerAccessMutation.isPending}
+                  users={usersQuery.data ?? []}
                 />
               )
             ) : null}
@@ -2357,6 +2617,8 @@ Password:          ${lastInviteCredentials.password}`}
                 last_seen_at: null,
                 last_sync_at: null,
                 phone_number: inviteDraft.phone_number ?? null,
+                supervisor_name: null,
+                supervisor_user_id: null,
                 user_id: `preview-user-${Date.now()}`,
               };
               setOfficerPreviewRows((current) => [officer, ...current]);

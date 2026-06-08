@@ -12,6 +12,7 @@ from app.schemas.collection import (
     FieldOfficerImportResponse,
     FieldOfficerInvite,
     FieldOfficerProfileDetailRead,
+    FieldOfficerProfileUpdate,
     FieldOfficerRead,
     OfficerAssignmentCreate,
     OfficerAssignmentRead,
@@ -49,6 +50,38 @@ async def get_field_officer_profile(
         return profile
     except CollectionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/{field_officer_id}/profile",
+    response_model=FieldOfficerProfileDetailRead,
+    summary="Update a field officer operational profile",
+)
+async def update_field_officer_profile(
+    field_officer_id: UUID,
+    payload: FieldOfficerProfileUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldOfficerProfileDetailRead:
+    service = FieldOfficerService(session)
+    try:
+        profile = await service.update_officer_profile(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            profile_id=field_officer_id,
+            payload=payload,
+        )
+        await session.commit()
+        return profile
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post(

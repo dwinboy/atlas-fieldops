@@ -52,6 +52,7 @@ class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     employee_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     home_region: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -59,7 +60,8 @@ class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     device_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
+    supervisor = relationship("User", foreign_keys=[supervisor_user_id])
 
 
 class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):

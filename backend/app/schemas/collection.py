@@ -655,6 +655,8 @@ class FieldOfficerRead(BaseModel):
     phone_number: str | None
     employee_code: str | None
     home_region: str | None
+    supervisor_user_id: UUID | None = None
+    supervisor_name: str | None = None
     last_sync_at: datetime | None
     last_seen_at: datetime | None
     last_latitude: float | None
@@ -742,6 +744,14 @@ class FieldOfficerPermissionRead(BaseModel):
     label: str
     enabled: bool
     source: str
+
+
+class FieldOfficerProfileUpdate(BaseModel):
+    employee_code: str | None = Field(default=None, max_length=80)
+    phone_number: str | None = Field(default=None, max_length=40)
+    home_region: str | None = Field(default=None, max_length=160)
+    supervisor_user_id: UUID | None = None
+    is_active: bool | None = None
 
 
 class FieldOfficerProfileDetailRead(BaseModel):

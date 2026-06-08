@@ -817,6 +817,8 @@ const previewFieldOfficers: FieldOfficerRead[] = [
     last_seen_at: null,
     last_sync_at: null,
     phone_number: "+237 677 000 001",
+    supervisor_name: "Demo Supervisor",
+    supervisor_user_id: "preview-supervisor-demo",
     user_id: "preview-user-amina",
   },
   {
@@ -832,6 +834,8 @@ const previewFieldOfficers: FieldOfficerRead[] = [
     last_seen_at: null,
     last_sync_at: null,
     phone_number: "+237 677 000 002",
+    supervisor_name: "Demo Supervisor",
+    supervisor_user_id: "preview-supervisor-demo",
     user_id: "preview-user-james",
   },
 ];

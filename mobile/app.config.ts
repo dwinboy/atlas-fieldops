@@ -23,6 +23,13 @@ const config: ExpoConfig = {
   plugins: [
     "expo-image-picker",
     [
+      "expo-camera",
+      {
+        cameraPermission:
+          "Atlas FieldOps uses the camera to scan field officer QR login codes and capture form evidence.",
+      },
+    ],
+    [
       "expo-location",
       {
         locationAlwaysAndWhenInUsePermission: "Atlas FieldOps uses GPS to record submission locations.",

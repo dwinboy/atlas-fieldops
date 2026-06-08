@@ -34,6 +34,7 @@ from app.schemas.collection import (
     FieldOfficerInvite,
     FieldOfficerImportIssue,
     FieldOfficerImportResponse,
+    FieldOfficerProfileUpdate,
     FieldOfficerRead,
     FieldOfficerSecurityRead,
     FieldOfficerSubmissionDetailRead,
@@ -459,6 +460,20 @@ class FieldOfficerService:
 
     async def list_officers(self, organization_id: UUID) -> list[FieldOfficerRead]:
         rows = await self.officers.list(organization_id)
+        supervisor_ids = {
+            profile.supervisor_user_id
+            for profile, _user in rows
+            if profile.supervisor_user_id is not None
+        }
+        supervisor_names: dict[UUID, str] = {}
+        if supervisor_ids:
+            supervisor_result = await self.session.execute(
+                select(User.id, User.full_name).where(
+                    User.id.in_(supervisor_ids),
+                    User.deleted_at.is_(None),
+                )
+            )
+            supervisor_names = {user_id: full_name for user_id, full_name in supervisor_result.all()}
         return [
             FieldOfficerRead(
                 id=profile.id,
@@ -468,6 +483,8 @@ class FieldOfficerService:
                 phone_number=profile.phone_number,
                 employee_code=profile.employee_code,
                 home_region=profile.home_region,
+                supervisor_user_id=profile.supervisor_user_id,
+                supervisor_name=supervisor_names.get(profile.supervisor_user_id) if profile.supervisor_user_id else None,
                 last_sync_at=profile.last_sync_at,
                 last_seen_at=profile.last_seen_at,
                 last_latitude=profile.last_latitude,
@@ -477,6 +494,61 @@ class FieldOfficerService:
             )
             for profile, user in rows
         ]
+
+    async def update_officer_profile(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        profile_id: UUID,
+        payload: FieldOfficerProfileUpdate,
+    ) -> FieldOfficerProfileDetailRead:
+        profile = await self.officers.get(organization_id=organization_id, profile_id=profile_id)
+        if profile is None:
+            raise CollectionNotFoundError("Field officer not found")
+        if payload.supervisor_user_id is not None:
+            supervisor_account = await self.identity.get_user_account(
+                organization_id=organization_id,
+                user_id=payload.supervisor_user_id,
+            )
+            if supervisor_account is None:
+                raise CollectionNotFoundError("Supervisor user not found")
+            _supervisor_user, supervisor_membership, supervisor_role, _supervisor_grant = supervisor_account
+            supervisor_role_name = canonical_role(getattr(supervisor_role, "name", ""))
+            if not supervisor_membership.is_active or supervisor_role_name not in {
+                "district_supervisor",
+                "regional_manager",
+                "project_manager",
+                "me_manager",
+                "national_admin",
+                "owner",
+                "organization_owner",
+            }:
+                raise ValueError("Selected user is not an active supervisor or manager")
+        if payload.employee_code is not None:
+            profile.employee_code = payload.employee_code or None
+        if payload.phone_number is not None:
+            profile.phone_number = payload.phone_number or None
+        if payload.home_region is not None:
+            profile.home_region = payload.home_region or None
+        if "supervisor_user_id" in payload.model_fields_set:
+            profile.supervisor_user_id = payload.supervisor_user_id
+        if payload.is_active is not None:
+            profile.is_active = payload.is_active
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_officer.profile_updated",
+            resource_type="field_officer",
+            resource_id=str(profile.id),
+            metadata=payload.model_dump(exclude_unset=True, mode="json"),
+        )
+        return await self.get_officer_profile(
+            organization_id=organization_id,
+            profile_id=profile.id,
+            include_mobile_qr=True,
+        )
 
     @staticmethod
     def _source_label(submission: Submission) -> str:
@@ -535,6 +607,15 @@ class FieldOfficerService:
             select(Organization.name).where(Organization.id == organization_id)
         )
         organization_name = organization_result.scalar_one_or_none()
+        supervisor_name: str | None = None
+        if profile.supervisor_user_id is not None:
+            supervisor_result = await self.session.execute(
+                select(User.full_name).where(
+                    User.id == profile.supervisor_user_id,
+                    User.deleted_at.is_(None),
+                )
+            )
+            supervisor_name = supervisor_result.scalar_one_or_none()
 
         assignments_result = await self.session.execute(
             select(OfficerAssignment, Project, DataForm)
@@ -767,6 +848,8 @@ class FieldOfficerService:
             phone_number=profile.phone_number,
             employee_code=profile.employee_code,
             home_region=profile.home_region,
+            supervisor_user_id=profile.supervisor_user_id,
+            supervisor_name=supervisor_name,
             last_sync_at=profile.last_sync_at,
             last_seen_at=profile.last_seen_at,
             last_latitude=profile.last_latitude,
@@ -814,7 +897,7 @@ class FieldOfficerService:
             officer=officer_read,
             organization_name=organization_name,
             team=profile.home_region or "Unassigned field team",
-            supervisor=None,
+            supervisor=supervisor_name,
             status=security.account_status,
             metrics=[
                 FieldOfficerSummaryMetric(label="Projects", value=str(len(assigned_projects)), tone="success", route="/projects"),

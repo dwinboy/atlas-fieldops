@@ -128,6 +128,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
     last_sync_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
     phone_number: "+237 600 000 121",
+    supervisor_name: "Regional Supervisor",
+    supervisor_user_id: "supervisor-preview-001",
     user_id: "user-001",
   },
   {
@@ -143,6 +145,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: new Date(Date.now() - 51 * 60 * 1000).toISOString(),
     last_sync_at: new Date(Date.now() - 74 * 60 * 1000).toISOString(),
     phone_number: "+237 600 000 122",
+    supervisor_name: "Regional Supervisor",
+    supervisor_user_id: "supervisor-preview-001",
     user_id: "user-002",
   },
   {
@@ -158,6 +162,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: null,
     last_sync_at: null,
     phone_number: "+237 600 000 123",
+    supervisor_name: null,
+    supervisor_user_id: null,
     user_id: "user-003",
   },
 ];

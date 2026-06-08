@@ -832,6 +832,8 @@ export type FieldOfficerRead = {
   phone_number: string | null;
   employee_code: string | null;
   home_region: string | null;
+  supervisor_user_id: string | null;
+  supervisor_name: string | null;
   last_sync_at: string | null;
   last_seen_at: string | null;
   last_latitude: number | null;
@@ -941,6 +943,14 @@ export type FieldOfficerProfileDetailRead = {
   permissions: FieldOfficerPermissionRead[];
   security: FieldOfficerSecurityRead;
   audit_trail: FieldOfficerActivityEventRead[];
+};
+
+export type FieldOfficerProfileUpdate = {
+  employee_code?: string | null;
+  phone_number?: string | null;
+  home_region?: string | null;
+  supervisor_user_id?: string | null;
+  is_active?: boolean | null;
 };
 
 export type FieldOfficerAssignmentCreate = {
@@ -2615,6 +2625,18 @@ export async function listFieldOfficers(token: string): Promise<FieldOfficerRead
 
 export async function getFieldOfficerProfile(token: string, fieldOfficerId: string): Promise<FieldOfficerProfileDetailRead> {
   return request<FieldOfficerProfileDetailRead>(`/field-officers/${fieldOfficerId}`, { token });
+}
+
+export async function updateFieldOfficerProfile(
+  token: string,
+  fieldOfficerId: string,
+  payload: FieldOfficerProfileUpdate,
+): Promise<FieldOfficerProfileDetailRead> {
+  return request<FieldOfficerProfileDetailRead>(`/field-officers/${fieldOfficerId}/profile`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
 }
 
 export async function inviteFieldOfficer(token: string, payload: FieldOfficerInvite): Promise<FieldOfficerRead> {
