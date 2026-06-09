@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { CTASection, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
@@ -30,6 +30,7 @@ export default function TermsPage() {
             </article>
           ))}
         </section>
+        <CTASection />
       </main>
     </MarketingShell>
   );

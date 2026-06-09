@@ -26,6 +26,7 @@ const publicRoutes = [
   "help",
   "help/mobile",
   "documentation",
+  "services",
   "status",
   "careers",
 ];
