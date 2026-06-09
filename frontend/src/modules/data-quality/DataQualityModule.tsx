@@ -690,6 +690,8 @@ function ImportCleaningSection({
   const [bulkDraft, setBulkDraft] = useState<Record<string, Record<string, string>>>({});
   const [bulkReason, setBulkReason] = useState("Cleaned imported form rows in the Data Quality bulk editor.");
   const [errorMessage, setErrorMessage] = useState("");
+  const [rowSearch, setRowSearch] = useState("");
+  const [showIssueRowsOnly, setShowIssueRowsOnly] = useState(false);
   const readyRows = rows.filter((row) => row.ready_to_confirm);
   const issueRows = rows.filter((row) => !row.ready_to_confirm);
   const formOptions = useMemo(() => {
@@ -708,8 +710,29 @@ function ImportCleaningSection({
       Object.keys(row.response_values ?? {}).forEach((key) => keys.add(key));
       row.missing_field_keys.forEach((key) => keys.add(key));
     }
-    return Array.from(keys).filter(Boolean).slice(0, 24);
+    return Array.from(keys).filter(Boolean).sort((left, right) => {
+      const leftMissing = selectedRows.some((row) => row.missing_field_keys.includes(left));
+      const rightMissing = selectedRows.some((row) => row.missing_field_keys.includes(right));
+      if (leftMissing !== rightMissing) return leftMissing ? -1 : 1;
+      return left.localeCompare(right);
+    });
   }, [selectedRows]);
+  const visibleRows = useMemo(() => {
+    const query = rowSearch.trim().toLowerCase();
+    return selectedRows.filter((row) => {
+      if (showIssueRowsOnly && row.ready_to_confirm) return false;
+      if (!query) return true;
+      const haystack = [
+        row.client_submission_id,
+        row.source_record_id ?? "",
+        row.source_system ?? "",
+        row.uploaded_by_name ?? "",
+        ...row.missing_fields,
+        ...Object.values(row.response_values ?? {}).map((value) => String(value ?? "")),
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [rowSearch, selectedRows, showIssueRowsOnly]);
   const changedRows = selectedRows
     .map((row) => {
       const changes = bulkDraft[row.id] ?? {};
@@ -775,116 +798,83 @@ function ImportCleaningSection({
     }));
   }
 
-  const columns: TableColumn<ImportCleaningRowRead>[] = [
-    {
-      header: "Imported row",
-      key: "row",
-      render: (row) => (
-        <div className="min-w-52">
-          <button className="font-medium text-primary hover:underline" onClick={() => onOpenRow(row)} type="button">
-            {row.client_submission_id}
-          </button>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Source row {row.source_record_id ?? "unknown"} · {row.source_system ?? "Uploaded file"}
-          </p>
-        </div>
-      ),
-      value: (row) => `${row.client_submission_id} ${row.source_record_id ?? ""} ${row.source_system ?? ""}`,
-    },
-    {
-      header: "Form / Project",
-      key: "context",
-      render: (row) => (
-        <div className="min-w-48">
-          <p className="font-medium">{row.form_name}</p>
-          <p className="text-[11px] text-muted-foreground">{row.project_name ?? "No project linked"}</p>
-        </div>
-      ),
-      value: (row) => `${row.form_name} ${row.project_name ?? ""}`,
-    },
-    {
-      header: "Readiness",
-      key: "readiness",
-      render: (row) => (
-        <div className="space-y-1">
-          <Badge tone={row.ready_to_confirm ? "success" : "warning"}>
-            {row.ready_to_confirm ? "Ready to confirm" : "Needs cleaning"}
-          </Badge>
-          <p className="text-[11px] text-muted-foreground">{titleCase(row.quality_status ?? row.status)}</p>
-        </div>
-      ),
-      value: (row) => `${row.ready_to_confirm} ${row.quality_status ?? row.status}`,
-    },
-    {
-      header: "Issues",
-      key: "issues",
-      render: (row) => (
-        <div className="min-w-56">
-          <p className="text-sm font-medium">{row.issue_count} issue(s)</p>
-          {row.missing_fields.length ? (
-            <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
-              Missing: {row.missing_fields.slice(0, 4).join(", ")}
-              {row.missing_fields.length > 4 ? ` +${row.missing_fields.length - 4} more` : ""}
-            </p>
-          ) : (
-            <p className="mt-0.5 text-[11px] text-muted-foreground">No missing required fields detected</p>
-          )}
-        </div>
-      ),
-      value: (row) => `${row.issue_count} ${row.missing_fields.join(" ")}`,
-    },
-    {
-      header: "Uploaded by",
-      key: "uploader",
-      render: (row) => (
-        <div className="min-w-36">
-          <p>{row.uploaded_by_name ?? "Unknown user"}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {row.imported_at ? new Date(row.imported_at).toLocaleDateString() : "Date not captured"}
-          </p>
-        </div>
-      ),
-      value: (row) => `${row.uploaded_by_name ?? ""} ${row.imported_at ?? ""}`,
-    },
-    {
-      header: "Actions",
-      key: "actions",
-      render: (row) => (
-        <div className="flex min-w-56 flex-wrap gap-1.5">
-          <Button onClick={() => onOpenRow(row)} size="sm" type="button" variant="secondary">
-            Clean row
-          </Button>
-          <Button
-            disabled={!row.ready_to_confirm || busyRowId === row.id}
-            onClick={() => confirmRows([row], row.id)}
-            size="sm"
-            type="button"
-          >
-            Confirm
-          </Button>
-        </div>
-      ),
-      value: (row) => row.id,
-    },
-  ];
+  const totalColumnCount = bulkColumns.length + 4;
+  const gridWidth = Math.max(880, 520 + bulkColumns.length * 132);
 
   return (
-    <div className="space-y-3">
-      <SectionHeader
-        action={
-          <Button disabled={!readyRows.length || busyRowId === "batch"} onClick={() => confirmRows(readyRows)} type="button">
-            <CheckCircle2 aria-hidden="true" /> Confirm all ready
-          </Button>
-        }
-        description="Clean uploaded form rows before they become approved platform data. Rows with missing required fields stay staged; cleaned rows can be confirmed and then feed beneficiary/entity processing, indicators, dashboards, and reports."
-        route="/data-quality/import-cleaning"
-        title="Import Cleaning Queue"
-      />
-      <div className="grid gap-3 md:grid-cols-3">
-        <MetricCard icon={UploadCloud} label="Rows waiting" tone={rows.length ? "warning" : "success"} value={rows.length} />
-        <MetricCard icon={CheckCircle2} label="Ready to confirm" tone={readyRows.length ? "success" : "neutral"} value={readyRows.length} />
-        <MetricCard icon={FileWarning} label="Need cleaning" tone={issueRows.length ? "danger" : "success"} value={issueRows.length} />
-      </div>
+    <div className="space-y-2">
+      <section className="rounded-xl border bg-panel shadow-line">
+        <div className="flex flex-col gap-2 border-b bg-muted/25 px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone="warning">Import Cleaning</Badge>
+              <Badge tone={issueRows.length ? "danger" : "success"}>{issueRows.length} need cleaning</Badge>
+              <Badge tone={readyRows.length ? "success" : "neutral"}>{readyRows.length} ready</Badge>
+              <Badge tone="neutral">{bulkColumns.length} fields</Badge>
+            </div>
+            <h2 className="mt-1 text-sm font-semibold">Excel-style cleaning workspace</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Edit cells directly, scroll across all fields, save changes, then confirm rows that are ready for platform use.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <Button disabled={!changedRows.length || busyRowId === "bulk-save"} onClick={saveBulkChanges} size="sm" type="button">
+              <Save aria-hidden="true" /> Save {changedRows.length || ""} change{changedRows.length === 1 ? "" : "s"}
+            </Button>
+            <Button disabled={!selectedRows.some((row) => row.ready_to_confirm) || busyRowId === "bulk-confirm"} onClick={() => confirmRows(selectedRows.filter((row) => row.ready_to_confirm), "bulk-confirm")} size="sm" type="button" variant="secondary">
+              <CheckCircle2 aria-hidden="true" /> Confirm ready
+            </Button>
+            <Button disabled={!readyRows.length || busyRowId === "batch"} onClick={() => confirmRows(readyRows)} size="sm" type="button" variant="secondary">
+              Confirm all
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-2 border-b px-3 py-2 lg:grid-cols-[minmax(220px,320px)_minmax(220px,1fr)_180px] lg:items-end">
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-muted-foreground">Form</span>
+            <select
+              className="h-7 rounded-md border bg-background px-2 text-xs shadow-line"
+              id="import-cleaning-form-filter"
+              onChange={(event) => {
+                setActiveFormId(event.target.value);
+                setBulkDraft({});
+                setRowSearch("");
+              }}
+              value={selectedFormId}
+            >
+              {formOptions.map((form) => (
+                <option key={form.id} value={form.id}>{form.name} ({form.count})</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-muted-foreground">Cleaning reason</span>
+            <input
+              className="h-7 rounded-md border bg-background px-2 text-xs shadow-line"
+              onChange={(event) => setBulkReason(event.target.value)}
+              value={bulkReason}
+            />
+          </label>
+          <label className="flex h-7 items-center gap-2 rounded-md border bg-background px-2 text-xs">
+            <input checked={showIssueRowsOnly} onChange={(event) => setShowIssueRowsOnly(event.target.checked)} type="checkbox" />
+            Rows with issues
+          </label>
+        </div>
+        <div className="flex flex-col gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between">
+          <label className="relative w-full md:max-w-md">
+            <span className="sr-only">Search rows</span>
+            <input
+              className="h-7 w-full rounded-md border bg-background px-2 text-xs shadow-line"
+              onChange={(event) => setRowSearch(event.target.value)}
+              placeholder="Search row ID, source, missing field, or cell value"
+              value={rowSearch}
+            />
+          </label>
+          <p className="text-[11px] text-muted-foreground">
+            Showing {visibleRows.length} of {selectedRows.length} rows · {totalColumnCount} columns · small cells for dense review
+          </p>
+        </div>
+      </section>
       {errorMessage ? (
         <section className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm" role="alert">
           {errorMessage}
@@ -896,126 +886,80 @@ function ImportCleaningSection({
           <p className="mt-1 text-sm text-muted-foreground">Atlas is checking uploaded form rows that still need cleaning or confirmation.</p>
         </section>
       ) : null}
-      <DataTable
-        columns={columns}
-        emptyLabel="No uploaded form rows are waiting for cleaning"
-        rows={rows}
-        searchLabel="Search import rows, forms, projects, missing fields"
-        title="Uploaded rows staged for cleaning"
-      />
-      <Panel
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={!changedRows.length || busyRowId === "bulk-save"} onClick={saveBulkChanges} type="button">
-              <Save aria-hidden="true" /> Save cleaned rows
-            </Button>
-            <Button disabled={!selectedRows.some((row) => row.ready_to_confirm) || busyRowId === "bulk-confirm"} onClick={() => confirmRows(selectedRows.filter((row) => row.ready_to_confirm), "bulk-confirm")} type="button" variant="secondary">
-              <CheckCircle2 aria-hidden="true" /> Confirm ready in form
-            </Button>
-          </div>
-        }
-        title="Bulk row cleaner"
-      >
-        <div className="space-y-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid gap-1">
-              <label className="text-xs font-semibold" htmlFor="import-cleaning-form-filter">Form to clean</label>
-              <select
-                className="h-8 min-w-72 rounded-lg border bg-background px-2 text-xs shadow-line"
-                id="import-cleaning-form-filter"
-                onChange={(event) => {
-                  setActiveFormId(event.target.value);
-                  setBulkDraft({});
-                }}
-                value={selectedFormId}
-              >
-                {formOptions.map((form) => (
-                  <option key={form.id} value={form.id}>{form.name} ({form.count})</option>
+      {selectedRows.length && bulkColumns.length ? (
+        <div className="h-[calc(100vh-250px)] min-h-[520px] overflow-auto rounded-xl border bg-background product-scrollbar">
+          <table className="table-fixed border-separate border-spacing-0 text-left text-[10px]" style={{ width: `${gridWidth}px` }}>
+            <thead className="sticky top-0 z-20 bg-muted/80 text-muted-foreground shadow-line backdrop-blur">
+              <tr>
+                <th className="sticky left-0 z-30 w-36 border-b border-r bg-muted/90 px-1.5 py-1 font-semibold">Row</th>
+                <th className="w-24 border-b border-r px-1.5 py-1 font-semibold">Status</th>
+                <th className="w-28 border-b border-r px-1.5 py-1 font-semibold">Issues</th>
+                <th className="w-28 border-b border-r px-1.5 py-1 font-semibold">Source</th>
+                {bulkColumns.map((key) => (
+                  <th className="w-32 border-b border-r px-1.5 py-1 font-semibold" key={key}>
+                    <span className="block truncate" title={titleCase(key)}>{titleCase(key)}</span>
+                    <span className="block truncate text-[9px] font-normal leading-3" title={key}>{key}</span>
+                  </th>
                 ))}
-              </select>
-            </div>
-            <label className="grid flex-1 gap-1">
-              <span className="text-xs font-semibold">Cleaning reason</span>
-              <input
-                className="h-8 rounded-lg border bg-background px-2 text-xs shadow-line"
-                onChange={(event) => setBulkReason(event.target.value)}
-                value={bulkReason}
-              />
-            </label>
-          </div>
-          {selectedRows.length && bulkColumns.length ? (
-            <div className="max-h-[72vh] overflow-auto rounded-xl border bg-background product-scrollbar">
-              <table className="min-w-[1100px] table-fixed border-separate border-spacing-0 text-left text-[11px]">
-                <thead className="sticky top-0 z-10 bg-muted/70 text-muted-foreground shadow-line backdrop-blur">
-                  <tr>
-                    <th className="sticky left-0 z-20 w-44 bg-muted/80 px-2 py-2 font-semibold">Imported row</th>
-                    <th className="w-36 px-2 py-2 font-semibold">Readiness</th>
-                    {bulkColumns.map((key) => (
-                      <th className="w-44 px-2 py-2 font-semibold" key={key}>
-                        <span className="block truncate" title={key}>{titleCase(key)}</span>
-                        <span className="block truncate text-[10px] font-normal" title={key}>{key}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedRows.map((row) => (
-                    <tr className="border-t hover:bg-muted/25" key={row.id}>
-                      <td className="sticky left-0 z-10 border-t bg-background px-2 py-1.5 align-top">
-                        <button className="font-medium text-primary hover:underline" onClick={() => onOpenRow(row)} type="button">
-                          {row.client_submission_id}
-                        </button>
-                        <p className="mt-0.5 text-[10px] text-muted-foreground">Source row {row.source_record_id ?? "unknown"}</p>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row, rowIndex) => (
+                <tr className={cn("hover:bg-primary/5", rowIndex % 2 ? "bg-muted/10" : "bg-background")} key={row.id}>
+                  <td className="sticky left-0 z-10 border-b border-r bg-inherit px-1.5 py-1 align-top">
+                    <button className="block max-w-32 truncate font-semibold text-primary hover:underline" onClick={() => onOpenRow(row)} title={row.client_submission_id} type="button">
+                      {row.client_submission_id}
+                    </button>
+                    <span className="block truncate text-[9px] text-muted-foreground">#{row.source_record_id ?? "?"}</span>
+                  </td>
+                  <td className="border-b border-r px-1 py-1 align-top">
+                    <Badge tone={row.ready_to_confirm ? "success" : "warning"}>{row.ready_to_confirm ? "Ready" : "Clean"}</Badge>
+                  </td>
+                  <td className="border-b border-r px-1.5 py-1 align-top">
+                    <span className={cn("font-semibold", row.missing_field_count ? "text-danger" : "text-muted-foreground")}>
+                      {row.missing_field_count ? `${row.missing_field_count} missing` : `${row.issue_count} issue(s)`}
+                    </span>
+                  </td>
+                  <td className="border-b border-r px-1.5 py-1 align-top">
+                    <span className="block truncate" title={row.source_system ?? "Uploaded file"}>{row.source_system ?? "Uploaded"}</span>
+                    <span className="block truncate text-[9px] text-muted-foreground">{row.uploaded_by_name ?? "Unknown"}</span>
+                  </td>
+                  {bulkColumns.map((key) => {
+                    const missing = row.missing_field_keys.includes(key);
+                    const changed = bulkDraft[row.id]?.[key] !== undefined;
+                    return (
+                      <td className={cn("border-b border-r p-0 align-top", missing ? "bg-danger/5" : changed ? "bg-success/10" : "")} key={key}>
+                        <input
+                          aria-label={`${row.client_submission_id} ${key}`}
+                          className={cn(
+                            "h-6 w-full rounded-none border-0 bg-transparent px-1.5 text-[10px] leading-6 outline-none ring-inset transition focus:bg-primary/5 focus:ring-1 focus:ring-primary",
+                            missing && !cellValue(row, key) ? "text-danger placeholder:text-danger/70" : "text-foreground",
+                          )}
+                          onChange={(event) => updateCell(row.id, key, event.target.value)}
+                          placeholder={missing ? "Missing" : ""}
+                          value={cellValue(row, key)}
+                        />
                       </td>
-                      <td className="border-t px-2 py-1.5 align-top">
-                        <Badge tone={row.ready_to_confirm ? "success" : "warning"}>{row.ready_to_confirm ? "Ready" : "Clean"}</Badge>
-                        {row.missing_field_count ? <p className="mt-1 text-[10px] text-danger">{row.missing_field_count} missing</p> : null}
-                      </td>
-                      {bulkColumns.map((key) => {
-                        const missing = row.missing_field_keys.includes(key);
-                        return (
-                          <td className="border-t px-1.5 py-1.5 align-top" key={key}>
-                            <input
-                              aria-label={`${row.client_submission_id} ${key}`}
-                              className={cn(
-                                "h-7 w-full rounded-md border bg-panel px-2 text-[11px] outline-none transition focus:border-primary",
-                                missing && !cellValue(row, key) ? "border-danger/60 bg-danger/5" : "border-border",
-                              )}
-                              onChange={(event) => updateCell(row.id, key, event.target.value)}
-                              value={cellValue(row, key)}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
-              <Table2 aria-hidden="true" className="mb-2" size={18} />
-              Choose a form with staged uploaded rows to edit values in bulk.
-            </div>
-          )}
-          <p className="text-xs leading-5 text-muted-foreground">
-            Save changes first. Atlas rechecks required values and form validation rules after saving; only rows with no blocking issues can be confirmed for approved-data processing.
-          </p>
+                    );
+                  })}
+                </tr>
+              ))}
+              {!visibleRows.length ? (
+                <tr>
+                  <td className="px-4 py-12 text-center text-sm text-muted-foreground" colSpan={totalColumnCount}>
+                    No rows match the current filter.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
-      </Panel>
-      <Panel title="How this queue protects reporting data">
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border bg-background p-3 text-sm">
-            Uploaded data is staged first, so missing fields do not silently enter official beneficiary records.
-          </div>
-          <div className="rounded-xl border bg-background p-3 text-sm">
-            Users clean rows in the submission response editor, with the form questions and validation issues visible.
-          </div>
-          <div className="rounded-xl border bg-background p-3 text-sm">
-            Confirmed rows become approved submissions and run through beneficiary/entity linking and audit history.
-          </div>
+      ) : (
+        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
+          <Table2 aria-hidden="true" className="mb-2" size={18} />
+          Choose a form with staged uploaded rows to edit values in bulk.
         </div>
-      </Panel>
+      )}
     </div>
   );
 }
