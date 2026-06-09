@@ -743,11 +743,11 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           </Button>
           <Button disabled={preview || !canManageUsers || saveRoleAssignmentMutation.isPending} onClick={() => openRoleAssignments(user)} size="sm" variant="secondary">
             <ShieldCheck aria-hidden="true" />
-            Roles
+            Manage roles
           </Button>
           <Button disabled={preview || !canManageUsers || updateUserAccessMutation.isPending} onClick={() => openEditUserAccess(user)} size="sm" variant="ghost">
             <UserCog aria-hidden="true" />
-            Primary
+            Edit scope
           </Button>
           <Button disabled={preview || !canManageUsers || updateUserStatusMutation.isPending} onClick={() => updateUserStatusMutation.mutate({ is_active: !user.is_active, user })} size="sm" variant="ghost">
             {user.is_active ? "Deactivate" : "Activate"}
@@ -947,7 +947,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       ) : null}
 
       {!selectedRoleProfileUser && activeSection === "permissions" ? (
-        <PermissionsSection catalogGroups={permissionGroups} roles={roles} users={users} onOpenAccessTest={() => setModalMode("access-test")} />
+        <PermissionsSection
+          canManageUsers={canManageUsers}
+          catalog={catalog}
+          catalogGroups={permissionGroups}
+          onEditPrimaryAccess={openEditUserAccess}
+          onManageRoles={openRoleAssignments}
+          onOpenAccessTest={() => setModalMode("access-test")}
+          onOpenUserProfile={openRoleProfile}
+          roles={roles}
+          users={users}
+        />
       ) : null}
 
       {!selectedRoleProfileUser && activeSection === "activity-logs" ? (
@@ -1206,11 +1216,11 @@ function RoleSpecificProfileWorkspace({
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManage} onClick={onOpenRoles} variant="secondary">
               <ShieldCheck aria-hidden="true" />
-              Manage roles
+              Manage role assignments
             </Button>
             <Button disabled={!canManage} onClick={onOpenAccess} variant="secondary">
               <KeyRound aria-hidden="true" />
-              Primary access
+              Edit primary scope
             </Button>
             <Button onClick={onClose} variant="ghost">Close profile</Button>
           </div>
@@ -1619,20 +1629,174 @@ function OrganizationsSection({ organizationName, summary, units }: { organizati
   );
 }
 
-function PermissionsSection({ catalogGroups, onOpenAccessTest, roles, users }: { catalogGroups: ReturnType<typeof groupPermissions>; onOpenAccessTest: () => void; roles: RoleRead[]; users: UserRead[] }) {
+function PermissionsSection({
+  canManageUsers,
+  catalog,
+  catalogGroups,
+  onEditPrimaryAccess,
+  onManageRoles,
+  onOpenAccessTest,
+  onOpenUserProfile,
+  roles,
+  users,
+}: {
+  canManageUsers: boolean;
+  catalog: AccessCatalog;
+  catalogGroups: ReturnType<typeof groupPermissions>;
+  onEditPrimaryAccess: (user: UserRead) => void;
+  onManageRoles: (user: UserRead) => void;
+  onOpenAccessTest: () => void;
+  onOpenUserProfile: (user: UserRead) => void;
+  roles: RoleRead[];
+  users: UserRead[];
+}) {
   return (
     <section className="space-y-4">
       <SectionHeader
         action={<Button onClick={onOpenAccessTest} variant="primary"><SearchCheck aria-hidden="true" /> Test access</Button>}
-        description="Inspect role permissions, user overrides, and access scopes before assigning people to sensitive workflows."
+        description="Manage who can upload form data, clean imported rows, review submissions, create users, and access project or location scoped records."
         title="Permission Management"
       />
       <div className="grid gap-4 xl:grid-cols-3">
-        <InsightCard icon={KeyRound} title="Access model" items={["RBAC roles", "Project/location scopes", "Team and own-record boundaries"]} />
-        <InsightCard icon={ShieldCheck} title="Configured roles" items={roles.slice(0, 4).map((role) => role.label || normalizeRoleLabel(role.name))} />
-        <InsightCard icon={UsersRound} title="Users under control" items={[`${users.length} total users`, `${users.filter((user) => user.is_active).length} active`, `${users.filter((user) => !user.is_active).length} inactive`]} />
+        <InsightCard icon={KeyRound} title="How access works" items={["Role gives permissions", "Scope limits project/location/team", "Profile shows effective access"]} />
+        <InsightCard icon={FileUp} title="Data upload permissions" items={["Upload form data: data.import", "Clean many rows: data.bulk_edit", "Review field data: submissions.review"]} />
+        <InsightCard icon={UsersRound} title="Manage a user" items={["Open user profile", "Manage role assignments", "Edit primary access scope"]} />
       </div>
+      <UserPermissionControlPanel
+        canManageUsers={canManageUsers}
+        catalog={catalog}
+        onEditPrimaryAccess={onEditPrimaryAccess}
+        onManageRoles={onManageRoles}
+        onOpenUserProfile={onOpenUserProfile}
+        roles={roles}
+        users={users}
+      />
       <PermissionMatrix groups={catalogGroups} roles={roles} />
+    </section>
+  );
+}
+
+function permissionsForUser(user: UserRead, roles: RoleRead[], catalog: AccessCatalog): Set<string> {
+  const permissions = new Set<string>();
+  const roleMap = new Map<string, string[]>();
+  for (const role of roles) {
+    roleMap.set(role.name, role.permissions);
+  }
+  for (const role of catalog.roles) {
+    roleMap.set(role.name, role.permissions);
+  }
+  const roleNames = new Set<string>();
+  if (user.role_name) roleNames.add(user.role_name);
+  for (const assignment of user.role_assignments ?? []) {
+    if (assignment.is_active) roleNames.add(assignment.role_name);
+  }
+  for (const roleName of roleNames) {
+    for (const permission of roleMap.get(roleName) ?? []) {
+      permissions.add(permission);
+    }
+  }
+  return permissions;
+}
+
+function UserPermissionControlPanel({
+  canManageUsers,
+  catalog,
+  onEditPrimaryAccess,
+  onManageRoles,
+  onOpenUserProfile,
+  roles,
+  users,
+}: {
+  canManageUsers: boolean;
+  catalog: AccessCatalog;
+  onEditPrimaryAccess: (user: UserRead) => void;
+  onManageRoles: (user: UserRead) => void;
+  onOpenUserProfile: (user: UserRead) => void;
+  roles: RoleRead[];
+  users: UserRead[];
+}) {
+  const rows = users.map((user) => {
+    const permissions = permissionsForUser(user, roles, catalog);
+    const canImport = permissions.has("data.import");
+    const canBulkClean = permissions.has("data.bulk_edit");
+    const canReview = permissions.has("submissions.review") || permissions.has("submissions.approve");
+    return {
+      canBulkClean,
+      canImport,
+      canReview,
+      permissions,
+      user,
+    };
+  });
+  const columns: TableColumn<(typeof rows)[number]>[] = [
+    {
+      key: "user",
+      header: "User",
+      value: (row) => `${row.user.full_name} ${row.user.email}`,
+      render: (row) => (
+        <button className="text-left" onClick={() => onOpenUserProfile(row.user)} type="button">
+          <span className="block font-medium text-primary hover:underline">{row.user.full_name}</span>
+          <span className="block text-xs text-muted-foreground">{row.user.email}</span>
+        </button>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role / Scope",
+      value: (row) => `${row.user.role_name ?? ""} ${row.user.scope_type ?? ""}`,
+      render: (row) => (
+        <div className="space-y-1">
+          <Badge tone="accent">{normalizeRoleLabel(row.user.role_name)}</Badge>
+          <p className="text-xs text-muted-foreground">{(row.user.scope_type ?? "organization").replace("_", " ")}</p>
+        </div>
+      ),
+    },
+    {
+      key: "import",
+      header: "Upload data",
+      value: (row) => String(row.canImport),
+      render: (row) => <Badge tone={row.canImport ? "success" : "warning"}>{row.canImport ? "Allowed" : "Needs data.import"}</Badge>,
+    },
+    {
+      key: "clean",
+      header: "Bulk clean",
+      value: (row) => String(row.canBulkClean),
+      render: (row) => <Badge tone={row.canBulkClean ? "success" : "warning"}>{row.canBulkClean ? "Allowed" : "Needs data.bulk_edit"}</Badge>,
+    },
+    {
+      key: "review",
+      header: "Review submissions",
+      value: (row) => String(row.canReview),
+      render: (row) => <Badge tone={row.canReview ? "success" : "neutral"}>{row.canReview ? "Allowed" : "Not assigned"}</Badge>,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (row) => (
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => onOpenUserProfile(row.user)} size="sm" variant="secondary">Open profile</Button>
+          <Button disabled={!canManageUsers} onClick={() => onManageRoles(row.user)} size="sm" variant="secondary">Manage roles</Button>
+          <Button disabled={!canManageUsers} onClick={() => onEditPrimaryAccess(row.user)} size="sm" variant="ghost">Edit scope</Button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <section className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">User permission control</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Use this table when someone cannot upload data, clean imports, or review submissions. Open their profile, then manage role assignments or edit scope.
+          </p>
+        </div>
+        <Badge tone="support">{rows.filter((row) => row.canImport).length}/{rows.length} can upload</Badge>
+      </div>
+      <div className="mt-3">
+        <DataTable columns={columns} emptyLabel="No users are available for permission review" rows={rows} searchLabel="Search users, roles, upload permission" title="User access to data workflows" />
+      </div>
     </section>
   );
 }

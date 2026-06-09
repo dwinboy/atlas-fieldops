@@ -37,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions } from "@/lib/api";
+import { ApiError, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -1891,10 +1891,13 @@ function FormDataGridWorkspace({
         tone: "success",
       });
     } catch (error) {
+      const permissionMessage =
+        error instanceof ApiError && error.status === 403
+          ? "You need the Data Import permission (data.import) to upload data into forms. Ask an organization owner or admin to open Users & Teams > Permissions, select your profile, and assign a role such as Data Manager or M&E Manager with data.import."
+          : null;
       pushToast({
         title: "Upload could not be imported",
-        description:
-          error instanceof Error ? error.message : "Check the file and try again.",
+        description: permissionMessage ?? (error instanceof Error ? error.message : "Check the file and try again."),
         tone: "danger",
       });
     } finally {

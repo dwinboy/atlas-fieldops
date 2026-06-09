@@ -82,7 +82,7 @@ export const previewRoles: RoleRead[] = [
     label: "Organization Owner",
     name: "organization_owner",
     organization_id: "org-preview",
-    permissions: ["users.view", "users.create", "users.manage", "roles.view", "roles.manage", "organization.read"],
+    permissions: ["users.view", "users.create", "users.manage", "roles.view", "roles.manage", "organization.read", "data.import", "data.bulk_edit"],
     scope_type: "organization",
   },
   {
@@ -92,7 +92,7 @@ export const previewRoles: RoleRead[] = [
     label: "M&E Manager",
     name: "regional_manager",
     organization_id: "org-preview",
-    permissions: ["users.view", "users.create", "roles.view", "forms.view", "submissions.review", "reports.view"],
+    permissions: ["users.view", "users.create", "roles.view", "forms.view", "submissions.review", "reports.view", "data.import", "data.bulk_edit"],
     scope_type: "region",
   },
   {
@@ -295,4 +295,3 @@ export const previewActivityLogs: UsersTeamsActivityLogRead[] = [
     user_label: "Amina Okoro",
   },
 ];
-

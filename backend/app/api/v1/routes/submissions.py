@@ -90,7 +90,7 @@ async def list_import_cleaning_rows(
 )
 async def bulk_update_import_cleaning_rows(
     payload: ImportCleaningBulkUpdateRequest,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_EDIT))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_BULK_EDIT))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ImportCleaningBulkUpdateResponse:
     try:

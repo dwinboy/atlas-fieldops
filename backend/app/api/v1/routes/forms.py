@@ -182,7 +182,7 @@ async def get_form_schema(
 async def import_form_data(
     form_id: UUID,
     payload: FormDataImportRequest,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_CREATE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FormDataImportResponse:
     try:
@@ -210,7 +210,7 @@ async def import_form_data(
 async def confirm_imported_form_data(
     form_id: UUID,
     payload: FormDataImportConfirmRequest,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_REVIEW))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.DATA_IMPORT))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FormDataImportConfirmResponse:
     try:

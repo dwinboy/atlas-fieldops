@@ -34,6 +34,7 @@ import { HelpHint } from "@/components/ui/help-hint";
 import {
   bulkUpdateImportCleaningRows,
   confirmImportedFormDataRows,
+  ApiError,
   listDataQualitySignals,
   listImportCleaningRows,
   type CurrentPrincipal,
@@ -727,7 +728,11 @@ function ImportCleaningSection({
     try {
       await onConfirmRows(selectedRows);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "The selected import rows could not be confirmed.");
+      setErrorMessage(
+        error instanceof ApiError && error.status === 403
+          ? "You need Data Import permission (data.import) to confirm cleaned uploaded rows. Ask an organization owner or admin to update your role in Users & Teams > Permissions."
+          : error instanceof Error ? error.message : "The selected import rows could not be confirmed.",
+      );
     } finally {
       setBusyRowId(null);
     }
@@ -741,7 +746,11 @@ function ImportCleaningSection({
       await onBulkSave(changedRows, bulkReason);
       setBulkDraft({});
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Bulk row cleaning could not be saved.");
+      setErrorMessage(
+        error instanceof ApiError && error.status === 403
+          ? "You need Bulk Edit permission (data.bulk_edit) to save many cleaned rows. Ask an organization owner or admin to update your role in Users & Teams > Permissions."
+          : error instanceof Error ? error.message : "Bulk row cleaning could not be saved.",
+      );
     } finally {
       setBusyRowId(null);
     }
