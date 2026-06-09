@@ -207,6 +207,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Assignments", route: "/field-operations/assignments", description: "Form, project, and location assignments." },
           { label: "Field Officers", route: "/field-operations/field-officers", description: "Enumerator and collector management." },
           { label: "Supervisors", route: "/field-operations/supervisors", description: "Supervisor teams and responsibilities." },
+          { label: "Operational Activities", route: "/field-operations/operational-activities", description: "Supervisor approval and GPS evidence for organization and project field activities." },
           { label: "Work Plans", route: "/field-operations/work-plans", description: "Daily and weekly field activity plans." },
           { label: "Targets", route: "/field-operations/targets", description: "Collection targets and progress tracking." },
           { label: "Field Monitoring", route: "/field-operations/field-monitoring", description: "Device, sync, GPS, and productivity monitoring." },

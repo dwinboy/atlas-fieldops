@@ -21,6 +21,7 @@ import type {
   MobileSyncPackage,
   MobileSyncQueueItem,
   MobileVersionState,
+  MobileVisitRequest,
 } from "@/models/contracts";
 
 function pageQuery(page?: MobilePageRequest): string {
@@ -241,6 +242,176 @@ export class NotificationsApi {
   }
 }
 
+type ServerFieldVisitRequest = {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  field_officer_id: string;
+  supervisor_user_id: string | null;
+  title: string;
+  activity_type: MobileVisitRequest["activityType"];
+  activity_scope: MobileVisitRequest["activityScope"];
+  requires_approval: boolean;
+  purpose: string | null;
+  location_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  requested_start_at: string;
+  requested_end_at: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  status: MobileVisitRequest["status"];
+  required_form_ids: string[];
+  planned_activities: string[];
+  supervisor_instructions: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+  check_in_at: string | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_in_accuracy: number | null;
+  check_in_note: string | null;
+  check_out_at: string | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  check_out_accuracy: number | null;
+  check_out_summary: string | null;
+  verification_status: MobileVisitRequest["verificationStatus"];
+  distance_from_planned_meters: number | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapVisitRequest(visit: ServerFieldVisitRequest): MobileVisitRequest {
+  return {
+    id: visit.id,
+    localId: visit.id,
+    serverId: visit.id,
+    syncStatus: "Synced",
+    createdAt: visit.created_at,
+    updatedAt: visit.updated_at,
+    lastSyncedAt: new Date().toISOString(),
+    deviceId: null,
+    conflictStatus: null,
+    deletedAt: null,
+    organizationId: visit.organization_id,
+    projectId: visit.project_id,
+    beneficiaryId: visit.beneficiary_id,
+    fieldOfficerId: visit.field_officer_id,
+    supervisorUserId: visit.supervisor_user_id,
+    title: visit.title,
+    activityType: visit.activity_type,
+    activityScope: visit.activity_scope,
+    requiresApproval: visit.requires_approval,
+    purpose: visit.purpose,
+    locationName: visit.location_name,
+    latitude: visit.latitude,
+    longitude: visit.longitude,
+    requestedStartAt: visit.requested_start_at,
+    requestedEndAt: visit.requested_end_at,
+    priority: visit.priority,
+    status: visit.status,
+    requiredFormIds: visit.required_form_ids,
+    plannedActivities: visit.planned_activities,
+    supervisorInstructions: visit.supervisor_instructions,
+    reviewedByUserId: visit.reviewed_by_user_id,
+    reviewedAt: visit.reviewed_at,
+    checkInAt: visit.check_in_at,
+    checkInLatitude: visit.check_in_latitude,
+    checkInLongitude: visit.check_in_longitude,
+    checkInAccuracy: visit.check_in_accuracy,
+    checkInNote: visit.check_in_note,
+    checkOutAt: visit.check_out_at,
+    checkOutLatitude: visit.check_out_latitude,
+    checkOutLongitude: visit.check_out_longitude,
+    checkOutAccuracy: visit.check_out_accuracy,
+    checkOutSummary: visit.check_out_summary,
+    verificationStatus: visit.verification_status,
+    distanceFromPlannedMeters: visit.distance_from_planned_meters,
+    metadata: visit.metadata_json,
+  };
+}
+
+export class VisitRequestsApi {
+  constructor(private readonly http: MobileHttpClient) {}
+
+  async list(token: string) {
+    const visits = await this.http.request<ServerFieldVisitRequest[]>("/mobile/operational-activities", { token });
+    return visits.map(mapVisitRequest);
+  }
+
+  async create(
+    token: string,
+    payload: {
+      projectId: string | null;
+      beneficiaryId: string | null;
+      title: string;
+      activityType: MobileVisitRequest["activityType"];
+      activityScope: MobileVisitRequest["activityScope"];
+      requiresApproval: boolean;
+      purpose: string | null;
+      locationName: string;
+      latitude: number | null;
+      longitude: number | null;
+      requestedStartAt: string;
+      requestedEndAt: string;
+      priority: "low" | "normal" | "high" | "urgent";
+      plannedActivities: string[];
+    },
+  ) {
+    const visit = await this.http.request<ServerFieldVisitRequest>("/mobile/operational-activities", {
+      method: "POST",
+      token,
+      body: {
+        project_id: payload.projectId,
+        beneficiary_id: payload.beneficiaryId,
+        title: payload.title,
+        activity_type: payload.activityType,
+        activity_scope: payload.activityScope,
+        requires_approval: payload.requiresApproval,
+        purpose: payload.purpose,
+        location_name: payload.locationName,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        requested_start_at: payload.requestedStartAt,
+        requested_end_at: payload.requestedEndAt,
+        priority: payload.priority,
+        planned_activities: payload.plannedActivities,
+        required_form_ids: [],
+        metadata_json: {},
+      },
+    });
+    return mapVisitRequest(visit);
+  }
+
+  async checkIn(
+    token: string,
+    visitRequestId: string,
+    payload: { latitude: number; longitude: number; accuracy: number | null; timestamp: string; note: string | null },
+  ) {
+    const visit = await this.http.request<ServerFieldVisitRequest>(`/mobile/operational-activities/${visitRequestId}/check-in`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+    return mapVisitRequest(visit);
+  }
+
+  async checkOut(
+    token: string,
+    visitRequestId: string,
+    payload: { latitude: number; longitude: number; accuracy: number | null; timestamp: string; summary: string | null },
+  ) {
+    const visit = await this.http.request<ServerFieldVisitRequest>(`/mobile/operational-activities/${visitRequestId}/check-out`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+    return mapVisitRequest(visit);
+  }
+}
+
 export class SyncApi {
   constructor(private readonly http: MobileHttpClient) {}
 
@@ -313,6 +484,7 @@ export function createMobileApis(http = new MobileHttpClient()) {
     submissions: new SubmissionsApi(http),
     attachments: new AttachmentsApi(http),
     notifications: new NotificationsApi(http),
+    visitRequests: new VisitRequestsApi(http),
     sync: new SyncApi(http),
     audit: new AuditApi(http),
     operations: new MobileOperationsApi(http),

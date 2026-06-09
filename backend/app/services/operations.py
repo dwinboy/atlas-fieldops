@@ -1,4 +1,5 @@
 import csv
+import math
 import re
 from difflib import SequenceMatcher
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from app.models.operations import (
     CaseRecord,
     DataQualitySignal,
     DonorReport,
+    FieldVisitRequest,
     InterventionRecord,
     KnowledgeDocument,
     MonitoringIndicator,
@@ -46,6 +48,11 @@ from app.schemas.operations import (
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
+    FieldVisitCheckIn,
+    FieldVisitCheckOut,
+    FieldVisitRequestCreate,
+    FieldVisitRequestRead,
+    FieldVisitRequestReview,
     ImportAnalysisRequest,
     ImportAnalysisResponse,
     ImportApplyResponse,
@@ -915,6 +922,291 @@ class OperationsService:
 
     async def list_programs(self, organization_id: UUID) -> list[Project]:
         return await self.repository.list_programs(organization_id)
+
+    async def _field_officer_for_user(self, organization_id: UUID, user_id: UUID) -> FieldOfficerProfile | None:
+        result = await self.session.execute(
+            select(FieldOfficerProfile).where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.user_id == user_id,
+                FieldOfficerProfile.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    def _read_visit_request(self, visit: FieldVisitRequest) -> FieldVisitRequestRead:
+        return FieldVisitRequestRead(
+            id=visit.id,
+            organization_id=visit.organization_id,
+            project_id=visit.project_id,
+            beneficiary_id=visit.beneficiary_id,
+            field_officer_id=visit.field_officer_id,
+            supervisor_user_id=visit.supervisor_user_id,
+            title=visit.title,
+            activity_type=visit.activity_type,
+            activity_scope=visit.activity_scope,
+            requires_approval=visit.requires_approval,
+            purpose=visit.purpose,
+            location_name=visit.location_name,
+            latitude=visit.latitude,
+            longitude=visit.longitude,
+            requested_start_at=visit.requested_start_at,
+            requested_end_at=visit.requested_end_at,
+            priority=visit.priority,
+            status=visit.status,
+            required_form_ids=[UUID(str(form_id)) for form_id in (visit.required_form_ids_json or [])],
+            planned_activities=[str(activity) for activity in (visit.planned_activities_json or [])],
+            supervisor_instructions=visit.supervisor_instructions,
+            reviewed_by_user_id=visit.reviewed_by_user_id,
+            reviewed_at=visit.reviewed_at,
+            check_in_at=visit.check_in_at,
+            check_in_latitude=visit.check_in_latitude,
+            check_in_longitude=visit.check_in_longitude,
+            check_in_accuracy=visit.check_in_accuracy,
+            check_in_note=visit.check_in_note,
+            check_out_at=visit.check_out_at,
+            check_out_latitude=visit.check_out_latitude,
+            check_out_longitude=visit.check_out_longitude,
+            check_out_accuracy=visit.check_out_accuracy,
+            check_out_summary=visit.check_out_summary,
+            verification_status=visit.verification_status,
+            distance_from_planned_meters=visit.distance_from_planned_meters,
+            metadata_json=visit.metadata_json or {},
+            created_at=visit.created_at,
+            updated_at=visit.updated_at,
+        )
+
+    @staticmethod
+    def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        radius_meters = 6_371_000
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
+        a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+        return round(radius_meters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 1)
+
+    async def create_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: FieldVisitRequestCreate,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        if officer is None or not officer.is_active:
+            raise ValueError("Only active field officers can request field visits from mobile.")
+        if payload.project_id and not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise ValueError("Choose a project that belongs to this organization.")
+        if payload.beneficiary_id:
+            beneficiary = await self.repository.get_beneficiary(organization_id=organization_id, beneficiary_id=payload.beneficiary_id)
+            if beneficiary is None:
+                raise ValueError("Choose a beneficiary that belongs to this organization.")
+        visit = FieldVisitRequest(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            beneficiary_id=payload.beneficiary_id,
+            field_officer_id=officer.id,
+            supervisor_user_id=officer.supervisor_user_id,
+            title=payload.title,
+            activity_type=payload.activity_type,
+            activity_scope=payload.activity_scope if payload.project_id or payload.beneficiary_id else "organization",
+            requires_approval=payload.requires_approval,
+            purpose=payload.purpose,
+            location_name=payload.location_name,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            requested_start_at=payload.requested_start_at,
+            requested_end_at=payload.requested_end_at,
+            priority=payload.priority,
+            status="pending" if payload.requires_approval else "approved",
+            required_form_ids_json=[str(form_id) for form_id in payload.required_form_ids],
+            planned_activities_json=payload.planned_activities,
+            metadata_json=payload.metadata_json,
+        )
+        self.session.add(visit)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.request_submitted",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "field_officer_id": str(officer.id),
+                "project_id": str(payload.project_id) if payload.project_id else None,
+                "beneficiary_id": str(payload.beneficiary_id) if payload.beneficiary_id else None,
+                "activity_type": payload.activity_type,
+                "activity_scope": payload.activity_scope,
+                "location_name": payload.location_name,
+                "requested_start_at": payload.requested_start_at.isoformat(),
+                "requested_end_at": payload.requested_end_at.isoformat(),
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def list_field_visit_requests(
+        self,
+        organization_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        own_only: bool = False,
+        status: str | None = None,
+    ) -> list[FieldVisitRequestRead]:
+        filters = [
+            FieldVisitRequest.organization_id == organization_id,
+            FieldVisitRequest.deleted_at.is_(None),
+        ]
+        if status:
+            filters.append(FieldVisitRequest.status == status)
+        if own_only:
+            if actor_user_id is None:
+                return []
+            officer = await self._field_officer_for_user(organization_id, actor_user_id)
+            if officer is None:
+                return []
+            filters.append(FieldVisitRequest.field_officer_id == officer.id)
+        result = await self.session.execute(
+            select(FieldVisitRequest)
+            .where(*filters)
+            .order_by(FieldVisitRequest.requested_start_at.desc(), FieldVisitRequest.created_at.desc())
+        )
+        return [self._read_visit_request(visit) for visit in result.scalars()]
+
+    async def review_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitRequestReview,
+    ) -> FieldVisitRequestRead:
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        if visit.status not in {"pending", "change_requested"}:
+            raise ValueError("Only pending or change-requested visits can be reviewed.")
+        now = datetime.now(UTC)
+        metadata = dict(visit.metadata_json or {})
+        metadata.setdefault("reviews", [])
+        reviews = metadata["reviews"]
+        if not isinstance(reviews, list):
+            reviews = []
+            metadata["reviews"] = reviews
+        reviews.append(
+            {
+                "action": payload.action,
+                "comment": payload.comment,
+                "reviewedByUserId": str(actor_user_id),
+                "reviewedAt": now.isoformat(),
+            }
+        )
+        if payload.approved_start_at:
+            visit.requested_start_at = payload.approved_start_at
+        if payload.approved_end_at:
+            visit.requested_end_at = payload.approved_end_at
+        visit.status = {
+            "approve": "approved",
+            "reject": "rejected",
+            "request_changes": "change_requested",
+        }[payload.action]
+        visit.supervisor_instructions = payload.supervisor_instructions or payload.comment or visit.supervisor_instructions
+        visit.reviewed_by_user_id = actor_user_id
+        visit.reviewed_at = now
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=f"field_visit.request_{visit.status}",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={"action": payload.action, "comment": payload.comment, "field_officer_id": str(visit.field_officer_id)},
+        )
+        return self._read_visit_request(visit)
+
+    async def check_in_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitCheckIn,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        if officer is None or visit.field_officer_id != officer.id:
+            raise ValueError("This visit request is not assigned to this mobile account.")
+        if visit.status not in {"approved", "scheduled"}:
+            raise ValueError("Your supervisor must approve this visit before you can check in.")
+        distance = None
+        verification = "verified"
+        if visit.latitude is not None and visit.longitude is not None:
+            distance = self._distance_meters(visit.latitude, visit.longitude, payload.latitude, payload.longitude)
+            if distance > 500:
+                verification = "outside_planned_area"
+            elif distance > 100:
+                verification = "warning_distance"
+        if payload.accuracy is not None and payload.accuracy > 100 and verification == "verified":
+            verification = "poor_gps_accuracy"
+        visit.status = "flagged" if verification in {"outside_planned_area", "poor_gps_accuracy"} else "checked_in"
+        visit.verification_status = verification
+        visit.distance_from_planned_meters = distance
+        visit.check_in_at = payload.timestamp
+        visit.check_in_latitude = payload.latitude
+        visit.check_in_longitude = payload.longitude
+        visit.check_in_accuracy = payload.accuracy
+        visit.check_in_note = payload.note
+        officer.last_seen_at = datetime.now(UTC)
+        officer.last_latitude = payload.latitude
+        officer.last_longitude = payload.longitude
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.checked_in",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "verification_status": verification,
+                "distance_from_planned_meters": distance,
+                "accuracy": payload.accuracy,
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def check_out_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitCheckOut,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        if officer is None or visit.field_officer_id != officer.id:
+            raise ValueError("This visit request is not assigned to this mobile account.")
+        if visit.check_in_at is None:
+            raise ValueError("Check in before completing this visit.")
+        visit.status = "completed"
+        visit.check_out_at = payload.timestamp
+        visit.check_out_latitude = payload.latitude
+        visit.check_out_longitude = payload.longitude
+        visit.check_out_accuracy = payload.accuracy
+        visit.check_out_summary = payload.summary
+        officer.last_seen_at = datetime.now(UTC)
+        officer.last_latitude = payload.latitude
+        officer.last_longitude = payload.longitude
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.completed",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={"summary_provided": bool(payload.summary), "accuracy": payload.accuracy},
+        )
+        return self._read_visit_request(visit)
 
     async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate, actor_user_id: UUID | None = None) -> Beneficiary:
         if not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):

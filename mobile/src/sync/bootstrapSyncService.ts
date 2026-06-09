@@ -69,6 +69,17 @@ export class BootstrapSyncService {
     for (const notification of syncPackage.notifications) {
       this.database.notifications.upsert(this.database.importServerRecord(notification));
     }
+    try {
+      const visitRequests = await this.apis.visitRequests.list(token);
+      for (const visitRequest of visitRequests) {
+        this.database.visitRequests.upsert(visitRequest);
+      }
+    } catch {
+      this.audit.queue("mobile.sync_failed", {
+        operation: "DOWNLOAD_VISIT_REQUESTS",
+        message: "Visit requests could not be refreshed. Existing approved visits remain on this device.",
+      });
+    }
     for (const returnedSubmission of syncPackage.returnedSubmissions) {
       this.database.draftSubmissions.upsert(this.database.importServerRecord(returnedSubmission));
     }

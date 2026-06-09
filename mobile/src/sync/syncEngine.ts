@@ -139,6 +139,62 @@ export class SyncEngine {
             throw new Error("Notification was not found on this device.");
           }
         }
+        if (item.operation === "CREATE_VISIT_REQUEST") {
+          const visitLocalId = String(item.payload.visitLocalId ?? "");
+          const visit = this.database.visitRequests.get(visitLocalId);
+          if (!visit) {
+            throw new Error("Queued visit request was not found on this device.");
+          }
+          const savedVisit = await this.apis.visitRequests.create(token, {
+            projectId: visit.projectId,
+            beneficiaryId: visit.beneficiaryId,
+            title: visit.title,
+            activityType: visit.activityType,
+            activityScope: visit.activityScope,
+            requiresApproval: visit.requiresApproval,
+            purpose: visit.purpose,
+            locationName: visit.locationName,
+            latitude: visit.latitude,
+            longitude: visit.longitude,
+            requestedStartAt: visit.requestedStartAt,
+            requestedEndAt: visit.requestedEndAt,
+            priority: visit.priority,
+            plannedActivities: visit.plannedActivities,
+          });
+          this.database.visitRequests.remove(visit.localId);
+          this.database.visitRequests.upsert(savedVisit);
+        }
+        if (item.operation === "VISIT_CHECK_IN" || item.operation === "VISIT_CHECK_OUT") {
+          const visitLocalId = String(item.payload.visitLocalId ?? "");
+          const visit = this.database.visitRequests.get(visitLocalId);
+          if (!visit) {
+            throw new Error("Queued visit update was not found on this device.");
+          }
+          if (!visit.serverId) {
+            throw new Error("Sync the visit request before sending visit evidence.");
+          }
+          const latitude = Number(item.payload.latitude);
+          const longitude = Number(item.payload.longitude);
+          const accuracy = item.payload.accuracy === null || item.payload.accuracy === undefined ? null : Number(item.payload.accuracy);
+          const timestamp = String(item.payload.timestamp ?? nowIso());
+          const savedVisit =
+            item.operation === "VISIT_CHECK_IN"
+              ? await this.apis.visitRequests.checkIn(token, visit.serverId, {
+                  latitude,
+                  longitude,
+                  accuracy,
+                  timestamp,
+                  note: typeof item.payload.note === "string" ? item.payload.note : null,
+                })
+              : await this.apis.visitRequests.checkOut(token, visit.serverId, {
+                  latitude,
+                  longitude,
+                  accuracy,
+                  timestamp,
+                  summary: typeof item.payload.summary === "string" ? item.payload.summary : null,
+                });
+          this.database.visitRequests.upsert(savedVisit);
+        }
         if (item.operation === "RESOLVE_CONFLICT") {
           const conflictLocalId = String(item.payload.conflictLocalId ?? "");
           const conflict = this.database.conflicts.get(conflictLocalId);

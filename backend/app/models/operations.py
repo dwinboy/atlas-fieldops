@@ -102,6 +102,46 @@ class VisitRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     media_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class FieldVisitRequest(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "field_visit_requests"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
+    field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    activity_type: Mapped[str] = mapped_column(String(80), default="field_visit", index=True)
+    activity_scope: Mapped[str] = mapped_column(String(40), default="organization", index=True)
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location_name: Mapped[str] = mapped_column(String(220), nullable=False)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    requested_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    requested_end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    required_form_ids_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    planned_activities_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    supervisor_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_in_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_in_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_in_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_in_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_out_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_out_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_out_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    check_out_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_status: Mapped[str] = mapped_column(String(40), default="not_checked_in", index=True)
+    distance_from_planned_meters: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
 class DataQualitySignal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "data_quality_signals"
 

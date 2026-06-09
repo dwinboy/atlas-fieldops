@@ -44,6 +44,8 @@ export const canonicalRoutes = {
     "/field-operations/assignments",
     "/field-operations/field-officers",
     "/field-operations/supervisors",
+    "/field-operations/operational-activities",
+    "/field-operations/visit-requests",
     "/field-operations/work-plans",
     "/field-operations/targets",
     "/field-operations/field-monitoring",

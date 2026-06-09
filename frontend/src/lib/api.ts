@@ -1033,6 +1033,55 @@ export type FieldOfficerImportResponse = {
   issues: FieldOfficerImportIssue[];
 };
 
+export type FieldVisitRequestRead = {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  field_officer_id: string;
+  supervisor_user_id: string | null;
+  title: string;
+  activity_type: string;
+  activity_scope: "organization" | "project" | "beneficiary" | string;
+  requires_approval: boolean;
+  purpose: string | null;
+  location_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  requested_start_at: string;
+  requested_end_at: string;
+  priority: "low" | "normal" | "high" | "urgent" | string;
+  status: "pending" | "approved" | "rejected" | "change_requested" | "scheduled" | "checked_in" | "completed" | "missed" | "flagged" | string;
+  required_form_ids: string[];
+  planned_activities: string[];
+  supervisor_instructions: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+  check_in_at: string | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_in_accuracy: number | null;
+  check_in_note: string | null;
+  check_out_at: string | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  check_out_accuracy: number | null;
+  check_out_summary: string | null;
+  verification_status: string;
+  distance_from_planned_meters: number | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldVisitRequestReview = {
+  action: "approve" | "reject" | "request_changes";
+  comment?: string | null;
+  approved_start_at?: string | null;
+  approved_end_at?: string | null;
+  supervisor_instructions?: string | null;
+};
+
 export type SubmissionRead = {
   id: string;
   client_submission_id: string;
@@ -2716,6 +2765,23 @@ export async function createFieldOfficerAssignment(
   return request<FieldOfficerAssignmentRead>("/field-officers/assignments", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listFieldVisitRequests(token: string, status?: string): Promise<FieldVisitRequestRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<FieldVisitRequestRead[]>(`/operations/operational-activities${query}`, { token });
+}
+
+export async function reviewFieldVisitRequest(
+  token: string,
+  visitRequestId: string,
+  payload: FieldVisitRequestReview,
+): Promise<FieldVisitRequestRead> {
+  return request<FieldVisitRequestRead>(`/operations/operational-activities/${visitRequestId}/review`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function importFieldOfficers(token: string, file: File): Promise<FieldOfficerImportResponse> {
   const body = new FormData();
   body.set("file", file);
@@ -3153,6 +3219,7 @@ export const api = {
   listMediaEvidence,
   listPublicCollectionLinks,
   listFieldOfficers,
+  listFieldVisitRequests,
   listForms,
   listFormTemplates,
   listGovernancePolicies,
@@ -3202,6 +3269,7 @@ export const api = {
   resetUserPassword,
   routeData,
   reviewAccessRequest,
+  reviewFieldVisitRequest,
   simulateAccess,
   updateAdministrationLocation,
   updateAdministrationNotificationRule,

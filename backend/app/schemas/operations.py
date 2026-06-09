@@ -197,6 +197,113 @@ class IndicatorRead(BaseModel):
     progress_percent: float
 
 
+class FieldVisitRequestCreate(BaseModel):
+    project_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    title: str = Field(min_length=2, max_length=200)
+    activity_type: Literal[
+        "field_visit",
+        "office_visit",
+        "stakeholder_meeting",
+        "training_support",
+        "incident_report",
+        "equipment_delivery",
+        "partner_coordination",
+        "general_observation",
+    ] = "field_visit"
+    activity_scope: Literal["organization", "project", "beneficiary"] = "organization"
+    requires_approval: bool = True
+    purpose: str | None = Field(default=None, max_length=3000)
+    location_name: str = Field(min_length=2, max_length=220)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    requested_start_at: datetime
+    requested_end_at: datetime
+    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    required_form_ids: list[UUID] = Field(default_factory=list)
+    planned_activities: list[str] = Field(default_factory=list, max_length=20)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_visit_window(self) -> "FieldVisitRequestCreate":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        if self.requested_end_at <= self.requested_start_at:
+            raise ValueError("requested end time must be after requested start time")
+        return self
+
+
+class FieldVisitRequestReview(BaseModel):
+    action: Literal["approve", "reject", "request_changes"]
+    comment: str | None = Field(default=None, max_length=3000)
+    approved_start_at: datetime | None = None
+    approved_end_at: datetime | None = None
+    supervisor_instructions: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def validate_approved_window(self) -> "FieldVisitRequestReview":
+        if self.action == "approve" and self.approved_start_at and self.approved_end_at and self.approved_end_at <= self.approved_start_at:
+            raise ValueError("approved end time must be after approved start time")
+        return self
+
+
+class FieldVisitCheckIn(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: float | None = Field(default=None, ge=0)
+    timestamp: datetime
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class FieldVisitCheckOut(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: float | None = Field(default=None, ge=0)
+    timestamp: datetime
+    summary: str | None = Field(default=None, max_length=3000)
+
+
+class FieldVisitRequestRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    project_id: UUID | None
+    beneficiary_id: UUID | None
+    field_officer_id: UUID
+    supervisor_user_id: UUID | None
+    title: str
+    activity_type: str
+    activity_scope: str
+    requires_approval: bool
+    purpose: str | None
+    location_name: str
+    latitude: float | None
+    longitude: float | None
+    requested_start_at: datetime
+    requested_end_at: datetime
+    priority: str
+    status: str
+    required_form_ids: list[UUID] = Field(default_factory=list)
+    planned_activities: list[str] = Field(default_factory=list)
+    supervisor_instructions: str | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    check_in_at: datetime | None
+    check_in_latitude: float | None
+    check_in_longitude: float | None
+    check_in_accuracy: float | None
+    check_in_note: str | None
+    check_out_at: datetime | None
+    check_out_latitude: float | None
+    check_out_longitude: float | None
+    check_out_accuracy: float | None
+    check_out_summary: str | None
+    verification_status: str
+    distance_from_planned_meters: float | None
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
 class CaseCreate(BaseModel):
     case_number: str = Field(min_length=2, max_length=120)
     case_type: str = Field(min_length=2, max_length=80)

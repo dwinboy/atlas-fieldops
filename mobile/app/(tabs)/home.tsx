@@ -23,6 +23,7 @@ export default function HomeScreen() {
   const syncedToday = localDatabase.draftSubmissions.list().filter(
     (d) => d.status === "Synced" && d.updatedAt?.startsWith(new Date().toISOString().slice(0, 10)),
   ).length;
+  const visitRequestCount = localDatabase.visitRequests.list().filter((visit) => visit.status !== "completed").length;
 
   const user = session.bootstrap?.user;
   const org = session.bootstrap?.organization;
@@ -42,6 +43,7 @@ export default function HomeScreen() {
     { label: "Drafts", value: draftCount, tone: draftCount > 0 ? "warn" : "neutral", route: "/(tabs)/submissions?filter=draft", hint: "Continue saved drafts" },
     { label: "Sync queue", value: queueCount, tone: queueCount > 0 ? "warn" : "ok", route: "/(tabs)/sync", hint: "Review uploads" },
     { label: "Synced today", value: syncedToday, tone: "ok", route: "/(tabs)/submissions?filter=synced", hint: "See synced records" },
+    { label: "Visit requests", value: visitRequestCount, tone: visitRequestCount > 0 ? "warn" : "neutral", route: "/visit-requests", hint: "Plan approved movement" },
   ];
 
   return (
@@ -130,6 +132,7 @@ export default function HomeScreen() {
           {[
             { label: "View assigned work", icon: "📋", route: "/(tabs)/assignments" },
             { label: "Review drafts & queue", icon: "📤", route: "/(tabs)/submissions" },
+            { label: "Request a field visit", icon: "📍", route: "/visit-requests" },
             { label: "Sync center", icon: "🔄", route: "/(tabs)/sync" },
             { label: "Settings", icon: "⚙️", route: "/settings" },
           ].map(({ label, icon, route }) => (

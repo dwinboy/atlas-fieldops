@@ -27,6 +27,8 @@ from app.schemas.operations import (
     EntityPrefillRead,
     ExportJobCreate,
     ExportJobRead,
+    FieldVisitRequestRead,
+    FieldVisitRequestReview,
     ImportAnalysisRequest,
     ImportAnalysisResponse,
     ImportApplyResponse,
@@ -185,6 +187,82 @@ async def create_task(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OperationalTaskRead:
     return await OperationsService(session).create_task(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get(
+    "/field-visit-requests",
+    response_model=list[FieldVisitRequestRead],
+    summary="List field visit requests for supervisor review",
+)
+async def list_field_visit_requests(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await OperationsService(session).list_field_visit_requests(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        status=request_status,
+    )
+
+
+@router.get(
+    "/operational-activities",
+    response_model=list[FieldVisitRequestRead],
+    summary="List organization operational activities and movement requests",
+)
+async def list_operational_activities(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await OperationsService(session).list_field_visit_requests(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        status=request_status,
+    )
+
+
+@router.post(
+    "/field-visit-requests/{visit_request_id}/review",
+    response_model=FieldVisitRequestRead,
+    summary="Approve, reject, or request changes for a field visit request",
+)
+async def review_field_visit_request(
+    visit_request_id: UUID,
+    payload: FieldVisitRequestReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).review_field_visit_request(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            visit_request_id=visit_request_id,
+            payload=payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/review",
+    response_model=FieldVisitRequestRead,
+    summary="Review an organization operational activity request",
+)
+async def review_operational_activity(
+    visit_request_id: UUID,
+    payload: FieldVisitRequestReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    return await review_field_visit_request(visit_request_id, payload, principal, session)
 
 
 @router.post("/interventions", response_model=InterventionRead, status_code=status.HTTP_201_CREATED, summary="Plan intervention")

@@ -5,6 +5,7 @@ export type FieldOperationsSection =
   | "assignments"
   | "field-officers"
   | "supervisors"
+  | "visit-requests"
   | "work-plans"
   | "targets"
   | "field-monitoring";
@@ -109,6 +110,7 @@ export const fieldOperationsSections: {
   { id: "assignments", label: "Assignments", route: "/field-operations/assignments", description: "Create, assign, monitor, reassign, pause, close, and bulk-manage field work." },
   { id: "field-officers", label: "Field Officers", route: "/field-operations/field-officers", description: "Manage enumerator access, status, sync health, performance, and assigned locations." },
   { id: "supervisors", label: "Supervisors", route: "/field-operations/supervisors", description: "Monitor supervisors, managed teams, review SLA, approvals, and coverage performance." },
+  { id: "visit-requests", label: "Operational Activities", route: "/field-operations/operational-activities", description: "Approve organization activities, movement requests, and GPS check-in evidence from mobile." },
   { id: "work-plans", label: "Work Plans", route: "/field-operations/work-plans", description: "Plan daily, weekly, and project field activities with objectives, teams, locations, and deliverables." },
   { id: "targets", label: "Targets", route: "/field-operations/targets", description: "Manage operational targets, deadlines, achievement rates, and trend signals." },
   { id: "field-monitoring", label: "Field Monitoring", route: "/field-operations/field-monitoring", description: "Monitor live activity, assignment progress, GPS status, sync health, quality alerts, and map readiness." },

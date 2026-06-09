@@ -502,6 +502,71 @@ export type MobileNotification = LocalRecord & {
   createdByServerAt: ISODateTime;
 };
 
+export type MobileVisitRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "change_requested"
+  | "scheduled"
+  | "checked_in"
+  | "completed"
+  | "missed"
+  | "flagged";
+
+export type MobileVisitVerificationStatus =
+  | "not_checked_in"
+  | "verified"
+  | "warning_distance"
+  | "outside_planned_area"
+  | "poor_gps_accuracy";
+
+export type MobileVisitRequest = LocalRecord & {
+  id: UUID;
+  organizationId: UUID;
+  projectId: UUID | null;
+  beneficiaryId: UUID | null;
+  fieldOfficerId: UUID;
+  supervisorUserId: UUID | null;
+  title: string;
+  activityType:
+    | "field_visit"
+    | "office_visit"
+    | "stakeholder_meeting"
+    | "training_support"
+    | "incident_report"
+    | "equipment_delivery"
+    | "partner_coordination"
+    | "general_observation";
+  activityScope: "organization" | "project" | "beneficiary";
+  requiresApproval: boolean;
+  purpose: string | null;
+  locationName: string;
+  latitude: number | null;
+  longitude: number | null;
+  requestedStartAt: ISODateTime;
+  requestedEndAt: ISODateTime;
+  priority: "low" | "normal" | "high" | "urgent";
+  status: MobileVisitRequestStatus;
+  requiredFormIds: UUID[];
+  plannedActivities: string[];
+  supervisorInstructions: string | null;
+  reviewedByUserId: UUID | null;
+  reviewedAt: ISODateTime | null;
+  checkInAt: ISODateTime | null;
+  checkInLatitude: number | null;
+  checkInLongitude: number | null;
+  checkInAccuracy: number | null;
+  checkInNote: string | null;
+  checkOutAt: ISODateTime | null;
+  checkOutLatitude: number | null;
+  checkOutLongitude: number | null;
+  checkOutAccuracy: number | null;
+  checkOutSummary: string | null;
+  verificationStatus: MobileVisitVerificationStatus;
+  distanceFromPlannedMeters: number | null;
+  metadata: Record<string, unknown>;
+};
+
 export type MobileSyncOperation =
   | "CREATE_SUBMISSION"
   | "UPDATE_DRAFT"
@@ -509,6 +574,9 @@ export type MobileSyncOperation =
   | "SUBMIT_CORRECTION"
   | "UPLOAD_AUDIT_EVENT"
   | "MARK_NOTIFICATION_READ"
+  | "CREATE_VISIT_REQUEST"
+  | "VISIT_CHECK_IN"
+  | "VISIT_CHECK_OUT"
   | "RESOLVE_CONFLICT";
 
 export type MobileSyncQueueItem = LocalRecord & {

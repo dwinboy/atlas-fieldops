@@ -20,6 +20,7 @@ import type {
   MobileSubmission,
   MobileSyncLog,
   MobileSyncQueueItem,
+  MobileVisitRequest,
 } from "@/models/contracts";
 import { nowIso } from "@/utils/ids";
 
@@ -40,6 +41,7 @@ type LocalCollectionMap = {
   projects: MobileProject;
   referenceLists: MobileReferenceList;
   supervisorProfiles: MobileSupervisorProfile;
+  visitRequests: MobileVisitRequest;
   draftSubmissions: MobileSubmission;
   syncLogs: MobileSyncLog;
   syncQueue: MobileSyncQueueItem;
@@ -109,6 +111,7 @@ export class LocalDatabase {
   readonly projects = new LocalRepository<LocalCollectionMap["projects"]>(() => this.persistSnapshot());
   readonly referenceLists = new LocalRepository<LocalCollectionMap["referenceLists"]>(() => this.persistSnapshot());
   readonly supervisorProfiles = new LocalRepository<LocalCollectionMap["supervisorProfiles"]>(() => this.persistSnapshot());
+  readonly visitRequests = new LocalRepository<LocalCollectionMap["visitRequests"]>(() => this.persistSnapshot());
   readonly draftSubmissions = new LocalRepository<LocalCollectionMap["draftSubmissions"]>(() => this.persistSnapshot());
   readonly syncLogs = new LocalRepository<LocalCollectionMap["syncLogs"]>(() => this.persistSnapshot());
   readonly syncQueue = new LocalRepository<LocalCollectionMap["syncQueue"]>(() => this.persistSnapshot());
@@ -165,6 +168,7 @@ export class LocalDatabase {
       projects: this.projects.list(),
       referenceLists: this.referenceLists.list(),
       supervisorProfiles: this.supervisorProfiles.list(),
+      visitRequests: this.visitRequests.list(),
       draftSubmissions: this.draftSubmissions.list(),
       syncLogs: this.syncLogs.list(),
       syncQueue: this.syncQueue.list(),
@@ -190,6 +194,7 @@ export class LocalDatabase {
       this.projects.replaceAll(snapshot.projects ?? []);
       this.referenceLists.replaceAll(snapshot.referenceLists ?? []);
       this.supervisorProfiles.replaceAll(snapshot.supervisorProfiles ?? []);
+      this.visitRequests.replaceAll(snapshot.visitRequests ?? []);
       this.draftSubmissions.replaceAll(snapshot.draftSubmissions ?? []);
       this.syncLogs.replaceAll(snapshot.syncLogs ?? []);
       this.syncQueue.replaceAll(snapshot.syncQueue ?? []);
@@ -217,6 +222,7 @@ export class LocalDatabase {
         "officerProfiles",
         "permissionSets",
         "supervisorProfiles",
+        "visitRequests",
         "draftSubmissions",
         "syncLogs",
         "syncQueue",

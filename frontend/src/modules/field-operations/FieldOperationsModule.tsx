@@ -37,10 +37,12 @@ import {
   inviteFieldOfficer,
   listForms,
   listFieldOfficers,
+  listFieldVisitRequests,
   listRoles,
   listUsers,
   listProjects,
   resetUserPassword,
+  reviewFieldVisitRequest,
   updateFieldOfficerProfile,
   updateUser,
   type CurrentPrincipal,
@@ -53,6 +55,7 @@ import {
   type FieldOfficerProfileUpdate,
   type FieldOfficerRead,
   type FieldOfficerSubmissionDetailRead,
+  type FieldVisitRequestRead,
   type OperationsSummary,
   type RoleRead,
   type UserRead,
@@ -339,6 +342,142 @@ function asText(value: unknown): string {
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
+}
+
+function titleCase(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function OperationalActivityDetail({
+  activity,
+  canManage,
+  officerName,
+  onClose,
+  onReview,
+  reviewPending,
+}: {
+  activity: FieldVisitRequestRead;
+  canManage: boolean;
+  officerName: string;
+  onClose: () => void;
+  onReview: (action: "approve" | "reject" | "request_changes") => void;
+  reviewPending: boolean;
+}) {
+  const reviewHistory = Array.isArray(activity.metadata_json.reviews)
+    ? activity.metadata_json.reviews.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    : [];
+  const canReview = canManage && ["pending", "change_requested"].includes(activity.status);
+  return (
+    <section className="rounded-xl border bg-panel p-4 shadow-line">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={activity.activity_scope === "organization" ? "accent" : "neutral"}>
+              {titleCase(activity.activity_scope)}
+            </Badge>
+            <Badge tone={activity.status === "completed" || activity.status === "approved" ? "success" : activity.status === "flagged" || activity.status === "rejected" ? "danger" : "warning"}>
+              {titleCase(activity.status)}
+            </Badge>
+            <Badge tone={activity.requires_approval ? "warning" : "success"}>
+              {activity.requires_approval ? "Approval required" : "Direct log"}
+            </Badge>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold tracking-tight">{activity.title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            {activity.purpose ?? "No purpose was provided by the field officer."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {canReview ? (
+            <>
+              <Button disabled={reviewPending} onClick={() => onReview("approve")} size="sm" variant="primary">
+                Approve
+              </Button>
+              <Button disabled={reviewPending} onClick={() => onReview("request_changes")} size="sm" variant="secondary">
+                Request changes
+              </Button>
+              <Button disabled={reviewPending} onClick={() => onReview("reject")} size="sm" variant="ghost">
+                Reject
+              </Button>
+            </>
+          ) : null}
+          <Button onClick={onClose} size="sm" variant="ghost">
+            Close
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <DetailSignal label="Field officer" value={officerName} />
+        <DetailSignal label="Activity type" value={titleCase(activity.activity_type)} />
+        <DetailSignal label="Location" value={activity.location_name} />
+        <DetailSignal label="Priority" value={titleCase(activity.priority)} />
+        <DetailSignal label="Start" value={formatTime(activity.requested_start_at)} />
+        <DetailSignal label="End" value={formatTime(activity.requested_end_at)} />
+        <DetailSignal label="GPS verification" value={titleCase(activity.verification_status)} />
+        <DetailSignal
+          label="Distance from plan"
+          value={activity.distance_from_planned_meters === null ? "Not checked in" : `${Math.round(activity.distance_from_planned_meters)}m`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border bg-background p-3">
+          <h3 className="text-sm font-semibold">GPS and movement evidence</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <DetailSignal
+              label="Planned point"
+              value={activity.latitude === null || activity.longitude === null ? "Not provided" : `${activity.latitude.toFixed(5)}, ${activity.longitude.toFixed(5)}`}
+            />
+            <DetailSignal
+              label="Check-in point"
+              value={activity.check_in_latitude === null || activity.check_in_longitude === null ? "No check-in yet" : `${activity.check_in_latitude.toFixed(5)}, ${activity.check_in_longitude.toFixed(5)}`}
+            />
+            <DetailSignal label="Check-in time" value={formatTime(activity.check_in_at)} />
+            <DetailSignal label="Check-in accuracy" value={activity.check_in_accuracy === null ? "Not captured" : `${Math.round(activity.check_in_accuracy)}m`} />
+            <DetailSignal
+              label="Check-out point"
+              value={activity.check_out_latitude === null || activity.check_out_longitude === null ? "No check-out yet" : `${activity.check_out_latitude.toFixed(5)}, ${activity.check_out_longitude.toFixed(5)}`}
+            />
+            <DetailSignal label="Check-out time" value={formatTime(activity.check_out_at)} />
+          </div>
+          {activity.verification_status !== "verified" && activity.verification_status !== "not_checked_in" ? (
+            <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
+              Supervisor review recommended: this activity has a GPS warning. Use the evidence above before deciding whether the activity was valid.
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-xl border bg-background p-3">
+          <h3 className="text-sm font-semibold">Approval and activity history</h3>
+          <div className="mt-3 space-y-2">
+            <div className="rounded-lg border bg-panel p-2.5 text-xs">
+              <p className="font-semibold">Requested</p>
+              <p className="text-muted-foreground">{formatTime(activity.created_at)} by {officerName}</p>
+            </div>
+            {reviewHistory.map((review, index) => (
+              <div className="rounded-lg border bg-panel p-2.5 text-xs" key={`${activity.id}-review-${index}`}>
+                <p className="font-semibold">{titleCase(String(review.action ?? "review"))}</p>
+                <p className="text-muted-foreground">{String(review.comment ?? "No comment")}</p>
+                <p className="mt-1 text-muted-foreground">{String(review.reviewedAt ?? "")}</p>
+              </div>
+            ))}
+            {activity.check_in_at ? (
+              <div className="rounded-lg border bg-panel p-2.5 text-xs">
+                <p className="font-semibold">Checked in</p>
+                <p className="text-muted-foreground">{formatTime(activity.check_in_at)} · {titleCase(activity.verification_status)}</p>
+              </div>
+            ) : null}
+            {activity.check_out_at ? (
+              <div className="rounded-lg border bg-panel p-2.5 text-xs">
+                <p className="font-semibold">Completed</p>
+                <p className="text-muted-foreground">{formatTime(activity.check_out_at)} · {activity.check_out_summary ?? "No summary"}</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function OfficerProfileWorkspace({
@@ -860,6 +999,7 @@ export function FieldOperationsModule({
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [lastInviteCredentials, setLastInviteCredentials] = useState<{ email: string; password: string; organizationCode: string } | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<string | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [profileTemporaryPassword, setProfileTemporaryPassword] = useState<string | null>(null);
   const [assignmentDraft, setAssignmentDraft] = useState(
     defaultAssignmentDraft,
@@ -935,6 +1075,11 @@ export function FieldOperationsModule({
     queryFn: () => listRoles(token ?? ""),
     enabled: enabled && canManageFieldOperations,
   });
+  const visitRequestsQuery = useQuery({
+    queryKey: ["field-operations", "visit-requests", token],
+    queryFn: () => listFieldVisitRequests(token ?? ""),
+    enabled,
+  });
   useEffect(() => {
     if (preview) return;
     setAssignments([]);
@@ -943,7 +1088,10 @@ export function FieldOperationsModule({
     setOfficerPreviewRows([]);
   }, [preview]);
 
-  const officers = preview ? officerPreviewRows : (officersQuery.data ?? []);
+  const officers = useMemo(
+    () => (preview ? officerPreviewRows : (officersQuery.data ?? [])),
+    [officerPreviewRows, officersQuery.data, preview],
+  );
   const selectedPreviewOfficer = preview
     ? officerPreviewRows.find((officer) => officer.id === selectedOfficerId)
     : undefined;
@@ -1074,6 +1222,50 @@ export function FieldOperationsModule({
     });
   const supervisors = preview ? previewSupervisors : [];
   const activities = preview ? previewActivities : [];
+  const visitRequests = useMemo(
+    () => (preview ? [] : (visitRequestsQuery.data ?? [])),
+    [preview, visitRequestsQuery.data],
+  );
+  const selectedActivity = visitRequests.find((activity) => activity.id === selectedActivityId) ?? null;
+  const activityAnalytics = useMemo(() => {
+    const total = visitRequests.length;
+    const pending = visitRequests.filter((activity) => activity.status === "pending").length;
+    const approved = visitRequests.filter((activity) => ["approved", "scheduled", "checked_in"].includes(activity.status)).length;
+    const completed = visitRequests.filter((activity) => activity.status === "completed").length;
+    const rejected = visitRequests.filter((activity) => activity.status === "rejected").length;
+    const flagged = visitRequests.filter((activity) => activity.status === "flagged").length;
+    const gpsVerified = visitRequests.filter((activity) => activity.verification_status === "verified").length;
+    const organizationScoped = visitRequests.filter((activity) => activity.activity_scope === "organization").length;
+    const projectScoped = visitRequests.filter((activity) => activity.activity_scope === "project").length;
+    const approvalRate = total ? Math.round(((approved + completed) / total) * 100) : 0;
+    const byType = Object.entries(
+      visitRequests.reduce<Record<string, number>>((acc, activity) => {
+        acc[activity.activity_type] = (acc[activity.activity_type] ?? 0) + 1;
+        return acc;
+      }, {}),
+    ).sort((a, b) => b[1] - a[1]);
+    const byOfficer = Object.entries(
+      visitRequests.reduce<Record<string, number>>((acc, activity) => {
+        const officerName = officers.find((officer) => officer.id === activity.field_officer_id)?.full_name ?? "Unassigned officer";
+        acc[officerName] = (acc[officerName] ?? 0) + 1;
+        return acc;
+      }, {}),
+    ).sort((a, b) => b[1] - a[1]);
+    return {
+      approvalRate,
+      approved,
+      byOfficer,
+      byType,
+      completed,
+      flagged,
+      gpsVerified,
+      organizationScoped,
+      pending,
+      projectScoped,
+      rejected,
+      total,
+    };
+  }, [officers, visitRequests]);
   const summary = computeFieldOperationsSummary({
     assignments,
     officers,
@@ -1239,6 +1431,42 @@ export function FieldOperationsModule({
       pushToast({
         title: "Could not update access",
         description: "This role or scope may be too broad for your account.",
+        tone: "danger",
+      }),
+  });
+
+  const reviewVisitMutation = useMutation({
+    mutationFn: ({
+      action,
+      visitRequestId,
+    }: {
+      action: "approve" | "reject" | "request_changes";
+      visitRequestId: string;
+    }) =>
+      reviewFieldVisitRequest(token ?? "", visitRequestId, {
+        action,
+        comment:
+          action === "approve"
+            ? "Approved for planned field movement."
+            : action === "reject"
+              ? "Not approved. Review timing, location, or project need."
+              : "Please update the visit purpose, timing, or location details.",
+      }),
+    onSuccess: async () => {
+      const result = await visitRequestsQuery.refetch();
+      if (selectedActivityId && !result.data?.some((activity) => activity.id === selectedActivityId)) {
+        setSelectedActivityId(null);
+      }
+      pushToast({
+        title: "Operational activity updated",
+        description: "The field officer will see the updated supervisor decision after mobile sync.",
+        tone: "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Visit review failed",
+        description: "Check your supervisor permission and try again.",
         tone: "danger",
       }),
   });
@@ -1601,6 +1829,121 @@ export function FieldOperationsModule({
     },
   ];
 
+  const visitRequestColumns: TableColumn<FieldVisitRequestRead>[] = [
+    {
+      key: "visit",
+      header: "Activity",
+      value: (visit) => `${visit.title} ${visit.location_name} ${visit.activity_type} ${visit.activity_scope} ${visit.purpose ?? ""}`,
+      render: (visit) => {
+        const officer = officers.find((candidate) => candidate.id === visit.field_officer_id);
+        return (
+          <div>
+            <p className="font-medium">{visit.title}</p>
+            <p className="text-xs text-muted-foreground">
+              {officer?.full_name ?? "Field officer"} · {visit.activity_type.replaceAll("_", " ")} · {visit.activity_scope}
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      key: "scope",
+      header: "Scope",
+      value: (visit) => visit.activity_scope,
+      render: (visit) => (
+        <div>
+          <Badge tone={visit.activity_scope === "organization" ? "accent" : "neutral"}>
+            {visit.activity_scope}
+          </Badge>
+          <p className="mt-1 text-xs text-muted-foreground">{visit.location_name}</p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      value: (visit) => visit.status,
+      render: (visit) => <Badge tone={visit.status === "approved" || visit.status === "completed" ? "success" : visit.status === "flagged" || visit.status === "rejected" ? "danger" : "warning"}>{visit.status.replaceAll("_", " ")}</Badge>,
+    },
+    {
+      key: "time",
+      header: "Requested time",
+      value: (visit) => `${visit.requested_start_at} ${visit.requested_end_at}`,
+      render: (visit) => (
+        <div>
+          <p className="font-medium">{formatDate(visit.requested_start_at)}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatTime(visit.requested_start_at)} - {formatTime(visit.requested_end_at)}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "verification",
+      header: "GPS evidence",
+      value: (visit) => `${visit.verification_status} ${visit.distance_from_planned_meters ?? ""}`,
+      render: (visit) => (
+        <div>
+          <Badge tone={visit.verification_status === "verified" ? "success" : visit.verification_status === "not_checked_in" ? "neutral" : "warning"}>
+            {visit.verification_status.replaceAll("_", " ")}
+          </Badge>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {visit.distance_from_planned_meters === null
+              ? "No check-in distance yet"
+              : `${Math.round(visit.distance_from_planned_meters)}m from planned point`}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "priority",
+      header: "Priority",
+      value: (visit) => visit.priority,
+      render: (visit) => <Badge tone={visit.priority === "urgent" || visit.priority === "high" ? "warning" : "neutral"}>{visit.priority}</Badge>,
+    },
+    {
+      key: "actions",
+      header: "Supervisor action",
+      align: "right",
+      value: (visit) => visit.id,
+      render: (visit) => (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            disabled={!canManageFieldOperations || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
+            onClick={() => reviewVisitMutation.mutate({ action: "approve", visitRequestId: visit.id })}
+            size="sm"
+            variant="secondary"
+          >
+            Approve
+          </Button>
+          <Button
+            disabled={!canManageFieldOperations || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
+            onClick={() => reviewVisitMutation.mutate({ action: "request_changes", visitRequestId: visit.id })}
+            size="sm"
+            variant="ghost"
+          >
+            Request changes
+          </Button>
+          <Button
+            disabled={!canManageFieldOperations || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
+            onClick={() => reviewVisitMutation.mutate({ action: "reject", visitRequestId: visit.id })}
+            size="sm"
+            variant="ghost"
+          >
+            Reject
+          </Button>
+          <Button
+            onClick={() => setSelectedActivityId(visit.id)}
+            size="sm"
+            variant="secondary"
+          >
+            View details
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   async function submitAssignment(): Promise<void> {
     if (!assignmentDraft.project || !assignmentDraft.form) {
       pushToast({
@@ -1854,6 +2197,13 @@ export function FieldOperationsModule({
               onClick={() => setActiveSection("assignments")}
               tone="success"
               value={summary.activeAssignments}
+            />
+            <MetricCard
+              icon={<CalendarDays aria-hidden="true" />}
+              label="Operational Activities"
+              onClick={() => setActiveSection("visit-requests")}
+              tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
+              value={visitRequests.length}
             />
             <MetricCard
               icon={<UsersRound aria-hidden="true" />}
@@ -2182,6 +2532,107 @@ Password:          ${lastInviteCredentials.password}`}
           searchLabel="Search supervisors"
           title="Supervisor management"
         />
+      ) : null}
+
+      {activeSection === "visit-requests" ? (
+        <div className="space-y-4">
+          <SectionPanel
+            description="Field officers request organization activities, project visits, meetings, deliveries, incidents, and support work from mobile. Supervisors approve, reject, or request changes. GPS check-in evidence syncs back here after the activity."
+            title="Operational activity approvals"
+          >
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard
+                icon={<ClipboardList aria-hidden="true" />}
+                label="Total Activities"
+                tone="neutral"
+                value={activityAnalytics.total}
+              />
+              <MetricCard
+                icon={<CalendarDays aria-hidden="true" />}
+                label="Pending"
+                tone={activityAnalytics.pending ? "warning" : "success"}
+                value={activityAnalytics.pending}
+              />
+              <MetricCard
+                icon={<ShieldCheck aria-hidden="true" />}
+                label="Approved"
+                tone="success"
+                value={activityAnalytics.approved}
+              />
+              <MetricCard
+                icon={<Target aria-hidden="true" />}
+                label="Completed"
+                tone="success"
+                value={activityAnalytics.completed}
+              />
+              <MetricCard
+                icon={<MapPinned aria-hidden="true" />}
+                label="GPS Verified"
+                tone="success"
+                value={activityAnalytics.gpsVerified}
+              />
+              <MetricCard
+                icon={<AlertTriangle aria-hidden="true" />}
+                label="Flagged"
+                tone={activityAnalytics.flagged ? "danger" : "success"}
+                value={activityAnalytics.flagged}
+              />
+              <MetricCard
+                icon={<Route aria-hidden="true" />}
+                label="Organization Scope"
+                tone="neutral"
+                value={activityAnalytics.organizationScoped}
+              />
+              <MetricCard
+                icon={<RadioTower aria-hidden="true" />}
+                label="Approval Rate"
+                tone={activityAnalytics.approvalRate >= 70 ? "success" : "warning"}
+                value={`${activityAnalytics.approvalRate}%`}
+              />
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border bg-background p-3">
+                <h3 className="text-sm font-semibold">Activities by type</h3>
+                <div className="mt-3 space-y-2">
+                  {(activityAnalytics.byType.length ? activityAnalytics.byType : [["No activity yet", 0] as [string, number]]).slice(0, 6).map(([label, count]) => (
+                    <div className="flex items-center justify-between rounded-lg border bg-panel px-3 py-2 text-sm" key={String(label)}>
+                      <span className="font-medium">{titleCase(String(label))}</span>
+                      <Badge tone="neutral">{count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <h3 className="text-sm font-semibold">Activity load by officer</h3>
+                <div className="mt-3 space-y-2">
+                  {(activityAnalytics.byOfficer.length ? activityAnalytics.byOfficer : [["No officer activity yet", 0] as [string, number]]).slice(0, 6).map(([label, count]) => (
+                    <div className="flex items-center justify-between rounded-lg border bg-panel px-3 py-2 text-sm" key={String(label)}>
+                      <span className="font-medium">{label}</span>
+                      <Badge tone="neutral">{count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </SectionPanel>
+          {selectedActivity ? (
+            <OperationalActivityDetail
+              activity={selectedActivity}
+              canManage={canManageFieldOperations}
+              officerName={officers.find((officer) => officer.id === selectedActivity.field_officer_id)?.full_name ?? "Field officer"}
+              onClose={() => setSelectedActivityId(null)}
+              onReview={(action) => reviewVisitMutation.mutate({ action, visitRequestId: selectedActivity.id })}
+              reviewPending={reviewVisitMutation.isPending}
+            />
+          ) : null}
+          <DataTable
+            columns={visitRequestColumns}
+            emptyLabel="No operational activities yet. Field officers can request organization or project activities from the mobile app."
+            rows={visitRequests}
+            searchLabel="Search activities"
+            title="Operational activity queue"
+          />
+        </div>
       ) : null}
 
       {activeSection === "work-plans" ? (
