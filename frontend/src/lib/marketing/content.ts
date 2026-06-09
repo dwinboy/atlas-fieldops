@@ -203,17 +203,187 @@ export const solutionPages = [
 ];
 
 export const useCasePages = [
-  ["baseline-surveys", "Baseline Surveys", "Collect baseline values, demographics, GPS evidence, and indicator starting points before implementation begins."],
-  ["endline-surveys", "Endline Surveys", "Compare final results against baselines, targets, locations, and approved submissions."],
-  ["monitoring-visits", "Monitoring Visits", "Plan visits, assign field officers, collect evidence, review findings, and resolve issues."],
-  ["registration-programs", "Registration Programs", "Register beneficiaries, households, facilities, farmers, students, or participants with governed reference data."],
-  ["beneficiary-tracking", "Beneficiary Tracking", "Maintain longitudinal beneficiary records, interventions, consent, locations, and status changes."],
-  ["needs-assessments", "Needs Assessments", "Collect household, community, facility, and market needs data with offline forms and quality controls."],
-  ["health-monitoring", "Health Monitoring", "Track outreach, facility performance, referrals, symptoms, and public health program indicators."],
-  ["education-monitoring", "Education Monitoring", "Monitor schools, attendance, training, infrastructure, and learning program outcomes."],
-  ["agriculture-programs", "Agriculture Programs", "Register farmers, map farms, monitor yields, verify inputs, and report agriculture indicators."],
-  ["humanitarian-programs", "Humanitarian Programs", "Manage vulnerability assessments, distributions, complaints, protection cases, and donor evidence."],
-].map(([slug, title, description]) => ({ slug, title, description }));
+  {
+    slug: "baseline-surveys",
+    title: "Baseline Surveys",
+    description: "Collect baseline values, demographics, GPS evidence, and indicator starting points before implementation begins.",
+    steps: [
+      "Design a baseline questionnaire with sections for demographics, GPS, consent, and starting indicator values.",
+      "Publish a versioned form and assign field teams to target locations.",
+      "Collect offline data with GPS and media evidence; sync to the platform.",
+      "Review submissions for quality flags and approve the baseline dataset.",
+      "Use approved baseline records to set indicator starting points and generate the baseline report.",
+    ],
+    modules: ["Forms", "Field Operations", "Submissions", "Indicators", "Data Quality"],
+    outcomes: ["Clean baseline dataset", "GPS-stamped evidence", "Indicator starting points", "Donor-ready baseline report"],
+    faqs: [
+      { question: "Can baseline forms include repeat groups and GPS?", answer: "Yes. The form builder supports repeat groups, GPS coordinates, media attachments, consent fields, and validation rules." },
+      { question: "How do I set indicator baselines after collection?", answer: "Once baseline submissions are approved, the Indicators module lets you record or calculate the baseline value for each indicator." },
+    ],
+  },
+  {
+    slug: "endline-surveys",
+    title: "Endline Surveys",
+    description: "Compare final results against baselines, targets, locations, and approved submissions.",
+    steps: [
+      "Clone or version the original baseline form to maintain comparability.",
+      "Assign field teams to the same locations with updated targets and timelines.",
+      "Collect endline data offline and sync submissions for review.",
+      "Approve endline records and run data quality checks against baseline controls.",
+      "Generate indicator comparison reports showing baseline to endline change.",
+    ],
+    modules: ["Forms", "Submissions", "Indicators", "Reports", "Data Quality"],
+    outcomes: ["Comparable measurement dataset", "Indicator change analysis", "Variance and achievement reports", "Evidence for donors"],
+    faqs: [
+      { question: "Can I reuse the baseline form for the endline?", answer: "Yes. Forms are versioned so you can clone, update, and publish a new version without losing the original baseline structure." },
+      { question: "How are baseline and endline compared in reports?", answer: "The Indicators module stores baselines, current values, and targets so reports can show progress and achievement against plan." },
+    ],
+  },
+  {
+    slug: "monitoring-visits",
+    title: "Monitoring Visits",
+    description: "Plan visits, assign field officers, collect evidence, review findings, and resolve issues.",
+    steps: [
+      "Create a monitoring visit form with observation, GPS, photo evidence, and issue fields.",
+      "Build a work plan with visit targets, assigned supervisors, and locations.",
+      "Assign visits to field officers with deadlines and required beneficiary lists.",
+      "Collect findings offline, attach photos, and sync visit records.",
+      "Supervisors review flagged findings, raise issues, and track resolution.",
+    ],
+    modules: ["Field Operations", "Forms", "Submissions", "Mapping", "Data Quality"],
+    outcomes: ["Structured visit evidence", "Issue tracking", "Coverage visibility on maps", "Supervisor review records"],
+    faqs: [
+      { question: "Can monitoring visits be linked to specific beneficiaries?", answer: "Yes. Assignments can include an entity list so each visit is attributed to a specific household, facility, or farmer." },
+      { question: "What happens when a visit finds a problem?", answer: "Field officers can flag issues in the submission, and supervisors can raise cases or operational tasks for follow-up from the review queue." },
+    ],
+  },
+  {
+    slug: "registration-programs",
+    title: "Registration Programs",
+    description: "Register beneficiaries, households, facilities, farmers, students, or participants with governed reference data.",
+    steps: [
+      "Define the entity type and required fields: name, ID, location, GPS, consent, and custom attributes.",
+      "Build a registration form linked to the entity type with duplicate prevention rules.",
+      "Assign registration targets to field teams by zone or district.",
+      "Collect registrations offline with GPS and photo ID evidence.",
+      "Review and approve records; resolve duplicates flagged by the data quality engine.",
+    ],
+    modules: ["Beneficiaries", "Forms", "Field Operations", "Data Quality", "Submissions"],
+    outcomes: ["Clean beneficiary registry", "Duplicate-free records", "GPS-located entities", "Governed reference data"],
+    faqs: [
+      { question: "How does the platform prevent duplicate registrations?", answer: "Data quality rules check name, ID, GPS location, and date patterns automatically. Suspected duplicates are flagged for supervisor review before approval." },
+      { question: "Can registration forms include photo ID capture?", answer: "Yes. Forms support media attachments, so field officers can photograph an ID or participant and attach it to the registration record." },
+    ],
+  },
+  {
+    slug: "beneficiary-tracking",
+    title: "Beneficiary Tracking",
+    description: "Maintain longitudinal beneficiary records, interventions, consent, locations, and status changes.",
+    steps: [
+      "Register or import the initial beneficiary list with profiles and consent records.",
+      "Link interventions, visits, distributions, and training events to each beneficiary.",
+      "Track status changes such as enrollment, active, graduated, or withdrawn.",
+      "Review beneficiary history and submission records from the entity detail view.",
+      "Run data quality checks to identify inactive, missing, or high-risk records.",
+    ],
+    modules: ["Beneficiaries", "Submissions", "Field Operations", "Data Quality", "Reports"],
+    outcomes: ["Longitudinal beneficiary records", "Intervention history", "Status tracking", "Consent and audit trail"],
+    faqs: [
+      { question: "Can I track the same beneficiary across multiple projects?", answer: "Yes. Beneficiary records are organization-level, so the same entity can be linked to multiple projects and have separate intervention histories." },
+      { question: "What does a beneficiary profile show?", answer: "The profile shows demographic details, GPS location, consent status, linked submissions, interventions, visit history, data quality flags, and audit events." },
+    ],
+  },
+  {
+    slug: "needs-assessments",
+    title: "Needs Assessments",
+    description: "Collect household, community, facility, and market needs data with offline forms and quality controls.",
+    steps: [
+      "Design a needs assessment form with household, community, or market sections.",
+      "Define geographic scope and assign teams to villages, clusters, or districts.",
+      "Collect data offline; use GPS for household location and media for evidence.",
+      "Review submissions, resolve quality flags, and approve the clean dataset.",
+      "Use the approved dataset to generate vulnerability rankings and planning reports.",
+    ],
+    modules: ["Forms", "Field Operations", "Submissions", "Mapping", "Data Quality"],
+    outcomes: ["Structured needs dataset", "Geographic vulnerability map", "Approved evidence base", "Planning reports"],
+    faqs: [
+      { question: "Can assessments capture GPS coordinates for each household?", answer: "Yes. GPS question types capture the coordinates at the time of collection, which appear on coverage maps after sync." },
+      { question: "How do I identify the highest-need areas?", answer: "The Mapping module shows submission density and indicator values on a geographic layer so planners can see priority areas visually." },
+    ],
+  },
+  {
+    slug: "health-monitoring",
+    title: "Health Monitoring",
+    description: "Track outreach, facility performance, referrals, symptoms, and public health program indicators.",
+    steps: [
+      "Build facility assessment and outreach visit forms with clinical fields and referral sections.",
+      "Assign community health workers to households and facilities with visit schedules.",
+      "Collect health data offline, including GPS, media, and referral records.",
+      "Review submissions for completeness, flag anomalies, and approve health records.",
+      "Track health indicators and generate outreach coverage and referral completion reports.",
+    ],
+    modules: ["Forms", "Field Operations", "Submissions", "Indicators", "Governance"],
+    outcomes: ["Facility performance records", "Outreach coverage visibility", "Referral completion tracking", "Health indicator reports"],
+    faqs: [
+      { question: "Can sensitive health data be protected?", answer: "Yes. Governance controls include consent fields, role-based field visibility, access restrictions, and audit logs for every data access or export." },
+      { question: "How are referrals tracked through the system?", answer: "Referral records are linked to the originating visit submission and can be tracked as cases with status updates from intake to resolution." },
+    ],
+  },
+  {
+    slug: "education-monitoring",
+    title: "Education Monitoring",
+    description: "Monitor schools, attendance, training, infrastructure, and learning program outcomes.",
+    steps: [
+      "Create school inspection, attendance, and training forms with facility and student sections.",
+      "Assign inspectors to schools with visit dates, targets, and required evidence.",
+      "Collect observations offline with GPS and photo evidence of infrastructure.",
+      "Review inspection records and flag schools with compliance or maintenance gaps.",
+      "Report on school-level indicator progress and district-wide infrastructure status.",
+    ],
+    modules: ["Projects", "Forms", "Mapping", "Indicators", "Reports"],
+    outcomes: ["School inspection records", "Attendance and training evidence", "Infrastructure gap map", "District progress reports"],
+    faqs: [
+      { question: "Can the platform track multiple schools across a district?", answer: "Yes. Each school is registered as an entity and inspections are linked to that entity so supervisors can see the full history per school." },
+      { question: "How are inspection findings shared with district managers?", answer: "Reports can be exported or scheduled to distribute approved inspection summaries to managers with the appropriate read-only role." },
+    ],
+  },
+  {
+    slug: "agriculture-programs",
+    title: "Agriculture Programs",
+    description: "Register farmers, map farms, monitor yields, verify inputs, and report agriculture indicators.",
+    steps: [
+      "Register farmers and farm plots with GPS boundaries, crops, and household details.",
+      "Assign input verification visits to agricultural extension officers.",
+      "Collect yield monitoring, input verification, and farm visit data offline.",
+      "Review submissions and resolve anomalies before approving the harvest dataset.",
+      "Report on input coverage, yield indicators, and farmer program participation.",
+    ],
+    modules: ["Beneficiaries", "Mapping", "Forms", "Field Operations", "Indicators"],
+    outcomes: ["Farmer registry with GPS farms", "Input verification records", "Yield indicator tracking", "Donor agriculture reports"],
+    faqs: [
+      { question: "Can farm boundaries be captured in the field?", answer: "Yes. GPS and polygon capture tools let field officers trace farm boundaries which appear on the project map after sync." },
+      { question: "How are input distributions verified?", answer: "Distribution verification forms link inputs to registered farmers, with quantity, date, GPS, and officer signature captured as evidence." },
+    ],
+  },
+  {
+    slug: "humanitarian-programs",
+    title: "Humanitarian Programs",
+    description: "Manage vulnerability assessments, distributions, complaints, protection cases, and donor evidence.",
+    steps: [
+      "Conduct vulnerability assessments to register and score affected households.",
+      "Build distribution forms with beneficiary lists, quantities, GPS, and consent.",
+      "Manage a complaints and feedback mechanism with case routing and resolution.",
+      "Track protection cases with sensitivity controls and restricted data access.",
+      "Generate donor evidence packages from approved distributions and assessments.",
+    ],
+    modules: ["Beneficiaries", "Forms", "Submissions", "Governance", "Reports"],
+    outcomes: ["Vulnerability scoring dataset", "Distribution evidence trail", "Complaints case records", "Donor-auditable evidence packages"],
+    faqs: [
+      { question: "How are protection cases kept confidential?", answer: "Governance controls allow field-level data restrictions, case-specific access rules, and audit logs so sensitive protection records are only visible to authorised users." },
+      { question: "Can beneficiaries submit complaints anonymously?", answer: "Yes. Public collection links can be configured to allow anonymous responses that route into the case management queue." },
+    ],
+  },
+];
 
 export const trustLogos = ["NGOs", "Governments", "Donors", "Research Teams", "Health Programs", "Education Programs"];
 
@@ -310,18 +480,66 @@ export const caseStudies = [
 ];
 
 export const documentationCategories = [
-  "Getting Started",
-  "Projects",
-  "Forms",
-  "Field Operations",
-  "Submissions",
-  "Mapping",
-  "Indicators",
-  "Reports",
-  "Data Quality",
-  "Governance",
-  "Administration",
-  "API",
+  {
+    name: "Getting Started",
+    description: "Organization setup, first admin, workspace onboarding, team invitation, and initial project creation.",
+    topics: ["Create your organization", "Invite administrators", "Set up your first project", "Configure workspace settings", "Understand roles and permissions"],
+  },
+  {
+    name: "Projects",
+    description: "Program setup, locations, teams, indicators, targets, reporting periods, and project health monitoring.",
+    topics: ["Create and configure projects", "Add locations and boundaries", "Assign teams and supervisors", "Link indicators to projects", "Monitor project health"],
+  },
+  {
+    name: "Forms",
+    description: "Form builder, field types, logic, repeat groups, versioning, templates, publishing, and governance controls.",
+    topics: ["Build a form from scratch", "Use templates", "Add conditional logic", "Publish and version forms", "Govern form access"],
+  },
+  {
+    name: "Field Operations",
+    description: "Assignments, field officers, supervisors, work plans, targets, daily activity, and operational monitoring.",
+    topics: ["Create assignments", "Assign field officers and supervisors", "Build work plans", "Track daily collection progress", "Monitor overdue assignments"],
+  },
+  {
+    name: "Submissions",
+    description: "Review queues, approval workflows, corrections, attachments, quality flags, audit history, and bulk actions.",
+    topics: ["Review incoming submissions", "Approve and reject records", "Return submissions for correction", "View attachments and GPS evidence", "Bulk-review and export"],
+  },
+  {
+    name: "Mapping",
+    description: "GIS maps, project boundaries, submission coverage, GPS validation, spatial filters, and offline map packs.",
+    topics: ["View project coverage maps", "Filter submissions by location", "Validate GPS evidence", "Identify coverage gaps", "Export spatial data"],
+  },
+  {
+    name: "Indicators",
+    description: "Indicator library, logframes, baselines, targets, calculations, disaggregation, reporting periods, and SDG mapping.",
+    topics: ["Create indicators", "Set baselines and targets", "Configure calculations and disaggregation", "Track indicator progress", "Generate indicator reports"],
+  },
+  {
+    name: "Reports",
+    description: "Standard reports, custom dashboards, donor outputs, scheduled delivery, export formats, and governed downloads.",
+    topics: ["Generate standard reports", "Build custom dashboards", "Schedule report delivery", "Export to PDF and Excel", "Share reports with donors"],
+  },
+  {
+    name: "Data Quality",
+    description: "Duplicate detection, outliers, missing data, GPS anomalies, validation failures, and risk alert management.",
+    topics: ["Set up data quality rules", "Review duplicate records", "Resolve GPS anomalies", "Handle missing required fields", "Export a quality-clean dataset"],
+  },
+  {
+    name: "Governance",
+    description: "Audit trails, policies, approval rules, retention schedules, consent records, compliance, and data stewardship.",
+    topics: ["View audit logs", "Configure approval rules", "Set retention and consent policies", "Manage export governance", "Run compliance checks"],
+  },
+  {
+    name: "Administration",
+    description: "System settings, reference data, API keys, integrations, notification rules, imports, and backup configuration.",
+    topics: ["Configure system settings", "Manage reference data", "Create API keys and scopes", "Set up integrations", "Run data imports and migrations"],
+  },
+  {
+    name: "API",
+    description: "REST API authentication, versioned endpoints, rate limits, webhooks, OpenAPI documentation, and example requests.",
+    topics: ["Authenticate with API keys", "Use versioned endpoints", "Understand rate limits", "Subscribe to webhooks", "Download OpenAPI specification"],
+  },
 ];
 
 export const seoKeywords = [
