@@ -539,10 +539,12 @@ function buildReviewSummary(
 ) {
   const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
   const questions = formVersion.sections.flatMap((section) => section.questions);
-  const gpsQuestions = questions.filter((question) => question.type === "GPS");
-  const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type));
+  const gpsQuestions = questions.filter((question) => question.type === "GPS" || question.qualityControls?.captureGps);
+  const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
   const gpsCaptured = gpsQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
   const mediaCaptured = mediaQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
+  const requiredGps = gpsQuestions.filter((question) => question.required || question.qualityControls?.captureGps).length;
+  const requiredMedia = mediaQuestions.filter((question) => question.required || question.qualityControls?.photoEvidence).length;
   const errorCount = issues.filter((issue) => issue.severity === "Error").length;
   const warningCount = issues.filter((issue) => issue.severity === "Warning").length;
 
@@ -567,12 +569,12 @@ function buildReviewSummary(
       {
         label: "GPS evidence",
         value: gpsQuestions.length ? `${gpsCaptured} of ${gpsQuestions.length} GPS answer(s)` : "Not required",
-        tone: gpsQuestions.length && gpsCaptured < gpsQuestions.filter((question) => question.required).length ? "bad" as const : "ok" as const,
+        tone: gpsQuestions.length && gpsCaptured < requiredGps ? "bad" as const : "ok" as const,
       },
       {
         label: "Media evidence",
         value: mediaQuestions.length ? `${mediaCaptured} of ${mediaQuestions.length} evidence answer(s)` : "Not required",
-        tone: mediaQuestions.length && mediaCaptured < mediaQuestions.filter((question) => question.required).length ? "bad" as const : "ok" as const,
+        tone: mediaQuestions.length && mediaCaptured < requiredMedia ? "bad" as const : "ok" as const,
       },
       {
         label: "Validation",

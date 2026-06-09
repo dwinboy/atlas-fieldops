@@ -74,9 +74,10 @@ type CollectionMethod = "web" | "mobile" | "web_mobile";
 type ControlStep =
   | "essentials"
   | "beneficiaries"
+  | "questions"
+  | "evidence"
   | "quality"
   | "access"
-  | "evidence"
   | "governance"
   | "advanced";
 
@@ -114,10 +115,13 @@ type FormControlsDraft = {
   assignedFieldOfficerIds: string[];
   auditTrail: boolean;
   autoAssignmentRule: string;
+  backCheckRequired: boolean;
+  backCheckSamplePercent: number;
   beneficiarySearch: "required" | "optional" | "disabled";
   blockWithoutConsent: boolean;
   boundaryValidation: boolean;
   businessPurpose: string;
+  caseEscalationRule: string;
   changeSummary: string;
   consentMode: "digital" | "written" | "verbal" | "guardian" | "not_required";
   coordinateMasking: boolean;
@@ -126,19 +130,23 @@ type FormControlsDraft = {
   dataSourceType: "primary" | "secondary" | "administrative" | "imported" | "mixed";
   dataFreezeRequired: boolean;
   dataRetentionPolicy: "project_life" | "donor_period" | "seven_years" | "custom";
+  deviceClockDriftAction: "warn" | "review" | "block";
   disaggregationFields: string[];
   disaggregationRequired: boolean;
+  dontKnowPolicy: "optional" | "required_for_sensitive" | "disabled";
   duplicateAction: "block" | "warn" | "review";
   duplicateFields: string[];
   duplicateGpsDetection: boolean;
   duplicateSeverity: "low" | "medium" | "high" | "critical";
   duplicateThreshold: number;
+  enumeratorTrainingRequired: boolean;
   entityType: string;
   eventMode: "none" | "creates_event" | "selects_event" | "attendance";
   expectedUse: string;
   exportApprovalMode: "not_required" | "manager_approval" | "data_manager_approval";
   exportRestricted: boolean;
   fileTypes: string;
+  fieldGuideText: string;
   formObjective: string;
   frequencyWindow: "none" | "day" | "week" | "month" | "season" | "reporting_period";
   geographicScope: string;
@@ -146,6 +154,7 @@ type FormControlsDraft = {
   indicatorComponent: "none" | "numerator" | "denominator" | "disaggregation" | "evidence";
   indicatorLink: string;
   invalidAgeAction: "warn" | "block" | "review";
+  importTemplateMode: "none" | "form_dictionary" | "legacy_mapping";
   lifecycleStatus: "draft" | "testing" | "review" | "approved" | "published" | "suspended" | "archived";
   linkedOutcome: string;
   linkedOutput: string;
@@ -164,6 +173,7 @@ type FormControlsDraft = {
   permissionPreset: "standard" | "restricted" | "open";
   piiHandling: "standard" | "mask_exports" | "encrypt_sensitive" | "restricted";
   parentForm: string;
+  partnerDataSharingRule: string;
   programObjective: string;
   profileMappings: {
     dob: string;
@@ -195,6 +205,7 @@ type FormControlsDraft = {
   riskClassification: "low" | "medium" | "high" | "sensitive";
   samplingMethod: "none" | "random" | "stratified" | "cluster" | "purposive" | "systematic";
   sourceOfTruthRule: "registration_controls_profile" | "latest_approved_controls_profile" | "manager_approved_profile_updates";
+  staticGpsAction: "warn" | "review" | "block";
   submissionEditPolicy: "before_review" | "returned_only" | "change_request";
   seasonEnd: string;
   seasonName: string;
@@ -537,15 +548,15 @@ const controlSteps: {
   mustDo: string;
 }[] = [
   {
-    categories: ["Form purpose", "Form information", "Indicators", "Question validation"],
-    decisions: ["Why are we collecting this?", "Which result or indicator will use it?", "Is the form structure ready?"],
-    helper: "Purpose, indicators, dictionary, and lifecycle status.",
+    categories: ["Form purpose", "Form information", "Purpose"],
+    decisions: ["Why are we collecting this?", "Which decision or report will use it?", "Which result or indicator will use it?"],
+    helper: "Purpose, reporting use, indicators, and result context.",
     id: "essentials",
-    label: "1. Essentials",
+    label: "1. Purpose",
     mustDo: "Explain why this form exists and confirm the core M&E context.",
   },
   {
-    categories: ["Entity settings", "Beneficiary", "Submission rules", "Submission frequency"],
+    categories: ["Entity settings", "Beneficiary", "Beneficiary identity", "Submission rules", "Submission frequency"],
     decisions: ["Who or what is this record about?", "Does it create or update a beneficiary?", "How often can it be submitted?"],
     helper: "Entity rules, beneficiary search, and profile mappings.",
     id: "beneficiaries",
@@ -553,11 +564,27 @@ const controlSteps: {
     mustDo: "Decide whether this form creates, updates, or requires a beneficiary.",
   },
   {
-    categories: ["Duplicate prevention", "Data quality", "Enumerator quality", "Duration", "Repeat groups"],
+    categories: ["Structure", "Question validation", "Data dictionary", "Logic rules", "Indicator mapping"],
+    decisions: ["Are questions clear and structured?", "Are variable names and dictionary fields usable?", "Do required and exception answers make sense?"],
+    helper: "Question standards, dictionary, required policy, and logic checks.",
+    id: "questions",
+    label: "3. Questions",
+    mustDo: "Confirm the questions are reportable, understandable, and clean enough for field collection.",
+  },
+  {
+    categories: ["Reference data", "GPS", "GPS settings", "Media settings", "Consent", "Offline readiness", "Mapping settings", "Mobile package"],
+    decisions: ["What evidence is required?", "Can it work offline?", "What must be downloaded to mobile?"],
+    helper: "GPS, consent, media, reference data, and mobile/offline readiness.",
+    id: "evidence",
+    label: "4. Fieldwork",
+    mustDo: "Set field evidence requirements and mobile readiness rules.",
+  },
+  {
+    categories: ["Duplicate prevention", "Data quality", "Enumerator quality", "Duration", "Repeat groups", "Field integrity", "Back-checks"],
     decisions: ["What should block collection?", "What should warn reviewers?", "How should suspicious entries be flagged?"],
-    helper: "Duplicate checks, validation behavior, and suspicious activity rules.",
+    helper: "Duplicate checks, validation behavior, suspicious activity, and back-check rules.",
     id: "quality",
-    label: "3. Quality",
+    label: "5. Quality",
     mustDo: "Choose how errors and duplicate risks are handled before review.",
   },
   {
@@ -565,31 +592,23 @@ const controlSteps: {
     decisions: ["Who can collect this form?", "Who reviews and approves?", "When should slow reviews escalate?"],
     helper: "Who can collect, review, approve, and see the form.",
     id: "access",
-    label: "4. Access",
+    label: "6. Access",
     mustDo: "Select the field officers or project team who can use this form.",
   },
   {
-    categories: ["Reference data", "GPS", "Media", "Consent", "Offline readiness", "Mapping settings", "Mobile package"],
-    decisions: ["What evidence is required?", "Can it work offline?", "What must be downloaded to mobile?"],
-    helper: "GPS, consent, media, reference data, and mobile/offline readiness.",
-    id: "evidence",
-    label: "5. Evidence",
-    mustDo: "Set field evidence requirements and mobile readiness rules.",
-  },
-  {
-    categories: ["Governance", "Version information", "Privacy", "Retention", "Export governance", "Testing"],
+    categories: ["Governance", "Version information", "Privacy", "Retention", "Export governance", "Testing", "Source-of-truth"],
     decisions: ["How sensitive is the data?", "Can approved data be edited?", "What approval and export controls apply?"],
     helper: "Risk, locking, audit trail, version notes, and reviewer sign-off.",
     id: "governance",
-    label: "6. Governance",
+    label: "7. Governance",
     mustDo: "Make approvals and published-version behavior safe and traceable.",
   },
   {
-    categories: ["Tracking", "Sampling", "Localization", "Trigger rules"],
+    categories: ["Tracking", "Sampling", "Localization", "Trigger rules", "Partner rules", "Case escalation"],
     decisions: ["Is this part of a form journey?", "Does it need sampling or waves?", "Should it trigger follow-up work?"],
     helper: "Longitudinal tracking, sampling, translations, triggers, and automation.",
     id: "advanced",
-    label: "7. Advanced",
+    label: "8. Advanced",
     mustDo: "Add optional study-management settings only when the program needs them.",
   },
 ];
@@ -705,10 +724,13 @@ const defaultControlsDraft: FormControlsDraft = {
   assignedFieldOfficerIds: [],
   auditTrail: true,
   autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
+  backCheckRequired: false,
+  backCheckSamplePercent: 10,
   beneficiarySearch: "optional",
   blockWithoutConsent: true,
   boundaryValidation: false,
   businessPurpose: "Support project monitoring, review, and donor-ready evidence.",
+  caseEscalationRule: "If safeguarding, protection, or urgent-risk answer is selected -> create supervisor alert.",
   changeSummary: "",
   consentMode: "digital",
   coordinateMasking: false,
@@ -717,19 +739,23 @@ const defaultControlsDraft: FormControlsDraft = {
   dataFreezeRequired: true,
   dataSourceType: "primary",
   dataRetentionPolicy: "seven_years",
+  deviceClockDriftAction: "review",
   disaggregationFields: ["sex", "age_group", "location"],
   disaggregationRequired: true,
+  dontKnowPolicy: "required_for_sensitive",
   duplicateAction: "review",
   duplicateFields: ["phone_number", "household_id", "full_name", "village"],
   duplicateGpsDetection: true,
   duplicateSeverity: "high",
   duplicateThreshold: 85,
+  enumeratorTrainingRequired: false,
   entityType: "Farmer",
   eventMode: "none",
   expectedUse: "Approved records feed beneficiary history, dashboards, indicators, and reports.",
   exportApprovalMode: "manager_approval",
   exportRestricted: true,
   fileTypes: "jpg,png,pdf",
+  fieldGuideText: "Read each question exactly as written, confirm consent, verify beneficiary identity, capture GPS when required, and sync before leaving the area when connectivity allows.",
   formObjective: "Collect reliable field evidence for project decisions.",
   frequencyWindow: "none",
   geographicScope: "",
@@ -737,6 +763,7 @@ const defaultControlsDraft: FormControlsDraft = {
   indicatorComponent: "none",
   indicatorLink: "",
   invalidAgeAction: "review",
+  importTemplateMode: "form_dictionary",
   lifecycleStatus: "draft",
   linkedOutcome: "",
   linkedOutput: "",
@@ -755,6 +782,7 @@ const defaultControlsDraft: FormControlsDraft = {
   permissionPreset: "standard",
   piiHandling: "mask_exports",
   parentForm: "",
+  partnerDataSharingRule: "Approved, permissioned records only; exports require audit logging and manager approval.",
   programObjective: "",
   profileMappings: {
     dob: "",
@@ -782,6 +810,7 @@ const defaultControlsDraft: FormControlsDraft = {
   riskClassification: "medium",
   samplingMethod: "none",
   sourceOfTruthRule: "manager_approved_profile_updates",
+  staticGpsAction: "review",
   submissionEditPolicy: "change_request",
   seasonEnd: "",
   seasonName: "",
@@ -1590,6 +1619,40 @@ function controlsDraftToApiControls(
         expression: `max_submissions_per_day <= ${controls.maximumSubmissionsPerDay}`,
       },
       {
+        id: "static_gps_detection",
+        label: "Static GPS detection",
+        rule_type: "field_integrity",
+        enabled: controls.staticGpsAction !== "warn" || controls.duplicateGpsDetection,
+        severity: controls.staticGpsAction === "block" ? "critical" : "high",
+        blocking: controls.staticGpsAction === "block",
+        fields: form.fields
+          .filter((field) =>
+            ["gps", "geolocation", "map", "geofence"].includes(field.type),
+          )
+          .map((field) => field.variableName ?? field.id),
+        expression: `static_gps_action=${controls.staticGpsAction}`,
+      },
+      {
+        id: "device_clock_drift",
+        label: "Device clock drift",
+        rule_type: "field_integrity",
+        enabled: controls.deviceClockDriftAction !== "warn",
+        severity: controls.deviceClockDriftAction === "block" ? "critical" : "medium",
+        blocking: controls.deviceClockDriftAction === "block",
+        fields: [],
+        expression: `device_clock_drift_action=${controls.deviceClockDriftAction}`,
+      },
+      {
+        id: "back_check_sample",
+        label: "Back-check sample",
+        rule_type: "back_check",
+        enabled: controls.backCheckRequired,
+        severity: "medium",
+        blocking: false,
+        fields: [],
+        expression: `sample_percent=${controls.backCheckSamplePercent}`,
+      },
+      {
         id: "repeat_group_volume",
         label: "Repeat group volume review",
         rule_type: "repeat_group",
@@ -1959,6 +2022,18 @@ function controlsDraftToApiControls(
         invalid_age_action: controls.invalidAgeAction,
         disaggregation_required: controls.disaggregationRequired,
         disaggregation_fields: controls.disaggregationFields,
+        dont_know_policy: controls.dontKnowPolicy,
+      },
+      field_guidance: {
+        enumerator_instruction: controls.fieldGuideText,
+        dont_know_policy: controls.dontKnowPolicy,
+        training_required_before_assignment: controls.enumeratorTrainingRequired,
+      },
+      data_import: {
+        template_mode: controls.importTemplateMode,
+        template_source: "form_data_dictionary",
+        require_column_match: controls.importTemplateMode !== "none",
+        legacy_mapping_allowed: controls.importTemplateMode === "legacy_mapping",
       },
       localization: {
         languages: controls.localizationLanguages
@@ -1981,6 +2056,24 @@ function controlsDraftToApiControls(
         mode: controls.accessibilityMode,
         screen_reader_metadata: true,
         accessible_labels_required: true,
+      },
+      field_integrity: {
+        static_gps_action: controls.staticGpsAction,
+        device_clock_drift_action: controls.deviceClockDriftAction,
+        outside_assigned_area_action: controls.boundaryValidation ? "review" : "warn",
+        back_check_required: controls.backCheckRequired,
+        back_check_sample_percent: controls.backCheckSamplePercent,
+      },
+      partner_data_sharing: {
+        rule: controls.partnerDataSharingRule,
+        approved_data_only: true,
+        export_approval_required: controls.exportApprovalMode !== "not_required",
+      },
+      case_escalation: {
+        rule: controls.caseEscalationRule,
+        enabled:
+          controls.decisionUse === "case_management" ||
+          /case|safeguard|risk|alert/i.test(controls.caseEscalationRule),
       },
       ai_readiness: {
         indicator_suggestions_ready: true,
@@ -2103,6 +2196,11 @@ function controlsDraftFromApiControls(
   const privacy = asRecord(instrument.privacy);
   const mobilePackage = asRecord(instrument.mobile_package);
   const validationStandards = asRecord(instrument.validation_standards);
+  const fieldGuidance = asRecord(instrument.field_guidance);
+  const dataImport = asRecord(instrument.data_import);
+  const fieldIntegrity = asRecord(instrument.field_integrity);
+  const partnerDataSharing = asRecord(instrument.partner_data_sharing);
+  const caseEscalation = asRecord(instrument.case_escalation);
   const testing = asRecord(instrument.testing);
   const repeatGroups = asRecord(instrument.repeat_group_policy);
   const indicatorMappings = Array.isArray(instrument.indicator_mappings)
@@ -2173,6 +2271,14 @@ function controlsDraftFromApiControls(
     assignedFieldOfficerIds: stringArrayValue(collectionAccess.field_officer_ids),
     auditTrail: booleanValue(controls.audit && asRecord(controls.audit).immutable, true),
     autoAssignmentRule: firstRuleText(instrument.auto_assignment_rules),
+    backCheckRequired: booleanValue(
+      fieldIntegrity.back_check_required,
+      defaultControlsDraft.backCheckRequired,
+    ),
+    backCheckSamplePercent: numberValue(
+      fieldIntegrity.back_check_sample_percent,
+      defaultControlsDraft.backCheckSamplePercent,
+    ),
     beneficiarySearch: booleanValue(entity.prefill_profile, true)
       ? booleanValue(entity.requires_existing_entity, false)
         ? "required"
@@ -2186,6 +2292,10 @@ function controlsDraftFromApiControls(
     businessPurpose: stringValue(
       purpose.business_purpose,
       defaultControlsDraft.businessPurpose,
+    ),
+    caseEscalationRule: stringValue(
+      caseEscalation.rule,
+      defaultControlsDraft.caseEscalationRule,
     ),
     changeSummary: "",
     consentMode: booleanValue(governance.consent_required, true)
@@ -2208,6 +2318,10 @@ function controlsDraftFromApiControls(
       privacy.data_retention_policy,
       defaultControlsDraft.dataRetentionPolicy,
     ) as FormControlsDraft["dataRetentionPolicy"],
+    deviceClockDriftAction: stringValue(
+      fieldIntegrity.device_clock_drift_action,
+      defaultControlsDraft.deviceClockDriftAction,
+    ) as FormControlsDraft["deviceClockDriftAction"],
     disaggregationFields:
       stringArrayValue(validationStandards.disaggregation_fields).length > 0
         ? stringArrayValue(validationStandards.disaggregation_fields)
@@ -2216,6 +2330,10 @@ function controlsDraftFromApiControls(
       validationStandards.disaggregation_required,
       defaultControlsDraft.disaggregationRequired,
     ),
+    dontKnowPolicy: stringValue(
+      validationStandards.dont_know_policy,
+      stringValue(fieldGuidance.dont_know_policy, defaultControlsDraft.dontKnowPolicy),
+    ) as FormControlsDraft["dontKnowPolicy"],
     duplicateAction: stringValue(
       entity.duplicate_action,
       defaultControlsDraft.duplicateAction,
@@ -2231,6 +2349,10 @@ function controlsDraftFromApiControls(
     duplicateThreshold: numberValue(
       entity.duplicate_threshold,
       defaultControlsDraft.duplicateThreshold,
+    ),
+    enumeratorTrainingRequired: booleanValue(
+      fieldGuidance.training_required_before_assignment,
+      defaultControlsDraft.enumeratorTrainingRequired,
     ),
     entityType: stringValue(entity.entity_type, defaultControlsDraft.entityType),
     eventMode: stringValue(
@@ -2248,6 +2370,10 @@ function controlsDraftFromApiControls(
     ),
     fileTypes: stringArrayValue(attachment.allowed_formats).join(", ") ||
       defaultControlsDraft.fileTypes,
+    fieldGuideText: stringValue(
+      fieldGuidance.enumerator_instruction,
+      defaultControlsDraft.fieldGuideText,
+    ),
     formObjective: stringValue(
       purpose.form_objective,
       defaultControlsDraft.formObjective,
@@ -2266,6 +2392,10 @@ function controlsDraftFromApiControls(
       defaultControlsDraft.indicatorComponent,
     ) as FormControlsDraft["indicatorComponent"],
     indicatorLink: stringValue(firstIndicator.linked_indicator),
+    importTemplateMode: stringValue(
+      dataImport.template_mode,
+      defaultControlsDraft.importTemplateMode,
+    ) as FormControlsDraft["importTemplateMode"],
     invalidAgeAction: stringValue(
       validationStandards.invalid_age_action,
       defaultControlsDraft.invalidAgeAction,
@@ -2320,6 +2450,10 @@ function controlsDraftFromApiControls(
       defaultControlsDraft.offlineMediaCapture,
     ),
     parentForm: stringValue(tracking.parent_form),
+    partnerDataSharingRule: stringValue(
+      partnerDataSharing.rule,
+      defaultControlsDraft.partnerDataSharingRule,
+    ),
     piiHandling: stringValue(
       privacy.pii_handling,
       defaultControlsDraft.piiHandling,
@@ -2380,6 +2514,10 @@ function controlsDraftFromApiControls(
       profileHistory.source_of_truth_rule,
       stringValue(governance.source_of_truth_rule, defaultControlsDraft.sourceOfTruthRule),
     ) as FormControlsDraft["sourceOfTruthRule"],
+    staticGpsAction: stringValue(
+      fieldIntegrity.static_gps_action,
+      defaultControlsDraft.staticGpsAction,
+    ) as FormControlsDraft["staticGpsAction"],
     submissionEditPolicy: stringValue(
       submissionPolicy.edit_policy,
       defaultControlsDraft.submissionEditPolicy,
@@ -3006,6 +3144,17 @@ export function validateFormForPublish(
       required: true,
     }),
     item({
+      category: "Data dictionary",
+      complete: controls.importTemplateMode !== "none",
+      description:
+        "Forms that may receive uploaded historical data should generate the Excel template from the same data dictionary used by field submissions.",
+      id: "import-template",
+      jumpTo: "controls",
+      label: "Import template behavior selected",
+      required: false,
+      warning: true,
+    }),
+    item({
       category: "Question validation",
       complete: fields.some((field) => field.required),
       description:
@@ -3013,6 +3162,16 @@ export function validateFormForPublish(
       id: "required-questions",
       jumpTo: "builder",
       label: "Required questions reviewed",
+      required: true,
+    }),
+    item({
+      category: "Question validation",
+      complete: Boolean(controls.dontKnowPolicy),
+      description:
+        "Define whether field officers can record Don't know, Refused, or Not applicable instead of forcing incorrect answers.",
+      id: "dont-know-policy",
+      jumpTo: "controls",
+      label: "Don&apos;t know/refused policy selected",
       required: true,
     }),
     item({
@@ -3155,6 +3314,44 @@ export function validateFormForPublish(
       id: "enumerator-quality",
       jumpTo: "controls",
       label: "Enumerator quality controls reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Field integrity",
+      complete:
+        controls.staticGpsAction !== "warn" ||
+        controls.deviceClockDriftAction !== "warn" ||
+        controls.boundaryValidation,
+      description:
+        "Use field integrity rules to flag static GPS, device clock drift, or outside-area collection before supervisors approve data.",
+      id: "field-integrity",
+      jumpTo: "controls",
+      label: "Field integrity checks reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Back-checks",
+      complete:
+        !controls.backCheckRequired ||
+        (controls.backCheckSamplePercent > 0 && controls.backCheckSamplePercent <= 100),
+      description:
+        "Back-checks let supervisors verify a sample of completed submissions when data risk or field accountability matters.",
+      id: "back-checks",
+      jumpTo: "controls",
+      label: "Supervisor back-check rule reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Enumerator quality",
+      complete: !controls.enumeratorTrainingRequired || controls.assignmentMode === "assigned_only",
+      description:
+        "When training or certification is required, restrict collection to assigned users so the platform can enforce who receives the form.",
+      id: "field-officer-training",
+      jumpTo: "controls",
+      label: "Field officer training rule reviewed",
       required: false,
       warning: true,
     }),
@@ -3437,6 +3634,30 @@ export function validateFormForPublish(
       warning: true,
     }),
     item({
+      category: "Partner rules",
+      complete: Boolean(controls.partnerDataSharingRule.trim()),
+      description:
+        "If partners, sub-grantees, or donors will use the data, define the sharing rule before exports and reporting start.",
+      id: "partner-sharing",
+      jumpTo: "controls",
+      label: "Partner data-sharing rule reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Case escalation",
+      complete:
+        controls.decisionUse !== "case_management" ||
+        Boolean(controls.caseEscalationRule.trim()),
+      description:
+        "Case, protection, health, or safeguarding forms should define what answers create an alert or supervisor follow-up.",
+      id: "case-escalation",
+      jumpTo: "controls",
+      label: "Case escalation rule reviewed",
+      required: controls.decisionUse === "case_management",
+      warning: controls.decisionUse !== "case_management",
+    }),
+    item({
       category: "Lifecycle",
       complete: controls.lifecycleStatus === "approved",
       description:
@@ -3708,7 +3929,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to fill a safe starter purpose, then edit the text to match the project objective. If you prefer manual entry, open Controls > Essentials and complete Form Objective, Business Purpose, and Expected Use.",
+            "Use Apply platform fix to fill a safe starter purpose, then edit the text to match the project objective. If you prefer manual entry, open Controls > Purpose and complete Form Objective, Business Purpose, and Expected Use.",
           mneTip:
             "Purpose fields help future reviewers understand why the data was collected and how it should be used.",
           platformAction:
@@ -3796,10 +4017,10 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Open Controls > Essentials and review the data dictionary. Make sure each question has a label, variable name, type, allowed values where needed, and sensitivity level.",
+            "Open Controls > Questions and review the data dictionary. Make sure each question has a label, variable name, type, allowed values where needed, and sensitivity level.",
           mneTip:
             "A data dictionary helps teams understand what each field means after staff changes or when reports are audited.",
-          targetControlStep: "essentials",
+          targetControlStep: "questions",
           why:
             "The data dictionary cannot be generated cleanly because question metadata is incomplete.",
         });
@@ -3832,7 +4053,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can set standard disaggregation categories; you still need matching questions in the Builder.",
           quickFixId: "mne_context_defaults",
-          targetControlStep: "essentials",
+          targetControlStep: "questions",
           why:
             "This form is intended for reporting, but it does not yet prove that required breakdown categories are captured.",
         });
@@ -4295,15 +4516,24 @@ function buildPublishAssistantAdvice({
         ? "access_defaults"
         : item.id === "standard-questions"
           ? "add_standard_questions"
-          : item.id === "mapping-suggestions"
-            ? "apply_profile_mapping"
-            : item.id === "mobile-complexity"
-              ? "mobile_readiness_defaults"
-              : ["offline", "mobile-package", "reference-data", "enumerator-quality", "repeat-groups"].includes(item.id)
+        : item.id === "mapping-suggestions"
+          ? "apply_profile_mapping"
+        : item.id === "mobile-complexity"
+          ? "mobile_readiness_defaults"
+              : [
+                  "offline",
+                  "mobile-package",
+                  "reference-data",
+                  "enumerator-quality",
+                  "repeat-groups",
+                  "field-integrity",
+                  "back-checks",
+                  "field-officer-training",
+                ].includes(item.id)
           ? "evidence_defaults"
-          : ["results-linkage", "indicator-mapping"].includes(item.id)
+          : ["results-linkage", "indicator-mapping", "dont-know-policy", "import-template"].includes(item.id)
             ? "mne_context_defaults"
-            : ["export-governance", "privacy"].includes(item.id)
+            : ["export-governance", "privacy", "partner-sharing", "case-escalation"].includes(item.id)
               ? "governance_defaults"
               : undefined;
     advice.push({
@@ -4896,6 +5126,10 @@ export function FormCreationWorkspace({
               ? current.disaggregationFields
               : ["sex", "age_group", "location", "disability_status"],
             disaggregationRequired: true,
+            dontKnowPolicy:
+              current.dontKnowPolicy === "disabled"
+                ? "required_for_sensitive"
+                : current.dontKnowPolicy,
             expectedUse:
               current.expectedUse ||
               "Approved submissions will feed beneficiary history, data quality review, dashboards, indicators, and reports.",
@@ -4976,6 +5210,11 @@ export function FormCreationWorkspace({
           return {
             ...current,
             dataQualityMode: "standard",
+            deviceClockDriftAction:
+              current.deviceClockDriftAction === "warn" ? "review" : current.deviceClockDriftAction,
+            enumeratorTrainingRequired: current.riskClassification === "sensitive"
+              ? true
+              : current.enumeratorTrainingRequired,
             gpsAccuracy: current.gpsAccuracy > 0 ? current.gpsAccuracy : 20,
             invalidAgeAction: current.invalidAgeAction === "warn" ? "review" : current.invalidAgeAction,
             maximumDurationMinutes: Math.max(current.maximumDurationMinutes, 90),
@@ -4986,6 +5225,8 @@ export function FormCreationWorkspace({
             offlineMaxDays: Math.max(current.offlineMaxDays, 7),
             offlineMediaCapture: true,
             preventFutureDates: true,
+            staticGpsAction:
+              current.staticGpsAction === "warn" ? "review" : current.staticGpsAction,
             syncRequirement: current.syncRequirement || "daily_required",
           };
         case "mobile_readiness_defaults":
@@ -5013,6 +5254,12 @@ export function FormCreationWorkspace({
           return {
             ...current,
             auditTrail: true,
+            backCheckRequired:
+              current.riskClassification === "high" ||
+              current.riskClassification === "sensitive"
+                ? true
+                : current.backCheckRequired,
+            backCheckSamplePercent: Math.max(current.backCheckSamplePercent, 10),
             changeSummary:
               current.changeSummary ||
               `Prepared ${setup.formType || "form"} for first governed field release.`,
@@ -5023,8 +5270,19 @@ export function FormCreationWorkspace({
                 ? "manager_approval"
                 : current.exportApprovalMode,
             exportRestricted: true,
+            importTemplateMode:
+              current.importTemplateMode === "none"
+                ? "form_dictionary"
+                : current.importTemplateMode,
+            partnerDataSharingRule:
+              current.partnerDataSharingRule ||
+              "Share only approved, permissioned records; log exports and apply role-based filters.",
             lockApprovedRecords: true,
             riskClassification: current.riskClassification || "medium",
+            caseEscalationRule:
+              current.decisionUse === "case_management" && !current.caseEscalationRule
+                ? "If a critical risk or protection response is selected -> create supervisor alert."
+                : current.caseEscalationRule,
             sourceOfTruthRule: "manager_approved_profile_updates",
             storeConsentVersion: true,
             testingRequirement: current.testingRequirement || "test_submission",
@@ -6442,7 +6700,7 @@ export function FormCreationWorkspace({
                 Step {activeControlStepIndex + 1} of {controlSteps.length}
               </Badge>
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
               {controlSteps.map((step, index) => {
                 const stepReadiness = controlStepReadiness[step.id];
                 const tone =
@@ -6746,12 +7004,12 @@ export function FormCreationWorkspace({
               <details
                 className={cn(
                   "rounded-lg border bg-background/70 p-3",
-                  activeControlStep !== "essentials" && "hidden",
+                  activeControlStep !== "questions" && "hidden",
                 )}
                 open
               >
                 <summary className="cursor-pointer text-sm font-semibold">
-                  Indicators and data dictionary
+                  Question standards and data dictionary
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
@@ -6838,6 +7096,46 @@ export function FormCreationWorkspace({
                       placeholder="sex, age_group, location, disability_status"
                       value={controlsDraft.disaggregationFields.join(", ")}
                     />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Don&apos;t know / refused policy
+                    <Select
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          dontKnowPolicy:
+                            event.target.value as FormControlsDraft["dontKnowPolicy"],
+                        })
+                      }
+                      value={controlsDraft.dontKnowPolicy}
+                    >
+                      <option value="optional">Optional per question</option>
+                      <option value="required_for_sensitive">
+                        Required for sensitive or beneficiary questions
+                      </option>
+                      <option value="disabled">Do not add exception answers</option>
+                    </Select>
+                  </label>
+                  <label className="text-sm font-medium">
+                    Excel/import template mode
+                    <Select
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          importTemplateMode:
+                            event.target.value as FormControlsDraft["importTemplateMode"],
+                        })
+                      }
+                      value={controlsDraft.importTemplateMode}
+                    >
+                      <option value="none">No import template</option>
+                      <option value="form_dictionary">
+                        Generate from this form dictionary
+                      </option>
+                      <option value="legacy_mapping">
+                        Allow legacy-column mapping
+                      </option>
+                    </Select>
                   </label>
                 </div>
               </details>
@@ -7205,6 +7503,30 @@ export function FormCreationWorkspace({
                       <option value="large_text">Large text ready</option>
                       <option value="high_contrast">High contrast ready</option>
                     </Select>
+                  </label>
+                  <label className="text-sm font-medium">
+                    Partner/sub-grantee sharing rule
+                    <Textarea
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          partnerDataSharingRule: event.target.value,
+                        })
+                      }
+                      value={controlsDraft.partnerDataSharingRule}
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Case or safeguarding escalation rule
+                    <Textarea
+                      className="mt-2"
+                      onChange={(event) =>
+                        updateControlsDraft({
+                          caseEscalationRule: event.target.value,
+                        })
+                      }
+                      value={controlsDraft.caseEscalationRule}
+                    />
                   </label>
                   <div className="rounded-lg border bg-panel p-3 text-xs text-muted-foreground">
                     AI-ready metadata stores clean labels, variable names,
@@ -7633,6 +7955,77 @@ export function FormCreationWorkspace({
                     <option value="review">Send to reviewer decision</option>
                     <option value="block">Block impossible ages</option>
                   </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Static GPS handling
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        staticGpsAction:
+                          event.target.value as FormControlsDraft["staticGpsAction"],
+                      })
+                    }
+                    value={controlsDraft.staticGpsAction}
+                  >
+                    <option value="warn">Warn reviewer</option>
+                    <option value="review">Require review</option>
+                    <option value="block">Block if repeated GPS is confirmed</option>
+                  </Select>
+                </label>
+                <label className="text-sm font-medium">
+                  Device clock drift handling
+                  <Select
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        deviceClockDriftAction:
+                          event.target.value as FormControlsDraft["deviceClockDriftAction"],
+                      })
+                    }
+                    value={controlsDraft.deviceClockDriftAction}
+                  >
+                    <option value="warn">Warn reviewer</option>
+                    <option value="review">Require review</option>
+                    <option value="block">Block suspicious device time</option>
+                  </Select>
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    checked={controlsDraft.backCheckRequired}
+                    onChange={(event) =>
+                      updateControlsDraft({ backCheckRequired: event.target.checked })
+                    }
+                    type="checkbox"
+                  />
+                  Require supervisor back-check sample
+                </label>
+                <label className="text-sm font-medium">
+                  Back-check sample %
+                  <Input
+                    className="mt-2"
+                    max={100}
+                    min={0}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        backCheckSamplePercent: Number(event.target.value) || 0,
+                      })
+                    }
+                    type="number"
+                    value={controlsDraft.backCheckSamplePercent}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+                  <input
+                    checked={controlsDraft.enumeratorTrainingRequired}
+                    onChange={(event) =>
+                      updateControlsDraft({
+                        enumeratorTrainingRequired: event.target.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Require field officer training/certification before assignment
                 </label>
               </div>
             </section>
@@ -8117,6 +8510,16 @@ export function FormCreationWorkspace({
                     <option value="daily_required">Sync required daily</option>
                     <option value="before_new_assignment">Sync before new assignment</option>
                   </Select>
+                </label>
+                <label className="text-sm font-medium sm:col-span-2">
+                  Field officer guidance shown with the form
+                  <Textarea
+                    className="mt-2"
+                    onChange={(event) =>
+                      updateControlsDraft({ fieldGuideText: event.target.value })
+                    }
+                    value={controlsDraft.fieldGuideText}
+                  />
                 </label>
               </div>
             </section>

@@ -271,6 +271,72 @@ export type MobileQuestion = {
   referenceListId: string | null;
   cascadingParentQuestionId: string | null;
   sensitive: boolean;
+  metadataTags?: string[];
+  indicatorMapping?: {
+    indicatorId?: string | null;
+    component?: string | null;
+    unit?: string | null;
+    reportingPeriod?: string | null;
+    disaggregation?: string | null;
+    donorTag?: string | null;
+  };
+  beneficiaryMapping?: {
+    profileImpact?: string | null;
+    beneficiaryField?: string | null;
+    profileUpdateRule?: string | null;
+    duplicateKey?: boolean;
+    sourceOfTruth?: boolean;
+    lineageRequired?: boolean;
+  };
+  referenceControls?: {
+    referenceListId?: string | null;
+    parentQuestionId?: string | null;
+    newReferencePolicy?: string | null;
+    offlineRequired?: boolean;
+    searchable?: boolean;
+    versionLocked?: boolean;
+  };
+  qualityControls?: {
+    captureTimestamp?: boolean;
+    captureGps?: boolean;
+    photoEvidence?: boolean;
+    backCheckCandidate?: boolean;
+    staticGpsWarning?: boolean;
+    fastInterviewWarning?: boolean;
+    minimumSeconds?: string | number | null;
+    integrityAction?: string | null;
+  };
+  privacyControls?: {
+    sensitivity?: string | null;
+    consentField?: string | null;
+    maskOnScreen?: boolean;
+    maskOnExport?: boolean;
+    encryptAtRest?: boolean;
+    hideAfterSubmit?: boolean;
+    screenshotRestricted?: boolean;
+    consentRequired?: boolean;
+  };
+  mobileControls?: {
+    displayMode?: string | null;
+    blockedHelp?: string | null;
+    offlineCompatible?: boolean;
+    lowBandwidth?: boolean;
+    prefillAllowed?: boolean;
+    saveDraftAfterAnswer?: boolean;
+    reviewBeforeSubmit?: boolean;
+    syncPriority?: boolean;
+  };
+  governanceControls?: {
+    editRule?: string | null;
+    reviewerRole?: string | null;
+    auditLabel?: string | null;
+    changeReasonRequired?: boolean;
+    approvedDataLock?: boolean;
+    reviewerCommentRequired?: boolean;
+    includeInDataFreeze?: boolean;
+    qualityFlagVisible?: boolean;
+    sourceLineageVisible?: boolean;
+  };
   repeatSettings: {
     minRepeats: number | null;
     maxRepeats: number | null;

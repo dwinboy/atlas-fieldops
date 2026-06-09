@@ -12,7 +12,18 @@ from app.models.identity import User
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository
 from app.repositories.identity import IdentityRepository, OrganizationRepository, OrganizationUnitRepository, RoleRepository
-from app.schemas.identity import PasswordResetRead, OrganizationCreate, UserCreate, UserImportIssue, UserImportResponse, UserRead, UserUpdate
+from app.schemas.identity import (
+    OrganizationCreate,
+    PasswordResetRead,
+    UserCreate,
+    UserImportIssue,
+    UserImportResponse,
+    UserRead,
+    UserRoleAssignmentCreate,
+    UserRoleAssignmentRead,
+    UserRoleAssignmentUpdate,
+    UserUpdate,
+)
 
 
 class IdentityConflictError(Exception):
@@ -105,6 +116,14 @@ class OrganizationService:
                 user_id=owner.id,
                 scope_type=ScopeType.ORGANIZATION,
             )
+            await self.identity.add_role_assignment(
+                organization_id=organization.id,
+                user_id=owner.id,
+                role_id=owner_role.id,
+                scope_type=ScopeType.ORGANIZATION,
+                assigned_by_user_id=owner.id,
+                reason="Initial organization owner access",
+            )
             await self.audit.append(
                 organization_id=organization.id,
                 actor_user_id=owner.id,
@@ -150,6 +169,21 @@ class UserManagementService:
             home_region=None,
         )
 
+    async def _resolve_assignable_role(self, *, organization_id: UUID, role_name: str, actor_roles: list[str]) -> object:
+        canonical_name = canonical_role(role_name)
+        if not is_assignable_role(canonical_name, actor_roles):
+            raise IdentityPermissionError("Role cannot be assigned by this user")
+        definition = ROLE_DEFINITIONS.get(canonical_name)
+        if definition is not None:
+            return await self.roles.get_or_create_from_definition(
+                organization_id=organization_id,
+                definition=definition,
+            )
+        role = await self.roles.get_by_name(organization_id=organization_id, name=canonical_name)
+        if role is None:
+            raise IdentityNotFoundError("Role not found")
+        return role
+
     async def create_user(
         self,
         *,
@@ -158,13 +192,13 @@ class UserManagementService:
         actor_roles: list[str],
         payload: UserCreate,
     ) -> UserRead:
-        if not is_assignable_role(payload.role_name, actor_roles):
-            raise IdentityPermissionError("Role cannot be assigned by this user")
         if await self.identity.get_by_email(payload.email) is not None:
             raise IdentityConflictError("A user with this email already exists")
-        role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
-        if role is None:
-            raise IdentityNotFoundError("Role not found")
+        role = await self._resolve_assignable_role(
+            organization_id=organization_id,
+            role_name=payload.role_name,
+            actor_roles=actor_roles,
+        )
         user = await self.identity.create_user(
             email=payload.email,
             password_hash=hash_password(payload.password),
@@ -182,6 +216,16 @@ class UserManagementService:
             scope_type=scope_type,
             geography_id=payload.geography_ids[0] if payload.geography_ids else None,
             project_id=payload.project_ids[0] if payload.project_ids else None,
+        )
+        await self.identity.add_role_assignment(
+            organization_id=organization_id,
+            user_id=user.id,
+            role_id=role.id,
+            scope_type=scope_type,
+            assigned_by_user_id=actor_user_id,
+            geography_id=payload.geography_ids[0] if payload.geography_ids else None,
+            project_id=payload.project_ids[0] if payload.project_ids else None,
+            reason="Primary access assigned at user creation",
         )
         await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user.id, role_name=role.name)
         await self.audit.append(
@@ -204,6 +248,7 @@ class UserManagementService:
             *account,
             login_slug=organization.slug if organization is not None else None,
             temporary_password=payload.password,
+            assignments=await self.identity.list_role_assignments(organization_id=organization_id, user_id=user.id, active_only=False),
         )
 
     async def import_users_csv(
@@ -280,7 +325,27 @@ class UserManagementService:
         )
 
     @staticmethod
+    def to_assignment_read(assignment: object, role: object) -> UserRoleAssignmentRead:
+        return UserRoleAssignmentRead(
+            id=getattr(assignment, "id"),
+            role_id=getattr(role, "id"),
+            role_name=getattr(role, "name"),
+            role_label=getattr(role, "label", "") or str(getattr(role, "name", "")).replace("_", " ").title(),
+            scope_type=getattr(assignment, "scope_type"),
+            geography_id=getattr(assignment, "geography_id", None),
+            project_id=getattr(assignment, "project_id", None),
+            organization_unit_id=getattr(assignment, "organization_unit_id", None),
+            team_id=getattr(assignment, "team_id", None),
+            assigned_by_user_id=getattr(assignment, "assigned_by_user_id", None),
+            starts_at=getattr(assignment, "starts_at", None),
+            expires_at=getattr(assignment, "expires_at", None),
+            is_active=bool(getattr(assignment, "is_active", True)),
+            reason=getattr(assignment, "reason", None),
+        )
+
+    @classmethod
     def to_user_read(
+        cls,
         user: User,
         _membership: object,
         role: object,
@@ -288,7 +353,9 @@ class UserManagementService:
         *,
         login_slug: str | None = None,
         temporary_password: str | None = None,
+        assignments: list[tuple[object, object]] | None = None,
     ) -> UserRead:
+        assignment_reads = [cls.to_assignment_read(assignment, assignment_role) for assignment, assignment_role in (assignments or [])]
         return UserRead(
             id=user.id,
             email=user.email,
@@ -301,10 +368,16 @@ class UserManagementService:
             organization_unit_id=getattr(grant, "organization_unit_id", None) if grant is not None else None,
             login_slug=login_slug,
             temporary_password=temporary_password,
+            role_assignments=assignment_reads,
         )
 
     async def list_users(self, organization_id: UUID) -> list[UserRead]:
-        return [self.to_user_read(*account) for account in await self.identity.list_user_accounts(organization_id)]
+        users: list[UserRead] = []
+        for account in await self.identity.list_user_accounts(organization_id):
+            user = account[0]
+            assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user.id, active_only=False)
+            users.append(self.to_user_read(*account, assignments=assignments))
+        return users
 
     async def update_user(
         self,
@@ -322,11 +395,11 @@ class UserManagementService:
         role_id: UUID | None = None
         effective_role_name = getattr(current_role, "name")
         if payload.role_name is not None:
-            if not is_assignable_role(payload.role_name, actor_roles):
-                raise IdentityPermissionError("Role cannot be assigned by this user")
-            role = await self.roles.get_by_name(organization_id=organization_id, name=payload.role_name)
-            if role is None:
-                raise IdentityNotFoundError("Role not found")
+            role = await self._resolve_assignable_role(
+                organization_id=organization_id,
+                role_name=payload.role_name,
+                actor_roles=actor_roles,
+            )
             role_id = role.id
             effective_role_name = role.name
         scope_type = ScopeType(payload.scope_type) if payload.scope_type is not None else None
@@ -346,6 +419,33 @@ class UserManagementService:
         )
         if account is None:
             raise IdentityNotFoundError("User not found")
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
+        primary_assignment = assignments[0][0] if assignments else None
+        if primary_assignment is None:
+            active_role = account[2]
+            await self.identity.add_role_assignment(
+                organization_id=organization_id,
+                user_id=user_id,
+                role_id=active_role.id,
+                scope_type=scope_type or default_scope_for_roles([active_role.name]),
+                assigned_by_user_id=actor_user_id,
+                geography_id=payload.geography_id,
+                project_id=payload.project_id,
+                organization_unit_id=payload.organization_unit_id,
+                reason="Primary access assignment repaired during user update",
+            )
+        elif payload.role_name is not None or payload.scope_type is not None:
+            await self.identity.update_role_assignment(
+                organization_id=organization_id,
+                user_id=user_id,
+                assignment_id=primary_assignment.id,
+                role_id=role_id,
+                scope_type=scope_type,
+                geography_id=payload.geography_id,
+                project_id=payload.project_id,
+                organization_unit_id=payload.organization_unit_id,
+                reason="Primary access updated from user profile",
+            )
         await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user_id, role_name=effective_role_name)
         await self.audit.append(
             organization_id=organization_id,
@@ -359,7 +459,142 @@ class UserManagementService:
             settings.kafka_auth_events_topic,
             {"type": "user.updated", "organization_id": str(organization_id), "user_id": str(user_id)},
         )
-        return self.to_user_read(*account)
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
+        return self.to_user_read(*account, assignments=assignments)
+
+    async def add_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        actor_roles: list[str],
+        user_id: UUID,
+        payload: UserRoleAssignmentCreate,
+    ) -> UserRead:
+        account = await self.identity.get_user_account(organization_id=organization_id, user_id=user_id)
+        if account is None:
+            raise IdentityNotFoundError("User not found")
+        role = await self._resolve_assignable_role(
+            organization_id=organization_id,
+            role_name=payload.role_name,
+            actor_roles=actor_roles,
+        )
+        scope_type = ScopeType(payload.scope_type) if payload.scope_type is not None else default_scope_for_roles([role.name])
+        if not is_scope_allowed_for_role(role.name, scope_type):
+            raise IdentityPermissionError("Scope is too broad for selected role")
+        await self.identity.add_role_assignment(
+            organization_id=organization_id,
+            user_id=user_id,
+            role_id=role.id,
+            scope_type=scope_type,
+            assigned_by_user_id=actor_user_id,
+            geography_id=payload.geography_id,
+            project_id=payload.project_id,
+            organization_unit_id=payload.organization_unit_id,
+            team_id=payload.team_id,
+            reason=payload.reason or "Additional role assignment",
+        )
+        await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user_id, role_name=role.name)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="user.role_assignment.created",
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata=payload.model_dump(exclude_none=True, mode="json"),
+        )
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
+        return self.to_user_read(*account, assignments=assignments)
+
+    async def update_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        actor_roles: list[str],
+        user_id: UUID,
+        assignment_id: UUID,
+        payload: UserRoleAssignmentUpdate,
+    ) -> UserRead:
+        account = await self.identity.get_user_account(organization_id=organization_id, user_id=user_id)
+        if account is None:
+            raise IdentityNotFoundError("User not found")
+        current_assignment = await self.identity.get_role_assignment(
+            organization_id=organization_id,
+            user_id=user_id,
+            assignment_id=assignment_id,
+        )
+        if current_assignment is None:
+            raise IdentityNotFoundError("Role assignment not found")
+        _assignment, current_role = current_assignment
+        role_id: UUID | None = None
+        effective_role_name = current_role.name
+        if payload.role_name is not None:
+            role = await self._resolve_assignable_role(
+                organization_id=organization_id,
+                role_name=payload.role_name,
+                actor_roles=actor_roles,
+            )
+            role_id = role.id
+            effective_role_name = role.name
+        scope_type = ScopeType(payload.scope_type) if payload.scope_type is not None else None
+        if scope_type is not None and not is_scope_allowed_for_role(effective_role_name, scope_type):
+            raise IdentityPermissionError("Scope is too broad for selected role")
+        updated = await self.identity.update_role_assignment(
+            organization_id=organization_id,
+            user_id=user_id,
+            assignment_id=assignment_id,
+            role_id=role_id,
+            scope_type=scope_type,
+            geography_id=payload.geography_id,
+            project_id=payload.project_id,
+            organization_unit_id=payload.organization_unit_id,
+            team_id=payload.team_id,
+            is_active=payload.is_active,
+            reason=payload.reason,
+        )
+        if updated is None:
+            raise IdentityNotFoundError("Role assignment not found")
+        await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user_id, role_name=effective_role_name)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="user.role_assignment.updated",
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata={"assignment_id": str(assignment_id), **payload.model_dump(exclude_none=True, mode="json")},
+        )
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
+        return self.to_user_read(*account, assignments=assignments)
+
+    async def deactivate_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        user_id: UUID,
+        assignment_id: UUID,
+    ) -> UserRead:
+        account = await self.identity.get_user_account(organization_id=organization_id, user_id=user_id)
+        if account is None:
+            raise IdentityNotFoundError("User not found")
+        deactivated = await self.identity.deactivate_role_assignment(
+            organization_id=organization_id,
+            user_id=user_id,
+            assignment_id=assignment_id,
+        )
+        if deactivated is None:
+            raise IdentityNotFoundError("Role assignment not found")
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="user.role_assignment.deactivated",
+            resource_type="user",
+            resource_id=str(user_id),
+            metadata={"assignment_id": str(assignment_id)},
+        )
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
+        return self.to_user_read(*account, assignments=assignments)
 
     async def reset_password(
         self,

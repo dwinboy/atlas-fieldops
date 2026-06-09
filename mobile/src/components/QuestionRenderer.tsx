@@ -69,6 +69,7 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
         {question.helpText ? (
           <Text style={{ color: "#49635a", fontSize: 13 }}>{question.helpText}</Text>
         ) : null}
+        <QuestionControlHints question={question} />
       </View>
 
       {/* Input by type */}
@@ -378,6 +379,7 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
         onChangeText={(t) => answer(t)}
         placeholder="Enter your answer…"
         placeholderTextColor="#b0c5bc"
+        secureTextEntry={Boolean(question.privacyControls?.maskOnScreen)}
         style={{ ...inputStyle, minHeight: 100, textAlignVertical: "top" }}
         value={String(value ?? "")}
       />
@@ -424,10 +426,60 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
       onChangeText={(t) => answer(t)}
       placeholder="Enter answer…"
       placeholderTextColor="#b0c5bc"
+      secureTextEntry={Boolean(question.privacyControls?.maskOnScreen)}
       style={inputStyle}
       value={String(value ?? "")}
     />
   );
+}
+
+function QuestionControlHints({ question }: { question: MobileQuestion }) {
+  const hints: { label: string; tone: "warning" | "danger" | "success" | "neutral" }[] = [];
+  if (question.qualityControls?.captureGps) hints.push({ label: "GPS evidence", tone: question.qualityControls.integrityAction === "block_submission" ? "danger" : "warning" });
+  if (question.qualityControls?.photoEvidence) hints.push({ label: "Photo evidence", tone: question.qualityControls.integrityAction === "block_submission" ? "danger" : "warning" });
+  if (question.privacyControls?.consentRequired) hints.push({ label: "Consent required", tone: "danger" });
+  if (question.privacyControls?.maskOnScreen) hints.push({ label: "Masked", tone: "neutral" });
+  if (question.beneficiaryMapping?.beneficiaryField) hints.push({ label: `Profile: ${humanize(question.beneficiaryMapping.beneficiaryField)}`, tone: "success" });
+  if (question.referenceControls?.offlineRequired || question.referenceListId) hints.push({ label: "Offline list", tone: "neutral" });
+  if (!hints.length && !question.mobileControls?.blockedHelp) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      {question.mobileControls?.blockedHelp ? (
+        <View style={{ backgroundColor: "#fff7ed", borderColor: "#fed7aa", borderRadius: 10, borderWidth: 1, padding: 8 }}>
+          <Text style={{ color: "#9a3412", fontSize: 12, fontWeight: "700" }}>{question.mobileControls.blockedHelp}</Text>
+        </View>
+      ) : null}
+      {hints.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {hints.map((hint) => (
+            <View
+              key={hint.label}
+              style={{
+                backgroundColor: hint.tone === "danger" ? "#fee2e2" : hint.tone === "warning" ? "#fff7ed" : hint.tone === "success" ? "#f0fdf4" : "#f0f5f3",
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  color: hint.tone === "danger" ? "#b42318" : hint.tone === "warning" ? "#9a3412" : hint.tone === "success" ? "#0f766e" : "#49635a",
+                  fontSize: 11,
+                  fontWeight: "800",
+                }}
+              >
+                {hint.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function renderEvidenceReference(

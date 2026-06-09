@@ -48,8 +48,12 @@ async def get_current_principal(
         platform_organization_id=payload.get("platform_organization_id"),
         platform_organization_slug=payload.get("platform_organization_slug"),
         roles=roles,
+        role_assignments=list(payload.get("role_assignments", [])),
         permissions=permissions,
         scope_type=scope_type,
+        geography_ids=[str(value) for value in payload.get("geography_ids", []) if value],
+        project_ids=[str(value) for value in payload.get("project_ids", []) if value],
+        organization_unit_ids=[str(value) for value in payload.get("organization_unit_ids", []) if value],
         menu_views=sorted(menu_views_for_roles(roles)),
         workflow_actions=sorted(action.value for action in workflow_actions_for_roles(roles)),
     )

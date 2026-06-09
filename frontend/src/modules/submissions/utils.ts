@@ -102,9 +102,9 @@ function mobileIntegritySignals(payload: Record<string, unknown>): {
         severity:
           severity === "critical"
             ? "Critical"
-            : severity === "warning"
+            : severity === "warning" || severity === "high"
               ? "High"
-              : severity === "info"
+              : severity === "info" || severity === "low"
                 ? "Low"
                 : "Medium",
       };
@@ -119,6 +119,7 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
   const gpsStatus = !submission.latitude || !submission.longitude ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
   const validationIssues = submissionValidationIssues(submission);
   const qualityFlags: SubmissionRecord["quality_flags"] = [];
+  const controlMetadata = submission.payload_json?._question_control_metadata;
   validationIssues.forEach((message, index) => {
     qualityFlags.push({
       check: "Form Validation",
@@ -137,6 +138,37 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       status: "open",
     });
   });
+  if (controlMetadata && typeof controlMetadata === "object" && !Array.isArray(controlMetadata)) {
+    Object.entries(controlMetadata as Record<string, unknown>).forEach(([key, raw], index) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+      const entry = raw as Record<string, unknown>;
+      const privacy = entry.privacy && typeof entry.privacy === "object" && !Array.isArray(entry.privacy)
+        ? entry.privacy as Record<string, unknown>
+        : null;
+      const governance = entry.governance && typeof entry.governance === "object" && !Array.isArray(entry.governance)
+        ? entry.governance as Record<string, unknown>
+        : null;
+      const label = typeof entry.label === "string" ? entry.label : key;
+      if (privacy?.sensitivity === "pii" || privacy?.sensitivity === "restricted") {
+        qualityFlags.push({
+          check: "Sensitive Data Control",
+          id: `${submission.id}-privacy-control-${index}`,
+          message: `${label} is marked as sensitive. Reviewer should verify consent, masking, and export restrictions before approval.`,
+          severity: "Medium",
+          status: "open",
+        });
+      }
+      if (governance?.approvedDataLock || governance?.changeReasonRequired) {
+        qualityFlags.push({
+          check: "Governance Control",
+          id: `${submission.id}-governance-control-${index}`,
+          message: `${label} has governance controls. Approved edits should create a change request and require a reason.`,
+          severity: "Low",
+          status: "open",
+        });
+      }
+    });
+  }
   if (gpsStatus !== "valid") {
     qualityFlags.push({
       check: "GPS Validation",

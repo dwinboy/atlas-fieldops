@@ -66,6 +66,21 @@ export class MobilePermissionService {
         message: "This form is not ready for offline collection. Ask your manager to review the form settings.",
       };
     }
+    const questions = formVersion.sections.flatMap((section) => section.questions);
+    const needsGps = Boolean(rules?.gpsRequired) || questions.some((question) => question.type === "GPS" || question.qualityControls?.captureGps);
+    if (needsGps && permissions && !permissions.canUseGps) {
+      return {
+        allowed: false,
+        message: "This assigned form requires GPS evidence, but GPS is disabled for your account. Ask your supervisor to enable GPS permission or reassign the form.",
+      };
+    }
+    const needsMedia = Boolean(rules?.photoRequired) || questions.some((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
+    if (needsMedia && permissions && !permissions.canUploadMedia) {
+      return {
+        allowed: false,
+        message: "This assigned form requires media evidence, but media upload is disabled for your account. Ask your supervisor to enable media permission or update the form controls.",
+      };
+    }
     return { allowed: true, message: null };
   }
 

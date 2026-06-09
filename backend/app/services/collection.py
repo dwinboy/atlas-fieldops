@@ -15,7 +15,7 @@ from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
 from app.models.governance import DataVersion, LineageEvent
-from app.models.identity import Membership, Organization, Role, UserAccessGrant
+from app.models.identity import Organization, User
 from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, SessionLog, VisitRecord
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
@@ -244,6 +244,103 @@ def _field_response(responses: dict[str, object], field: object) -> object:
     return None
 
 
+def _field_appearance_text(field: object) -> str:
+    appearance = getattr(field, "appearance", None)
+    if isinstance(appearance, dict):
+        return str(appearance.get("helpText") or "")
+    return ""
+
+
+def _field_metadata_value(field: object, key: str) -> str | None:
+    text = _field_appearance_text(field)
+    match = re.search(rf"\[{re.escape(key)}:([^\]]*)\]", text)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def _field_has_tag(field: object, tag: str) -> bool:
+    return f"[{tag}]" in _field_appearance_text(field)
+
+
+def _field_blocked_help(field: object) -> str | None:
+    return _field_metadata_value(field, "blocked-help")
+
+
+def _field_issue(field: object, default: str) -> str:
+    blocked_help = _field_blocked_help(field)
+    return f"{default} {blocked_help}" if blocked_help else default
+
+
+def _field_metadata_tags(field: object) -> list[str]:
+    tags = re.findall(r"\[([a-zA-Z0-9_-]+)\]", _field_appearance_text(field))
+    return sorted({tag for tag in tags if ":" not in tag})
+
+
+def _question_control_metadata(schema: FormSchema) -> dict[str, dict[str, object]]:
+    metadata: dict[str, dict[str, object]] = {}
+    for section in schema.sections:
+        for field in section.fields:
+            key = field.variable_name or field.id
+            metadata[key] = {
+                "questionId": field.id,
+                "variableName": field.variable_name or field.id,
+                "label": field.label,
+                "indicator": {
+                    "indicatorId": _field_metadata_value(field, "indicator") or field.indicator_mapping,
+                    "component": _field_metadata_value(field, "indicator-component"),
+                    "unit": _field_metadata_value(field, "unit"),
+                    "reportingPeriod": _field_metadata_value(field, "report-period"),
+                    "disaggregation": _field_metadata_value(field, "disaggregation"),
+                    "donorTag": _field_metadata_value(field, "donor-tag"),
+                },
+                "beneficiary": {
+                    "profileImpact": _field_metadata_value(field, "profile-impact"),
+                    "profileField": _field_metadata_value(field, "beneficiary-field"),
+                    "profileUpdateRule": _field_metadata_value(field, "profile-update-rule"),
+                    "duplicateKey": _field_has_tag(field, "duplicate-key"),
+                    "sourceOfTruth": _field_has_tag(field, "source-of-truth"),
+                    "lineageRequired": _field_has_tag(field, "lineage-required"),
+                },
+                "privacy": {
+                    "sensitivity": _field_metadata_value(field, "sensitivity") or field.sensitivity_level,
+                    "consentField": _field_metadata_value(field, "consent-field"),
+                    "maskOnScreen": _field_has_tag(field, "mask-on-screen"),
+                    "maskOnExport": _field_has_tag(field, "mask-on-export"),
+                    "encryptAtRest": _field_has_tag(field, "encrypt-at-rest"),
+                    "consentRequired": _field_has_tag(field, "consent-required"),
+                },
+                "quality": {
+                    "captureTimestamp": _field_has_tag(field, "capture-timestamp"),
+                    "captureGps": _field_has_tag(field, "capture-gps"),
+                    "photoEvidence": _field_has_tag(field, "photo-evidence"),
+                    "backCheckCandidate": _field_has_tag(field, "back-check-candidate"),
+                    "staticGpsWarning": _field_has_tag(field, "static-gps-warning"),
+                    "fastInterviewWarning": _field_has_tag(field, "fast-interview-warning"),
+                    "minimumSeconds": _field_metadata_value(field, "min-seconds"),
+                    "integrityAction": _field_metadata_value(field, "integrity-action"),
+                },
+                "governance": {
+                    "editRule": _field_metadata_value(field, "edit-rule"),
+                    "reviewerRole": _field_metadata_value(field, "reviewer-role"),
+                    "auditLabel": _field_metadata_value(field, "audit-label"),
+                    "changeReasonRequired": _field_has_tag(field, "change-reason-required"),
+                    "approvedDataLock": _field_has_tag(field, "approved-data-lock"),
+                    "qualityFlagVisible": _field_has_tag(field, "quality-flag-visible"),
+                    "sourceLineageVisible": _field_has_tag(field, "source-lineage-visible"),
+                },
+                "mobile": {
+                    "displayMode": _field_metadata_value(field, "mobile"),
+                    "blockedHelp": _field_metadata_value(field, "blocked-help"),
+                    "offlineCompatible": _field_has_tag(field, "offline-compatible"),
+                    "prefillAllowed": _field_has_tag(field, "prefill-allowed"),
+                },
+                "tags": _field_metadata_tags(field),
+            }
+    return metadata
+
+
 def _parse_number(value: object) -> float | None:
     if _is_blank(value):
         return None
@@ -262,7 +359,14 @@ def _parse_datetime(value: object) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
-        return None
+        for date_format in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y"):
+            try:
+                parsed = datetime.strptime(text, date_format)
+                break
+            except ValueError:
+                parsed = None
+        if parsed is None:
+            return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed
@@ -278,62 +382,67 @@ def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object
             label = field.label
             rules = field.validation or {}
             if field.required and _is_blank(value):
-                issues.append(f"{label} is required.")
+                issues.append(_field_issue(field, f"{label} is required."))
                 continue
+            if _field_has_tag(field, "consent-required") and _is_blank(value):
+                issues.append(_field_issue(field, f"{label} must capture consent before submission."))
+                continue
+            if _field_has_tag(field, "capture-gps") and location_accuracy is None:
+                issues.append(_field_issue(field, f"{label} requires GPS evidence for this record."))
             if _is_blank(value):
                 continue
 
             if field.type in {"number", "decimal", "currency", "nps", "rating"}:
                 number = _parse_number(value)
                 if number is None:
-                    issues.append(f"{label} must be a valid number.")
+                    issues.append(_field_issue(field, f"{label} must be a valid number."))
                     continue
                 if isinstance(rules.get("min"), int | float) and number < float(rules["min"]):
-                    issues.append(f"{label} must be at least {rules['min']}.")
+                    issues.append(_field_issue(field, f"{label} must be at least {rules['min']}."))
                 if isinstance(rules.get("max"), int | float) and number > float(rules["max"]):
-                    issues.append(f"{label} must be at most {rules['max']}.")
+                    issues.append(_field_issue(field, f"{label} must be at most {rules['max']}."))
 
             if field.type in {"date", "datetime"}:
                 parsed = _parse_datetime(value)
                 if parsed is None:
-                    issues.append(f"{label} must be a valid date.")
+                    issues.append(_field_issue(field, f"{label} must be a valid date. Use a clear calendar date such as 2026-06-09."))
                     continue
                 allow_future = bool(rules.get("allowFuture"))
                 if not allow_future and parsed > now:
-                    issues.append(f"{label} cannot be in the future.")
+                    issues.append(_field_issue(field, f"{label} cannot be in the future."))
 
             if field.type in {"text", "textarea", "phone", "email", "url", "password", "barcode", "qr"}:
                 text = str(value)
                 if isinstance(rules.get("minLength"), int) and len(text) < int(rules["minLength"]):
-                    issues.append(f"{label} must have at least {rules['minLength']} characters.")
+                    issues.append(_field_issue(field, f"{label} must have at least {rules['minLength']} characters."))
                 if isinstance(rules.get("maxLength"), int) and len(text) > int(rules["maxLength"]):
-                    issues.append(f"{label} must have at most {rules['maxLength']} characters.")
+                    issues.append(_field_issue(field, f"{label} must have at most {rules['maxLength']} characters."))
                 pattern = rules.get("pattern")
                 if isinstance(pattern, str) and pattern and re.fullmatch(pattern, text) is None:
-                    issues.append(f"{label} has an invalid format.")
+                    issues.append(_field_issue(field, f"{label} has an invalid format."))
                 if field.type == "email" and re.fullmatch(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", text) is None:
-                    issues.append(f"{label} must be a valid email address.")
+                    issues.append(_field_issue(field, f"{label} must be a valid email address."))
                 if field.type == "phone" and re.fullmatch(r"^[0-9+\-\s()]{7,}$", text) is None:
-                    issues.append(f"{label} must be a valid phone number.")
+                    issues.append(_field_issue(field, f"{label} must be a valid phone number."))
                 if field.type == "url" and re.fullmatch(r"https?://.+", text) is None:
-                    issues.append(f"{label} must be a valid URL.")
+                    issues.append(_field_issue(field, f"{label} must be a valid URL."))
 
             if field.type in {"select", "dropdown", "radio", "likert"} and field.options:
                 allowed = {str(option.get("value") or option.get("label") or option) for option in field.options}
                 if str(value) not in allowed:
-                    issues.append(f"{label} must use one of the approved option values.")
+                    issues.append(_field_issue(field, f"{label} must use one of the approved option values."))
 
             if field.type in {"multiselect", "checkbox", "ranking"} and field.options:
                 values = value if isinstance(value, list) else [value]
                 allowed = {str(option.get("value") or option.get("label") or option) for option in field.options}
                 invalid = [str(item) for item in values if str(item) not in allowed]
                 if invalid:
-                    issues.append(f"{label} includes values outside the approved option list.")
+                    issues.append(_field_issue(field, f"{label} includes values outside the approved option list."))
 
             if field.type in {"gps", "geolocation", "map", "geofence"}:
                 accuracy_limit = rules.get("accuracyMax")
                 if isinstance(accuracy_limit, int | float) and location_accuracy is not None and location_accuracy > float(accuracy_limit):
-                    issues.append(f"{label} GPS accuracy must be {accuracy_limit} meters or better.")
+                    issues.append(_field_issue(field, f"{label} GPS accuracy must be {accuracy_limit} meters or better."))
     return issues
 
 
@@ -831,7 +940,6 @@ class FieldOfficerService:
         approval_rate = round((approved_submissions / total_submissions) * 100) if total_submissions else 0
 
         assigned_projects = {assignment.project_id for assignment in assignments if assignment.is_active}
-        assigned_forms = {assignment.form_id for assignment in assignments if assignment.form_id and assignment.is_active}
         assigned_locations = sorted(
             {
                 location
@@ -1415,6 +1523,9 @@ class SubmissionService:
             location_accuracy=payload.location.accuracy,
         )
         submission_payload = dict(payload.payload)
+        question_control_metadata = _question_control_metadata(schema)
+        if question_control_metadata:
+            submission_payload["_question_control_metadata"] = question_control_metadata
         if validation_issues:
             submission_payload["_validation_issues"] = validation_issues
             submission_payload["_quality_status"] = "needs_review"
@@ -1484,7 +1595,141 @@ class SubmissionService:
                     "review_decision": "pending_human_review",
                 },
             )
+        self._record_submission_control_signals(
+            organization_id=organization_id,
+            submission=submission,
+            schema=schema,
+            validation_issues=validation_issues,
+        )
         return submission
+
+    def _record_submission_control_signals(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        schema: FormSchema,
+        validation_issues: list[str],
+    ) -> None:
+        if validation_issues:
+            self.session.add(
+                DataQualitySignal(
+                    organization_id=organization_id,
+                    submission_id=submission.id,
+                    beneficiary_id=submission.entity_id,
+                    signal_type="form_validation_issue",
+                    severity="high",
+                    confidence=1.0,
+                    summary="Submission contains form validation issues and needs human review.",
+                    status="open",
+                    evidence_json={
+                        "issues": validation_issues,
+                        "client_submission_id": submission.client_submission_id,
+                        "form_id": str(submission.form_id),
+                        "recommended_action": "review_before_approval",
+                    },
+                )
+            )
+        mobile_integrity = submission.payload_json.get("_mobile_integrity") if isinstance(submission.payload_json, dict) else None
+        if isinstance(mobile_integrity, dict):
+            raw_signals = mobile_integrity.get("signals")
+            if isinstance(raw_signals, list):
+                for index, raw_signal in enumerate(raw_signals):
+                    if not isinstance(raw_signal, dict):
+                        continue
+                    severity_value = str(raw_signal.get("severity") or "Warning").lower()
+                    severity = "critical" if severity_value == "critical" else "high" if severity_value == "warning" else "low"
+                    code = str(raw_signal.get("code") or f"mobile_integrity_signal_{index + 1}").lower()
+                    self.session.add(
+                        DataQualitySignal(
+                            organization_id=organization_id,
+                            submission_id=submission.id,
+                            beneficiary_id=submission.entity_id,
+                            signal_type=code,
+                            severity=severity,
+                            confidence=0.95 if severity in {"critical", "high"} else 0.75,
+                            summary=str(raw_signal.get("message") or "Mobile field integrity signal needs review."),
+                            status="open",
+                            evidence_json={
+                                "client_submission_id": submission.client_submission_id,
+                                "form_id": str(submission.form_id),
+                                "mobile_signal": raw_signal,
+                                "recommended_queue": "data_quality",
+                            },
+                        )
+                    )
+        responses = _response_map(submission.payload_json or {})
+        for section in schema.sections:
+            for field in section.fields:
+                value = _field_response(responses, field)
+                integrity_action = _field_metadata_value(field, "integrity-action")
+                blocking = integrity_action == "block_submission"
+                severity = "high" if blocking else "medium"
+                evidence_base = {
+                    "question_id": field.id,
+                    "variable_name": field.variable_name or field.id,
+                    "label": field.label,
+                    "client_submission_id": submission.client_submission_id,
+                    "integrity_action": integrity_action or "warn",
+                }
+                if _field_has_tag(field, "capture-gps") and submission.accuracy is None:
+                    self.session.add(
+                        DataQualitySignal(
+                            organization_id=organization_id,
+                            submission_id=submission.id,
+                            beneficiary_id=submission.entity_id,
+                            signal_type="gps_evidence_missing",
+                            severity=severity,
+                            confidence=0.95,
+                            summary="A question marked for GPS evidence was submitted without captured GPS accuracy.",
+                            status="open",
+                            evidence_json={**evidence_base, "recommended_queue": "data_quality"},
+                        )
+                    )
+                if _field_has_tag(field, "photo-evidence") and _is_blank(value):
+                    self.session.add(
+                        DataQualitySignal(
+                            organization_id=organization_id,
+                            submission_id=submission.id,
+                            beneficiary_id=submission.entity_id,
+                            signal_type="photo_evidence_missing",
+                            severity=severity,
+                            confidence=0.9,
+                            summary="A question marked for photo evidence was submitted without an answer.",
+                            status="open",
+                            evidence_json={**evidence_base, "recommended_queue": "data_quality"},
+                        )
+                    )
+                if _field_has_tag(field, "consent-required") and _is_blank(value):
+                    self.session.add(
+                        DataQualitySignal(
+                            organization_id=organization_id,
+                            submission_id=submission.id,
+                            beneficiary_id=submission.entity_id,
+                            signal_type="consent_missing",
+                            severity="high",
+                            confidence=1.0,
+                            summary="A question marked as requiring consent was submitted without captured consent.",
+                            status="open",
+                            evidence_json={**evidence_base, "recommended_queue": "approval_review"},
+                        )
+                    )
+                if _field_metadata_value(field, "sensitivity") in {"pii", "restricted"} and not (
+                    _field_has_tag(field, "mask-on-screen") or _field_has_tag(field, "mask-on-export")
+                ):
+                    self.session.add(
+                        DataQualitySignal(
+                            organization_id=organization_id,
+                            submission_id=submission.id,
+                            beneficiary_id=submission.entity_id,
+                            signal_type="privacy_masking_missing",
+                            severity="medium",
+                            confidence=0.85,
+                            summary="A sensitive field was submitted without masking controls configured.",
+                            status="open",
+                            evidence_json={**evidence_base, "recommended_queue": "governance_review"},
+                        )
+                    )
 
     async def list_submissions(
         self,
@@ -1516,6 +1761,7 @@ class SubmissionService:
         to_status = self.REVIEW_TRANSITIONS[payload.action]
         if submission.status in {"approved", "rejected"} and payload.action == "start_review":
             raise InvalidWorkflowTransitionError("Terminal submission cannot return to review")
+        review_summary = self._submission_review_summary(submission)
         await self.submissions.transition(
             submission=submission,
             actor_user_id=actor_user_id,
@@ -1528,7 +1774,7 @@ class SubmissionService:
             action=f"submission.{to_status}",
             resource_type="submission",
             resource_id=str(submission.id),
-            metadata={"comment": payload.comment},
+            metadata={"comment": payload.comment, "review_summary": review_summary},
         )
         if to_status == "approved":
             await self._apply_approved_submission_to_beneficiary(
@@ -1545,6 +1791,28 @@ class SubmissionService:
             },
         )
         return submission
+
+    def _submission_review_summary(self, submission: Submission) -> dict[str, object]:
+        payload = submission.payload_json if isinstance(submission.payload_json, dict) else {}
+        validation_issues = payload.get("_validation_issues")
+        validation_count = len(validation_issues) if isinstance(validation_issues, list) else 0
+        mobile_integrity = payload.get("_mobile_integrity")
+        signals = mobile_integrity.get("signals") if isinstance(mobile_integrity, dict) else []
+        signal_count = len(signals) if isinstance(signals, list) else 0
+        critical_count = 0
+        if isinstance(signals, list):
+            critical_count = sum(
+                1
+                for signal in signals
+                if isinstance(signal, dict) and str(signal.get("severity") or "").lower() == "critical"
+            )
+        return {
+            "validation_issue_count": validation_count,
+            "mobile_integrity_signal_count": signal_count,
+            "critical_mobile_integrity_signal_count": critical_count,
+            "quality_status": payload.get("_quality_status"),
+            "review_required": bool(payload.get("_review_required") or validation_count or signal_count),
+        }
 
     async def _apply_approved_submission_to_beneficiary(
         self,
@@ -1581,13 +1849,26 @@ class SubmissionService:
 
         values = self._flat_payload_values(submission.payload_json or {})
         entity_type = str(controls.get("entity_type") or controls.get("entityType") or submission.entity_type or "Beneficiary")
-        display_name = self._entity_display_name(values)
+        mapped_profile_values = self._mapped_beneficiary_profile_values(submission.payload_json or {}, values)
+        display_name = self._string_from_object(mapped_profile_values.get("display_name")) or self._entity_display_name(values)
         if not display_name:
             return
-        phone = self._string_value(values, "phone_number", "phone", "mobile", "farmer_phone")
-        national_id = self._string_value(values, "national_id", "nationalid", "id_number")
-        household_id = self._string_value(values, "household_id", "householdid", "household")
-        village = self._string_value(values, "village", "community")
+        phone = self._string_from_object(mapped_profile_values.get("phone_number")) or self._string_value(
+            values, "phone_number", "phone", "mobile", "farmer_phone"
+        )
+        national_id = self._string_from_object(mapped_profile_values.get("national_id")) or self._string_value(
+            values, "national_id", "nationalid", "id_number"
+        )
+        household_id = self._string_from_object(mapped_profile_values.get("household_id")) or self._string_value(
+            values, "household_id", "householdid", "household"
+        )
+        village = self._string_from_object(mapped_profile_values.get("community")) or self._string_value(
+            values, "village", "community"
+        )
+        mapped_latitude = self._float_from_object(mapped_profile_values.get("latitude"))
+        mapped_longitude = self._float_from_object(mapped_profile_values.get("longitude"))
+        latitude = mapped_latitude if mapped_latitude is not None else submission.latitude
+        longitude = mapped_longitude if mapped_longitude is not None else submission.longitude
         existing = await self._find_beneficiary_for_submission(
             organization_id=organization_id,
             submission=submission,
@@ -1702,14 +1983,14 @@ class SubmissionService:
                 beneficiary_uid=await self._next_beneficiary_uid(organization_id=organization_id, entity_type=entity_type),
                 beneficiary_type=entity_type,
                 display_name=display_name,
-                sex=self._string_value(values, "gender", "sex"),
+                sex=self._string_from_object(mapped_profile_values.get("sex")) or self._string_value(values, "gender", "sex"),
                 phone_number=phone,
-                region=self._string_value(values, "region"),
-                district=self._string_value(values, "district"),
+                region=self._string_from_object(mapped_profile_values.get("region")) or self._string_value(values, "region"),
+                district=self._string_from_object(mapped_profile_values.get("district")) or self._string_value(values, "district"),
                 community=village,
                 enrollment_status="active",
-                latitude=submission.latitude,
-                longitude=submission.longitude,
+                latitude=latitude,
+                longitude=longitude,
                 last_visit_at=submission.submitted_at,
                 profile_json={
                     "source": "Approved Submission",
@@ -1725,12 +2006,12 @@ class SubmissionService:
                         field_values={
                             "display_name": display_name,
                             "phone_number": phone,
-                            "sex": self._string_value(values, "gender", "sex"),
-                            "region": self._string_value(values, "region"),
-                            "district": self._string_value(values, "district"),
+                            "sex": self._string_from_object(mapped_profile_values.get("sex")) or self._string_value(values, "gender", "sex"),
+                            "region": self._string_from_object(mapped_profile_values.get("region")) or self._string_value(values, "region"),
+                            "district": self._string_from_object(mapped_profile_values.get("district")) or self._string_value(values, "district"),
                             "community": village,
-                            "latitude": submission.latitude,
-                            "longitude": submission.longitude,
+                            "latitude": latitude,
+                            "longitude": longitude,
                         },
                         recorded_at=created_at,
                     ),
@@ -1802,11 +2083,11 @@ class SubmissionService:
         for field_name, next_value in {
             "display_name": display_name,
             "phone_number": phone,
-            "region": self._string_value(values, "region"),
-            "district": self._string_value(values, "district"),
+            "region": self._string_from_object(mapped_profile_values.get("region")) or self._string_value(values, "region"),
+            "district": self._string_from_object(mapped_profile_values.get("district")) or self._string_value(values, "district"),
             "community": village,
-            "latitude": submission.latitude,
-            "longitude": submission.longitude,
+            "latitude": latitude,
+            "longitude": longitude,
         }.items():
             current_value = getattr(existing, field_name)
             if current_value in {None, ""} and next_value not in {None, ""}:
@@ -2044,6 +2325,85 @@ class SubmissionService:
     def _entity_controls(self, controls_json: dict[str, object]) -> dict[str, object]:
         controls = controls_json.get("entity_controls") if isinstance(controls_json.get("entity_controls"), dict) else {}
         return controls
+
+    def _string_from_object(self, value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _float_from_object(self, value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(str(value))
+        except ValueError:
+            return None
+
+    def _profile_key_from_mapping(self, value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+        normalized = normalized.removeprefix("beneficiary_").removeprefix("entity_")
+        return {
+            "fullname": "display_name",
+            "full_name": "display_name",
+            "name": "display_name",
+            "display_name": "display_name",
+            "phone": "phone_number",
+            "phone_number": "phone_number",
+            "mobile": "phone_number",
+            "mobile_number": "phone_number",
+            "village": "community",
+            "community": "community",
+            "region": "region",
+            "district": "district",
+            "gender": "sex",
+            "sex": "sex",
+            "national_id": "national_id",
+            "id_number": "national_id",
+            "household_id": "household_id",
+            "household": "household_id",
+            "gps": "gps",
+            "location": "gps",
+            "latitude": "latitude",
+            "longitude": "longitude",
+        }.get(normalized, normalized or None)
+
+    def _mapped_beneficiary_profile_values(
+        self,
+        payload_json: dict[str, object],
+        values: dict[str, object],
+    ) -> dict[str, object]:
+        metadata = payload_json.get("_question_control_metadata")
+        if not isinstance(metadata, dict):
+            return {}
+        mapped: dict[str, object] = {}
+        for question_key, entry in metadata.items():
+            if not isinstance(entry, dict):
+                continue
+            beneficiary = entry.get("beneficiary")
+            if not isinstance(beneficiary, dict):
+                continue
+            profile_field = self._profile_key_from_mapping(beneficiary.get("profileField"))
+            profile_impact = str(beneficiary.get("profileImpact") or "").lower()
+            if not profile_field or profile_impact in {"", "no_impact", "none"}:
+                continue
+            value = values.get(str(question_key).lower())
+            question_id = entry.get("questionId")
+            if value is None and question_id is not None:
+                value = values.get(str(question_id).lower())
+            variable_name = entry.get("variableName")
+            if value is None and variable_name is not None:
+                value = values.get(str(variable_name).lower())
+            if value is None or value == "":
+                continue
+            if profile_field == "gps" and isinstance(value, dict):
+                mapped["latitude"] = value.get("latitude") or value.get("lat")
+                mapped["longitude"] = value.get("longitude") or value.get("lng") or value.get("lon")
+            else:
+                mapped[profile_field] = value
+        return mapped
 
     def _flat_payload_values(self, payload_json: dict[str, object]) -> dict[str, object]:
         raw_responses = payload_json.get("responses")

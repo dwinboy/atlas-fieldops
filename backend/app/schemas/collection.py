@@ -209,6 +209,7 @@ class FormField(BaseModel):
     required: bool = False
     validation: dict[str, Any] = Field(default_factory=dict)
     visibility: dict[str, Any] = Field(default_factory=dict)
+    appearance: dict[str, Any] = Field(default_factory=dict)
     options: list[dict[str, Any]] = Field(default_factory=list)
     calculation: str | None = None
 

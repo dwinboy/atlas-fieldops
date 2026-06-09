@@ -29,6 +29,8 @@ import {
   createRole,
   createTeam,
   createUser,
+  addUserRoleAssignment,
+  deactivateUserRoleAssignment,
   getAccessCatalog,
   getOrganizationContext,
   getOrganizationGovernanceSummary,
@@ -45,6 +47,8 @@ import {
   resetUserPassword,
   simulateAccess,
   updateUser,
+  updateUserRoleAssignment,
+  type AccessCatalog,
   type AccessSimulationRead,
   type CurrentPrincipal,
   type RoleCreate,
@@ -52,6 +56,7 @@ import {
   type TeamRead,
   type UserCreate,
   type UserRead,
+  type UserRoleAssignmentRead,
   type UsersTeamsSummaryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -87,7 +92,26 @@ type UsersTeamsModuleProps = {
   token: string | null;
 };
 
-type ModalMode = "access-test" | "import-users" | "role" | "team" | "user" | null;
+type ModalMode = "access-test" | "edit-user" | "import-users" | "role" | "role-assignment" | "team" | "user" | null;
+type AccessEditDraft = {
+  geography_id: string;
+  is_active: boolean;
+  project_id: string;
+  role_name: string;
+  scope_type: string;
+  user: UserRead | null;
+};
+type RoleAssignmentDraft = {
+  assignment_id: string | null;
+  geography_id: string;
+  is_active: boolean;
+  project_id: string;
+  reason: string;
+  role_name: string;
+  scope_type: string;
+  team_id: string;
+  user: UserRead | null;
+};
 
 const defaultUserDraft: UserCreate = {
   email: "",
@@ -122,13 +146,36 @@ const defaultAccessDraft = {
 
 const fallbackAssignableRoles: [string, string][] = [
   ["organization_owner", "Organization Owner"],
+  ["system_admin", "System Admin"],
   ["me_manager", "M&E Manager"],
+  ["project_manager", "Project Manager"],
+  ["data_manager", "Data Manager"],
   ["data_analyst", "Data Analyst"],
   ["district_supervisor", "District Supervisor"],
   ["field_officer", "Field Officer"],
+  ["donor_viewer", "Donor / Viewer"],
 ];
 
 const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
+const defaultAccessEditDraft: AccessEditDraft = {
+  geography_id: "",
+  is_active: true,
+  project_id: "",
+  role_name: "field_officer",
+  scope_type: "own",
+  user: null,
+};
+const defaultRoleAssignmentDraft: RoleAssignmentDraft = {
+  assignment_id: null,
+  geography_id: "",
+  is_active: true,
+  project_id: "",
+  reason: "",
+  role_name: "field_officer",
+  scope_type: "own",
+  team_id: "",
+  user: null,
+};
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
@@ -158,6 +205,8 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [teamDraft, setTeamDraft] = useState(defaultTeamDraft);
   const [roleDraft, setRoleDraft] = useState(defaultRoleDraft);
   const [accessDraft, setAccessDraft] = useState(defaultAccessDraft);
+  const [accessEditDraft, setAccessEditDraft] = useState<AccessEditDraft>(defaultAccessEditDraft);
+  const [roleAssignmentDraft, setRoleAssignmentDraft] = useState<RoleAssignmentDraft>(defaultRoleAssignmentDraft);
   const [accessResult, setAccessResult] = useState<AccessSimulationRead | null>(null);
   const [localUsers, setLocalUsers] = useState<UserRead[]>([]);
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
@@ -218,6 +267,10 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     }
     return [...roleNames.entries()].sort((left, right) => left[1].localeCompare(right[1]));
   }, [catalog.roles, preview, roles]);
+  const roleCatalogByName = useMemo(
+    () => new Map(catalog.roles.map((role) => [role.name, role])),
+    [catalog.roles],
+  );
 
   const defaultAssignableRole = roleOptions.find(([value]) => value === defaultUserDraft.role_name)?.[0] ?? roleOptions[0]?.[0] ?? defaultUserDraft.role_name;
 
@@ -233,15 +286,60 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   };
 
   function openCreateUserModal(): void {
+    const defaultRole = roleCatalogByName.get(defaultAssignableRole);
     setUserDraft((current) => ({
       ...defaultUserDraft,
       email: current.email,
       full_name: current.full_name,
       password: current.password,
       role_name: roleOptions.some(([value]) => value === current.role_name) ? current.role_name : defaultAssignableRole,
-      scope_type: current.scope_type ?? defaultUserDraft.scope_type,
+      scope_type: current.scope_type ?? defaultRole?.scope_type ?? defaultUserDraft.scope_type,
     }));
     setModalMode("user");
+  }
+
+  function openEditUserAccess(user: UserRead): void {
+    const roleName = user.role_name ?? defaultAssignableRole;
+    const role = roleCatalogByName.get(roleName);
+    setAccessEditDraft({
+      geography_id: user.geography_id ?? "",
+      is_active: user.is_active,
+      project_id: user.project_id ?? "",
+      role_name: roleName,
+      scope_type: user.scope_type ?? role?.scope_type ?? "own",
+      user,
+    });
+    setModalMode("edit-user");
+  }
+
+  function openRoleAssignments(user: UserRead): void {
+    const firstAssignment = user.role_assignments?.[0];
+    setRoleAssignmentDraft({
+      assignment_id: null,
+      geography_id: "",
+      is_active: true,
+      project_id: "",
+      reason: "",
+      role_name: firstAssignment?.role_name ?? user.role_name ?? defaultAssignableRole,
+      scope_type: firstAssignment?.scope_type ?? user.scope_type ?? "own",
+      team_id: "",
+      user,
+    });
+    setModalMode("role-assignment");
+  }
+
+  function editRoleAssignment(user: UserRead, assignment: UserRoleAssignmentRead): void {
+    setRoleAssignmentDraft({
+      assignment_id: assignment.id,
+      geography_id: assignment.geography_id ?? "",
+      is_active: assignment.is_active,
+      project_id: assignment.project_id ?? "",
+      reason: assignment.reason ?? "",
+      role_name: assignment.role_name,
+      scope_type: assignment.scope_type,
+      team_id: assignment.team_id ?? "",
+      user,
+    });
   }
 
   const createUserMutation = useMutation({
@@ -340,6 +438,67 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     onError: () => pushToast({ title: "Could not update user", description: "Check your user management permission.", tone: "danger" }),
   });
 
+  const updateUserAccessMutation = useMutation({
+    mutationFn: () => {
+      if (!accessEditDraft.user) throw new Error("Choose a user");
+      return updateUser(token ?? "", accessEditDraft.user.id, {
+        full_name: accessEditDraft.user.full_name,
+        geography_id: accessEditDraft.geography_id || null,
+        is_active: accessEditDraft.is_active,
+        project_id: accessEditDraft.project_id || null,
+        role_name: accessEditDraft.role_name,
+        scope_type: accessEditDraft.scope_type,
+      });
+    },
+    onSuccess: async () => {
+      setModalMode(null);
+      setAccessEditDraft(defaultAccessEditDraft);
+      await invalidateUsersTeams();
+      pushToast({ title: "Access updated", description: "The user role and scope have been updated and audited.", tone: "success" });
+    },
+    onError: () => pushToast({ title: "Could not update access", description: "Check your permission, selected role, and scope.", tone: "danger" }),
+  });
+
+  const saveRoleAssignmentMutation = useMutation({
+    mutationFn: () => {
+      if (!roleAssignmentDraft.user) throw new Error("Choose a user");
+      const payload = {
+        geography_id: roleAssignmentDraft.geography_id || null,
+        is_active: roleAssignmentDraft.is_active,
+        project_id: roleAssignmentDraft.project_id || null,
+        reason: roleAssignmentDraft.reason || null,
+        role_name: roleAssignmentDraft.role_name,
+        scope_type: roleAssignmentDraft.scope_type,
+        team_id: roleAssignmentDraft.team_id || null,
+      };
+      if (roleAssignmentDraft.assignment_id) {
+        return updateUserRoleAssignment(token ?? "", roleAssignmentDraft.user.id, roleAssignmentDraft.assignment_id, payload);
+      }
+      return addUserRoleAssignment(token ?? "", roleAssignmentDraft.user.id, payload);
+    },
+    onSuccess: async (user) => {
+      setRoleAssignmentDraft({
+        ...defaultRoleAssignmentDraft,
+        role_name: defaultAssignableRole,
+        user,
+      });
+      await invalidateUsersTeams();
+      pushToast({ title: "Role assignment saved", description: "The user's effective access now includes this scoped role.", tone: "success" });
+    },
+    onError: () => pushToast({ title: "Could not save role assignment", description: "Check the role, scope, target, and your permission to assign it.", tone: "danger" }),
+  });
+
+  const deactivateRoleAssignmentMutation = useMutation({
+    mutationFn: ({ assignment, user }: { assignment: UserRoleAssignmentRead; user: UserRead }) =>
+      deactivateUserRoleAssignment(token ?? "", user.id, assignment.id),
+    onSuccess: async (user) => {
+      setRoleAssignmentDraft((current) => ({ ...current, assignment_id: null, user }));
+      await invalidateUsersTeams();
+      pushToast({ title: "Role assignment deactivated", description: "The role no longer contributes active access.", tone: "success" });
+    },
+    onError: () => pushToast({ title: "Could not deactivate assignment", description: "At least one primary account role may still be required.", tone: "danger" }),
+  });
+
   const simulateAccessMutation = useMutation({
     mutationFn: () => simulateAccess(token ?? "", accessDraft),
     onSuccess: (result) => setAccessResult(result),
@@ -404,6 +563,14 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           <Button disabled={preview || !canManageUsers || resetPasswordMutation.isPending} onClick={() => resetPasswordMutation.mutate(user.id)} size="sm" variant="secondary">
             <RotateCcw aria-hidden="true" />
             Reset
+          </Button>
+          <Button disabled={preview || !canManageUsers || saveRoleAssignmentMutation.isPending} onClick={() => openRoleAssignments(user)} size="sm" variant="secondary">
+            <ShieldCheck aria-hidden="true" />
+            Roles
+          </Button>
+          <Button disabled={preview || !canManageUsers || updateUserAccessMutation.isPending} onClick={() => openEditUserAccess(user)} size="sm" variant="ghost">
+            <UserCog aria-hidden="true" />
+            Primary
           </Button>
           <Button disabled={preview || !canManageUsers || updateUserStatusMutation.isPending} onClick={() => updateUserStatusMutation.mutate({ is_active: !user.is_active, user })} size="sm" variant="ghost">
             {user.is_active ? "Deactivate" : "Activate"}
@@ -559,6 +726,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             title="Role Management"
           />
           <DataTable columns={roleColumns} emptyLabel="No roles have been configured yet" rows={roles} searchLabel="Search roles or permissions" title="Roles" />
+          <RoleArchitecturePanel catalog={catalog.roles} />
           <PermissionMatrix groups={permissionGroups} roles={roles} />
         </section>
       ) : null}
@@ -616,8 +784,37 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         onOpenChange={(open) => setModalMode(open ? "user" : null)}
         open={modalMode === "user"}
         projects={projects}
+        roleCatalogByName={roleCatalogByName}
         roleOptions={roleOptions}
         saving={createUserMutation.isPending}
+        units={units}
+      />
+      <EditUserAccessModal
+        canSubmit={!preview && canManageUsers && Boolean(accessEditDraft.user) && !updateUserAccessMutation.isPending}
+        draft={accessEditDraft}
+        onChange={setAccessEditDraft}
+        onOpenChange={(open) => setModalMode(open ? "edit-user" : null)}
+        onSubmit={() => updateUserAccessMutation.mutate()}
+        open={modalMode === "edit-user"}
+        projects={projects}
+        roleCatalogByName={roleCatalogByName}
+        roleOptions={roleOptions}
+        saving={updateUserAccessMutation.isPending}
+        units={units}
+      />
+      <RoleAssignmentsModal
+        canSubmit={!preview && canManageUsers && Boolean(roleAssignmentDraft.user) && !saveRoleAssignmentMutation.isPending}
+        draft={roleAssignmentDraft}
+        onChange={setRoleAssignmentDraft}
+        onDeactivate={(assignment, user) => deactivateRoleAssignmentMutation.mutate({ assignment, user })}
+        onEdit={editRoleAssignment}
+        onOpenChange={(open) => setModalMode(open ? "role-assignment" : null)}
+        onSubmit={() => saveRoleAssignmentMutation.mutate()}
+        open={modalMode === "role-assignment"}
+        projects={projects}
+        roleCatalogByName={roleCatalogByName}
+        roleOptions={roleOptions}
+        saving={saveRoleAssignmentMutation.isPending}
         units={units}
       />
       <ImportUsersModal
@@ -825,6 +1022,60 @@ function PermissionMatrix({ groups, roles }: { groups: ReturnType<typeof groupPe
   );
 }
 
+function RoleArchitecturePanel({ catalog }: { catalog: AccessCatalog["roles"] }) {
+  const groups = useMemo(() => {
+    const grouped = new Map<string, AccessCatalog["roles"]>();
+    for (const role of catalog) {
+      const key = role.architecture_group || "Custom";
+      grouped.set(key, [...(grouped.get(key) ?? []), role]);
+    }
+    const order = ["Platform", "Organization", "Project", "Field Operations", "Governance", "Support", "Viewer", "Custom"];
+    return [...grouped.entries()].sort(
+      ([left], [right]) => order.indexOf(left) - order.indexOf(right),
+    );
+  }, [catalog]);
+
+  if (!groups.length) return null;
+
+  return (
+    <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="font-semibold">Role Architecture</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Roles are templates. Real access is role plus scope: organization, project, location, team, or own records.
+          </p>
+        </div>
+        <Badge tone="admin">Role + scope + permission</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 xl:grid-cols-4">
+        {groups.map(([group, rolesInGroup]) => (
+          <div className="rounded-xl border bg-background/60 p-3" key={group}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{group}</p>
+              <Badge tone="neutral">{rolesInGroup.length}</Badge>
+            </div>
+            <div className="mt-3 space-y-2">
+              {rolesInGroup.slice(0, 5).map((role) => (
+                <div className="rounded-lg border bg-panel px-3 py-2" key={role.name}>
+                  <p className="text-sm font-medium">{role.label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {role.common_usage || role.description}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge tone="neutral">{role.scope_type.replace("_", " ")}</Badge>
+                    <Badge tone="support">{role.permissions.length} permissions</Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OrganizationsSection({ organizationName, summary, units }: { organizationName: string; summary: UsersTeamsSummaryRead; units: { id: string; name: string; code: string; unit_type: string; parent_unit_id: string | null; region: string | null }[] }) {
   return (
     <section className="space-y-4">
@@ -877,7 +1128,7 @@ function PermissionsSection({ catalogGroups, onOpenAccessTest, roles, users }: {
   );
 }
 
-function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateCustomRole, onOpenChange, onSubmit, open, projects, roleOptions, saving, units }: {
+function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateCustomRole, onOpenChange, onSubmit, open, projects, roleCatalogByName, roleOptions, saving, units }: {
   canManageRoles: boolean;
   canSubmit: boolean;
   draft: typeof defaultUserDraft;
@@ -887,10 +1138,12 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
   onSubmit: () => void;
   open: boolean;
   projects: { id: string; name: string; project_code: string }[];
+  roleCatalogByName: Map<string, AccessCatalog["roles"][number]>;
   roleOptions: [string, string][];
   saving: boolean;
   units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
 }) {
+  const selectedRole = roleCatalogByName.get(draft.role_name);
   const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
   const needsProjectScope = draft.scope_type === "project";
   const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type ?? "");
@@ -916,7 +1169,19 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
               Role
-              <Select value={draft.role_name} onChange={(event) => onChange({ ...draft, role_name: event.target.value })}>
+              <Select
+                value={draft.role_name}
+                onChange={(event) => {
+                  const nextRole = roleCatalogByName.get(event.target.value);
+                  onChange({
+                    ...draft,
+                    geography_ids: [],
+                    project_ids: [],
+                    role_name: event.target.value,
+                    scope_type: nextRole?.scope_type ?? draft.scope_type,
+                  });
+                }}
+              >
                 {roleOptions.length ? roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>) : <option value="">No roles available</option>}
               </Select>
             </label>
@@ -981,6 +1246,17 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
               </label>
             ) : null}
           </div>
+          {selectedRole ? (
+            <div className="mt-3 rounded-lg border bg-panel p-3 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">{selectedRole.label}</p>
+              <p className="mt-1">{selectedRole.common_usage || selectedRole.description}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Badge tone="neutral">{selectedRole.architecture_group ?? "Custom"}</Badge>
+                <Badge tone="support">{selectedRole.permissions.length} permissions</Badge>
+                <Badge tone="accent">Default scope: {selectedRole.scope_type.replace("_", " ")}</Badge>
+              </div>
+            </div>
+          ) : null}
         </div>
         {!roleOptions.length ? (
           <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
@@ -994,6 +1270,319 @@ function CreateUserModal({ canManageRoles, canSubmit, draft, onChange, onCreateC
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
         <Button disabled={!canSubmit || !draft.email || !draft.full_name || draft.password.length < 12 || !roleOptions.length || (needsProjectScope && !draft.project_ids?.length) || (needsGeographyScope && !draft.geography_ids?.length)} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create user"}</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function EditUserAccessModal({
+  canSubmit,
+  draft,
+  onChange,
+  onOpenChange,
+  onSubmit,
+  open,
+  projects,
+  roleCatalogByName,
+  roleOptions,
+  saving,
+  units,
+}: {
+  canSubmit: boolean;
+  draft: AccessEditDraft;
+  onChange: (draft: AccessEditDraft) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  projects: { id: string; name: string; project_code: string }[];
+  roleCatalogByName: Map<string, AccessCatalog["roles"][number]>;
+  roleOptions: [string, string][];
+  saving: boolean;
+  units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
+}) {
+  const selectedRole = roleCatalogByName.get(draft.role_name);
+  const needsProjectScope = draft.scope_type === "project";
+  const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type);
+  const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
+  return (
+    <Modal
+      contentClassName="max-w-2xl"
+      description="Change the user's operational role, scope, and active status. This is audited and affects web and mobile access."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Edit user access"
+    >
+      <div className="grid gap-4 overflow-y-auto p-5 product-scrollbar">
+        <div className="rounded-xl border bg-muted/25 p-3">
+          <p className="text-sm font-semibold">{draft.user?.full_name ?? "Selected user"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{draft.user?.email}</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            Role
+            <Select
+              value={draft.role_name}
+              onChange={(event) => {
+                const nextRole = roleCatalogByName.get(event.target.value);
+                onChange({
+                  ...draft,
+                  geography_id: "",
+                  project_id: "",
+                  role_name: event.target.value,
+                  scope_type: nextRole?.scope_type ?? draft.scope_type,
+                });
+              }}
+            >
+              {roleOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+            Access scope
+            <Select
+              value={draft.scope_type}
+              onChange={(event) =>
+                onChange({
+                  ...draft,
+                  geography_id: "",
+                  project_id: "",
+                  scope_type: event.target.value,
+                })
+              }
+            >
+              {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => (
+                <option key={scope} value={scope}>{scope.replace("_", " ")}</option>
+              ))}
+            </Select>
+          </label>
+          {needsProjectScope ? (
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Project
+              <Select value={draft.project_id} onChange={(event) => onChange({ ...draft, project_id: event.target.value })}>
+                <option value="">Select project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} · {project.project_code}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          {needsGeographyScope ? (
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Location/team
+              <Select value={draft.geography_id} onChange={(event) => onChange({ ...draft, geography_id: event.target.value })}>
+                <option value="">Select {draft.scope_type.replace("_", " ")}</option>
+                {scopedUnits.map((unit) => (
+                  <option key={unit.id} value={unit.code}>
+                    {unit.name} · {unit.code}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          <label className="flex items-center gap-2 text-sm font-medium md:col-span-2">
+            <input
+              checked={draft.is_active}
+              onChange={(event) => onChange({ ...draft, is_active: event.target.checked })}
+              type="checkbox"
+            />
+            Account active
+          </label>
+        </div>
+        <div className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p className="font-semibold text-foreground">{selectedRole?.label ?? normalizeRoleLabel(draft.role_name)}</p>
+          <p className="mt-1">{selectedRole?.common_usage || selectedRole?.description || "Custom organization role."}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge tone="neutral">{selectedRole?.architecture_group ?? "Custom"}</Badge>
+            <Badge tone="support">{selectedRole?.permissions.length ?? 0} permissions</Badge>
+            <Badge tone="accent">Default scope: {(selectedRole?.scope_type ?? "own").replace("_", " ")}</Badge>
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 border-t px-5 py-4">
+        <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
+        <Button
+          disabled={!canSubmit || (needsProjectScope && !draft.project_id) || (needsGeographyScope && !draft.geography_id)}
+          onClick={onSubmit}
+          variant="primary"
+        >
+          {saving ? "Saving..." : "Save access"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function RoleAssignmentsModal({
+  canSubmit,
+  draft,
+  onChange,
+  onDeactivate,
+  onEdit,
+  onOpenChange,
+  onSubmit,
+  open,
+  projects,
+  roleCatalogByName,
+  roleOptions,
+  saving,
+  units,
+}: {
+  canSubmit: boolean;
+  draft: RoleAssignmentDraft;
+  onChange: (draft: RoleAssignmentDraft) => void;
+  onDeactivate: (assignment: UserRoleAssignmentRead, user: UserRead) => void;
+  onEdit: (user: UserRead, assignment: UserRoleAssignmentRead) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  projects: { id: string; name: string; project_code: string }[];
+  roleCatalogByName: Map<string, AccessCatalog["roles"][number]>;
+  roleOptions: [string, string][];
+  saving: boolean;
+  units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
+}) {
+  const selectedRole = roleCatalogByName.get(draft.role_name);
+  const assignments = draft.user?.role_assignments ?? [];
+  const needsProjectScope = draft.scope_type === "project";
+  const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type);
+  const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
+  return (
+    <Modal
+      contentClassName="max-w-4xl"
+      description="Add more than one role to the same person. Each role keeps its own project, location, team, or own-record scope."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Access assignments"
+    >
+      <div className="grid gap-4 p-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="rounded-xl border bg-muted/20 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">{draft.user?.full_name ?? "Selected user"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{draft.user?.email}</p>
+            </div>
+            <Badge tone="admin">{assignments.filter((assignment) => assignment.is_active).length} active</Badge>
+          </div>
+          <div className="mt-3 space-y-2">
+            {assignments.length ? assignments.map((assignment) => (
+              <div className="rounded-lg border bg-panel p-3" key={assignment.id}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">{assignment.role_label || normalizeRoleLabel(assignment.role_name)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {assignment.scope_type.replace("_", " ")}
+                      {assignment.project_id ? ` · Project ${assignment.project_id}` : ""}
+                      {assignment.geography_id ? ` · ${assignment.geography_id}` : ""}
+                    </p>
+                  </div>
+                  <Badge tone={assignment.is_active ? "success" : "neutral"}>{assignment.is_active ? "Active" : "Inactive"}</Badge>
+                </div>
+                {assignment.reason ? <p className="mt-2 text-xs text-muted-foreground">{assignment.reason}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button onClick={() => draft.user && onEdit(draft.user, assignment)} size="sm" variant="secondary">Edit</Button>
+                  <Button disabled={!assignment.is_active || !draft.user} onClick={() => draft.user && onDeactivate(assignment, draft.user)} size="sm" variant="ghost">Deactivate</Button>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                No stacked assignments yet. Add one below so this user has explicit role and scope records.
+              </div>
+            )}
+          </div>
+        </section>
+        <section className="rounded-xl border bg-panel p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">{draft.assignment_id ? "Edit assignment" : "Add assignment"}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Choose the role, then restrict what data it covers.</p>
+            </div>
+            {draft.assignment_id ? (
+              <Button onClick={() => onChange({ ...defaultRoleAssignmentDraft, role_name: draft.role_name, scope_type: draft.scope_type, user: draft.user })} size="sm" variant="ghost">New</Button>
+            ) : null}
+          </div>
+          <div className="mt-3 grid gap-3">
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Role
+              <Select
+                value={draft.role_name}
+                onChange={(event) => {
+                  const nextRole = roleCatalogByName.get(event.target.value);
+                  onChange({
+                    ...draft,
+                    geography_id: "",
+                    project_id: "",
+                    role_name: event.target.value,
+                    scope_type: nextRole?.scope_type ?? draft.scope_type,
+                    team_id: "",
+                  });
+                }}
+              >
+                {roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Scope
+              <Select
+                value={draft.scope_type}
+                onChange={(event) => onChange({ ...draft, geography_id: "", project_id: "", scope_type: event.target.value, team_id: "" })}
+              >
+                {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => (
+                  <option key={scope} value={scope}>{scope.replace("_", " ")}</option>
+                ))}
+              </Select>
+            </label>
+            {needsProjectScope ? (
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Project
+                <Select value={draft.project_id} onChange={(event) => onChange({ ...draft, project_id: event.target.value })}>
+                  <option value="">Select project</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {project.project_code}</option>)}
+                </Select>
+              </label>
+            ) : null}
+            {needsGeographyScope ? (
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Location or team
+                <Select value={draft.geography_id} onChange={(event) => onChange({ ...draft, geography_id: event.target.value })}>
+                  <option value="">Select {draft.scope_type.replace("_", " ")}</option>
+                  {scopedUnits.map((unit) => <option key={unit.id} value={unit.code}>{unit.name} · {unit.code}</option>)}
+                </Select>
+              </label>
+            ) : null}
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Reason
+              <Textarea
+                onChange={(event) => onChange({ ...draft, reason: event.target.value })}
+                placeholder="Example: Temporary data review access for the Rice Resilience pilot."
+                rows={3}
+                value={draft.reason}
+              />
+            </label>
+            {draft.assignment_id ? (
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input checked={draft.is_active} onChange={(event) => onChange({ ...draft, is_active: event.target.checked })} type="checkbox" />
+                Assignment active
+              </label>
+            ) : null}
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">{selectedRole?.label ?? normalizeRoleLabel(draft.role_name)}</p>
+              <p className="mt-1">{selectedRole?.common_usage || selectedRole?.description || "Custom organization role."}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div className="flex justify-end gap-2 border-t px-5 py-4">
+        <Button onClick={() => onOpenChange(false)} variant="ghost">Close</Button>
+        <Button
+          disabled={!canSubmit || (needsProjectScope && !draft.project_id) || (needsGeographyScope && !draft.geography_id)}
+          onClick={onSubmit}
+          variant="primary"
+        >
+          {saving ? "Saving..." : draft.assignment_id ? "Save assignment" : "Add assignment"}
+        </Button>
       </div>
     </Modal>
   );

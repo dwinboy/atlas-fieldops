@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -31,7 +32,6 @@ from app.schemas.mobile import (
     MobilePermissionSetRead,
     MobileProjectRead,
     MobileReferenceListRead,
-    MobileSupervisorProfileRead,
     MobileSubmissionUpload,
     MobileSubmissionUploadRead,
     MobileSyncPackageRead,
@@ -103,14 +103,116 @@ def _field_options(options: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def _field_appearance_text(field: dict[str, Any]) -> str:
+    appearance = field.get("appearance")
+    if isinstance(appearance, dict):
+        return str(appearance.get("helpText") or "")
+    return ""
+
+
+def _field_metadata_value(field: dict[str, Any], key: str) -> str | None:
+    text = _field_appearance_text(field)
+    match = re.search(rf"\[{re.escape(key)}:([^\]]*)\]", text)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def _field_has_tag(field: dict[str, Any], tag: str) -> bool:
+    return f"[{tag}]" in _field_appearance_text(field)
+
+
+def _field_metadata_tags(field: dict[str, Any]) -> list[str]:
+    text = _field_appearance_text(field)
+    tags = re.findall(r"\[([a-zA-Z0-9_-]+)\]", text)
+    return sorted({tag for tag in tags if ":" not in tag})
+
+
+def _field_mobile_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "displayMode": _field_metadata_value(field, "mobile"),
+        "blockedHelp": _field_metadata_value(field, "blocked-help"),
+        "offlineCompatible": _field_has_tag(field, "offline-compatible"),
+        "lowBandwidth": _field_has_tag(field, "low-bandwidth"),
+        "prefillAllowed": _field_has_tag(field, "prefill-allowed"),
+        "saveDraftAfterAnswer": _field_has_tag(field, "save-draft-after-answer"),
+        "reviewBeforeSubmit": _field_has_tag(field, "review-answer-before-submit"),
+        "syncPriority": _field_has_tag(field, "sync-priority"),
+    }
+
+
+def _field_privacy_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sensitivity": _field_metadata_value(field, "sensitivity") or ("sensitive" if field.get("sensitive") else "standard"),
+        "consentField": _field_metadata_value(field, "consent-field"),
+        "maskOnScreen": _field_has_tag(field, "mask-on-screen"),
+        "maskOnExport": _field_has_tag(field, "mask-on-export"),
+        "encryptAtRest": _field_has_tag(field, "encrypt-at-rest"),
+        "hideAfterSubmit": _field_has_tag(field, "hide-after-submit"),
+        "screenshotRestricted": _field_has_tag(field, "screenshot-restricted"),
+        "consentRequired": _field_has_tag(field, "consent-required"),
+    }
+
+
+def _field_quality_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "captureTimestamp": _field_has_tag(field, "capture-timestamp"),
+        "captureGps": _field_has_tag(field, "capture-gps"),
+        "photoEvidence": _field_has_tag(field, "photo-evidence"),
+        "backCheckCandidate": _field_has_tag(field, "back-check-candidate"),
+        "staticGpsWarning": _field_has_tag(field, "static-gps-warning"),
+        "fastInterviewWarning": _field_has_tag(field, "fast-interview-warning"),
+        "minimumSeconds": _field_metadata_value(field, "min-seconds"),
+        "integrityAction": _field_metadata_value(field, "integrity-action"),
+    }
+
+
+def _field_governance_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "editRule": _field_metadata_value(field, "edit-rule"),
+        "reviewerRole": _field_metadata_value(field, "reviewer-role"),
+        "auditLabel": _field_metadata_value(field, "audit-label"),
+        "changeReasonRequired": _field_has_tag(field, "change-reason-required"),
+        "approvedDataLock": _field_has_tag(field, "approved-data-lock"),
+        "reviewerCommentRequired": _field_has_tag(field, "reviewer-comment-required"),
+        "includeInDataFreeze": _field_has_tag(field, "include-in-data-freeze"),
+        "qualityFlagVisible": _field_has_tag(field, "quality-flag-visible"),
+        "sourceLineageVisible": _field_has_tag(field, "source-lineage-visible"),
+    }
+
+
+def _field_indicator_mapping(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "indicatorId": _field_metadata_value(field, "indicator"),
+        "component": _field_metadata_value(field, "indicator-component"),
+        "unit": _field_metadata_value(field, "unit"),
+        "reportingPeriod": _field_metadata_value(field, "report-period"),
+        "disaggregation": _field_metadata_value(field, "disaggregation"),
+        "donorTag": _field_metadata_value(field, "donor-tag"),
+    }
+
+
+def _field_beneficiary_mapping(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "profileImpact": _field_metadata_value(field, "profile-impact"),
+        "beneficiaryField": _field_metadata_value(field, "beneficiary-field"),
+        "profileUpdateRule": _field_metadata_value(field, "profile-update-rule"),
+        "duplicateKey": _field_has_tag(field, "duplicate-key"),
+        "sourceOfTruth": _field_has_tag(field, "source-of-truth"),
+        "lineageRequired": _field_has_tag(field, "lineage-required"),
+    }
+
+
 def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
+    blocked_help = _field_metadata_value(field, "blocked-help")
     if bool(field.get("required", False)):
         rules.append(
             {
                 "ruleType": "Required",
                 "value": True,
-                "message": "This question is required.",
+                "message": blocked_help or "This question is required.",
                 "severity": "Block",
             }
         )
@@ -130,7 +232,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     {
                         "ruleType": rule_type,
                         "value": validation[source],
-                        "message": str(validation.get("message") or "Check the allowed value for this question."),
+                        "message": str(validation.get("message") or blocked_help or "Check the allowed value for this question."),
                         "severity": "Block",
                     }
                 )
@@ -139,7 +241,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                 {
                     "ruleType": "Custom",
                     "value": f"accuracyMax:{validation['accuracyMax']}",
-                    "message": f"GPS accuracy must be {validation['accuracyMax']} meters or better.",
+                    "message": blocked_help or f"GPS accuracy must be {validation['accuracyMax']} meters or better.",
                     "severity": "Block",
                 }
             )
@@ -152,6 +254,33 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Warning",
                 }
             )
+    if _field_has_tag(field, "capture-gps"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "captureGps:true",
+                "message": blocked_help or "Capture GPS evidence before submitting this answer.",
+                "severity": "Block" if _field_metadata_value(field, "integrity-action") == "block_submission" else "Warning",
+            }
+        )
+    if _field_has_tag(field, "photo-evidence"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "photoEvidence:true",
+                "message": blocked_help or "Add photo evidence for this question when required by the form.",
+                "severity": "Block" if _field_metadata_value(field, "integrity-action") == "block_submission" else "Warning",
+            }
+        )
+    if _field_has_tag(field, "consent-required"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "consentRequired:true",
+                "message": blocked_help or "Consent must be captured before this answer can be used.",
+                "severity": "Block",
+            }
+        )
     if field_type == "matrix_multi":
         rules.append(
             {
@@ -304,6 +433,15 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
         for field_index, field in enumerate(section.get("fields", [])):
             field_id = str(field.get("id") or f"{section_id}-question-{field_index + 1}")
             variable_name = str(field.get("variable_name") or field.get("variableName") or field_id.replace("-", "_").lower())
+            reference_list_id = (
+                field.get("referenceListId")
+                or _field_metadata_value(field, "reference-list")
+                or reference_by_question.get(field_id)
+            )
+            cascading_parent = field.get("cascadingParentQuestionId") or variable_to_id.get(
+                str(_field_metadata_value(field, "reference-parent") or "")
+            )
+            privacy_controls = _field_privacy_controls(field)
             questions.append(
                 {
                     "id": field_id,
@@ -318,10 +456,28 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
                     "options": _field_options(list(field.get("options") or [])),
                     "validationRules": _validation_rules(field),
                     "logicRules": _logic_rules(field, variable_to_id),
-                    "referenceListId": field.get("referenceListId") or reference_by_question.get(field_id),
-                    "cascadingParentQuestionId": field.get("cascadingParentQuestionId"),
-                    "sensitive": bool(field.get("sensitive", False)),
+                    "referenceListId": reference_list_id,
+                    "cascadingParentQuestionId": cascading_parent,
+                    "sensitive": bool(
+                        field.get("sensitive", False)
+                        or privacy_controls["sensitivity"] in {"sensitive", "restricted", "pii"}
+                    ),
                     "repeatSettings": field.get("repeatSettings"),
+                    "metadataTags": _field_metadata_tags(field),
+                    "indicatorMapping": _field_indicator_mapping(field),
+                    "beneficiaryMapping": _field_beneficiary_mapping(field),
+                    "referenceControls": {
+                        "referenceListId": reference_list_id,
+                        "parentQuestionId": cascading_parent,
+                        "newReferencePolicy": _field_metadata_value(field, "new-reference-policy"),
+                        "offlineRequired": _field_has_tag(field, "reference-offline"),
+                        "searchable": _field_has_tag(field, "searchable-reference"),
+                        "versionLocked": _field_has_tag(field, "reference-version-lock"),
+                    },
+                    "qualityControls": _field_quality_controls(field),
+                    "privacyControls": privacy_controls,
+                    "mobileControls": _field_mobile_controls(field),
+                    "governanceControls": _field_governance_controls(field),
                     "order": field_index + 1,
                 }
             )

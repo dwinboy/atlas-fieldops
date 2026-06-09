@@ -14,7 +14,7 @@ from app.core.permissions import permissions_for_roles
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, get_jwt_secret, verify_password
 from app.models.collection import FieldOfficerProfile
-from app.models.identity import Organization, Role, User, UserAccessGrant
+from app.models.identity import Organization, Role, User, UserAccessGrant, UserRoleAssignment
 from app.repositories.users import UserRepository
 from app.schemas.auth import TokenResponse
 
@@ -36,14 +36,14 @@ class AuthService:
         identity = await self.users.find_for_login(email=email, organization_slug=organization_slug)
         if identity is None:
             raise AuthenticationError("Invalid credentials")
-        user, organization, membership, role, grants = identity
+        user, organization, membership, role, grants, assignments = identity
         if not user.is_active or not membership.is_active:
             raise AuthenticationError("Inactive account")
         if not verify_password(password, user.password_hash):
             raise AuthenticationError("Invalid credentials")
         platform_identity = await self.users.find_platform_admin_for_user(user.id)
         if platform_identity is not None:
-            platform_user, platform_organization, platform_membership, platform_role, platform_grants = platform_identity
+            platform_user, platform_organization, platform_membership, platform_role, platform_grants, platform_assignments = platform_identity
             if not platform_organization.is_active or not platform_membership.is_active:
                 raise AuthenticationError("Inactive platform account")
             user = platform_user
@@ -51,9 +51,10 @@ class AuthService:
             membership = platform_membership
             role = platform_role
             grants = platform_grants
+            assignments = platform_assignments
         if not organization.is_active:
             raise AuthenticationError("Inactive account")
-        return self._issue_token_response(user, organization, role, grants)
+        return self._issue_token_response(user, organization, role, grants, assignments)
 
     async def login_with_mobile_qr(self, qr_token: str) -> TokenResponse:
         payload = self._decode_mobile_qr_token(qr_token)
@@ -67,7 +68,7 @@ class AuthService:
         identity = await self.users.find_for_token(user_id=user_id, organization_id=organization_id)
         if identity is None:
             raise AuthenticationError("Invalid mobile QR code")
-        user, organization, membership, role, grants = identity
+        user, organization, membership, role, grants, assignments = identity
         if not user.is_active or not membership.is_active or not organization.is_active:
             raise AuthenticationError("Inactive account")
         if payload.get("credential_version") != self._credential_version(user):
@@ -84,9 +85,10 @@ class AuthService:
         profile = profile_result.scalar_one_or_none()
         if profile is None:
             raise AuthenticationError("Mobile QR code is not assigned to an active field officer")
-        if canonical_role(role.name) != "field_officer":
+        active_roles = {canonical_role(assignment_role.name) for _assignment, assignment_role in assignments} | {canonical_role(role.name)}
+        if "field_officer" not in active_roles:
             raise AuthenticationError("Mobile QR code is only available for field officers")
-        return self._issue_token_response(user, organization, role, grants)
+        return self._issue_token_response(user, organization, role, grants, assignments)
 
     async def refresh(self, refresh_token: str) -> TokenResponse:
         try:
@@ -98,10 +100,10 @@ class AuthService:
         identity = await self.users.find_for_token(user_id=user_id, organization_id=organization_id)
         if identity is None:
             raise AuthenticationError("Invalid refresh token")
-        user, organization, membership, role, grants = identity
+        user, organization, membership, role, grants, assignments = identity
         if not user.is_active or not membership.is_active or not organization.is_active:
             raise AuthenticationError("Inactive account")
-        return self._issue_token_response(user, organization, role, grants)
+        return self._issue_token_response(user, organization, role, grants, assignments)
 
     def create_mobile_qr_login_payload(self, *, profile: FieldOfficerProfile, user: User) -> str:
         token_payload = {
@@ -183,20 +185,62 @@ class AuthService:
         organization: Organization,
         role: Role,
         grants: list[UserAccessGrant],
+        assignments: list[tuple[UserRoleAssignment, Role]],
     ) -> TokenResponse:
+        assignment_roles = [assignment_role for _assignment, assignment_role in assignments]
+        role_names = sorted({role.name, *(assignment_role.name for assignment_role in assignment_roles)})
+        primary_assignment = assignments[0][0] if assignments else None
         primary_grant = grants[0] if grants else None
-        scope_type = primary_grant.scope_type if primary_grant is not None else default_scope_for_roles([role.name]).value
-        is_platform_admin = canonical_role(role.name) == "super_admin"
+        scope_type = (
+            primary_assignment.scope_type
+            if primary_assignment is not None
+            else primary_grant.scope_type
+            if primary_grant is not None
+            else default_scope_for_roles(role_names).value
+        )
+        is_platform_admin = any(canonical_role(role_name) == "super_admin" for role_name in role_names)
         stored_permissions = {
             normalized.value
-            for permission in (role.permissions or "").split(",")
+            for permission in ",".join([role.permissions or "", *(assignment_role.permissions or "" for assignment_role in assignment_roles)]).split(",")
             if (normalized := normalize_permission(permission.strip())) is not None
         }
-        effective_permissions = sorted({permission.value for permission in permissions_for_roles([role.name])} | stored_permissions)
+        effective_permissions = sorted({permission.value for permission in permissions_for_roles(role_names)} | stored_permissions)
+        geography_ids = sorted(
+            {
+                *(grant.geography_id for grant in grants if grant.geography_id),
+                *(assignment.geography_id for assignment, _assignment_role in assignments if assignment.geography_id),
+            }
+        )
+        project_ids = sorted(
+            {
+                *(grant.project_id for grant in grants if grant.project_id),
+                *(assignment.project_id for assignment, _assignment_role in assignments if assignment.project_id),
+            }
+        )
+        organization_unit_ids = sorted(
+            {
+                *(str(grant.organization_unit_id) for grant in grants if grant.organization_unit_id),
+                *(str(assignment.organization_unit_id) for assignment, _assignment_role in assignments if assignment.organization_unit_id),
+                *(str(assignment.team_id) for assignment, _assignment_role in assignments if assignment.team_id),
+            }
+        )
+        role_assignments = [
+            {
+                "id": str(assignment.id),
+                "role_name": assignment_role.name,
+                "scope_type": assignment.scope_type,
+                "geography_id": assignment.geography_id,
+                "project_id": assignment.project_id,
+                "organization_unit_id": str(assignment.organization_unit_id) if assignment.organization_unit_id else None,
+                "team_id": str(assignment.team_id) if assignment.team_id else None,
+                "is_active": assignment.is_active,
+            }
+            for assignment, assignment_role in assignments
+        ]
         token = create_access_token(
             subject=str(user.id),
             organization_id=str(organization.id),
-            roles=[role.name],
+            roles=role_names,
             email=user.email,
             full_name=user.full_name,
             organization_slug=organization.slug,
@@ -206,9 +250,10 @@ class AuthService:
             platform_organization_slug=organization.slug if is_platform_admin else None,
             scope_type=scope_type,
             permissions=effective_permissions,
-            geography_ids=[grant.geography_id for grant in grants if grant.geography_id],
-            project_ids=[grant.project_id for grant in grants if grant.project_id],
-            organization_unit_ids=[str(grant.organization_unit_id) for grant in grants if grant.organization_unit_id],
+            geography_ids=geography_ids,
+            project_ids=project_ids,
+            organization_unit_ids=organization_unit_ids,
+            role_assignments=role_assignments,
         )
         refresh = create_refresh_token(
             subject=str(user.id),

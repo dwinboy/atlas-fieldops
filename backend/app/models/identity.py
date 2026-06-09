@@ -68,6 +68,26 @@ class UserAccessGrant(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base
     organization_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), nullable=True, index=True)
 
 
+class UserRoleAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "user_role_assignments"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    role_id: Mapped[UUID] = mapped_column(ForeignKey("roles.id"), index=True)
+    scope_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    geography_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    organization_unit_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), nullable=True, index=True)
+    team_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), nullable=True, index=True)
+    assigned_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    role: Mapped[Role] = relationship()
+
+
 class WorkflowPermission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "workflow_permissions"
 

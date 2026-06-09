@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import RoleDefinition, ScopeType
-from app.models.identity import Membership, Organization, Role, User, UserAccessGrant
+from app.models.identity import Membership, Organization, Role, User, UserAccessGrant, UserRoleAssignment
 from app.models.operations import OrganizationalUnit
 
 
@@ -103,6 +103,12 @@ class RoleRepository:
             is_system=True,
         )
 
+    async def get_or_create_from_definition(self, *, organization_id: UUID, definition: RoleDefinition) -> Role:
+        existing = await self.get_by_name(organization_id=organization_id, name=definition.name)
+        if existing is not None:
+            return existing
+        return await self.create_from_definition(organization_id=organization_id, definition=definition)
+
     async def get_by_name(self, *, organization_id: UUID, name: str) -> Role | None:
         result = await self.session.execute(
             select(Role).where(
@@ -163,6 +169,138 @@ class IdentityRepository:
         self.session.add(grant)
         await self.session.flush()
         return grant
+
+    async def add_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        role_id: UUID,
+        scope_type: ScopeType,
+        assigned_by_user_id: UUID | None = None,
+        geography_id: str | None = None,
+        project_id: str | None = None,
+        organization_unit_id: UUID | None = None,
+        team_id: UUID | None = None,
+        reason: str | None = None,
+    ) -> UserRoleAssignment:
+        assignment = UserRoleAssignment(
+            organization_id=organization_id,
+            user_id=user_id,
+            role_id=role_id,
+            scope_type=scope_type.value,
+            assigned_by_user_id=assigned_by_user_id,
+            geography_id=geography_id,
+            project_id=project_id,
+            organization_unit_id=organization_unit_id,
+            team_id=team_id,
+            is_active=True,
+            reason=reason,
+        )
+        self.session.add(assignment)
+        await self.session.flush()
+        return assignment
+
+    async def list_role_assignments(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        active_only: bool = True,
+    ) -> list[tuple[UserRoleAssignment, Role]]:
+        now = datetime.now(UTC)
+        filters = [
+            UserRoleAssignment.organization_id == organization_id,
+            UserRoleAssignment.user_id == user_id,
+            UserRoleAssignment.deleted_at.is_(None),
+            Role.deleted_at.is_(None),
+        ]
+        if active_only:
+            filters.extend(
+                [
+                    UserRoleAssignment.is_active.is_(True),
+                    or_(UserRoleAssignment.starts_at.is_(None), UserRoleAssignment.starts_at <= now),
+                    or_(UserRoleAssignment.expires_at.is_(None), UserRoleAssignment.expires_at > now),
+                ]
+            )
+        result = await self.session.execute(
+            select(UserRoleAssignment, Role)
+            .join(Role, Role.id == UserRoleAssignment.role_id)
+            .where(*filters)
+            .order_by(UserRoleAssignment.created_at)
+        )
+        return list(result.all())
+
+    async def get_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        assignment_id: UUID,
+    ) -> tuple[UserRoleAssignment, Role] | None:
+        result = await self.session.execute(
+            select(UserRoleAssignment, Role)
+            .join(Role, Role.id == UserRoleAssignment.role_id)
+            .where(
+                UserRoleAssignment.id == assignment_id,
+                UserRoleAssignment.organization_id == organization_id,
+                UserRoleAssignment.user_id == user_id,
+                UserRoleAssignment.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+            )
+        )
+        return result.one_or_none()
+
+    async def update_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        assignment_id: UUID,
+        role_id: UUID | None = None,
+        scope_type: ScopeType | None = None,
+        geography_id: str | None = None,
+        project_id: str | None = None,
+        organization_unit_id: UUID | None = None,
+        team_id: UUID | None = None,
+        is_active: bool | None = None,
+        reason: str | None = None,
+    ) -> tuple[UserRoleAssignment, Role] | None:
+        row = await self.get_role_assignment(organization_id=organization_id, user_id=user_id, assignment_id=assignment_id)
+        if row is None:
+            return None
+        assignment, role = row
+        if role_id is not None:
+            assignment.role_id = role_id
+            role_result = await self.session.execute(select(Role).where(Role.id == role_id, Role.deleted_at.is_(None)))
+            role = role_result.scalar_one()
+        if scope_type is not None:
+            assignment.scope_type = scope_type.value
+        assignment.geography_id = geography_id
+        assignment.project_id = project_id
+        assignment.organization_unit_id = organization_unit_id
+        assignment.team_id = team_id
+        if is_active is not None:
+            assignment.is_active = is_active
+        if reason is not None:
+            assignment.reason = reason
+        await self.session.flush()
+        return assignment, role
+
+    async def deactivate_role_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        assignment_id: UUID,
+    ) -> tuple[UserRoleAssignment, Role] | None:
+        row = await self.get_role_assignment(organization_id=organization_id, user_id=user_id, assignment_id=assignment_id)
+        if row is None:
+            return None
+        assignment, role = row
+        assignment.is_active = False
+        await self.session.flush()
+        return assignment, role
 
     async def get_user_account(
         self,

@@ -25,10 +25,25 @@ export type CurrentPrincipal = {
   platform_organization_id?: string | null;
   platform_organization_slug?: string | null;
   roles: string[];
+  role_assignments?: PrincipalRoleAssignment[];
   permissions?: string[];
   scope_type?: string;
+  geography_ids?: string[];
+  project_ids?: string[];
+  organization_unit_ids?: string[];
   menu_views?: string[];
   workflow_actions?: string[];
+};
+
+export type PrincipalRoleAssignment = {
+  id: string;
+  role_name: string;
+  scope_type: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  is_active: boolean;
 };
 
 export type OrganizationCreate = {
@@ -425,6 +440,38 @@ export type UserRead = {
   organization_unit_id?: string | null;
   login_slug?: string | null;
   temporary_password?: string | null;
+  role_assignments?: UserRoleAssignmentRead[];
+};
+
+export type UserRoleAssignmentRead = {
+  id: string;
+  role_id: string;
+  role_name: string;
+  role_label: string;
+  scope_type: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  assigned_by_user_id?: string | null;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  is_active: boolean;
+  reason?: string | null;
+};
+
+export type UserRoleAssignmentCreate = {
+  role_name: string;
+  scope_type?: string | null;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  reason?: string | null;
+};
+
+export type UserRoleAssignmentUpdate = Partial<UserRoleAssignmentCreate> & {
+  is_active?: boolean;
 };
 
 export type UserImportIssue = {
@@ -481,6 +528,8 @@ export type AccessCatalog = {
     label: string;
     description: string;
     scope_type: string;
+    architecture_group?: string;
+    common_usage?: string;
     permissions: string[];
     workflow_actions: string[];
     menu_views: string[];
@@ -1838,10 +1887,15 @@ export type FormInstrumentSettings = {
   sampling?: Record<string, unknown>;
   performance_analytics?: Record<string, unknown>;
   validation_standards?: Record<string, unknown>;
+  field_guidance?: Record<string, unknown>;
+  data_import?: Record<string, unknown>;
   localization?: Record<string, unknown>;
   mobile_package?: Record<string, unknown>;
   testing?: Record<string, unknown>;
   accessibility?: Record<string, unknown>;
+  field_integrity?: Record<string, unknown>;
+  partner_data_sharing?: Record<string, unknown>;
+  case_escalation?: Record<string, unknown>;
   ai_readiness?: Record<string, unknown>;
 };
 
@@ -2325,6 +2379,18 @@ export async function importUsers(token: string, file: File): Promise<UserImport
 
 export async function updateUser(token: string, userId: string, payload: UserUpdate): Promise<UserRead> {
   return request<UserRead>(`/users/${userId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function addUserRoleAssignment(token: string, userId: string, payload: UserRoleAssignmentCreate): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments`, { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateUserRoleAssignment(token: string, userId: string, assignmentId: string, payload: UserRoleAssignmentUpdate): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments/${assignmentId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function deactivateUserRoleAssignment(token: string, userId: string, assignmentId: string): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments/${assignmentId}`, { method: "DELETE", token });
 }
 
 export async function resetUserPassword(token: string, userId: string): Promise<PasswordResetRead> {

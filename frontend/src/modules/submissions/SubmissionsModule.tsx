@@ -178,6 +178,10 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function normalizedString(value: unknown): string | undefined {
+  return stringValue(value)?.toLowerCase();
+}
+
 function getMobileIntegrity(submission: SubmissionRecord): MobileIntegrityPayload | null {
   const rawIntegrity = asRecord(submission.payload_json?._mobile_integrity);
   if (!rawIntegrity) return null;
@@ -187,11 +191,11 @@ function getMobileIntegrity(submission: SubmissionRecord): MobileIntegrityPayloa
     .map((rawSignal): MobileIntegritySignal | null => {
       const signal = asRecord(rawSignal);
       if (!signal) return null;
-      const severity = stringValue(signal.severity)?.toLowerCase();
+      const severity = normalizedString(signal.severity);
       return {
         action: stringValue(signal.action),
         code: stringValue(signal.code) ?? "FIELD_INTEGRITY_SIGNAL",
-        detectedAt: stringValue(signal.detectedAt) ?? stringValue(signal.detected_at),
+        detectedAt: stringValue(signal.detectedAt) ?? stringValue(signal.detected_at) ?? stringValue(signal.createdAt),
         evidence: asRecord(signal.evidence) ?? undefined,
         message: stringValue(signal.message) ?? "Field integrity signal needs review.",
         severity:
@@ -202,15 +206,15 @@ function getMobileIntegrity(submission: SubmissionRecord): MobileIntegrityPayloa
     })
     .filter((signal): signal is MobileIntegritySignal => Boolean(signal));
 
-  const riskLevel = stringValue(rawIntegrity.riskLevel) ?? stringValue(rawIntegrity.risk_level);
+  const riskLevel = normalizedString(rawIntegrity.riskLevel) ?? normalizedString(rawIntegrity.risk_level);
   return {
     gpsAccuracyMeters:
-      numberValue(rawIntegrity.gpsAccuracyMeters) ?? numberValue(rawIntegrity.gps_accuracy_meters),
+      numberValue(rawIntegrity.gpsAccuracyMeters) ?? numberValue(rawIntegrity.gps_accuracy_meters) ?? numberValue(rawIntegrity.gpsAccuracy),
     gpsCapturedAt:
-      stringValue(rawIntegrity.gpsCapturedAt) ?? stringValue(rawIntegrity.gps_captured_at) ?? null,
+      stringValue(rawIntegrity.gpsCapturedAt) ?? stringValue(rawIntegrity.gps_captured_at) ?? stringValue(rawIntegrity.reviewedAt) ?? null,
     interviewDurationSeconds:
-      numberValue(rawIntegrity.interviewDurationSeconds) ?? numberValue(rawIntegrity.interview_duration_seconds),
-    mediaCount: numberValue(rawIntegrity.mediaCount) ?? numberValue(rawIntegrity.media_count),
+      numberValue(rawIntegrity.interviewDurationSeconds) ?? numberValue(rawIntegrity.interview_duration_seconds) ?? numberValue(rawIntegrity.durationSeconds),
+    mediaCount: numberValue(rawIntegrity.mediaCount) ?? numberValue(rawIntegrity.media_count) ?? numberValue(rawIntegrity.mediaEvidenceCount),
     offlineStartedAt:
       stringValue(rawIntegrity.offlineStartedAt) ?? stringValue(rawIntegrity.offline_started_at) ?? null,
     offlineSubmittedAt:

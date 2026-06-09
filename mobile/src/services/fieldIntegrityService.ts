@@ -24,13 +24,13 @@ export class FieldIntegrityService {
       ? Math.max(0, Math.round((reviewedAtMs - startedAtMs) / 1000))
       : 0;
     const expectedMinimumSeconds = this.expectedMinimumSeconds(questions);
-    const gpsQuestions = questions.filter((question) => question.type === "GPS");
+    const gpsQuestions = questions.filter((question) => question.type === "GPS" || question.qualityControls?.captureGps);
     const gpsValues = gpsQuestions.map((question) => responses.get(question.id)).filter(Boolean);
     const firstGps = gpsValues.find((value) => typeof value === "object" && value !== null) as { accuracy?: unknown; latitude?: unknown; longitude?: unknown } | undefined;
     const gpsCaptured = Boolean(firstGps && Number.isFinite(Number(firstGps.latitude)) && Number.isFinite(Number(firstGps.longitude)));
     const gpsAccuracy = firstGps?.accuracy == null ? null : Number(firstGps.accuracy);
-    const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type));
-    const requiredMediaCount = mediaQuestions.filter((question) => question.required).length;
+    const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
+    const requiredMediaCount = mediaQuestions.filter((question) => question.required || question.qualityControls?.photoEvidence).length;
     const mediaEvidenceCount = mediaQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
     const signals: SignalInput[] = [];
 
@@ -80,6 +80,34 @@ export class FieldIntegrityService {
       });
     }
 
+    for (const question of questions) {
+      const questionMinimum = Number(question.qualityControls?.minimumSeconds ?? 0);
+      if (Number.isFinite(questionMinimum) && questionMinimum > 0 && durationSeconds > 0 && durationSeconds < questionMinimum) {
+        signals.push({
+          code: "QUESTION_MINIMUM_DURATION_NOT_MET",
+          severity: question.qualityControls?.integrityAction === "block_submission" ? "Critical" : "Warning",
+          message: `${question.label} is configured with a minimum collection time of ${formatDuration(questionMinimum)}.`,
+          evidence: { questionId: question.id, variableName: question.variableName, durationSeconds, questionMinimum },
+        });
+      }
+      if (question.privacyControls?.consentRequired && !hasAnswer(responses.get(question.id), question.type)) {
+        signals.push({
+          code: "CONSENT_REQUIRED_MISSING",
+          severity: "Critical",
+          message: `${question.label} requires consent before the record can be trusted.`,
+          evidence: { questionId: question.id, variableName: question.variableName },
+        });
+      }
+      if (question.beneficiaryMapping?.duplicateKey && hasAnswer(responses.get(question.id), question.type)) {
+        signals.push({
+          code: "DUPLICATE_KEY_COLLECTED",
+          severity: "Info",
+          message: `${question.label} will be used by the web app to check for duplicate beneficiaries.`,
+          evidence: { questionId: question.id, beneficiaryField: question.beneficiaryMapping.beneficiaryField ?? null },
+        });
+      }
+    }
+
     if (requiredMediaCount > 0 && mediaEvidenceCount < requiredMediaCount) {
       signals.push({
         code: "REQUIRED_EVIDENCE_MISSING",
@@ -115,7 +143,11 @@ export class FieldIntegrityService {
     const visibleQuestionEstimate = Math.max(questions.length, 1);
     const repeatPenalty = questions.filter((question) => question.type === "RepeatGroup").length * 45;
     const mediaPenalty = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type)).length * 20;
-    return Math.max(60, visibleQuestionEstimate * 8 + repeatPenalty + mediaPenalty);
+    const configuredMinimum = questions.reduce((max, question) => {
+      const value = Number(question.qualityControls?.minimumSeconds ?? 0);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+    return Math.max(60, configuredMinimum, visibleQuestionEstimate * 8 + repeatPenalty + mediaPenalty);
   }
 }
 

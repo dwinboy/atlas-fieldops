@@ -27,10 +27,41 @@ export class FormValidationService {
           issues.push({
             questionId: question.id,
             label: question.label,
-            message: "This required question must be answered before submit.",
+            message: question.mobileControls?.blockedHelp ?? "This required question must be answered before submit.",
+            fixHint: question.mobileControls?.blockedHelp
+              ? "Follow the field guidance shown for this question. If the answer is not available, ask your supervisor how this form should handle it."
+              : undefined,
             severity: "Error",
           });
           continue;
+        }
+        if (question.privacyControls?.consentRequired && missing) {
+          issues.push({
+            questionId: question.id,
+            label: question.label,
+            message: question.mobileControls?.blockedHelp ?? "Consent must be captured before this answer can be submitted.",
+            fixHint: "Confirm consent with the respondent, then capture the configured consent answer. If consent is refused, follow the form instructions.",
+            severity: "Error",
+          });
+          continue;
+        }
+        if (question.qualityControls?.captureGps && !this.hasUsableGps(draft)) {
+          issues.push({
+            questionId: question.id,
+            label: question.label,
+            message: question.mobileControls?.blockedHelp ?? "GPS evidence is required for this record.",
+            fixHint: "Move to an open area, capture GPS on the GPS question, then review the record again.",
+            severity: question.qualityControls.integrityAction === "block_submission" ? "Error" : "Warning",
+          });
+        }
+        if (question.qualityControls?.photoEvidence && missing) {
+          issues.push({
+            questionId: question.id,
+            label: question.label,
+            message: question.mobileControls?.blockedHelp ?? "Photo evidence is expected for this question.",
+            fixHint: "Capture the required photo or ask your supervisor whether this evidence can be returned later.",
+            severity: question.qualityControls.integrityAction === "block_submission" ? "Error" : "Warning",
+          });
         }
         if (missing) {
           continue;
@@ -70,10 +101,28 @@ export class FormValidationService {
     );
   }
 
+  private hasUsableGps(draft: MobileSubmission): boolean {
+    if (draft.location?.latitude !== null && draft.location?.longitude !== null) {
+      return true;
+    }
+    return draft.responses.some((response) => {
+      const value = response.value;
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      const gps = value as { latitude?: unknown; longitude?: unknown };
+      return Number.isFinite(Number(gps.latitude)) && Number.isFinite(Number(gps.longitude));
+    });
+  }
+
   private validateValue(question: MobileQuestion, value: unknown): FormValidationIssue[] {
     const issues: FormValidationIssue[] = [];
     const addIssue = (message: string, severity: "Error" | "Warning" = "Error", fixHint?: string) => {
-      issues.push({ questionId: question.id, label: question.label, message, fixHint, severity });
+      issues.push({
+        questionId: question.id,
+        label: question.label,
+        message: question.mobileControls?.blockedHelp ?? message,
+        fixHint: question.mobileControls?.blockedHelp ? `${fixHint ?? ""} ${question.mobileControls.blockedHelp}`.trim() : fixHint,
+        severity,
+      });
     };
 
     if (["Number", "Decimal", "Currency"].includes(question.type)) {
@@ -237,6 +286,18 @@ function parseFieldDate(value: string, questionType: MobileQuestion["type"]): Da
   if (dateTime && questionType === "DateTime") {
     const [, year, month, day, hour, minute] = dateTime;
     return buildStrictDate(Number(year), Number(month), Number(day), Number(hour), Number(minute));
+  }
+
+  const slashDate = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDate) {
+    const [, first, second, year] = slashDate;
+    return buildStrictDate(Number(year), Number(second), Number(first));
+  }
+
+  const dashDate = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashDate) {
+    const [, first, second, year] = dashDate;
+    return buildStrictDate(Number(year), Number(second), Number(first));
   }
 
   return null;

@@ -41,6 +41,7 @@ def create_access_token(
     geography_ids: list[str] | None = None,
     project_ids: list[str] | None = None,
     organization_unit_ids: list[str] | None = None,
+    role_assignments: list[dict[str, Any]] | None = None,
 ) -> str:
     secret = get_jwt_secret()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
@@ -61,6 +62,7 @@ def create_access_token(
         "geography_ids": geography_ids or [],
         "project_ids": project_ids or [],
         "organization_unit_ids": organization_unit_ids or [],
+        "role_assignments": role_assignments or [],
         "token_type": "access",
         "exp": expires_at,
     }
