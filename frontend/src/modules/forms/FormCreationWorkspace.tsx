@@ -25,7 +25,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
@@ -720,14 +720,14 @@ const defaultControlsDraft: FormControlsDraft = {
   allowAnonymous: false,
   allowManualCoordinates: false,
   approvalEscalationHours: 48,
-  assignmentMode: "assigned_only",
+  assignmentMode: "project_team",
   assignedFieldOfficerIds: [],
   auditTrail: true,
   autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
   backCheckRequired: false,
   backCheckSamplePercent: 10,
   beneficiarySearch: "optional",
-  blockWithoutConsent: true,
+  blockWithoutConsent: false,
   boundaryValidation: false,
   businessPurpose: "Support project monitoring, review, and donor-ready evidence.",
   caseEscalationRule: "If safeguarding, protection, or urgent-risk answer is selected -> create supervisor alert.",
@@ -736,12 +736,12 @@ const defaultControlsDraft: FormControlsDraft = {
   coordinateMasking: false,
   dataQualityMode: "standard",
   decisionUse: "operational_decision",
-  dataFreezeRequired: true,
+  dataFreezeRequired: false,
   dataSourceType: "primary",
   dataRetentionPolicy: "seven_years",
   deviceClockDriftAction: "review",
   disaggregationFields: ["sex", "age_group", "location"],
-  disaggregationRequired: true,
+  disaggregationRequired: false,
   dontKnowPolicy: "required_for_sensitive",
   duplicateAction: "review",
   duplicateFields: ["phone_number", "household_id", "full_name", "village"],
@@ -752,8 +752,8 @@ const defaultControlsDraft: FormControlsDraft = {
   entityType: "Farmer",
   eventMode: "none",
   expectedUse: "Approved records feed beneficiary history, dashboards, indicators, and reports.",
-  exportApprovalMode: "manager_approval",
-  exportRestricted: true,
+  exportApprovalMode: "not_required",
+  exportRestricted: false,
   fileTypes: "jpg,png,pdf",
   fieldGuideText: "Read each question exactly as written, confirm consent, verify beneficiary identity, capture GPS when required, and sync before leaving the area when connectivity allows.",
   formObjective: "Collect reliable field evidence for project decisions.",
@@ -792,10 +792,10 @@ const defaultControlsDraft: FormControlsDraft = {
     phone: "",
     village: "",
   },
-  profileUpdateMode: "with_supervisor_approval",
-  referenceDataRequired: true,
+  profileUpdateMode: "never",
+  referenceDataRequired: false,
   relatedForms: "",
-  requireConsent: true,
+  requireConsent: false,
   preventFutureDates: true,
   repeatGroupPolicy: "review_large",
   reportingPeriod: "quarterly",
@@ -806,7 +806,7 @@ const defaultControlsDraft: FormControlsDraft = {
   reviewer: "supervisor",
   reviewReturner: "supervisor",
   requiresEntity: false,
-  requiresGps: true,
+  requiresGps: false,
   riskClassification: "medium",
   samplingMethod: "none",
   sourceOfTruthRule: "manager_approved_profile_updates",
@@ -816,9 +816,9 @@ const defaultControlsDraft: FormControlsDraft = {
   seasonName: "",
   seasonStart: "",
   storeConsentVersion: true,
-  syncRequirement: "daily_required",
+  syncRequirement: "manual_allowed",
   technicalReviewerName: "Technical Reviewer",
-  testingRequirement: "test_submission",
+  testingRequirement: "preview_only",
   finalApproverName: "M&E Manager",
   approvalDate: "",
   approvalNotes: "",
@@ -2998,7 +2998,8 @@ export function validateFormForPublish(
       id: "form-type",
       jumpTo: "setup",
       label: "Form type selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Form information",
@@ -3007,7 +3008,8 @@ export function validateFormForPublish(
       id: "owner",
       jumpTo: "setup",
       label: "Owner defined",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Form information",
@@ -3016,7 +3018,8 @@ export function validateFormForPublish(
       id: "language",
       jumpTo: "setup",
       label: "Primary language defined",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Form information",
@@ -3040,7 +3043,8 @@ export function validateFormForPublish(
       id: "purpose",
       jumpTo: "controls",
       label: "Form purpose and business context defined",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Purpose",
@@ -3065,7 +3069,8 @@ export function validateFormForPublish(
       id: "decision-use",
       jumpTo: "controls",
       label: "Decision use and reporting period selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Structure",
@@ -3094,8 +3099,8 @@ export function validateFormForPublish(
       id: "standard-questions",
       jumpTo: "builder",
       label: "Standard M&E questions reviewed",
-      required: fields.length > 0 && formOperationalFamily(setup.formType) !== "custom",
-      warning: fields.length === 0 || formOperationalFamily(setup.formType) === "custom",
+      required: false,
+      warning: true,
     }),
     item({
       category: "Structure",
@@ -3141,7 +3146,8 @@ export function validateFormForPublish(
       id: "data-dictionary",
       jumpTo: "controls",
       label: "Data dictionary can be generated",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Data dictionary",
@@ -3162,7 +3168,8 @@ export function validateFormForPublish(
       id: "required-questions",
       jumpTo: "builder",
       label: "Required questions reviewed",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Question validation",
@@ -3172,7 +3179,8 @@ export function validateFormForPublish(
       id: "dont-know-policy",
       jumpTo: "controls",
       label: "Don&apos;t know/refused policy selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Logic rules",
@@ -3191,7 +3199,8 @@ export function validateFormForPublish(
       id: "entity-settings",
       jumpTo: "controls",
       label: "Beneficiary/entity settings defined",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Beneficiary identity",
@@ -3204,7 +3213,8 @@ export function validateFormForPublish(
       id: "respondent-identity",
       jumpTo: "controls",
       label: "Respondent identity rule selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Entity settings",
@@ -3214,8 +3224,8 @@ export function validateFormForPublish(
       id: "entity-mapping",
       jumpTo: "controls",
       label: "Beneficiary profile mapping reviewed",
-      required: needsEntityMapping,
-      warning: !needsEntityMapping,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Entity settings",
@@ -3236,7 +3246,8 @@ export function validateFormForPublish(
       id: "frequency",
       jumpTo: "controls",
       label: "Submission frequency rule selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Submission rules",
@@ -3262,7 +3273,8 @@ export function validateFormForPublish(
       id: "duplicate-rules",
       jumpTo: "controls",
       label: "Duplicate prevention configured",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Indicator mapping",
@@ -3304,7 +3316,8 @@ export function validateFormForPublish(
       id: "duration",
       jumpTo: "controls",
       label: "Interview duration rules configured",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Enumerator quality",
@@ -3399,7 +3412,8 @@ export function validateFormForPublish(
       id: "gps-threshold",
       jumpTo: "controls",
       label: "GPS accuracy threshold configured",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Media settings",
@@ -3431,7 +3445,8 @@ export function validateFormForPublish(
       id: "data-quality",
       jumpTo: "controls",
       label: "Data quality mode selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Data quality",
@@ -3441,7 +3456,8 @@ export function validateFormForPublish(
       id: "future-dates",
       jumpTo: "controls",
       label: "Future date prevention reviewed",
-      required: hasDateField,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Data quality",
@@ -3451,7 +3467,8 @@ export function validateFormForPublish(
       id: "age-validation",
       jumpTo: "controls",
       label: "Age validation reviewed",
-      required: hasAgeOrDobField,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Workflow",
@@ -3571,7 +3588,8 @@ export function validateFormForPublish(
       id: "retention",
       jumpTo: "controls",
       label: "Data retention rule selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Testing",
@@ -3581,7 +3599,8 @@ export function validateFormForPublish(
       id: "testing",
       jumpTo: "controls",
       label: "Testing requirement selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Tracking",
@@ -3680,7 +3699,8 @@ export function validateFormForPublish(
       id: "certification",
       jumpTo: "controls",
       label: "Form certification completed",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Risk classification",
@@ -3690,7 +3710,8 @@ export function validateFormForPublish(
       id: "risk",
       jumpTo: "controls",
       label: "Risk classification selected",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Versioning",
@@ -3702,7 +3723,8 @@ export function validateFormForPublish(
       id: "version",
       jumpTo: "controls",
       label: "Version information complete",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Governance",
@@ -3712,7 +3734,8 @@ export function validateFormForPublish(
       id: "governance",
       jumpTo: "controls",
       label: "Governance reviewed",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Governance",
@@ -3722,7 +3745,8 @@ export function validateFormForPublish(
       id: "source-of-truth",
       jumpTo: "controls",
       label: "Source-of-truth and data freeze rules configured",
-      required: true,
+      required: false,
+      warning: true,
     }),
     item({
       category: "Mapping settings",
@@ -4671,6 +4695,7 @@ export function FormCreationWorkspace({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [draftDirty, setDraftDirty] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -4850,6 +4875,7 @@ export function FormCreationWorkspace({
 
   function updateSetup(patch: Partial<FormSetupDraft>): void {
     setSetup((current) => ({ ...current, ...patch }));
+    if (draftForm) setDraftDirty(true);
   }
 
   function updateControlsDraft(patch: Partial<FormControlsDraft>): void {
@@ -4928,6 +4954,7 @@ export function FormCreationWorkspace({
         updatedAt: new Date().toISOString(),
       };
       setDraftForm(nextForm);
+      setDraftDirty(true);
       upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
       setPublishMessage(successMessage);
       setStage("builder");
@@ -5032,6 +5059,7 @@ export function FormCreationWorkspace({
         updatedAt: new Date().toISOString(),
       };
       setDraftForm(nextForm);
+      setDraftDirty(true);
       upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
       setPublishMessage("Question variable names were repaired and made unique.");
       setStage("builder");
@@ -5050,6 +5078,7 @@ export function FormCreationWorkspace({
         updatedAt: new Date().toISOString(),
       };
       setDraftForm(nextForm);
+      setDraftDirty(true);
       upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
       setPublishMessage("Weak question labels were cleaned up. Review the wording in Builder before publishing.");
       setStage("builder");
@@ -5070,6 +5099,7 @@ export function FormCreationWorkspace({
         updatedAt: new Date().toISOString(),
       };
       setDraftForm(nextForm);
+      setDraftDirty(true);
       upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
       setPublishMessage("Core identification, date, location, service, and consent questions were marked required where detected.");
       setStage("builder");
@@ -5090,6 +5120,7 @@ export function FormCreationWorkspace({
         updatedAt: new Date().toISOString(),
       };
       setDraftForm(nextForm);
+      setDraftDirty(true);
       upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
       setPublishMessage("Broken logic references were removed. Retest skip logic in Preview before publishing.");
       setStage("builder");
@@ -5396,6 +5427,109 @@ export function FormCreationWorkspace({
     setSelectedDuplicateFormId(existingForms[0]?.id ?? "");
   }, [existingForms, selectedDuplicateFormId]);
 
+  const persistDraftToWorkspace = useCallback(async (
+    formToSave: DynamicForm,
+    options: { silent?: boolean } = {},
+  ): Promise<DynamicForm | null> => {
+    const localDraft = workspaceFormFromDraft(formToSave, setup, selectedProjectId);
+    upsertLocalForm(localDraft);
+    if (!token || preview || !selectedProjectId) {
+      if (!options.silent) {
+        setPublishMessage(
+          projectLinked
+            ? "Draft saved in this browser. Sign in and save again to store it for the organization."
+            : "Draft saved in this browser. Select an existing project to store it in Draft Forms across devices.",
+        );
+      }
+      setDraftDirty(false);
+      return null;
+    }
+
+    if (!options.silent) setDraftSaving(true);
+    try {
+      const survey =
+        selectedSurvey ??
+        (await createSurvey(token, {
+          code: `FORM-${Date.now().toString(36).toUpperCase()}`,
+          description: "Auto-created survey context for a project-linked draft form.",
+          geographic_scope: selectedProject?.region ?? null,
+          project_id: selectedProjectId,
+          status: "active",
+          survey_type: "monitoring",
+          target_population: "Project participants",
+          title: "General Data Collection",
+        }));
+      const schema = toMobileSchema(formToSave) as Record<string, unknown>;
+      const saved = savedBackendFormId
+        ? await updateForm(token, savedBackendFormId, {
+            description:
+              setup.description || formToSave.sections[0]?.description || null,
+            name: formToSave.name,
+            publish: false,
+            schema,
+          })
+        : await createForm(token, {
+            description:
+              setup.description || formToSave.sections[0]?.description || null,
+            name: formToSave.name,
+            project_id: selectedProjectId,
+            publish: false,
+            schema,
+            slug: `${slugFromText(formToSave.name, "form")}-${Date.now().toString(36)}`,
+            survey_id: survey.id,
+          });
+      const savedDraft: DynamicForm = {
+        ...formToSave,
+        activeVersion: saved.status === "published" ? saved.current_version : 0,
+        id: saved.id,
+        status: "draft",
+        updatedAt: new Date().toISOString(),
+        version: saved.current_version,
+      };
+      setSavedBackendFormId(saved.id);
+      setDraftForm(savedDraft);
+      await updateFormControls(
+        token,
+        saved.id,
+        controlsDraftToApiControls(controlsDraft, savedDraft),
+      );
+      upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
+      setDraftDirty(false);
+      if (!options.silent) {
+        setPublishMessage("Draft saved to Draft Forms. You can log out and continue it later.");
+      }
+      return savedDraft;
+    } catch (error) {
+      if (!options.silent) {
+        setPublishMessage(
+          `Draft saved in this browser, but it was not saved to the organization workspace: ${messageFromUnknownError(error)}`,
+        );
+      }
+      return null;
+    } finally {
+      if (!options.silent) setDraftSaving(false);
+    }
+  }, [
+    controlsDraft,
+    preview,
+    projectLinked,
+    savedBackendFormId,
+    selectedProject,
+    selectedProjectId,
+    selectedSurvey,
+    setup,
+    token,
+    upsertLocalForm,
+  ]);
+
+  useEffect(() => {
+    if (!draftDirty || !draftForm || !token || preview || !selectedProjectId || publishing) return;
+    const timeout = window.setTimeout(() => {
+      void persistDraftToWorkspace(draftForm, { silent: true });
+    }, 2500);
+    return () => window.clearTimeout(timeout);
+  }, [draftDirty, draftForm, persistDraftToWorkspace, preview, publishing, selectedProjectId, token]);
+
   async function createDraftAndOpenBuilder(method = startMethod): Promise<void> {
     setImportMessage("");
     let nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
@@ -5467,79 +5601,17 @@ export function FormCreationWorkspace({
         selectedProjectId,
       ),
     );
+    setDraftDirty(true);
     setPublishedForm(null);
     setStage("builder");
+    if (token && !preview && selectedProjectId) {
+      await persistDraftToWorkspace(nextDraft, { silent: true });
+    }
   }
 
   async function saveDraftLocally(): Promise<void> {
     if (!draftForm) return;
-    const localDraft = workspaceFormFromDraft(draftForm, setup, selectedProjectId);
-    upsertLocalForm(localDraft);
-    if (!token || preview || !selectedProjectId) {
-      setPublishMessage(
-        projectLinked
-          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
-          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
-      );
-      return;
-    }
-    setDraftSaving(true);
-    try {
-      const survey =
-        selectedSurvey ??
-        (await createSurvey(token, {
-          code: `FORM-${Date.now().toString(36).toUpperCase()}`,
-          description: "Auto-created survey context for a project-linked draft form.",
-          geographic_scope: selectedProject?.region ?? null,
-          project_id: selectedProjectId,
-          status: "active",
-          survey_type: "monitoring",
-          target_population: "Project participants",
-          title: "General Data Collection",
-        }));
-      const schema = toMobileSchema(draftForm) as Record<string, unknown>;
-      const saved = savedBackendFormId
-        ? await updateForm(token, savedBackendFormId, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
-            publish: false,
-            schema,
-          })
-        : await createForm(token, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
-            project_id: selectedProjectId,
-            publish: false,
-            schema,
-            slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
-            survey_id: survey.id,
-          });
-      const savedDraft: DynamicForm = {
-        ...draftForm,
-        activeVersion: saved.status === "published" ? saved.current_version : 0,
-        id: saved.id,
-        status: "draft",
-        updatedAt: new Date().toISOString(),
-        version: saved.current_version,
-      };
-      setSavedBackendFormId(saved.id);
-      setDraftForm(savedDraft);
-      await updateFormControls(
-        token,
-        saved.id,
-        controlsDraftToApiControls(controlsDraft, savedDraft),
-      );
-      upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
-      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
-    } catch (error) {
-      setPublishMessage(
-        `Draft saved in this browser, but it was not saved to the organization workspace: ${messageFromUnknownError(error)}`,
-      );
-    } finally {
-      setDraftSaving(false);
-    }
+    await persistDraftToWorkspace(draftForm);
   }
 
   async function saveControlsDraft(): Promise<void> {
@@ -5758,6 +5830,7 @@ export function FormCreationWorkspace({
 
   function handleBuilderFormChange(nextForm: DynamicForm): void {
     setDraftForm(nextForm);
+    setDraftDirty(true);
     upsertLocalForm(
       workspaceFormFromDraft(
         nextForm,
@@ -5851,7 +5924,15 @@ export function FormCreationWorkspace({
               ) : null}
               <Badge tone={statusTone(status)}>{status}</Badge>
               <span className="text-xs text-muted-foreground">
-                Autosave: Saved
+                {draftSaving
+                  ? "Saving draft..."
+                  : draftDirty
+                    ? selectedProjectId
+                      ? "Autosave pending"
+                      : "Saved in browser only"
+                    : savedBackendFormId
+                      ? "Saved to Draft Forms"
+                      : "Saved in browser"}
               </span>
             </div>
             <div
