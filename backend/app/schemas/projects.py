@@ -50,6 +50,7 @@ def normalize_project_code_value(value: Any) -> str:
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     project_code: str = Field(min_length=2, max_length=120)
+    sector_id: str | None = Field(default=None, max_length=80)
     description: str | None = Field(default=None, max_length=4000)
     program_type: str | None = Field(default=None, max_length=120)
     category: str | None = Field(default=None, max_length=120)
@@ -69,6 +70,12 @@ class ProjectCreate(BaseModel):
     @classmethod
     def normalize_project_code(cls, value: Any) -> str:
         return normalize_project_code_value(value)
+
+    @field_validator("sector_id", mode="before")
+    @classmethod
+    def normalize_sector_id(cls, value: Any) -> str | None:
+        text = normalize_optional_text(value)
+        return text.lower().replace(" ", "-") if text else None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -94,6 +101,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     project_code: str | None = Field(default=None, min_length=2, max_length=120)
+    sector_id: str | None = Field(default=None, max_length=80)
     description: str | None = Field(default=None, max_length=4000)
     donor: str | None = Field(default=None, max_length=160)
     implementing_organization: str | None = Field(default=None, max_length=200)
@@ -116,6 +124,12 @@ class ProjectUpdate(BaseModel):
             return value
         text = normalize_optional_text(value)
         return normalize_project_code_value(text) if text else None
+
+    @field_validator("sector_id", mode="before")
+    @classmethod
+    def normalize_optional_sector_id(cls, value: Any) -> str | None:
+        text = normalize_optional_text(value)
+        return text.lower().replace(" ", "-") if text else None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -159,6 +173,8 @@ class ProjectListItemRead(BaseModel):
     id: UUID
     name: str
     project_code: str
+    sector_id: str | None = None
+    sector_name: str | None = None
     status: str
     donor: str | None = None
     country: str | None = None
@@ -223,3 +239,34 @@ class ProjectTemplateRead(BaseModel):
     indicators: int
     governance_controls: int
     status: str = "published"
+
+
+class ProjectSectorPackRead(BaseModel):
+    id: str
+    name: str
+    sector: str
+    description: str
+    terminology: dict[str, str] = Field(default_factory=dict)
+    entity_types: list[str] = Field(default_factory=list)
+    form_templates: list[str] = Field(default_factory=list)
+    indicator_templates: list[str] = Field(default_factory=list)
+    dashboard_widgets: list[str] = Field(default_factory=list)
+    report_templates: list[str] = Field(default_factory=list)
+    validation_rules: list[str] = Field(default_factory=list)
+    data_quality_rules: list[str] = Field(default_factory=list)
+    workflows: list[str] = Field(default_factory=list)
+    mobile_guidance: list[str] = Field(default_factory=list)
+    governance_defaults: dict[str, Any] = Field(default_factory=dict)
+    recommended_settings: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectSectorInstallRead(BaseModel):
+    project_id: UUID
+    sector_id: str | None = None
+    installed_forms: int = 0
+    installed_indicators: int = 0
+    installed_reports: int = 0
+    skipped_forms: int = 0
+    skipped_indicators: int = 0
+    skipped_reports: int = 0
+    message: str

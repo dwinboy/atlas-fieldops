@@ -105,6 +105,7 @@ class MobileProjectRead(MobileSchema):
     status: str = "Active"
     region: str | None = None
     country: str | None = None
+    sector: dict[str, Any] = Field(default_factory=dict)
 
 
 class MobileAssignmentRead(MobileSchema):

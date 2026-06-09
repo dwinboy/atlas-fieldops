@@ -34,6 +34,10 @@ import {
   createProject,
   getProjectDetail,
   getProjectsSummary,
+  installProjectSectorForms,
+  installProjectSectorIndicators,
+  installProjectSectorReports,
+  listProjectSectorPacks,
   listProjectTemplates,
   listProjects,
   updateProject,
@@ -42,6 +46,7 @@ import {
   type ProjectDetailRead,
   type ProjectListItemRead,
   type ProjectRelatedRecordRead,
+  type ProjectSectorPackRead,
   type ProjectSummaryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -87,6 +92,7 @@ const defaultProjectDraft: ProjectCreate = {
   program_type: "",
   project_code: "",
   region: "",
+  sector_id: "",
   settings_json: {
     automationRules: [],
     beneficiary: {
@@ -133,6 +139,111 @@ const defaultProjectDraft: ProjectCreate = {
   start_date: null,
   status: "draft",
 };
+
+const previewSectorPacks: ProjectSectorPackRead[] = [
+  {
+    dashboard_widgets: ["Farmer coverage", "Yield progress", "Input distribution", "Training completion"],
+    data_quality_rules: ["Duplicate farmer by phone or name + village", "Static GPS", "Yield outliers"],
+    description: "For farmer registration, extension visits, input distribution, yield monitoring, cooperatives, and seasonal agriculture programs.",
+    entity_types: ["Farmer", "Household", "Farm", "Cooperative", "Village"],
+    form_templates: ["Farmer Registration", "Baseline Farm Survey", "Input Distribution", "Seasonal Yield Monitoring", "Endline Survey"],
+    governance_defaults: { approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved", approvedDataOnly: true },
+    id: "agriculture",
+    indicator_templates: ["Farmers registered", "Farmers trained", "Improved seed adoption rate", "Average yield per hectare"],
+    mobile_guidance: ["Require GPS at farm or household", "Allow offline collection", "Prefill assigned farmers"],
+    name: "Agriculture and Farmer Programs",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "FRM-YYYY-000001",
+        duplicateFields: ["Phone", "National ID", "Household ID", "Name + Village", "GPS"],
+        primaryEntityType: "Farmer",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Household", "Farm", "Cooperative"],
+      },
+      forms: {
+        journey: "Farmer Registration → Baseline Farm Survey → Seasonal Monitoring → Endline Survey",
+        starterPack: "Install project starter pack",
+      },
+      indicators: {
+        dataSource: "Approved farmer registration, training, distribution, and yield monitoring forms",
+        disaggregation: ["Sex", "Age", "Village", "Crop", "Farm size"],
+        frequency: "Seasonal",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly extension report", "Seasonal yield report", "Input distribution report"],
+    sector: "Agriculture",
+    terminology: { field_visit: "Extension visit", primary_entity: "Farmer", secondary_entities: "Household, Farm, Cooperative", submission: "Farm record" },
+    validation_rules: ["Farm size cannot be negative", "Harvest date cannot be in the future", "Yield must match crop and season"],
+    workflows: ["Registration → Baseline → Monitoring → Endline", "Training attendance → Follow-up visit"],
+  },
+  {
+    dashboard_widgets: ["Referral follow-up", "Facility coverage", "Sensitive data quality", "Visit timeliness"],
+    data_quality_rules: ["Duplicate client by phone or ID", "Missing consent", "Invalid age/date"],
+    description: "For community health work, facility assessments, referrals, service follow-up, campaigns, and sensitive health data collection.",
+    entity_types: ["Patient", "Client", "Household", "Facility", "Health Worker"],
+    form_templates: ["Client Intake", "Facility Assessment", "Referral Follow-up", "Community Health Visit"],
+    governance_defaults: { approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved", approvedDataOnly: true },
+    id: "health",
+    indicator_templates: ["Clients reached", "Referral completion rate", "Facilities assessed", "Service uptake"],
+    mobile_guidance: ["Mask sensitive fields", "Require consent before submission", "Support offline visits"],
+    name: "Health and Community Systems",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "HLT-YYYY-000001",
+        duplicateFields: ["Phone", "National ID", "Name + Date of Birth", "Name + Village"],
+        primaryEntityType: "Beneficiary",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Household", "Facility", "Health Worker"],
+      },
+      forms: { journey: "Client Intake → Health Visit → Referral Follow-up", starterPack: "Install project starter pack" },
+      indicators: {
+        dataSource: "Approved intake, facility, referral, and visit forms",
+        disaggregation: ["Sex", "Age", "Location", "Disability status", "Service type"],
+        frequency: "Monthly",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly health outreach report", "Facility assessment report", "Referral tracking report"],
+    sector: "Health",
+    terminology: { field_visit: "Health visit", primary_entity: "Patient or Client", secondary_entities: "Household, Facility, Health Worker", submission: "Health record" },
+    validation_rules: ["Date of birth cannot be in the future", "Age must match date of birth", "Consent required for PII"],
+    workflows: ["Client Intake → Service Visit → Referral Follow-up", "Facility Assessment → Improvement Action → Verification"],
+  },
+  {
+    dashboard_widgets: ["School coverage", "Attendance trend", "Learning outcomes", "Teacher support"],
+    data_quality_rules: ["Duplicate school by code or name + district", "Attendance outliers", "Missing location"],
+    description: "For school profiles, attendance monitoring, teacher support, learning assessments, and education access programs.",
+    entity_types: ["School", "Student", "Teacher", "Classroom", "Household"],
+    form_templates: ["School Registration", "Attendance Monitoring", "Teacher Observation", "Learning Assessment"],
+    governance_defaults: { approvalWorkflow: "Submitted → Under Review → Approved", approvedDataOnly: true },
+    id: "education",
+    indicator_templates: ["Schools monitored", "Attendance rate", "Students assessed", "Learning outcome improvement"],
+    mobile_guidance: ["Prefill assigned schools", "Require GPS at school", "Work offline during rural visits"],
+    name: "Education and School Monitoring",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "SCH-YYYY-000001",
+        duplicateFields: ["Name + Village", "GPS"],
+        primaryEntityType: "School",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Student", "Teacher", "Classroom"],
+      },
+      forms: { journey: "School Registration → Baseline Assessment → Attendance Monitoring → Endline Assessment", starterPack: "Install project starter pack" },
+      indicators: {
+        dataSource: "Approved school, attendance, assessment, and teacher observation forms",
+        disaggregation: ["Sex", "Age", "Grade", "School", "District"],
+        frequency: "Monthly",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly school monitoring report", "Learning assessment report", "Attendance report"],
+    sector: "Education",
+    terminology: { field_visit: "School monitoring visit", primary_entity: "School or Student", secondary_entities: "Teacher, Classroom, Household", submission: "Education record" },
+    validation_rules: ["Attendance cannot exceed enrollment", "Assessment date cannot be in the future", "School code required"],
+    workflows: ["School Registration → Baseline Assessment → Attendance Monitoring → Endline Assessment"],
+  },
+];
 
 const countryOptions = [
   "Cameroon",
@@ -296,6 +407,7 @@ function normalizeProjectPayload(draft: ProjectCreate): ProjectCreate {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-|-$/g, ""),
     region: optionalText(draft.region),
+    sector_id: optionalText(draft.sector_id),
     settings_json: sanitizeProjectSettings(draft.settings_json),
     start_date: optionalText(draft.start_date),
     status: optionalText(draft.status)?.toLowerCase() ?? "draft",
@@ -369,6 +481,78 @@ function mergeProjectSettings(
   };
 }
 
+function applySectorPackToDraft(
+  draft: ProjectCreate,
+  pack: ProjectSectorPackRead,
+): ProjectCreate {
+  const currentSettings = sanitizeProjectSettings(draft.settings_json);
+  const recommendedSettings = sanitizeProjectSettings(pack.recommended_settings);
+  const nextSettings: Record<string, unknown> = { ...currentSettings };
+
+  for (const [section, sectionDefaults] of Object.entries(recommendedSettings)) {
+    const currentSection = sectionSettings(
+      { settings_json: nextSettings },
+      section,
+    );
+    if (
+      sectionDefaults &&
+      typeof sectionDefaults === "object" &&
+      !Array.isArray(sectionDefaults)
+    ) {
+      nextSettings[section] = {
+        ...currentSection,
+        ...(sectionDefaults as Record<string, unknown>),
+      };
+    }
+  }
+
+  const currentGovernance = sectionSettings(
+    { settings_json: nextSettings },
+    "governance",
+  );
+  nextSettings.governance = {
+    ...currentGovernance,
+    ...pack.governance_defaults,
+  };
+  nextSettings.sector = {
+    dashboardWidgets: pack.dashboard_widgets,
+    dataQualityRules: pack.data_quality_rules,
+    entityTypes: pack.entity_types,
+    formTemplates: pack.form_templates,
+    id: pack.id,
+    indicatorTemplates: pack.indicator_templates,
+    mobileGuidance: pack.mobile_guidance,
+    name: pack.name,
+    reportTemplates: pack.report_templates,
+    sector: pack.sector,
+    terminology: pack.terminology,
+    validationRules: pack.validation_rules,
+    workflows: pack.workflows,
+  };
+
+  return {
+    ...draft,
+    category: draft.category || pack.sector,
+    program_type: draft.program_type || pack.sector,
+    sector_id: pack.id,
+    settings_json: nextSettings,
+  };
+}
+
+function selectedSectorPack(
+  draft: Pick<ProjectCreate, "sector_id" | "settings_json">,
+  packs: ProjectSectorPackRead[],
+): ProjectSectorPackRead | null {
+  if (draft.sector_id) {
+    return packs.find((pack) => pack.id === draft.sector_id) ?? null;
+  }
+  const sector = sectionSettings(draft, "sector");
+  const sectorId = sector.id;
+  return typeof sectorId === "string"
+    ? packs.find((pack) => pack.id === sectorId) ?? null
+    : null;
+}
+
 function dateInputValue(value?: string | null): string {
   return value ? value.slice(0, 10) : "";
 }
@@ -398,6 +582,13 @@ function projectReadiness(draft: ProjectCreate): {
         draft.project_code || projectCodeFromName(draft.name)
           ? "passed"
           : "failed",
+      targetStep: 0,
+    },
+    {
+      label: "Sector pack is selected",
+      status: draft.sector_id || sectionSettings(draft, "sector").id
+        ? "passed"
+        : "warning",
       targetStep: 0,
     },
     {
@@ -536,6 +727,8 @@ function projectFromDraft(draft: ProjectCreate): ProjectListItemRead {
     progress_percent: 10,
     project_code: draft.project_code,
     region: draft.region || draft.country || null,
+    sector_id: draft.sector_id ?? null,
+    sector_name: settingText(draft, "sector", "name") || draft.category || null,
     start_date: draft.start_date ?? null,
     status: draft.status ?? "draft",
     total_submissions: 0,
@@ -632,6 +825,11 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     queryFn: () => listProjectTemplates(token ?? ""),
     enabled,
   });
+  const sectorPacksQuery = useQuery({
+    queryKey: ["projects", "sector-packs", token],
+    queryFn: () => listProjectSectorPacks(token ?? ""),
+    enabled,
+  });
   const detailQuery = useQuery({
     enabled: enabled && Boolean(selectedProjectId),
     queryKey: ["projects", "detail", token, selectedProjectId],
@@ -645,6 +843,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const summary: ProjectSummaryRead =
     preview ? (summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary) : (summaryQuery.data ?? computeProjectSummary(projects));
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
+  const sectorPacks = preview
+    ? previewSectorPacks
+    : (sectorPacksQuery.data ?? previewSectorPacks);
   const selectedProject = selectedProjectId
     ? (projects.find((project) => project.id === selectedProjectId) ?? null)
     : null;
@@ -728,6 +929,66 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     },
   });
 
+  const installSectorFormsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorForms(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Starter forms installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install forms",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
+  const installSectorIndicatorsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorIndicators(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Indicator templates installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install indicators",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
+  const installSectorReportsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorReports(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Report templates installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install reports",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
   function openProjectWizard(nextDraft: ProjectCreate = projectDraft): void {
     setProjectWizardError("");
     setEditingProjectId(null);
@@ -754,6 +1015,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       program_type: currentDetail.program_type ?? "",
       project_code: currentDetail.project_code,
       region: currentDetail.region ?? "",
+      sector_id: currentDetail.sector_id ?? "",
       settings_json: currentDetail.settings_json ?? defaultProjectDraft.settings_json,
       start_date: currentDetail.start_date ?? null,
       status: currentDetail.status,
@@ -835,6 +1097,12 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       render: (project) => (
         <Badge tone={statusTone(project.status)}>{project.status}</Badge>
       ),
+    },
+    {
+      key: "sector",
+      header: "Sector",
+      value: (project) => project.sector_name ?? project.sector_id ?? "",
+      render: (project) => project.sector_name ?? "Custom",
     },
     {
       key: "donor",
@@ -987,7 +1255,47 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       {selectedProjectId && detail ? (
         <ProjectDetailWorkspace
           detail={detail}
+          canManageProjects={canManageProjects}
+          installSectorFormsPending={installSectorFormsMutation.isPending}
+          installSectorIndicatorsPending={installSectorIndicatorsMutation.isPending}
+          installSectorReportsPending={installSectorReportsMutation.isPending}
           onClose={() => setSelectedProjectId(null)}
+          onInstallSectorForms={() => {
+            if (preview) {
+              pushToast({
+                title: "Starter forms preview",
+                description:
+                  "In production this installs editable draft forms from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorFormsMutation.mutate(detail.id);
+          }}
+          onInstallSectorIndicators={() => {
+            if (preview) {
+              pushToast({
+                title: "Indicator templates preview",
+                description:
+                  "In production this installs editable indicator templates from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorIndicatorsMutation.mutate(detail.id);
+          }}
+          onInstallSectorReports={() => {
+            if (preview) {
+              pushToast({
+                title: "Report templates preview",
+                description:
+                  "In production this installs editable report packages from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorReportsMutation.mutate(detail.id);
+          }}
           onOpenForms={() => {
             setActiveView("forms");
             router.push("/forms");
@@ -1095,6 +1403,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         }}
         onSubmit={submitProject}
         open={wizardOpen}
+        sectorPacks={sectorPacks}
         step={wizardStep}
         setStep={setWizardStep}
       />
@@ -1250,8 +1559,15 @@ function ProjectsDashboard({
 }
 
 function ProjectDetailWorkspace({
+  canManageProjects,
   detail,
+  installSectorFormsPending,
+  installSectorIndicatorsPending,
+  installSectorReportsPending,
   onClose,
+  onInstallSectorForms,
+  onInstallSectorIndicators,
+  onInstallSectorReports,
   onOpenForms,
   onOpenBeneficiaries,
   onOpenIndicators,
@@ -1263,8 +1579,15 @@ function ProjectDetailWorkspace({
   tab,
   token,
 }: {
+  canManageProjects: boolean;
   detail: ProjectDetailRead;
+  installSectorFormsPending: boolean;
+  installSectorIndicatorsPending: boolean;
+  installSectorReportsPending: boolean;
   onClose: () => void;
+  onInstallSectorForms: () => void;
+  onInstallSectorIndicators: () => void;
+  onInstallSectorReports: () => void;
   onOpenForms: () => void;
   onOpenBeneficiaries: () => void;
   onOpenIndicators: () => void;
@@ -1314,7 +1637,17 @@ function ProjectDetailWorkspace({
         ))}
       </div>
       {tab === "Overview" ? (
-        <ProjectOverview detail={detail} onSelectTab={setTab} />
+        <ProjectOverview
+          canManageProjects={canManageProjects}
+          detail={detail}
+          installSectorFormsPending={installSectorFormsPending}
+          installSectorIndicatorsPending={installSectorIndicatorsPending}
+          installSectorReportsPending={installSectorReportsPending}
+          onInstallSectorForms={onInstallSectorForms}
+          onInstallSectorIndicators={onInstallSectorIndicators}
+          onInstallSectorReports={onInstallSectorReports}
+          onSelectTab={setTab}
+        />
       ) : null}
       {tab === "Beneficiaries" ? (
         <ProjectBeneficiariesPanel
@@ -1396,14 +1729,61 @@ function ProjectDetailWorkspace({
 }
 
 function ProjectOverview({
+  canManageProjects,
   detail,
+  installSectorFormsPending,
+  installSectorIndicatorsPending,
+  installSectorReportsPending,
+  onInstallSectorForms,
+  onInstallSectorIndicators,
+  onInstallSectorReports,
   onSelectTab,
 }: {
+  canManageProjects: boolean;
   detail: ProjectDetailRead;
+  installSectorFormsPending: boolean;
+  installSectorIndicatorsPending: boolean;
+  installSectorReportsPending: boolean;
+  onInstallSectorForms: () => void;
+  onInstallSectorIndicators: () => void;
+  onInstallSectorReports: () => void;
   onSelectTab: (tab: ProjectTab) => void;
 }) {
   const health = projectHealthSummary(detail);
   const settingsDraft = { settings_json: detail.settings_json ?? {} };
+  const sectorSettings = sectionSettings(settingsDraft, "sector");
+  const sectorName =
+    (typeof sectorSettings.name === "string" && sectorSettings.name) ||
+    detail.sector_name ||
+    "Custom sector";
+  const sectorFormTemplates = Array.isArray(sectorSettings.formTemplates)
+    ? sectorSettings.formTemplates.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const sectorIndicatorTemplates = Array.isArray(sectorSettings.indicatorTemplates)
+    ? sectorSettings.indicatorTemplates.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const sectorInstalled =
+    typeof sectorSettings.installed === "object" &&
+    sectorSettings.installed !== null &&
+    !Array.isArray(sectorSettings.installed)
+      ? (sectorSettings.installed as Record<string, unknown>)
+      : {};
+  const sectorFormsInstalled =
+    typeof sectorInstalled.forms === "object" &&
+    sectorInstalled.forms !== null &&
+    "installed" in sectorInstalled.forms;
+  const sectorIndicatorsInstalled =
+    typeof sectorInstalled.indicators === "object" &&
+    sectorInstalled.indicators !== null &&
+    "installed" in sectorInstalled.indicators;
+  const sectorReportsInstalled =
+    typeof sectorInstalled.reports === "object" &&
+    sectorInstalled.reports !== null &&
+    "installed" in sectorInstalled.reports;
   const beneficiaryType =
     settingText(settingsDraft, "beneficiary", "primaryEntityType") ||
     "Not configured";
@@ -1456,6 +1836,88 @@ function ProjectOverview({
   ];
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border bg-background/50 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="support">Sector setup</Badge>
+              <Badge tone={detail.sector_id ? "success" : "warning"}>
+                {detail.sector_id ? sectorName : "No sector selected"}
+              </Badge>
+            </div>
+            <h3 className="mt-2 font-semibold">
+              Project setup checklist
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Use the sector pack to install editable forms and indicators,
+              then assign teams, publish forms, and sync field officers. The
+              project remains customizable for donor and local requirements.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorFormsPending}
+              onClick={onInstallSectorForms}
+              size="sm"
+              variant={sectorFormsInstalled || detail.active_forms ? "secondary" : "primary"}
+            >
+              {installSectorFormsPending
+                ? "Installing forms..."
+                : sectorFormsInstalled || detail.active_forms
+                  ? "Install/update forms"
+                  : "Install starter forms"}
+            </Button>
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorIndicatorsPending}
+              onClick={onInstallSectorIndicators}
+              size="sm"
+              variant={sectorIndicatorsInstalled || detail.indicator_count ? "secondary" : "primary"}
+            >
+              {installSectorIndicatorsPending
+                ? "Installing indicators..."
+                : sectorIndicatorsInstalled || detail.indicator_count
+                  ? "Install/update indicators"
+                : "Install indicators"}
+            </Button>
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorReportsPending}
+              onClick={onInstallSectorReports}
+              size="sm"
+              variant={sectorReportsInstalled || detail.reports.length ? "secondary" : "primary"}
+            >
+              {installSectorReportsPending
+                ? "Installing reports..."
+                : sectorReportsInstalled || detail.reports.length
+                  ? "Install/update reports"
+                  : "Install reports"}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
+          {[
+            ["Sector", detail.sector_id ? "Ready" : "Select pack", Boolean(detail.sector_id), "Overview"],
+            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms"],
+            ["Indicators", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Indicators"],
+            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Reports"],
+            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Teams"],
+            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Governance"],
+            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Assignments"],
+          ].map(([label, value, ready, target]) => (
+            <button
+              className="rounded-xl border bg-panel p-3 text-left transition hover:border-primary hover:bg-primary/5"
+              key={String(label)}
+              onClick={() => onSelectTab(target as ProjectTab)}
+              type="button"
+            >
+              <Badge tone={ready ? "success" : "warning"}>
+                {ready ? "Done" : "Next"}
+              </Badge>
+              <p className="mt-2 text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1 text-sm font-semibold">{value}</p>
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border bg-background/50 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1492,7 +1954,8 @@ function ProjectOverview({
               </button>
             ))}
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Signal label="Sector" value={sectorName} tone="success" />
             <Signal
               label="Primary entity"
               value={beneficiaryType}
@@ -1535,6 +1998,19 @@ function ProjectOverview({
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
+        <InfoPanel
+          title="Sector Pack"
+          lines={[
+            sectorName,
+            sectorFormTemplates.length
+              ? `${sectorFormTemplates.slice(0, 2).join(", ")} forms`
+              : "Custom form templates",
+            sectorIndicatorTemplates.length
+              ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} indicators`
+              : "Custom indicators",
+          ]}
+          onClick={() => onSelectTab("Forms")}
+        />
         <InfoPanel
           title="Beneficiary Journey"
           lines={[
@@ -1873,6 +2349,7 @@ function ProjectWizard({
   onOpenChange,
   onSubmit,
   open,
+  sectorPacks,
   setStep,
   step,
 }: {
@@ -1885,6 +2362,7 @@ function ProjectWizard({
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
+  sectorPacks: ProjectSectorPackRead[];
   setStep: (step: number) => void;
   step: number;
 }) {
@@ -1968,6 +2446,7 @@ function ProjectWizard({
             duplicateFields={duplicateFields}
             onChange={onChange}
             readiness={readiness}
+            sectorPacks={sectorPacks}
             setDuplicateField={setDuplicateField}
             setStep={setStep}
             step={step}
@@ -2028,6 +2507,7 @@ function ProjectWizardStepContent({
   duplicateFields,
   onChange,
   readiness,
+  sectorPacks,
   setDuplicateField,
   setStep,
   step,
@@ -2037,14 +2517,85 @@ function ProjectWizardStepContent({
   duplicateFields: string[];
   onChange: (draft: ProjectCreate) => void;
   readiness: ReturnType<typeof projectReadiness>;
+  sectorPacks: ProjectSectorPackRead[];
   setDuplicateField: (field: string, enabled: boolean) => void;
   setStep: (step: number) => void;
   step: number;
   updateSettings: (section: string, patch: ProjectSettingsSection) => void;
 }) {
+  const activeSectorPack = selectedSectorPack(draft, sectorPacks);
+
   if (step === 0) {
     return (
       <div className="grid gap-3">
+        <div className="rounded-2xl border bg-background/50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Sector pack</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                Choose the industry context for this project. Atlas keeps the
+                same M&E engine, but suggests the right entity types, forms,
+                indicators, validation rules, dashboards, reports, and mobile
+                guidance for the sector.
+              </p>
+            </div>
+            <Select
+              className="lg:w-72"
+              value={draft.sector_id ?? ""}
+              onChange={(event) => {
+                const pack = sectorPacks.find(
+                  (item) => item.id === event.target.value,
+                );
+                onChange(
+                  pack
+                    ? applySectorPackToDraft(draft, pack)
+                    : { ...draft, sector_id: event.target.value },
+                );
+              }}
+            >
+              <option value="">Select sector pack</option>
+              {sectorPacks.map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {pack.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {activeSectorPack ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Entities
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.entity_types.slice(0, 5).join(", ")}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Starter forms
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.form_templates.slice(0, 4).join(", ")}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  M&E controls
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.validation_rules.slice(0, 3).join(", ")}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
+              A sector pack is recommended. You can still create a custom
+              project, but sector packs make the setup faster and more
+              professional for real field work.
+            </div>
+          )}
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Input
             placeholder="Project name"

@@ -140,6 +140,21 @@ export type MobileProject = LocalRecord & {
   status: "Active" | "Draft" | "Closed" | "Archived";
   region: string | null;
   country: string | null;
+  sector?: {
+    id?: string;
+    name?: string;
+    sector?: string;
+    terminology?: Record<string, string>;
+    entityTypes?: string[];
+    formTemplates?: string[];
+    indicatorTemplates?: string[];
+    dashboardWidgets?: string[];
+    reportTemplates?: string[];
+    validationRules?: string[];
+    dataQualityRules?: string[];
+    workflows?: string[];
+    mobileGuidance?: string[];
+  };
 };
 
 export type MobileAssignmentStatus =

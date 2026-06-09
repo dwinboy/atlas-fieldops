@@ -1328,6 +1328,7 @@ export type ProgramRead = {
 export type ProjectCreate = {
   name: string;
   project_code: string;
+  sector_id?: string | null;
   description?: string | null;
   program_type?: string | null;
   category?: string | null;
@@ -1365,6 +1366,8 @@ export type ProjectListItemRead = {
   id: string;
   name: string;
   project_code: string;
+  sector_id?: string | null;
+  sector_name?: string | null;
   status: string;
   donor?: string | null;
   country?: string | null;
@@ -1429,6 +1432,37 @@ export type ProjectTemplateRead = {
   indicators: number;
   governance_controls: number;
   status: string;
+};
+
+export type ProjectSectorPackRead = {
+  id: string;
+  name: string;
+  sector: string;
+  description: string;
+  terminology: Record<string, string>;
+  entity_types: string[];
+  form_templates: string[];
+  indicator_templates: string[];
+  dashboard_widgets: string[];
+  report_templates: string[];
+  validation_rules: string[];
+  data_quality_rules: string[];
+  workflows: string[];
+  mobile_guidance: string[];
+  governance_defaults: Record<string, unknown>;
+  recommended_settings: Record<string, unknown>;
+};
+
+export type ProjectSectorInstallRead = {
+  project_id: string;
+  sector_id?: string | null;
+  installed_forms: number;
+  installed_indicators: number;
+  installed_reports: number;
+  skipped_forms: number;
+  skipped_indicators: number;
+  skipped_reports: number;
+  message: string;
 };
 
 export type IndicatorRead = {
@@ -3006,6 +3040,22 @@ export async function listProjectTemplates(token: string): Promise<ProjectTempla
   return request<ProjectTemplateRead[]>("/projects/templates", { token });
 }
 
+export async function listProjectSectorPacks(token: string): Promise<ProjectSectorPackRead[]> {
+  return request<ProjectSectorPackRead[]>("/projects/sector-packs", { token });
+}
+
+export async function installProjectSectorForms(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-forms`, { method: "POST", token });
+}
+
+export async function installProjectSectorIndicators(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-indicators`, { method: "POST", token });
+}
+
+export async function installProjectSectorReports(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-reports`, { method: "POST", token });
+}
+
 export async function listSurveys(token: string, projectId?: string): Promise<SurveyRead[]> {
   const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   return request<SurveyRead[]>(`/surveys${query}`, { token });
@@ -3299,6 +3349,9 @@ export const api = {
   getOperationalEcosystem,
   getOperationalActivityReport,
   governExport,
+  installProjectSectorForms,
+  installProjectSectorIndicators,
+  installProjectSectorReports,
   importFieldOfficers,
   importOrganizationUnits,
   importUsers,
@@ -3350,6 +3403,7 @@ export const api = {
   listPrograms,
   listProjectImportJobs,
   listProjects,
+  listProjectSectorPacks,
   listProjectTemplates,
   listSurveyTeam,
   listSurveys,

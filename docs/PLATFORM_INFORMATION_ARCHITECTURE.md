@@ -134,6 +134,37 @@ Startup feature ownership:
 | Task management | Complete only when lightweight tasks have owner, due date, status, priority, beneficiary/project context, and auditability. | Field Operations / operational tasks, not a new top-level module. |
 | Communication foundation | Complete only when notification templates, rules, channels, recipients, and integration-ready providers exist. | Administration `/administration/notification-settings` and `/administration/integrations`. |
 
+## Sector Pack Architecture
+
+Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, form templates, indicator templates, dashboard widgets, report templates, validation rules, data quality rules, governance defaults, and mobile guidance.
+
+Canonical owner:
+
+- Project setup owns sector selection and stores the selected sector in project settings.
+- Forms owns the form templates and question-level controls suggested by the sector.
+- Indicators owns indicator templates, baselines, targets, formulas, and disaggregation.
+- Reports owns sector-specific report packages and donor outputs.
+- Data Quality owns sector-specific duplicate, GPS, validation, outlier, and consistency rules.
+- Field Operations and Mobile own sector-specific field guidance, assignment behavior, offline expectations, and evidence capture.
+
+Project setup may install sector starter forms, indicator templates, and report packages. Installed assets must be editable drafts until the responsible M&E manager reviews project-specific wording, mappings, validation rules, approval workflow, and donor reporting requirements.
+
+Initial supported packs:
+
+- Agriculture and Farmer Programs
+- Health and Community Systems
+- Education and School Monitoring
+- WASH and Infrastructure Monitoring
+- Humanitarian Response and Protection
+- Custom Sector
+
+Rules:
+
+- Do not create separate top-level modules for each industry.
+- Sector packs must remain editable by M&E managers because donor requirements and project designs differ.
+- Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed indicators, beneficiary/entity linkage, data quality review, and audit history.
+- Custom sectors must use the same project, form, beneficiary, assignment, submission, indicator, report, governance, and mobile sync architecture.
+
 Implementation guidance:
 
 - Public startup pages explain and capture demand. Secure operational work stays in authenticated modules.

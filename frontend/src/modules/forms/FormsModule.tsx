@@ -923,6 +923,9 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             setBuilderFormId(null);
             setCreationOpen(true);
           }}
+          projectSectors={(projectsQuery.data ?? [])
+            .map((project) => project.sector_name)
+            .filter((sector): sector is string => Boolean(sector))}
           templates={templates}
         />
       ) : null}
@@ -2568,11 +2571,14 @@ function FormComparisonPanel({ form }: { form: FormListItem }) {
 
 function TemplatesSection({
   onOpenBuilder,
+  projectSectors,
   templates,
 }: {
   onOpenBuilder: () => void;
+  projectSectors: string[];
   templates: typeof previewTemplates;
 }) {
+  const uniqueSectors = Array.from(new Set(projectSectors)).slice(0, 6);
   return (
     <section className="space-y-4">
       <SectionHeader
@@ -2584,6 +2590,30 @@ function TemplatesSection({
         description="Reusable baseline, endline, monitoring, assessment, registration, case management, training, and feedback forms."
         title="Form Templates"
       />
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold">Sector-aware form design</p>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Project sector packs suggest the right entities, validation
+              rules, indicator mappings, data quality checks, and mobile
+              guidance. Installed sector starter forms appear as editable draft
+              forms before publishing.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {uniqueSectors.length ? (
+              uniqueSectors.map((sector) => (
+                <Badge key={sector} tone="support">
+                  {sector}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="warning">No project sector selected</Badge>
+            )}
+          </div>
+        </div>
+      </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
           <div

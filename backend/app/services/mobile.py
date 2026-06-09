@@ -929,7 +929,8 @@ class MobileService:
                 code=project.slug,
                 status="Active" if project.is_active else "Archived",
                 region=project.region,
-                country=None,
+                country=project.country,
+                sector=project.settings_json.get("sector", {}) if isinstance(project.settings_json, dict) else {},
             )
             for project in projects
         ]

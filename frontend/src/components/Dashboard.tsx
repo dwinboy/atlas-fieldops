@@ -33,6 +33,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
   getOperationsSummary,
+  listDataQualitySignals,
+  listFieldOfficers,
+  listFieldVisitRequests,
   listUsers,
   listForms,
   listSubmissions,
@@ -423,8 +426,27 @@ export function Dashboard({ token, principal }: DashboardProps) {
     queryFn: () => listUsers(token ?? ""),
     enabled: Boolean(token && !preview),
   });
+  const fieldOfficersQuery = useQuery({
+    queryKey: ["dashboard-field-officers", token],
+    queryFn: () => listFieldOfficers(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const visitRequestsQuery = useQuery({
+    queryKey: ["dashboard-visit-requests", token],
+    queryFn: () => listFieldVisitRequests(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const qualitySignalsQuery = useQuery({
+    queryKey: ["dashboard-quality-signals", token],
+    queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
+    enabled: Boolean(token && !preview),
+  });
   const dashboardForms = formsQuery.data ?? [];
   const dashboardSubmissions = submissionsQuery.data ?? [];
+  const dashboardUsers = usersQuery.data ?? [];
+  const dashboardFieldOfficers = fieldOfficersQuery.data ?? [];
+  const dashboardVisitRequests = visitRequestsQuery.data ?? [];
+  const dashboardQualitySignals = qualitySignalsQuery.data ?? [];
   const draftForms = dashboardForms.filter(
     (form) => form.is_active && form.status.toLowerCase() !== "published",
   );
@@ -441,7 +463,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const dashboardLoading =
     summaryQuery.isLoading ||
     formsQuery.isLoading ||
-    submissionsQuery.isLoading;
+    submissionsQuery.isLoading ||
+    fieldOfficersQuery.isLoading ||
+    visitRequestsQuery.isLoading ||
+    qualitySignalsQuery.isLoading;
   const summaryMetrics = summaryQuery.data
     ? [
         {
@@ -834,7 +859,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           ].filter(Boolean),
         ).size
       : 0);
-  const liveFieldOfficerUsers = (usersQuery.data ?? []).filter((user) =>
+  const liveFieldOfficerUsers = dashboardUsers.filter((user) =>
     ["field_officer", "collector", "enumerator"].includes((user.role_name ?? "").toLowerCase()),
   ).length;
   const fieldOfficerActivity = liveFieldOfficerUsers || (
@@ -905,6 +930,121 @@ export function Dashboard({ token, principal }: DashboardProps) {
     MapPinned,
     UsersRound,
     Target,
+  ];
+  const nowMs = Date.now();
+  const staleSyncThresholdMs = 48 * 60 * 60 * 1000;
+  const activeOfficerCount =
+    dashboardFieldOfficers.filter((officer) => officer.is_active).length ||
+    fieldOfficerActivity;
+  const recentlySeenOfficerCount = dashboardFieldOfficers.filter((officer) => {
+    const seenValue = officer.last_seen_at ?? officer.last_sync_at;
+    if (!seenValue) return false;
+    const seenMs = new Date(seenValue).getTime();
+    return Number.isFinite(seenMs) && nowMs - seenMs <= staleSyncThresholdMs;
+  }).length;
+  const staleSyncCount = dashboardFieldOfficers.filter((officer) => {
+    if (!officer.is_active) return false;
+    if (!officer.last_sync_at) return true;
+    const syncMs = new Date(officer.last_sync_at).getTime();
+    return !Number.isFinite(syncMs) || nowMs - syncMs > staleSyncThresholdMs;
+  }).length;
+  const roleProfileCount = dashboardUsers.reduce(
+    (total, user) => total + (user.operational_profiles?.length ?? 0),
+    0,
+  );
+  const pendingVisitRequests = dashboardVisitRequests.filter((request) =>
+    ["pending", "change_requested"].includes(request.status.toLowerCase()),
+  ).length;
+  const activeVisitRequests = dashboardVisitRequests.filter((request) =>
+    ["approved", "scheduled", "checked_in"].includes(request.status.toLowerCase()),
+  ).length;
+  const openQualitySignalCount =
+    dashboardQualitySignals.length || summaryQuery.data?.quality_flags || 0;
+  const pendingManagerActions =
+    approvalOverview.pending +
+    pendingVisitRequests +
+    openQualitySignalCount +
+    staleSyncCount;
+  const managerCommandCards: {
+    action: string;
+    detail: string;
+    icon: typeof Plus;
+    label: string;
+    result: string;
+    tone: "accent" | "danger" | "neutral" | "success" | "warning";
+    value: string;
+    view: WorkspaceView;
+  }[] = [
+    {
+      action: "Open field operations",
+      detail: `${activeOfficerCount.toLocaleString()} active officer(s), ${recentlySeenOfficerCount.toLocaleString()} seen or synced recently.`,
+      icon: UsersRound,
+      label: "Field officer activity",
+      result: "Opening Field Operations so managers can review officer status, assignments, devices, and latest field activity.",
+      tone: activeOfficerCount ? "accent" : "neutral",
+      value: activeOfficerCount.toLocaleString(),
+      view: "officers",
+    },
+    {
+      action: "Review role profiles",
+      detail: `${roleProfileCount.toLocaleString()} operational role profile(s) generated from users and stacked roles.`,
+      icon: UserRoundCheck,
+      label: "Role profiles",
+      result: "Opening Users & Teams so managers can review role profiles, responsibilities, scopes, and account controls.",
+      tone: roleProfileCount ? "success" : "neutral",
+      value: roleProfileCount.toLocaleString(),
+      view: "organizations",
+    },
+    {
+      action: "Check sync health",
+      detail: staleSyncCount ? `${staleSyncCount.toLocaleString()} active officer(s) have stale or missing sync.` : "No stale sync signal from active officers.",
+      icon: DatabaseZap,
+      label: "Sync health",
+      result: "Opening sync and connectivity tools so managers can inspect pending uploads, failed syncs, and device readiness.",
+      tone: staleSyncCount ? "warning" : "success",
+      value: staleSyncCount ? `${staleSyncCount} stale` : `${summaryQuery.data?.sync_health_percent ?? syncProgressPercent}%`,
+      view: "connectivity",
+    },
+    {
+      action: "Open approvals",
+      detail: `${approvalOverview.pending.toLocaleString()} submission(s) waiting for approval or review.`,
+      icon: ClipboardCheck,
+      label: "Pending approvals",
+      result: "Opening Submissions so reviewers can approve, return, reject, or archive records before they count.",
+      tone: approvalOverview.pending ? "warning" : "success",
+      value: approvalOverview.pending.toLocaleString(),
+      view: "submissions",
+    },
+    {
+      action: "Review visits",
+      detail: `${pendingVisitRequests.toLocaleString()} visit request(s) need supervisor action, ${activeVisitRequests.toLocaleString()} are approved or underway.`,
+      icon: MapPinned,
+      label: "Visit requests",
+      result: "Opening Field Operations so supervisors can approve visit requests and verify check-in evidence.",
+      tone: pendingVisitRequests ? "warning" : activeVisitRequests ? "accent" : "neutral",
+      value: pendingVisitRequests.toLocaleString(),
+      view: "officers",
+    },
+    {
+      action: "Resolve quality issues",
+      detail: `${openQualitySignalCount.toLocaleString()} open quality issue(s), flags, or reconciliation risks need attention.`,
+      icon: AlertTriangle,
+      label: "Data quality issues",
+      result: "Opening Data Quality so managers can resolve duplicates, GPS issues, missing data, outliers, and conflicts.",
+      tone: openQualitySignalCount ? "danger" : "success",
+      value: openQualitySignalCount.toLocaleString(),
+      view: "dataQuality",
+    },
+    {
+      action: "Open coverage maps",
+      detail: `${coverageOverview.coveragePercent}% GPS coverage across ${coverageOverview.totalSubmissions.toLocaleString()} submitted record(s).`,
+      icon: Gauge,
+      label: "Project coverage",
+      result: "Opening Mapping so managers can inspect project coverage, beneficiary locations, GPS evidence, and collection gaps.",
+      tone: coverageOverview.coveragePercent >= 80 ? "success" : coverageOverview.coveragePercent ? "warning" : "neutral",
+      value: `${coverageOverview.coveragePercent}%`,
+      view: "map",
+    },
   ];
   const possibleAlerts: Array<DashboardAlert | null> = [
     formPerformanceTotals.pendingReview
@@ -1121,6 +1261,103 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 );
               })}
         </div>
+
+        <section
+          aria-labelledby="manager-command-center-title"
+          className="mt-5 rounded-2xl border bg-panel p-4 shadow-line"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="support">Manager command center</Badge>
+                <Badge tone={pendingManagerActions ? "warning" : "success"}>
+                  {pendingManagerActions
+                    ? `${pendingManagerActions.toLocaleString()} action(s)`
+                    : "No urgent action"}
+                </Badge>
+              </div>
+              <h2
+                className="mt-2 text-lg font-semibold tracking-tight"
+                id="manager-command-center-title"
+              >
+                What needs management attention today
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                One place to review field officer activity, role profiles, sync
+                health, approvals, visit requests, data quality issues, and
+                project coverage before work slows down in the field.
+              </p>
+            </div>
+            <Button
+              onClick={() =>
+                openView({
+                  label: pendingManagerActions
+                    ? "Open urgent management work"
+                    : "Open field operations",
+                  result: pendingManagerActions
+                    ? "Opening Submissions first because pending approvals, visit requests, quality flags, or stale sync items need management action."
+                    : "Opening Field Operations so managers can inspect field officers, assignments, devices, visits, and readiness.",
+                  view: pendingManagerActions ? "submissions" : "officers",
+                })
+              }
+              type="button"
+              variant={pendingManagerActions ? "primary" : "secondary"}
+            >
+              {pendingManagerActions ? "Open priority work" : "Open operations"}
+              <ArrowUpRight aria-hidden="true" />
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+            {dashboardLoading
+              ? Array.from({ length: 7 }).map((_, index) => (
+                  <div
+                    className="rounded-xl border bg-background/80 p-3"
+                    key={index}
+                  >
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="mt-3 h-7 w-1/2" />
+                    <Skeleton className="mt-3 h-12 w-full" />
+                  </div>
+                ))
+              : managerCommandCards.map((card) => {
+                  const Icon = card.icon;
+
+                  return (
+                    <button
+                      className="group flex min-h-[156px] flex-col justify-between rounded-xl border bg-background/80 p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                      key={card.label}
+                      onClick={() =>
+                        openView({
+                          label: card.label,
+                          result: card.result,
+                          view: card.view,
+                        })
+                      }
+                      type="button"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <Badge tone={card.tone}>{card.label}</Badge>
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                            <Icon aria-hidden="true" size={16} />
+                          </span>
+                        </div>
+                        <p className="mt-3 text-2xl font-semibold tracking-tight">
+                          {card.value}
+                        </p>
+                        <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                          {card.detail}
+                        </p>
+                      </div>
+                      <span className="mt-3 text-xs font-medium text-primary">
+                        {card.action}
+                      </span>
+                    </button>
+                  );
+                })}
+          </div>
+        </section>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px_360px]">
           <section className="rounded-2xl border bg-panel p-4 shadow-line">

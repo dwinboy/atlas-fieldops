@@ -374,6 +374,7 @@ const helpTopics: HelpTopic[] = [
       "Use Projects when launching a new program, adding a donor-funded activity, defining implementation geography, or preparing a reporting structure.",
     beforeYouStart: [
       "Prepare the project name, code, program type, donor, implementing organization, owner, and location scope.",
+      "Choose the sector pack that best matches the work, such as agriculture, health, education, WASH, humanitarian response, or custom.",
       "Confirm which forms, indicators, teams, assignments, submissions, reports, and governance controls will belong to the project.",
       "Agree on who can create, activate, suspend, close, archive, or only view the project.",
     ],
@@ -381,7 +382,9 @@ const helpTopics: HelpTopic[] = [
       "Open Projects under Operations.",
       "Review the Projects Dashboard to see total projects, active projects, draft projects, closed projects, beneficiaries, submissions, active forms, field officers, completion, indicator achievement, health, risks, and deadlines.",
       "Use All Projects to search, filter, export, and open project workspaces.",
-      "Create a project with the guided wizard: basic information, locations, project structure, indicators, forms, governance, and review.",
+      "Create a project with the guided wizard. Start with the sector pack, then confirm basic information, locations, project structure, indicators, forms, governance, and review.",
+      "Review the sector recommendations for entity types, starter forms, indicators, validation rules, dashboard widgets, reports, mobile guidance, and data quality rules. Keep the recommendations that fit the project and edit anything that needs local adaptation.",
+      "After the project is created, use the project setup checklist to install sector starter forms, indicator templates, and report templates as editable drafts.",
       "Open a project workspace and use the mandatory tabs: Overview, Forms, Indicators, Locations, Teams, Assignments, Submissions, Reports, Settings, and Audit Trail.",
       "Use each tab as a contextual view. Open Forms, Indicators, Users & Teams, Submissions, Reports, Mapping, or Governance when detailed work belongs in those modules.",
       "Review project health before activation or management meetings. Health combines progress, assignments, indicators, submissions, and data quality risk.",
@@ -389,6 +392,7 @@ const helpTopics: HelpTopic[] = [
     dataLanguage: [
       "Project name",
       "Project code",
+      "Sector pack",
       "Donor",
       "Geography",
       "Project health",
@@ -398,6 +402,8 @@ const helpTopics: HelpTopic[] = [
     ],
     goodPractice: [
       "Use clear project names that match donor or internal reporting language.",
+      "Use sector packs to start faster, but let the M&E manager adjust indicators, forms, validation rules, and governance to the actual project design.",
+      "Review installed sector forms before publishing them to field officers; starter forms are a professional base, not a replacement for project-specific review.",
       "Keep geography consistent across projects, beneficiaries, maps, and reports.",
       "Use project templates for repeated baseline, monitoring, evaluation, registration, or multi-country structures.",
       "Review project setup before publishing forms or assigning field teams.",
