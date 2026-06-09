@@ -32,7 +32,7 @@ from app.schemas.mobile import (
     MobileSyncUploadRead,
     MobileVersionPolicyRead,
 )
-from app.schemas.operations import FieldVisitCheckIn, FieldVisitCheckOut, FieldVisitRequestCreate, FieldVisitRequestRead
+from app.schemas.operations import FieldVisitCheckIn, FieldVisitCheckOut, FieldVisitRequestCreate, FieldVisitRequestRead, MediaEvidenceCreate, MediaEvidenceRead
 from app.services.collection import CollectionNotFoundError
 from app.services.mobile import MobileService
 from app.services.operations import OperationsService
@@ -297,6 +297,37 @@ async def mobile_activity_check_out(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FieldVisitRequestRead:
     return await mobile_visit_check_out(visit_request_id, payload, principal, session)
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/attachments",
+    response_model=MediaEvidenceRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload mobile evidence metadata for an operational activity",
+)
+async def mobile_activity_attachment_upload(
+    visit_request_id: UUID,
+    payload: MediaEvidenceCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MediaEvidenceRead:
+    try:
+        result = await OperationsService(session).create_activity_media_evidence(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            activity_id=visit_request_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.get("/sync", response_model=MobileSyncPackageRead, summary="Get mobile sync package")

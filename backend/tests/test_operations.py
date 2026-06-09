@@ -33,10 +33,12 @@ def test_me_permissions_are_role_scoped() -> None:
 
 
 def test_beneficiary_requires_complete_location_pair() -> None:
+    project_id = uuid4()
     with_location = BeneficiaryCreate(
         beneficiary_uid="HH-001",
         beneficiary_type="household",
         display_name="Amina household",
+        project_id=project_id,
         latitude=5.4,
         longitude=10.1,
     )
@@ -47,6 +49,7 @@ def test_beneficiary_requires_complete_location_pair() -> None:
         "beneficiary_uid": "HH-002",
         "beneficiary_type": "household",
         "display_name": "Incomplete location",
+        "project_id": project_id,
         "latitude": 5.4,
     }
     try:
@@ -148,6 +151,7 @@ def test_import_and_export_payloads_enforce_supported_formats() -> None:
         source_name="farmer-list.xlsx",
         source_format="xlsx",
         total_rows=120,
+        target_project_id=uuid4(),
     )
     preview = ImportPreviewRequest(dataset_type="beneficiaries", columns=["Farmer Name"], sample_rows=[])
     export = ExportJobCreate(dataset_type="geospatial", export_format="geojson")

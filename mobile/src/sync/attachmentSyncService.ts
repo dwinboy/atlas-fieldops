@@ -6,7 +6,9 @@ import { SyncQueueService } from "@/sync/syncQueue";
 import { createLocalId, nowIso } from "@/utils/ids";
 
 export type AttachmentInput = {
-  submissionLocalId: string;
+  submissionLocalId?: string;
+  activityLocalId?: string;
+  contextType?: MobileAttachment["contextType"];
   type: MobileAttachment["type"];
   localUri: string;
   mimeType: string;
@@ -32,7 +34,9 @@ export class AttachmentSyncService {
       id: createLocalId("attachment"),
       localId: createLocalId("attachment-local"),
       serverId: null,
-      submissionLocalId: input.submissionLocalId,
+      submissionLocalId: input.submissionLocalId ?? "",
+      activityLocalId: input.activityLocalId ?? null,
+      contextType: input.contextType ?? "Submission",
       type: input.type,
       localUri: input.localUri,
       remoteUrl: null,
@@ -61,10 +65,20 @@ export class AttachmentSyncService {
     for (const attachment of this.database.attachments.list().filter((item) => item.syncStatus === "Queued" || item.syncStatus === "Failed")) {
       try {
         this.database.attachments.upsert({ ...attachment, syncStatus: "Syncing", uploadProgress: 25, updatedAt: nowIso() });
-        const result = await this.apis.attachments.uploadAttachment(token, { ...attachment, uploadProgress: 50 });
+        const syncingAttachment = { ...attachment, uploadProgress: 50 };
+        const activity =
+          attachment.contextType === "OperationalActivity" && attachment.activityLocalId
+            ? this.database.visitRequests.get(attachment.activityLocalId)
+            : null;
+        if (attachment.contextType === "OperationalActivity" && !activity?.serverId) {
+          throw new Error("Sync the operational activity before uploading its evidence.");
+        }
+        const result = activity?.serverId
+          ? await this.apis.attachments.uploadActivityAttachment(token, activity.serverId, syncingAttachment, activity)
+          : await this.apis.attachments.uploadAttachment(token, syncingAttachment);
         this.database.attachments.upsert({
           ...attachment,
-          serverId: result.status === "accepted" ? attachment.id : attachment.serverId,
+          serverId: result.status === "accepted" ? (result.serverId ?? attachment.id) : attachment.serverId,
           syncStatus: "Synced",
           uploadProgress: 100,
           errorMessage: null,

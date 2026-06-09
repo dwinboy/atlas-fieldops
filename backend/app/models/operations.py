@@ -682,6 +682,7 @@ class MediaEvidence(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     submission_id: Mapped[UUID | None] = mapped_column(ForeignKey("submissions.id"), index=True, nullable=True)
     beneficiary_id: Mapped[UUID | None] = mapped_column(ForeignKey("beneficiaries.id"), index=True, nullable=True)
     form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    activity_id: Mapped[UUID | None] = mapped_column(ForeignKey("field_visit_requests.id"), index=True, nullable=True)
     uploaded_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     media_type: Mapped[str] = mapped_column(String(40), index=True)
     file_name: Mapped[str] = mapped_column(String(240), nullable=False)

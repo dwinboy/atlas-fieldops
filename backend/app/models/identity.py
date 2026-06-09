@@ -1,10 +1,14 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
+
+JsonType = JSON().with_variant(JSONB, "postgresql")
 
 
 class Organization(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -86,6 +90,28 @@ class UserRoleAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, B
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     role: Mapped[Role] = relationship()
+
+
+class UserOperationalProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "user_operational_profiles"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", "profile_type"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    profile_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    primary_project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    primary_geography_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    primary_team_id: Mapped[UUID | None] = mapped_column(ForeignKey("organizational_units.id"), nullable=True, index=True)
+    responsibilities_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    supervisor: Mapped[User | None] = relationship(foreign_keys=[supervisor_user_id])
 
 
 class WorkflowPermission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):

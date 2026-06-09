@@ -100,6 +100,25 @@ class UserRoleAssignmentUpdate(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class UserOperationalProfileRead(BaseModel):
+    id: UUID
+    profile_type: str
+    display_name: str
+    status: str
+    supervisor_user_id: UUID | None = None
+    primary_project_id: str | None = None
+    primary_geography_id: str | None = None
+    primary_team_id: UUID | None = None
+    responsibilities_json: list[str] = Field(default_factory=list)
+    metrics_json: dict[str, object] = Field(default_factory=dict)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    last_activity_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class UserRead(BaseModel):
     id: UUID
     email: EmailStr
@@ -113,6 +132,7 @@ class UserRead(BaseModel):
     login_slug: str | None = None
     temporary_password: str | None = None
     role_assignments: list[UserRoleAssignmentRead] = Field(default_factory=list)
+    operational_profiles: list[UserOperationalProfileRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

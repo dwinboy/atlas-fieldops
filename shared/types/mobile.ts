@@ -484,6 +484,8 @@ export type MobileSubmission = LocalRecord & {
 export type MobileAttachment = LocalRecord & {
   id: string;
   submissionLocalId: string;
+  activityLocalId?: string | null;
+  contextType?: "Submission" | "OperationalActivity";
   type: "Photo" | "Audio" | "Video" | "Signature" | "FileUpload";
   localUri: string;
   remoteUrl: string | null;
@@ -614,6 +616,7 @@ export type MobileSyncLog = LocalRecord & {
 export type MobileActionAccepted = {
   status: "accepted";
   message: string;
+  serverId?: string | null;
 };
 
 export type MobileSupervisorSummary = {

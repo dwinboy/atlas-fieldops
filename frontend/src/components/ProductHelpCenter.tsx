@@ -258,7 +258,7 @@ const helpTopics: HelpTopic[] = [
     view: "organizations",
     icon: UsersRound,
     whenToUse:
-      "Use Users & Teams when creating accounts, importing many users, assigning roles, organizing teams, checking organization structure, testing access, or reviewing identity activity.",
+      "Use Users & Teams when creating accounts, importing many users, assigning stacked roles, reviewing operational role profiles, organizing teams, checking organization structure, testing access, or reviewing identity activity.",
     beforeYouStart: [
       "Confirm the user belongs to the correct organization before creating or editing their account.",
       "Choose the least powerful role that still lets the person complete their work.",
@@ -267,7 +267,8 @@ const helpTopics: HelpTopic[] = [
     steps: [
       "Open Users & Teams under People.",
       "Review Overview first to check total users, active users, roles, teams, access alerts, active sessions, and permission readiness.",
-      "Use Users to create one user, import many users from CSV, activate or deactivate access, assign roles, and reset temporary passwords.",
+      "Use Users to create one user, import many users from CSV, activate or deactivate access, assign roles, review generated operational profiles, and reset temporary passwords.",
+      "Open a user's Profile action to review role-specific responsibilities, access scope, team and supervisor context, workload signals, quality controls, governance checks, and mobile readiness.",
       "Use Roles to review permission sets and create custom roles from the approved permission catalog.",
       "Use Teams to create operational teams, assign team leads, and organize field officers, supervisors, data quality officers, and analysts.",
       "Use Organizations to review the tenant organization hierarchy such as head office, regional office, and district office.",
@@ -277,6 +278,7 @@ const helpTopics: HelpTopic[] = [
     dataLanguage: [
       "User",
       "Role",
+      "Operational profile",
       "Permission",
       "Team",
       "Organization unit",
@@ -286,6 +288,7 @@ const helpTopics: HelpTopic[] = [
     goodPractice: [
       "Keep user accounts active only while people are working for the organization.",
       "Assign supervisors by team and location so they only see the records they should review.",
+      "Use stacked roles when one person has more than one job, then review their operational profiles to confirm each responsibility is understandable.",
       "Test access after changing sensitive roles or permissions.",
       "Use CSV import when onboarding many field officers or supervisors.",
     ],

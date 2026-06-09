@@ -247,6 +247,13 @@ class FieldVisitRequestReview(BaseModel):
         return self
 
 
+class FieldVisitOutcomeReview(BaseModel):
+    action: Literal["verify", "accept_with_exception", "flag", "request_correction"]
+    comment: str = Field(min_length=2, max_length=3000)
+    supervisor_instructions: str | None = Field(default=None, max_length=3000)
+    quality_score: int | None = Field(default=None, ge=0, le=100)
+
+
 class FieldVisitCheckIn(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -925,6 +932,7 @@ class MediaEvidenceCreate(BaseModel):
     submission_id: UUID | None = None
     beneficiary_id: UUID | None = None
     form_id: UUID | None = None
+    activity_id: UUID | None = None
     checksum: str | None = Field(default=None, max_length=160)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -945,6 +953,7 @@ class MediaEvidenceRead(BaseModel):
     submission_id: UUID | None
     beneficiary_id: UUID | None
     form_id: UUID | None
+    activity_id: UUID | None
     media_type: str
     file_name: str
     storage_url: str
@@ -959,6 +968,39 @@ class MediaEvidenceRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class OperationalActivityReportRead(BaseModel):
+    report_type: Literal[
+        "monthly_operations",
+        "field_officer_movement",
+        "incident_report",
+        "supervisor_approval",
+        "gps_exception",
+    ]
+    title: str
+    period_start: date | None
+    period_end: date | None
+    generated_at: datetime
+    total_activities: int
+    pending: int
+    approved: int
+    completed: int
+    rejected: int
+    flagged: int
+    gps_verified: int
+    organization_scope: int
+    project_scope: int
+    incident_count: int
+    attachment_count: int
+    approval_rate: float
+    completion_rate: float
+    gps_exception_rate: float
+    by_activity_type: dict[str, int]
+    by_officer_id: dict[str, int]
+    by_scope: dict[str, int]
+    recommendations: list[str]
+    rows: list[dict[str, object]]
 
 
 class BulkEditRequest(BaseModel):

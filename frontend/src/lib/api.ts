@@ -441,6 +441,24 @@ export type UserRead = {
   login_slug?: string | null;
   temporary_password?: string | null;
   role_assignments?: UserRoleAssignmentRead[];
+  operational_profiles?: UserOperationalProfileRead[];
+};
+
+export type UserOperationalProfileRead = {
+  id: string;
+  profile_type: string;
+  display_name: string;
+  status: string;
+  supervisor_user_id?: string | null;
+  primary_project_id?: string | null;
+  primary_geography_id?: string | null;
+  primary_team_id?: string | null;
+  responsibilities_json: string[];
+  metrics_json: Record<string, unknown>;
+  metadata_json: Record<string, unknown>;
+  last_activity_at?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type UserRoleAssignmentRead = {
@@ -1082,6 +1100,13 @@ export type FieldVisitRequestReview = {
   supervisor_instructions?: string | null;
 };
 
+export type FieldVisitOutcomeReview = {
+  action: "verify" | "accept_with_exception" | "flag" | "request_correction";
+  comment: string;
+  supervisor_instructions?: string | null;
+  quality_score?: number | null;
+};
+
 export type SubmissionRead = {
   id: string;
   client_submission_id: string;
@@ -1713,6 +1738,7 @@ export type MediaEvidenceCreate = {
   submission_id?: string | null;
   beneficiary_id?: string | null;
   form_id?: string | null;
+  activity_id?: string | null;
   checksum?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -1725,6 +1751,7 @@ export type MediaEvidenceRead = {
   submission_id: string | null;
   beneficiary_id: string | null;
   form_id: string | null;
+  activity_id: string | null;
   media_type: string;
   file_name: string;
   storage_url: string;
@@ -1737,6 +1764,40 @@ export type MediaEvidenceRead = {
   captured_at: string | null;
   metadata_json: Record<string, unknown>;
   created_at: string;
+};
+
+export type OperationalActivityReportType =
+  | "monthly_operations"
+  | "field_officer_movement"
+  | "incident_report"
+  | "supervisor_approval"
+  | "gps_exception";
+
+export type OperationalActivityReportRead = {
+  report_type: OperationalActivityReportType;
+  title: string;
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+  total_activities: number;
+  pending: number;
+  approved: number;
+  completed: number;
+  rejected: number;
+  flagged: number;
+  gps_verified: number;
+  organization_scope: number;
+  project_scope: number;
+  incident_count: number;
+  attachment_count: number;
+  approval_rate: number;
+  completion_rate: number;
+  gps_exception_rate: number;
+  by_activity_type: Record<string, number>;
+  by_officer_id: Record<string, number>;
+  by_scope: Record<string, number>;
+  recommendations: string[];
+  rows: Array<Record<string, unknown>>;
 };
 
 export type DataFormCreate = {
@@ -2770,12 +2831,40 @@ export async function listFieldVisitRequests(token: string, status?: string): Pr
   return request<FieldVisitRequestRead[]>(`/operations/operational-activities${query}`, { token });
 }
 
+export async function getOperationalActivityReport(
+  token: string,
+  reportType: OperationalActivityReportType,
+  periodStart?: string | null,
+  periodEnd?: string | null,
+): Promise<OperationalActivityReportRead> {
+  const params = new URLSearchParams();
+  if (periodStart) params.set("period_start", periodStart);
+  if (periodEnd) params.set("period_end", periodEnd);
+  const query = params.toString();
+  return request<OperationalActivityReportRead>(
+    `/operations/operational-activities/reports/${reportType}${query ? `?${query}` : ""}`,
+    { token },
+  );
+}
+
 export async function reviewFieldVisitRequest(
   token: string,
   visitRequestId: string,
   payload: FieldVisitRequestReview,
 ): Promise<FieldVisitRequestRead> {
   return request<FieldVisitRequestRead>(`/operations/operational-activities/${visitRequestId}/review`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function reviewOperationalActivityOutcome(
+  token: string,
+  visitRequestId: string,
+  payload: FieldVisitOutcomeReview,
+): Promise<FieldVisitRequestRead> {
+  return request<FieldVisitRequestRead>(`/operations/operational-activities/${visitRequestId}/outcome-review`, {
     method: "POST",
     token,
     bodyJson: payload,
@@ -3073,6 +3162,22 @@ export async function createMediaEvidence(token: string, payload: MediaEvidenceC
   return request<MediaEvidenceRead>("/operations/data/media-evidence", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listActivityMediaEvidence(token: string, activityId: string): Promise<MediaEvidenceRead[]> {
+  return request<MediaEvidenceRead[]>(`/operations/operational-activities/${activityId}/media-evidence`, { token });
+}
+
+export async function createActivityMediaEvidence(
+  token: string,
+  activityId: string,
+  payload: MediaEvidenceCreate,
+): Promise<MediaEvidenceRead> {
+  return request<MediaEvidenceRead>(`/operations/operational-activities/${activityId}/media-evidence`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function listForms(token: string): Promise<DataFormRead[]> {
   return request<DataFormRead[]>("/forms", { token });
 }
@@ -3157,6 +3262,7 @@ export const api = {
   createExportJob,
   createProject,
   createRole,
+  createActivityMediaEvidence,
   createMediaEvidence,
   createPublicCollectionLink,
   createOperationalZone,
@@ -3191,6 +3297,7 @@ export const api = {
   getUsersTeamsSummary,
   getOrganizationContext,
   getOperationalEcosystem,
+  getOperationalActivityReport,
   governExport,
   importFieldOfficers,
   importOrganizationUnits,
@@ -3217,6 +3324,7 @@ export const api = {
   listDataVersions,
   listExportLogs,
   listMediaEvidence,
+  listActivityMediaEvidence,
   listPublicCollectionLinks,
   listFieldOfficers,
   listFieldVisitRequests,
@@ -3270,6 +3378,7 @@ export const api = {
   routeData,
   reviewAccessRequest,
   reviewFieldVisitRequest,
+  reviewOperationalActivityOutcome,
   simulateAccess,
   updateAdministrationLocation,
   updateAdministrationNotificationRule,

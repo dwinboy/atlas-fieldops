@@ -161,6 +161,13 @@ export class SyncEngine {
             priority: visit.priority,
             plannedActivities: visit.plannedActivities,
           });
+          for (const attachment of this.database.attachments.list().filter((candidate) => candidate.activityLocalId === visit.localId)) {
+            this.database.attachments.upsert({
+              ...attachment,
+              activityLocalId: savedVisit.localId,
+              updatedAt: nowIso(),
+            });
+          }
           this.database.visitRequests.remove(visit.localId);
           this.database.visitRequests.upsert(savedVisit);
         }

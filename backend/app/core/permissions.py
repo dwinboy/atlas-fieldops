@@ -63,6 +63,14 @@ class Permission(StrEnum):
     WORKFLOW_APPROVE_DISTRICT = "workflows.approve.district"
     WORKFLOW_APPROVE_REGIONAL = "workflows.approve.regional"
     WORKFLOW_APPROVE_NATIONAL = "workflows.approve.national"
+    OPERATIONS_ACTIVITIES_VIEW = "operations.activities.view"
+    OPERATIONS_ACTIVITIES_MANAGE = "operations.activities.manage"
+    OPERATIONS_ACTIVITIES_APPROVE = "operations.activities.approve"
+    OPERATIONS_ACTIVITIES_REVIEW_OUTCOME = "operations.activities.review_outcome"
+    OPERATIONS_EVIDENCE_VIEW = "operations.evidence.view"
+    OPERATIONS_EVIDENCE_ATTACH = "operations.evidence.attach"
+    OPERATIONS_REPORTS_VIEW = "operations.reports.view"
+    OPERATIONS_REPORTS_EXPORT = "operations.reports.export"
 
 
 PERMISSION_ALIASES: dict[str, Permission] = {
@@ -100,6 +108,14 @@ PERMISSION_ALIASES: dict[str, Permission] = {
     "data:import": Permission.DATA_IMPORT,
     "data:export": Permission.DATA_EXPORT,
     "data:bulk_edit": Permission.DATA_BULK_EDIT,
+    "operations:activities:view": Permission.OPERATIONS_ACTIVITIES_VIEW,
+    "operations:activities:manage": Permission.OPERATIONS_ACTIVITIES_MANAGE,
+    "operations:activities:approve": Permission.OPERATIONS_ACTIVITIES_APPROVE,
+    "operations:activities:review_outcome": Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+    "operations:evidence:view": Permission.OPERATIONS_EVIDENCE_VIEW,
+    "operations:evidence:attach": Permission.OPERATIONS_EVIDENCE_ATTACH,
+    "operations:reports:view": Permission.OPERATIONS_REPORTS_VIEW,
+    "operations:reports:export": Permission.OPERATIONS_REPORTS_EXPORT,
 }
 
 
@@ -271,6 +287,12 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.DATA_EXPORT,
             Permission.GPS_VIEW,
             Permission.WORKFLOW_APPROVE_REGIONAL,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_REGIONAL, WorkflowAction.REQUEST_CORRECTION, WorkflowAction.EXPORT),
         OPERATIONS_MENU - {"enterprise"},
@@ -303,6 +325,11 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.ANALYTICS_VIEW,
             Permission.GPS_VIEW,
             Permission.WORKFLOW_APPROVE_DISTRICT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_DISTRICT, WorkflowAction.REQUEST_CORRECTION),
         frozenset({"dashboard", "programs", "beneficiaries", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
@@ -325,6 +352,8 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.CASE_READ,
             Permission.SYNC_MOBILE,
             Permission.GPS_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_EVIDENCE_ATTACH,
         ),
         _w(WorkflowAction.SUBMIT),
         frozenset({"dashboard", "surveys", "forms", "beneficiaries", "cases", "connectivity"}),
@@ -359,6 +388,10 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.DATA_BULK_EDIT,
             Permission.ANALYTICS_EXPORT,
             Permission.REPORT_EXPORT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION, WorkflowAction.EXPORT),
         frozenset({"dashboard", "data", "surveys", "beneficiaries", "submissions", "map", "analytics", "connectivity"}),
@@ -385,6 +418,12 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.REPORT_EXPORT,
             Permission.ANALYTICS_EXPORT,
             Permission.DATA_EXPORT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_MANAGE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.EXPORT),
         frozenset({"dashboard", "data", "programs", "surveys", "beneficiaries", "indicators", "submissions", "map", "analytics", "organizations", "connectivity"}),
@@ -410,6 +449,11 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.OFFICER_READ,
             Permission.SUBMISSION_REVIEW,
             Permission.CASE_MANAGE,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION),
         frozenset({"dashboard", "programs", "surveys", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),

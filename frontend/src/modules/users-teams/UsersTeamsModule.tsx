@@ -17,6 +17,7 @@ import {
   UserCog,
   UsersRound,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -53,11 +54,15 @@ import {
   type CurrentPrincipal,
   type RoleCreate,
   type RoleRead,
+  type SessionLogRead,
   type TeamRead,
   type UserCreate,
+  type UserOperationalProfileRead,
   type UserRead,
   type UserRoleAssignmentRead,
+  type UsersTeamsActivityLogRead,
   type UsersTeamsSummaryRead,
+  type WorkforceProfileRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -112,6 +117,7 @@ type RoleAssignmentDraft = {
   team_id: string;
   user: UserRead | null;
 };
+type RoleProfileTab = "overview" | "responsibilities" | "scope" | "team" | "workload" | "quality" | "governance" | "mobile";
 
 const defaultUserDraft: UserCreate = {
   email: "",
@@ -156,6 +162,17 @@ const fallbackAssignableRoles: [string, string][] = [
   ["donor_viewer", "Donor / Viewer"],
 ];
 
+const roleProfileTabs: { id: RoleProfileTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "responsibilities", label: "Responsibilities" },
+  { id: "scope", label: "Access Scope" },
+  { id: "team", label: "Team & Supervisor" },
+  { id: "workload", label: "Workload" },
+  { id: "quality", label: "Data Quality" },
+  { id: "governance", label: "Governance" },
+  { id: "mobile", label: "Mobile Readiness" },
+];
+
 const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
 const defaultAccessEditDraft: AccessEditDraft = {
   geography_id: "",
@@ -198,9 +215,116 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
+const roleProfileFallbacks: Record<string, { displayName: string; group: string; responsibilities: string[] }> = {
+  organization_owner: {
+    displayName: "Organization Owner Profile",
+    group: "Organization Leadership",
+    responsibilities: ["Own tenant setup and governance", "Approve senior access changes", "Monitor organization risk"],
+  },
+  owner: {
+    displayName: "Organization Owner Profile",
+    group: "Organization Leadership",
+    responsibilities: ["Own tenant setup and governance", "Approve senior access changes", "Monitor organization risk"],
+  },
+  system_admin: {
+    displayName: "System Administration Profile",
+    group: "Administration",
+    responsibilities: ["Manage accounts and access", "Support password and device controls", "Maintain platform configuration"],
+  },
+  regional_manager: {
+    displayName: "Regional Manager Profile",
+    group: "Field Management",
+    responsibilities: ["Manage regional teams", "Review regional progress", "Resolve escalated field issues"],
+  },
+  district_supervisor: {
+    displayName: "Supervisor Profile",
+    group: "Field Management",
+    responsibilities: ["Supervise field officers", "Review field activity", "Resolve sync and data quality issues"],
+  },
+  field_officer: {
+    displayName: "Field Officer Profile",
+    group: "Field Collection",
+    responsibilities: ["Collect assigned forms", "Sync mobile submissions", "Report field exceptions"],
+  },
+  me_manager: {
+    displayName: "M&E Manager Profile",
+    group: "Monitoring & Evaluation",
+    responsibilities: ["Manage indicators and form quality", "Review approval workflows", "Protect reporting-ready data"],
+  },
+  project_manager: {
+    displayName: "Project Manager Profile",
+    group: "Project Delivery",
+    responsibilities: ["Manage project delivery", "Track assignments and beneficiaries", "Coordinate field operations"],
+  },
+  data_manager: {
+    displayName: "Data Manager Profile",
+    group: "Data Management",
+    responsibilities: ["Manage imports and cleaning", "Resolve duplicates", "Control exports and official datasets"],
+  },
+  data_analyst: {
+    displayName: "Data Analyst Profile",
+    group: "Analytics",
+    responsibilities: ["Analyze approved data", "Prepare dashboards", "Support donor and indicator summaries"],
+  },
+  finance_officer: {
+    displayName: "Finance Officer Profile",
+    group: "Finance",
+    responsibilities: ["Review financial evidence", "Track budget-linked operations", "Support donor compliance"],
+  },
+  compliance_auditor: {
+    displayName: "Compliance Auditor Profile",
+    group: "Governance",
+    responsibilities: ["Inspect audit trails", "Review sensitive actions", "Flag compliance risks"],
+  },
+  donor_viewer: {
+    displayName: "Donor Viewer Profile",
+    group: "External Viewer",
+    responsibilities: ["View approved progress", "Review donor-ready reports", "Monitor read-only project performance"],
+  },
+};
+
+function profilesForUser(user: UserRead | null): UserOperationalProfileRead[] {
+  if (!user) return [];
+  if (user.operational_profiles?.length) return user.operational_profiles;
+  const roleNames = new Set<string>();
+  if (user.role_name) roleNames.add(user.role_name);
+  for (const assignment of user.role_assignments ?? []) {
+    roleNames.add(assignment.role_name);
+  }
+  return [...roleNames].map((roleName) => {
+    const fallback = roleProfileFallbacks[roleName] ?? {
+      displayName: `${normalizeRoleLabel(roleName)} Profile`,
+      group: "Custom",
+      responsibilities: ["Use assigned permissions inside the approved scope", "Complete assigned work with audit-ready activity"],
+    };
+    const assignment = user.role_assignments?.find((item) => item.role_name === roleName);
+    return {
+      id: `derived-${user.id}-${roleName}`,
+      created_at: "",
+      display_name: fallback.displayName,
+      last_activity_at: null,
+      metadata_json: {
+        architecture_group: fallback.group,
+        scope_type: assignment?.scope_type ?? user.scope_type ?? "organization",
+      },
+      metrics_json: {},
+      primary_geography_id: assignment?.geography_id ?? user.geography_id ?? null,
+      primary_project_id: assignment?.project_id ?? user.project_id ?? null,
+      primary_team_id: assignment?.team_id ?? null,
+      profile_type: roleName,
+      responsibilities_json: fallback.responsibilities,
+      status: user.is_active && (assignment?.is_active ?? true) ? "active" : "inactive",
+      supervisor_user_id: null,
+      updated_at: "",
+    };
+  });
+}
+
 export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [activeSection, setActiveSection] = useState<UsersTeamsSection>("dashboard");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [selectedRoleProfileUserId, setSelectedRoleProfileUserId] = useState<string | null>(null);
+  const [selectedRoleProfileType, setSelectedRoleProfileType] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState(defaultUserDraft);
   const [teamDraft, setTeamDraft] = useState(defaultTeamDraft);
   const [roleDraft, setRoleDraft] = useState(defaultRoleDraft);
@@ -212,6 +336,8 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+  const router = useRouter();
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageUsers = hasAnyPermission(principal, ["users.create", "users.manage"]);
@@ -273,6 +399,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   );
 
   const defaultAssignableRole = roleOptions.find(([value]) => value === defaultUserDraft.role_name)?.[0] ?? roleOptions[0]?.[0] ?? defaultUserDraft.role_name;
+  const selectedRoleProfileUser = selectedRoleProfileUserId ? users.find((user) => user.id === selectedRoleProfileUserId) ?? null : null;
+  const selectedRoleProfileProfiles = profilesForUser(selectedRoleProfileUser);
+  const selectedRoleProfile = selectedRoleProfileProfiles.find((profile) => profile.profile_type === selectedRoleProfileType) ?? selectedRoleProfileProfiles[0] ?? null;
+
+  useEffect(() => {
+    const path = pathname.replace(/\/+$/, "");
+    const match = path.match(/^\/users-teams\/role-profiles\/([^/]+)$/);
+    if (!match) return;
+    setActiveSection("users");
+    setSelectedRoleProfileUserId(decodeURIComponent(match[1]));
+  }, [pathname]);
 
   useEffect(() => {
     if (modalMode !== "user" || !roleOptions.length) return;
@@ -280,6 +417,24 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       setUserDraft((current) => ({ ...current, role_name: roleOptions[0]?.[0] ?? defaultUserDraft.role_name }));
     }
   }, [modalMode, roleOptions, userDraft.role_name]);
+
+  useEffect(() => {
+    if (!selectedRoleProfileUser || selectedRoleProfileType) return;
+    setSelectedRoleProfileType(profilesForUser(selectedRoleProfileUser)[0]?.profile_type ?? null);
+  }, [selectedRoleProfileType, selectedRoleProfileUser]);
+
+  function openRoleProfile(user: UserRead, profileType?: string | null): void {
+    setActiveSection("users");
+    setSelectedRoleProfileUserId(user.id);
+    setSelectedRoleProfileType(profileType ?? profilesForUser(user)[0]?.profile_type ?? user.role_name ?? null);
+    router.push(`/users-teams/role-profiles/${user.id}`);
+  }
+
+  function closeRoleProfile(): void {
+    setSelectedRoleProfileUserId(null);
+    setSelectedRoleProfileType(null);
+    router.push("/users-teams");
+  }
 
   const invalidateUsersTeams = async () => {
     await queryClient.invalidateQueries({ queryKey: ["users-teams"] });
@@ -529,6 +684,24 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       render: (user) => <Badge tone="accent">{normalizeRoleLabel(user.role_name)}</Badge>,
     },
     {
+      key: "profiles",
+      header: "Profiles",
+      value: (user) => profilesForUser(user).map((profile) => profile.display_name).join(" "),
+      render: (user) => {
+        const roleProfiles = profilesForUser(user);
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {roleProfiles.slice(0, 2).map((profile) => (
+              <Badge key={profile.id} tone={profile.status === "active" ? "success" : "neutral"}>
+                {profile.display_name.replace(" Profile", "")}
+              </Badge>
+            ))}
+            {roleProfiles.length > 2 ? <Badge tone="neutral">+{roleProfiles.length - 2}</Badge> : null}
+          </div>
+        );
+      },
+    },
+    {
       key: "assignment",
       header: "Assignment",
       value: (user) => profileForUser(profiles, user.id)?.job_title ?? user.scope_type ?? "",
@@ -560,6 +733,10 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       align: "right",
       render: (user) => (
         <div className="flex justify-end gap-2">
+          <Button onClick={() => openRoleProfile(user)} size="sm" variant="secondary">
+            <UserCog aria-hidden="true" />
+            Profile
+          </Button>
           <Button disabled={preview || !canManageUsers || resetPasswordMutation.isPending} onClick={() => resetPasswordMutation.mutate(user.id)} size="sm" variant="secondary">
             <RotateCcw aria-hidden="true" />
             Reset
@@ -678,7 +855,25 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         </div>
       </div>
 
-      {activeSection === "dashboard" ? (
+      {selectedRoleProfileUser ? (
+        <RoleSpecificProfileWorkspace
+          activityLogs={activityLogs}
+          canManage={canManageUsers}
+          onClose={closeRoleProfile}
+          onOpenAccess={() => openEditUserAccess(selectedRoleProfileUser)}
+          onOpenRoles={() => openRoleAssignments(selectedRoleProfileUser)}
+          onSelectProfile={setSelectedRoleProfileType}
+          profile={selectedRoleProfile}
+          profiles={selectedRoleProfileProfiles}
+          projects={projects}
+          sessions={sessions}
+          teams={teams}
+          user={selectedRoleProfileUser}
+          workforceProfile={profileForUser(profiles, selectedRoleProfileUser.id)}
+        />
+      ) : null}
+
+      {!selectedRoleProfileUser && activeSection === "dashboard" ? (
         <DashboardSection
           activeSessions={sessions.length}
           organizationName={organizationQuery.data?.name ?? principal?.organization_name ?? "Organization workspace"}
@@ -691,7 +886,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         />
       ) : null}
 
-      {activeSection === "users" ? (
+      {!selectedRoleProfileUser && activeSection === "users" ? (
         <section className="space-y-4">
           <SectionHeader
             action={
@@ -713,7 +908,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         </section>
       ) : null}
 
-      {activeSection === "roles" ? (
+      {!selectedRoleProfileUser && activeSection === "roles" ? (
         <section className="space-y-4">
           <SectionHeader
             action={
@@ -731,7 +926,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         </section>
       ) : null}
 
-      {activeSection === "teams" ? (
+      {!selectedRoleProfileUser && activeSection === "teams" ? (
         <section className="space-y-4">
           <SectionHeader
             action={
@@ -747,15 +942,15 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         </section>
       ) : null}
 
-      {activeSection === "organizations" ? (
+      {!selectedRoleProfileUser && activeSection === "organizations" ? (
         <OrganizationsSection organizationName={organizationQuery.data?.name ?? principal?.organization_name ?? "Organization workspace"} units={units} summary={summary} />
       ) : null}
 
-      {activeSection === "permissions" ? (
+      {!selectedRoleProfileUser && activeSection === "permissions" ? (
         <PermissionsSection catalogGroups={permissionGroups} roles={roles} users={users} onOpenAccessTest={() => setModalMode("access-test")} />
       ) : null}
 
-      {activeSection === "activity-logs" ? (
+      {!selectedRoleProfileUser && activeSection === "activity-logs" ? (
         <section className="space-y-4">
           <SectionHeader
             action={
@@ -857,6 +1052,320 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         result={preview ? { allowed: true, decision: "allow", matched_roles: ["regional_manager"], matched_scope: "region", reasons: ["Preview mode uses sample access evaluation."] } : accessResult}
         users={users}
       />
+    </section>
+  );
+}
+
+function roleProfileGuidance(profileType?: string | null): {
+  focus: string;
+  priorityActions: string[];
+  qualityControls: string[];
+  governanceControls: string[];
+  mobileReadiness: string[];
+} {
+  const type = profileType ?? "custom";
+  if (type === "district_supervisor" || type === "regional_manager") {
+    return {
+      focus: "Supervision, team coverage, visit approval, field movement verification, sync risk, and returned submission follow-up.",
+      priorityActions: ["Assign field officers to clear locations and projects", "Review visit requests before field movement", "Check late syncs and returned submissions daily", "Escalate GPS or duplicate concerns to Data Quality"],
+      qualityControls: ["Monitor submissions completed too quickly", "Review static GPS and outside-area warnings", "Check repeated answers across field officers", "Return unclear records with specific correction notes"],
+      governanceControls: ["Keep supervisor scope limited to assigned teams or locations", "Log reassignment and correction decisions", "Review account/device status before field deployment"],
+      mobileReadiness: ["Confirm team devices are active", "Require sync before and after field visits", "Verify assigned forms and beneficiaries are downloaded"],
+    };
+  }
+  if (type === "me_manager") {
+    return {
+      focus: "M&E design, indicator linkage, approval rules, data quality, reporting readiness, and donor evidence.",
+      priorityActions: ["Approve form readiness before publishing", "Review pending submissions before they count", "Check indicator mappings and disaggregation", "Use reconciliation queues before reporting"],
+      qualityControls: ["Review missing values, outliers, duplicate beneficiaries, and invalid GPS", "Confirm baseline and monitoring frequency rules", "Check completeness score by project and form"],
+      governanceControls: ["Only approved data should update indicators and beneficiaries", "Require change requests for locked approved data", "Audit exports and report freezes"],
+      mobileReadiness: ["Confirm mobile forms are compatible before assignment", "Ensure reference data and prefill rules are included in bootstrap"],
+    };
+  }
+  if (type === "project_manager") {
+    return {
+      focus: "Project delivery, beneficiary coverage, assignments, field officer progress, deadlines, and operational blockers.",
+      priorityActions: ["Review project health and assignment progress", "Ensure forms are attached to active projects", "Track beneficiaries reached versus targets", "Resolve overdue assignments with supervisors"],
+      qualityControls: ["Check coverage gaps by location and team", "Monitor rejected or returned project submissions", "Review beneficiary profile conflicts before decisions"],
+      governanceControls: ["Keep project access scoped to the project", "Use approval workflow before reports and dashboards count records", "Document major project setup changes"],
+      mobileReadiness: ["Confirm field officers see only project-approved forms", "Check assignment targets and deadlines before field launch"],
+    };
+  }
+  if (type === "data_manager") {
+    return {
+      focus: "Submission review, import quality, data cleaning, duplicate resolution, safe edits, exports, and official data protection.",
+      priorityActions: ["Review pending submissions and import issues", "Resolve duplicates and unlinked records", "Approve profile update proposals where allowed", "Prepare governed exports only from approved data"],
+      qualityControls: ["Run missing data, duplicate, outlier, GPS, and consistency checks", "Keep import and field-submitted data traceable", "Review every edit reason before saving official data"],
+      governanceControls: ["Lock approved data and use change history", "Log exports with filters and purpose", "Use retention and archiving rules for sensitive data"],
+      mobileReadiness: ["Confirm failed sync records are retryable", "Check attachment upload failures and queue health"],
+    };
+  }
+  return {
+    focus: "Operational responsibility, correct access scope, clear team ownership, audit-ready activity, and safe platform use.",
+    priorityActions: ["Review role and scope before assigning work", "Confirm team or project ownership", "Test access for sensitive permissions", "Keep account status current"],
+    qualityControls: ["Use the least powerful role needed", "Review data quality alerts related to this role", "Escalate unclear responsibility boundaries"],
+    governanceControls: ["Record role changes and reasons", "Avoid broad organization scope unless needed", "Review audit activity after sensitive changes"],
+    mobileReadiness: ["Mobile access is only needed for field collection roles", "Confirm device and offline settings when the role uses the mobile app"],
+  };
+}
+
+function RoleProfileSignal({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-1 text-sm font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function RoleSpecificProfileWorkspace({
+  activityLogs,
+  canManage,
+  onClose,
+  onOpenAccess,
+  onOpenRoles,
+  onSelectProfile,
+  profile,
+  profiles,
+  projects,
+  sessions,
+  teams,
+  user,
+  workforceProfile,
+}: {
+  activityLogs: UsersTeamsActivityLogRead[];
+  canManage: boolean;
+  onClose: () => void;
+  onOpenAccess: () => void;
+  onOpenRoles: () => void;
+  onSelectProfile: (profileType: string | null) => void;
+  profile: UserOperationalProfileRead | null;
+  profiles: UserOperationalProfileRead[];
+  projects: { id: string; name: string; project_code: string }[];
+  sessions: SessionLogRead[];
+  teams: TeamRead[];
+  user: UserRead;
+  workforceProfile?: WorkforceProfileRead;
+}) {
+  const [tab, setTab] = useState<RoleProfileTab>("overview");
+  const guidance = roleProfileGuidance(profile?.profile_type ?? user.role_name);
+  const activeAssignments = (user.role_assignments ?? []).filter((assignment) => assignment.is_active);
+  const currentAssignment = profile
+    ? activeAssignments.find((assignment) => assignment.role_name === profile.profile_type)
+    : activeAssignments[0];
+  const project = projects.find((item) => item.id === (profile?.primary_project_id ?? currentAssignment?.project_id ?? user.project_id));
+  const team = teams.find((item) => item.id === (profile?.primary_team_id ?? currentAssignment?.team_id ?? workforceProfile?.team_id));
+  const supervisor = workforceProfile?.supervisor_user_id ? "Assigned in workforce profile" : "Not assigned";
+  const userSessions = sessions.filter((session) => session.user_id === user.id);
+  const userActivity = activityLogs.filter((log) => log.user_id === user.id || log.user_label === user.full_name);
+  const profileOptions = profiles.length ? profiles : profilesForUser(user);
+  const metricEntries = Object.entries(profile?.metrics_json ?? {});
+
+  const assignmentRows = (user.role_assignments ?? []).map((assignment) => ({
+    id: assignment.id,
+    role: assignment.role_label || normalizeRoleLabel(assignment.role_name),
+    scope: assignment.scope_type.replace("_", " "),
+    project: projects.find((item) => item.id === assignment.project_id)?.name ?? assignment.project_id ?? "Not restricted",
+    geography: assignment.geography_id ?? "Not restricted",
+    status: assignment.is_active ? "Active" : "Inactive",
+  }));
+
+  const assignmentColumns: TableColumn<(typeof assignmentRows)[number]>[] = [
+    { key: "role", header: "Role", value: (row) => row.role, render: (row) => <span className="font-medium">{row.role}</span> },
+    { key: "scope", header: "Scope", value: (row) => row.scope, render: (row) => row.scope },
+    { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
+    { key: "geography", header: "Location", value: (row) => row.geography, render: (row) => row.geography },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+  ];
+
+  const activityColumns: TableColumn<UsersTeamsActivityLogRead>[] = [
+    { key: "action", header: "Action", value: (row) => row.action, render: (row) => <span className="font-medium">{row.action.replaceAll(".", " ")}</span> },
+    { key: "resource", header: "Resource", value: (row) => row.resource_type, render: (row) => row.resource_type },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "date", header: "Date", value: (row) => row.created_at, render: (row) => formatDateTime(row.created_at) },
+  ];
+
+  return (
+    <section className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              {initials(user.full_name)}
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-semibold">{user.full_name}</h2>
+                <Badge tone={user.is_active ? "success" : "danger"}>{user.is_active ? "Active account" : "Inactive account"}</Badge>
+                {profile ? <Badge tone="admin">{profile.display_name}</Badge> : null}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
+              <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{guidance.focus}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!canManage} onClick={onOpenRoles} variant="secondary">
+              <ShieldCheck aria-hidden="true" />
+              Manage roles
+            </Button>
+            <Button disabled={!canManage} onClick={onOpenAccess} variant="secondary">
+              <KeyRound aria-hidden="true" />
+              Primary access
+            </Button>
+            <Button onClick={onClose} variant="ghost">Close profile</Button>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {profileOptions.map((item) => (
+            <button
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                profile?.profile_type === item.profile_type ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
+              )}
+              key={item.id}
+              onClick={() => onSelectProfile(item.profile_type)}
+              type="button"
+            >
+              {item.display_name.replace(" Profile", "")}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar">
+          {roleProfileTabs.map((item) => (
+            <button
+              className={cn(
+                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                tab === item.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+              )}
+              key={item.id}
+              onClick={() => setTab(item.id)}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "overview" ? (
+        <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <RoleProfileSignal label="Operational role" value={profile?.display_name ?? normalizeRoleLabel(user.role_name)} />
+            <RoleProfileSignal label="Architecture group" value={String(profile?.metadata_json?.architecture_group ?? "Operational")} />
+            <RoleProfileSignal label="Access scope" value={(currentAssignment?.scope_type ?? user.scope_type ?? "organization").replace("_", " ")} />
+            <RoleProfileSignal label="Project" value={project?.name ?? profile?.primary_project_id ?? user.project_id ?? "Not restricted"} />
+            <RoleProfileSignal label="Team" value={team?.name ?? teamName(teams, workforceProfile?.team_id)} />
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+              <h3 className="text-sm font-semibold">Priority actions</h3>
+              <div className="mt-3 space-y-2">
+                {guidance.priorityActions.map((item) => (
+                  <div className="flex gap-2 rounded-lg border bg-background p-2.5 text-sm" key={item}>
+                    <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+              <h3 className="text-sm font-semibold">Profile metrics</h3>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {(metricEntries.length ? metricEntries : [["Assignments", activeAssignments.length], ["Recent activity", userActivity.length], ["Active sessions", userSessions.length], ["Profiles", profiles.length]]).map(([key, value]) => (
+                  <RoleProfileSignal key={String(key)} label={String(key).replaceAll("_", " ")} value={String(value ?? 0)} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "responsibilities" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">Responsibilities from role profile</h3>
+            <div className="mt-3 space-y-2">
+              {(profile?.responsibilities_json.length ? profile.responsibilities_json : guidance.priorityActions).map((item) => (
+                <div className="rounded-lg border bg-background p-3 text-sm" key={item}>{item}</div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">Recommended management checks</h3>
+            <div className="mt-3 space-y-2">
+              {guidance.priorityActions.map((item) => (
+                <div className="rounded-lg border bg-background p-3 text-sm" key={item}>{item}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "scope" ? (
+        <DataTable columns={assignmentColumns} emptyLabel="No role assignments are available for this user." rows={assignmentRows} searchLabel="Search role scope" title="Role and scope assignments" />
+      ) : null}
+
+      {tab === "team" ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <RoleProfileSignal label="Team" value={team?.name ?? "Unassigned"} />
+          <RoleProfileSignal label="Team type" value={team?.team_type?.replace("_", " ") ?? "Not set"} />
+          <RoleProfileSignal label="Region" value={team?.region ?? profile?.primary_geography_id ?? currentAssignment?.geography_id ?? "Not restricted"} />
+          <RoleProfileSignal label="Supervisor" value={supervisor} />
+          <RoleProfileSignal label="Employee code" value={workforceProfile?.employee_code ?? "Not set"} />
+          <RoleProfileSignal label="Job title" value={workforceProfile?.job_title ?? profile?.display_name ?? normalizeRoleLabel(user.role_name)} />
+          <RoleProfileSignal label="Clearance" value={workforceProfile?.clearance_level ?? "Not set"} />
+          <RoleProfileSignal label="Performance score" value={workforceProfile?.performance_score ?? "Not measured"} />
+        </div>
+      ) : null}
+
+      {tab === "workload" ? (
+        <div className="grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+            <h3 className="text-sm font-semibold">Workload signals</h3>
+            <div className="mt-3 grid gap-2">
+              <RoleProfileSignal label="Active role assignments" value={activeAssignments.length} />
+              <RoleProfileSignal label="Active sessions" value={userSessions.length} />
+              <RoleProfileSignal label="Recent activity events" value={userActivity.length} />
+            </div>
+          </div>
+          <DataTable columns={activityColumns} emptyLabel="No recent activity for this user." rows={userActivity} searchLabel="Search activity" title="Recent activity" />
+        </div>
+      ) : null}
+
+      {tab === "quality" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {guidance.qualityControls.map((item) => (
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
+              <Badge tone="warning">Quality check</Badge>
+              <p className="mt-3 text-sm font-medium">{item}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {tab === "governance" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {guidance.governanceControls.map((item) => (
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
+              <Badge tone="admin">Governance</Badge>
+              <p className="mt-3 text-sm font-medium">{item}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {tab === "mobile" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {guidance.mobileReadiness.map((item) => (
+            <div className="rounded-xl border bg-panel p-3.5 shadow-line" key={item}>
+              <Badge tone={profile?.profile_type === "field_officer" ? "success" : "neutral"}>Mobile readiness</Badge>
+              <p className="mt-3 text-sm font-medium">{item}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1446,6 +1955,7 @@ function RoleAssignmentsModal({
 }) {
   const selectedRole = roleCatalogByName.get(draft.role_name);
   const assignments = draft.user?.role_assignments ?? [];
+  const roleProfiles = profilesForUser(draft.user);
   const needsProjectScope = draft.scope_type === "project";
   const needsGeographyScope = ["country", "region", "district", "field_team"].includes(draft.scope_type);
   const scopedUnits = units.filter((unit) => unit.unit_type === draft.scope_type);
@@ -1491,6 +2001,41 @@ function RoleAssignmentsModal({
                 No stacked assignments yet. Add one below so this user has explicit role and scope records.
               </div>
             )}
+          </div>
+          <div className="mt-4 border-t pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Operational profiles</p>
+              <Badge tone="neutral">{roleProfiles.length}</Badge>
+            </div>
+            <div className="mt-2 space-y-2">
+              {roleProfiles.map((profile) => (
+                <div className="rounded-lg border bg-background/70 p-2.5" key={profile.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">{profile.display_name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {String(profile.metadata_json?.architecture_group ?? "Operational profile")}
+                        {profile.metadata_json?.scope_type ? ` · ${String(profile.metadata_json.scope_type).replace("_", " ")}` : ""}
+                      </p>
+                    </div>
+                    <Badge tone={profile.status === "active" ? "success" : "neutral"}>{profile.status}</Badge>
+                  </div>
+                  <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    {profile.responsibilities_json.slice(0, 3).map((responsibility) => (
+                      <li className="flex gap-2" key={responsibility}>
+                        <span aria-hidden="true" className="mt-1 size-1.5 rounded-full bg-primary" />
+                        <span>{responsibility}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {!roleProfiles.length ? (
+                <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                  No role profile is available yet. Save a role assignment to generate the operational profile.
+                </div>
+              ) : null}
+            </div>
           </div>
         </section>
         <section className="rounded-xl border bg-panel p-3">

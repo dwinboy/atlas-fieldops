@@ -2,15 +2,16 @@ import csv
 import math
 import re
 from difflib import SequenceMatcher
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from io import StringIO
 from uuid import UUID
-from typing import cast
+from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
+from app.core.permissions import canonical_role
 from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project
 from app.models.operations import (
     Beneficiary,
@@ -20,6 +21,7 @@ from app.models.operations import (
     FieldVisitRequest,
     InterventionRecord,
     KnowledgeDocument,
+    MediaEvidence,
     MonitoringIndicator,
     OperationalAsset,
     OperationalTask,
@@ -50,6 +52,7 @@ from app.schemas.operations import (
     ExportJobRead,
     FieldVisitCheckIn,
     FieldVisitCheckOut,
+    FieldVisitOutcomeReview,
     FieldVisitRequestCreate,
     FieldVisitRequestRead,
     FieldVisitRequestReview,
@@ -88,6 +91,7 @@ from app.schemas.operations import (
     MappingTemplateCreate,
     EcosystemEdge,
     EcosystemNode,
+    OperationalActivityReportRead,
     OperationalEcosystemRead,
     OperationalEffect,
     OperationalEventCreate,
@@ -933,6 +937,67 @@ class OperationsService:
         )
         return result.scalar_one_or_none()
 
+    async def _operational_activity_scope_filters(
+        self,
+        organization_id: UUID,
+        *,
+        actor_user_id: UUID | None,
+        actor_roles: list[str] | None,
+        actor_project_ids: list[str] | None,
+    ) -> list[object]:
+        if actor_user_id is None or actor_roles is None:
+            return []
+        roles = {canonical_role(role) for role in actor_roles}
+        if roles & {"super_admin", "owner", "organization_owner", "system_admin", "national_admin", "regional_manager"}:
+            return []
+        project_ids: list[UUID] = []
+        for project_id in actor_project_ids or []:
+            try:
+                project_ids.append(UUID(str(project_id)))
+            except ValueError:
+                continue
+        if roles & {"me_manager", "project_manager", "data_manager", "data_analyst", "donor_viewer"} and project_ids:
+            return [FieldVisitRequest.project_id.in_(project_ids)]
+        clauses: list[object] = []
+        if project_ids:
+            clauses.append(FieldVisitRequest.project_id.in_(project_ids))
+        if "district_supervisor" in roles:
+            clauses.append(FieldVisitRequest.supervisor_user_id == actor_user_id)
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        if officer is not None:
+            clauses.append(FieldVisitRequest.field_officer_id == officer.id)
+        if clauses:
+            return [or_(*clauses)]
+        return [FieldVisitRequest.id.is_(None)]
+
+    async def _assert_operational_activity_access(
+        self,
+        organization_id: UUID,
+        visit: FieldVisitRequest,
+        *,
+        actor_user_id: UUID | None,
+        actor_roles: list[str] | None,
+        actor_project_ids: list[str] | None,
+    ) -> None:
+        filters = await self._operational_activity_scope_filters(
+            organization_id,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        if not filters:
+            return
+        result = await self.session.execute(
+            select(FieldVisitRequest.id).where(
+                FieldVisitRequest.id == visit.id,
+                FieldVisitRequest.organization_id == organization_id,
+                FieldVisitRequest.deleted_at.is_(None),
+                *filters,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Operational activity is outside your assigned scope.")
+
     def _read_visit_request(self, visit: FieldVisitRequest) -> FieldVisitRequestRead:
         return FieldVisitRequestRead(
             id=visit.id,
@@ -1048,6 +1113,8 @@ class OperationsService:
         organization_id: UUID,
         *,
         actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
         own_only: bool = False,
         status: str | None = None,
     ) -> list[FieldVisitRequestRead]:
@@ -1064,6 +1131,15 @@ class OperationsService:
             if officer is None:
                 return []
             filters.append(FieldVisitRequest.field_officer_id == officer.id)
+        else:
+            filters.extend(
+                await self._operational_activity_scope_filters(
+                    organization_id,
+                    actor_user_id=actor_user_id,
+                    actor_roles=actor_roles,
+                    actor_project_ids=actor_project_ids,
+                )
+            )
         result = await self.session.execute(
             select(FieldVisitRequest)
             .where(*filters)
@@ -1077,10 +1153,19 @@ class OperationsService:
         actor_user_id: UUID,
         visit_request_id: UUID,
         payload: FieldVisitRequestReview,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
     ) -> FieldVisitRequestRead:
         visit = await self.session.get(FieldVisitRequest, visit_request_id)
         if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
             raise ValueError("Field visit request not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
         if visit.status not in {"pending", "change_requested"}:
             raise ValueError("Only pending or change-requested visits can be reviewed.")
         now = datetime.now(UTC)
@@ -1207,6 +1292,304 @@ class OperationsService:
             metadata={"summary_provided": bool(payload.summary), "accuracy": payload.accuracy},
         )
         return self._read_visit_request(visit)
+
+    async def review_operational_activity_outcome(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitOutcomeReview,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> FieldVisitRequestRead:
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        if visit.status not in {"checked_in", "completed", "flagged", "change_requested"}:
+            raise ValueError("Only checked-in, completed, flagged, or correction-requested activities can receive an outcome decision.")
+        now = datetime.now(UTC)
+        metadata = dict(visit.metadata_json or {})
+        outcome_reviews = metadata.get("outcomeReviews")
+        if not isinstance(outcome_reviews, list):
+            outcome_reviews = []
+        outcome_reviews.append(
+            {
+                "action": payload.action,
+                "comment": payload.comment,
+                "qualityScore": payload.quality_score,
+                "reviewedByUserId": str(actor_user_id),
+                "reviewedAt": now.isoformat(),
+            }
+        )
+        metadata["outcomeReviews"] = outcome_reviews
+        metadata["outcomeStatus"] = payload.action
+        if payload.quality_score is not None:
+            metadata["qualityScore"] = payload.quality_score
+        if payload.action == "verify":
+            visit.status = "completed"
+            visit.verification_status = "supervisor_verified"
+            metadata["supervisorDecision"] = "Verified by supervisor"
+        elif payload.action == "accept_with_exception":
+            visit.status = "completed"
+            visit.verification_status = "accepted_with_exception"
+            metadata["supervisorDecision"] = "Accepted with documented exception"
+        elif payload.action == "flag":
+            visit.status = "flagged"
+            visit.verification_status = "supervisor_flagged"
+            metadata["supervisorDecision"] = "Flagged for investigation"
+        elif payload.action == "request_correction":
+            visit.status = "change_requested"
+            visit.verification_status = "correction_requested"
+            metadata["supervisorDecision"] = "Correction requested"
+        visit.supervisor_instructions = payload.supervisor_instructions or payload.comment
+        visit.reviewed_by_user_id = actor_user_id
+        visit.reviewed_at = now
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=f"operational_activity.outcome_{payload.action}",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "comment": payload.comment,
+                "field_officer_id": str(visit.field_officer_id),
+                "quality_score": payload.quality_score,
+                "verification_status": visit.verification_status,
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def create_activity_media_evidence(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        activity_id: UUID,
+        payload: MediaEvidenceCreate,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> MediaEvidenceRead:
+        visit = await self.session.get(FieldVisitRequest, activity_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        values = payload.model_dump()
+        values["activity_id"] = activity_id
+        evidence = await self.repository.create_media_evidence(
+            organization_id=organization_id,
+            uploaded_by_user_id=actor_user_id,
+            values=values,
+        )
+        metadata = dict(visit.metadata_json or {})
+        attachments = metadata.get("attachments")
+        if not isinstance(attachments, list):
+            attachments = []
+        attachments.append(
+            {
+                "mediaEvidenceId": str(evidence.id),
+                "mediaType": evidence.media_type,
+                "fileName": evidence.file_name,
+                "uploadedAt": datetime.now(UTC).isoformat(),
+            }
+        )
+        metadata["attachments"] = attachments
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_activity.evidence_attached",
+            resource_type="field_visit_request",
+            resource_id=str(activity_id),
+            metadata={
+                "media_evidence_id": str(evidence.id),
+                "media_type": evidence.media_type,
+                "file_name": evidence.file_name,
+            },
+        )
+        return MediaEvidenceRead.model_validate(evidence)
+
+    async def list_activity_media_evidence(
+        self,
+        organization_id: UUID,
+        activity_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> list[MediaEvidenceRead]:
+        visit = await self.session.get(FieldVisitRequest, activity_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        result = await self.session.execute(
+            select(MediaEvidence)
+            .where(
+                MediaEvidence.organization_id == organization_id,
+                MediaEvidence.activity_id == activity_id,
+                MediaEvidence.deleted_at.is_(None),
+            )
+            .order_by(MediaEvidence.created_at.desc())
+        )
+        return [MediaEvidenceRead.model_validate(item) for item in result.scalars()]
+
+    async def operational_activity_report(
+        self,
+        organization_id: UUID,
+        *,
+        report_type: str,
+        period_start: date | None = None,
+        period_end: date | None = None,
+        actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> OperationalActivityReportRead:
+        filters = [
+            FieldVisitRequest.organization_id == organization_id,
+            FieldVisitRequest.deleted_at.is_(None),
+        ]
+        if period_start is not None:
+            filters.append(FieldVisitRequest.requested_start_at >= datetime.combine(period_start, datetime.min.time(), tzinfo=UTC))
+        if period_end is not None:
+            filters.append(FieldVisitRequest.requested_start_at <= datetime.combine(period_end, datetime.max.time(), tzinfo=UTC))
+        filters.extend(
+            await self._operational_activity_scope_filters(
+                organization_id,
+                actor_user_id=actor_user_id,
+                actor_roles=actor_roles,
+                actor_project_ids=actor_project_ids,
+            )
+        )
+        result = await self.session.execute(select(FieldVisitRequest).where(*filters).order_by(FieldVisitRequest.requested_start_at.desc()))
+        activities = list(result.scalars())
+        activity_ids = [activity.id for activity in activities]
+        attachment_count = 0
+        if activity_ids:
+            media_result = await self.session.execute(
+                select(MediaEvidence).where(
+                    MediaEvidence.organization_id == organization_id,
+                    MediaEvidence.activity_id.in_(activity_ids),
+                    MediaEvidence.deleted_at.is_(None),
+                )
+            )
+            attachment_count = len(list(media_result.scalars()))
+        filtered = activities
+        if report_type == "incident_report":
+            filtered = [activity for activity in activities if activity.activity_type == "incident_report"]
+        if report_type == "gps_exception":
+            filtered = [
+                activity
+                for activity in activities
+                if activity.status == "flagged"
+                or activity.verification_status
+                in {"warning_distance", "outside_planned_area", "poor_gps_accuracy", "supervisor_flagged", "correction_requested"}
+            ]
+        if report_type == "supervisor_approval":
+            filtered = [activity for activity in activities if activity.requires_approval]
+        total = len(filtered)
+        pending = sum(1 for activity in filtered if activity.status == "pending")
+        approved = sum(1 for activity in filtered if activity.status in {"approved", "scheduled", "checked_in"})
+        completed = sum(1 for activity in filtered if activity.status == "completed")
+        rejected = sum(1 for activity in filtered if activity.status == "rejected")
+        flagged = sum(1 for activity in filtered if activity.status == "flagged")
+        gps_verified = sum(1 for activity in filtered if activity.verification_status in {"verified", "supervisor_verified"})
+        organization_scope = sum(1 for activity in filtered if activity.activity_scope == "organization")
+        project_scope = sum(1 for activity in filtered if activity.activity_scope == "project")
+        incident_count = sum(1 for activity in filtered if activity.activity_type == "incident_report")
+        by_activity_type: dict[str, int] = {}
+        by_officer_id: dict[str, int] = {}
+        by_scope: dict[str, int] = {}
+        rows: list[dict[str, object]] = []
+        for activity in filtered:
+            metadata = dict(activity.metadata_json or {})
+            by_activity_type[activity.activity_type] = by_activity_type.get(activity.activity_type, 0) + 1
+            by_officer_id[str(activity.field_officer_id)] = by_officer_id.get(str(activity.field_officer_id), 0) + 1
+            by_scope[activity.activity_scope] = by_scope.get(activity.activity_scope, 0) + 1
+            rows.append(
+                {
+                    "id": str(activity.id),
+                    "title": activity.title,
+                    "activityType": activity.activity_type,
+                    "scope": activity.activity_scope,
+                    "status": activity.status,
+                    "verificationStatus": activity.verification_status,
+                    "supervisorDecision": metadata.get("supervisorDecision"),
+                    "outcomeStatus": metadata.get("outcomeStatus"),
+                    "qualityScore": metadata.get("qualityScore"),
+                    "fieldOfficerId": str(activity.field_officer_id),
+                    "locationName": activity.location_name,
+                    "requestedStartAt": activity.requested_start_at.isoformat(),
+                    "distanceFromPlannedMeters": activity.distance_from_planned_meters,
+                }
+            )
+        recommendations: list[str] = []
+        if pending:
+            recommendations.append("Review pending activity requests before field movement begins.")
+        if flagged:
+            recommendations.append("Investigate flagged GPS evidence with the supervisor before accepting activity outcomes.")
+        if incident_count:
+            recommendations.append("Escalate incident reports into follow-up tasks and document management response.")
+        if attachment_count < completed:
+            recommendations.append("Ask officers to attach evidence for completed activities where required by policy.")
+        approval_rate = round(((approved + completed) / total) * 100, 1) if total else 0
+        completion_rate = round((completed / total) * 100, 1) if total else 0
+        gps_exception_rate = round((flagged / total) * 100, 1) if total else 0
+        title = {
+            "monthly_operations": "Monthly Organization Operations Report",
+            "field_officer_movement": "Field Officer Movement Report",
+            "incident_report": "Incident Report",
+            "supervisor_approval": "Supervisor Approval Report",
+            "gps_exception": "GPS Exception Report",
+        }.get(report_type, "Operational Activity Report")
+        return OperationalActivityReportRead(
+            report_type=cast(
+                Literal["monthly_operations", "field_officer_movement", "incident_report", "supervisor_approval", "gps_exception"],
+                report_type,
+            ),
+            title=title,
+            period_start=period_start,
+            period_end=period_end,
+            generated_at=datetime.now(UTC),
+            total_activities=total,
+            pending=pending,
+            approved=approved,
+            completed=completed,
+            rejected=rejected,
+            flagged=flagged,
+            gps_verified=gps_verified,
+            organization_scope=organization_scope,
+            project_scope=project_scope,
+            incident_count=incident_count,
+            attachment_count=attachment_count,
+            approval_rate=approval_rate,
+            completion_rate=completion_rate,
+            gps_exception_rate=gps_exception_rate,
+            by_activity_type=by_activity_type,
+            by_officer_id=by_officer_id,
+            by_scope=by_scope,
+            recommendations=recommendations,
+            rows=rows,
+        )
 
     async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate, actor_user_id: UUID | None = None) -> Beneficiary:
         if not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):

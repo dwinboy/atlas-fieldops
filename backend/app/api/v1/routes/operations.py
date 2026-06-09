@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -29,6 +30,7 @@ from app.schemas.operations import (
     ExportJobRead,
     FieldVisitRequestRead,
     FieldVisitRequestReview,
+    FieldVisitOutcomeReview,
     ImportAnalysisRequest,
     ImportAnalysisResponse,
     ImportApplyResponse,
@@ -54,6 +56,7 @@ from app.schemas.operations import (
     MappingTemplateCreate,
     MediaEvidenceCreate,
     MediaEvidenceRead,
+    OperationalActivityReportRead,
     MobileSyncPackageRead,
     OperationalAssetCreate,
     OperationalAssetRead,
@@ -190,18 +193,105 @@ async def create_task(
 
 
 @router.get(
+    "/operational-activities/reports/{report_type}",
+    response_model=OperationalActivityReportRead,
+    summary="Generate an operational activity report",
+)
+async def operational_activity_report(
+    report_type: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_REPORTS_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    period_start: date | None = Query(default=None),
+    period_end: date | None = Query(default=None),
+) -> OperationalActivityReportRead:
+    allowed = {
+        "monthly_operations",
+        "field_officer_movement",
+        "incident_report",
+        "supervisor_approval",
+        "gps_exception",
+    }
+    if report_type not in allowed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported operational activity report type.")
+    return await OperationsService(session).operational_activity_report(
+        organization_id=organization_uuid(principal),
+        report_type=report_type,
+        period_start=period_start,
+        period_end=period_end,
+        actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
+    )
+
+
+@router.get(
+    "/operational-activities/{activity_id}/media-evidence",
+    response_model=list[MediaEvidenceRead],
+    summary="List media evidence attached to an operational activity",
+)
+async def list_operational_activity_media_evidence(
+    activity_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_EVIDENCE_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[MediaEvidenceRead]:
+    try:
+        return await OperationsService(session).list_activity_media_evidence(
+            organization_uuid(principal),
+            activity_id,
+            actor_user_id=user_uuid(principal),
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/operational-activities/{activity_id}/media-evidence",
+    response_model=MediaEvidenceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach media evidence to an operational activity",
+)
+async def create_operational_activity_media_evidence(
+    activity_id: UUID,
+    payload: MediaEvidenceCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_EVIDENCE_ATTACH))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MediaEvidenceRead:
+    try:
+        result = await OperationsService(session).create_activity_media_evidence(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            activity_id=activity_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get(
     "/field-visit-requests",
     response_model=list[FieldVisitRequestRead],
     summary="List field visit requests for supervisor review",
 )
 async def list_field_visit_requests(
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_VIEW))],
     session: Annotated[AsyncSession, Depends(get_session)],
     request_status: str | None = Query(default=None, alias="status", max_length=40),
 ) -> list[FieldVisitRequestRead]:
     return await OperationsService(session).list_field_visit_requests(
         organization_id=organization_uuid(principal),
         actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
         status=request_status,
     )
 
@@ -212,15 +302,47 @@ async def list_field_visit_requests(
     summary="List organization operational activities and movement requests",
 )
 async def list_operational_activities(
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_VIEW))],
     session: Annotated[AsyncSession, Depends(get_session)],
     request_status: str | None = Query(default=None, alias="status", max_length=40),
 ) -> list[FieldVisitRequestRead]:
     return await OperationsService(session).list_field_visit_requests(
         organization_id=organization_uuid(principal),
         actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
         status=request_status,
     )
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/outcome-review",
+    response_model=FieldVisitRequestRead,
+    summary="Review completed activity evidence and make a supervisor outcome decision",
+)
+async def review_operational_activity_outcome(
+    visit_request_id: UUID,
+    payload: FieldVisitOutcomeReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).review_operational_activity_outcome(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            visit_request_id=visit_request_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post(
@@ -231,7 +353,7 @@ async def list_operational_activities(
 async def review_field_visit_request(
     visit_request_id: UUID,
     payload: FieldVisitRequestReview,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_APPROVE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FieldVisitRequestRead:
     try:
@@ -240,6 +362,8 @@ async def review_field_visit_request(
             actor_user_id=user_uuid(principal),
             visit_request_id=visit_request_id,
             payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
         )
         await session.commit()
         return result
@@ -259,7 +383,7 @@ async def review_field_visit_request(
 async def review_operational_activity(
     visit_request_id: UUID,
     payload: FieldVisitRequestReview,
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_MANAGE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_APPROVE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FieldVisitRequestRead:
     return await review_field_visit_request(visit_request_id, payload, principal, session)

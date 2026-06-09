@@ -30,7 +30,7 @@ from app.models.collection import (
     Survey,
     SurveyTeamMember,
 )
-from app.models.identity import Membership, Organization, Role, User
+from app.models.identity import Membership, Organization, Role, User, UserOperationalProfile
 from app.models.marketing import MarketingLead
 from app.models.operations import (
     Beneficiary,
@@ -137,6 +137,7 @@ __all__ = [
     "SystemAuditLog",
     "SystemSetting",
     "User",
+    "UserOperationalProfile",
     "VisitRecord",
     "WorkforceProfile",
     "WorkflowQueueItem",

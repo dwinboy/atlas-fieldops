@@ -6,14 +6,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { createMobileApis } from "@/api/mobileApis";
 import { useAppContext } from "@/context/AppContext";
 import { useGPS } from "@/hooks/useGPS";
+import { usePhotoCapture } from "@/hooks/usePhotoCapture";
 import type { MobileVisitRequest } from "@/models/contracts";
 import { AuditEventService } from "@/services/auditEventService";
 import { localDatabase } from "@/storage/localDatabase";
+import { AttachmentSyncService } from "@/sync/attachmentSyncService";
 import { SyncQueueService } from "@/sync/syncQueue";
 import { createLocalId, nowIso } from "@/utils/ids";
 
 const apis = createMobileApis();
 const audit = new AuditEventService(localDatabase);
+const attachments = new AttachmentSyncService(localDatabase);
 const queue = new SyncQueueService(localDatabase);
 const activityTypes: Array<{ label: string; value: MobileVisitRequest["activityType"] }> = [
   { label: "Field visit", value: "field_visit" },
@@ -30,6 +33,7 @@ export default function VisitRequestsScreen() {
   const router = useRouter();
   const { session, refresh, refreshKey, isOnline, syncQueue } = useAppContext();
   const gps = useGPS();
+  const photoCapture = usePhotoCapture();
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
   const [locationName, setLocationName] = useState("");
@@ -213,6 +217,43 @@ export default function VisitRequestsScreen() {
     }
   }
 
+  async function addActivityAttachment(visit: MobileVisitRequest, type: "photo" | "video" | "signature") {
+    if (!["approved", "scheduled", "checked_in", "flagged", "completed", "change_requested"].includes(visit.status)) {
+      setMessage("Your supervisor must approve this activity before evidence can be attached.");
+      return;
+    }
+    if (type === "signature") {
+      attachments.addAttachment({
+        activityLocalId: visit.localId,
+        contextType: "OperationalActivity",
+        localUri: `signature://${visit.localId}/${Date.now()}`,
+        mimeType: "application/vnd.atlas.signature",
+        size: 0,
+        type: "Signature",
+      });
+      audit.queue("mobile.operational_activity_signature_queued", { visitRequestId: visit.id });
+      setMessage("Signature evidence queued. Sync when online so the supervisor can review it.");
+      refresh();
+      return;
+    }
+    const captured = await photoCapture.takePhoto(type);
+    if (!captured) {
+      setMessage(photoCapture.error ?? `Could not capture ${type} evidence.`);
+      return;
+    }
+    attachments.addAttachment({
+      activityLocalId: visit.localId,
+      contextType: "OperationalActivity",
+      localUri: captured.uri,
+      mimeType: captured.mimeType,
+      size: captured.fileSize ?? 0,
+      type: type === "video" ? "Video" : "Photo",
+    });
+    audit.queue("mobile.operational_activity_attachment_queued", { mediaType: type, visitRequestId: visit.id });
+    setMessage(`${type === "video" ? "Video" : "Photo"} evidence queued. Sync when online so the supervisor can review it.`);
+    refresh();
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
       <ScrollView contentContainerStyle={{ gap: 14, padding: 16, paddingBottom: 32 }}>
@@ -325,6 +366,9 @@ export default function VisitRequestsScreen() {
                   GPS: {visit.verificationStatus.replaceAll("_", " ")}
                   {visit.distanceFromPlannedMeters === null ? "" : ` · ${Math.round(visit.distanceFromPlannedMeters)}m`}
                 </Text>
+                <Text style={{ color: "#49635a", fontSize: 12 }}>
+                  Evidence files: {localDatabase.attachments.list().filter((attachment) => attachment.activityLocalId === visit.localId).length}
+                </Text>
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
                   <Pressable
                     disabled={!["approved", "scheduled"].includes(visit.status) || gps.isCapturing}
@@ -339,6 +383,28 @@ export default function VisitRequestsScreen() {
                     style={[button("#12332b"), { flex: 1, opacity: visit.checkInAt ? 1 : 0.45 }]}
                   >
                     <Text style={{ color: "white", fontWeight: "800" }}>Check out</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                  <Pressable
+                    disabled={photoCapture.isCapturing}
+                    onPress={() => addActivityAttachment(visit, "photo")}
+                    style={[button("#ffffff"), { flex: 1 }]}
+                  >
+                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Photo</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={photoCapture.isCapturing}
+                    onPress={() => addActivityAttachment(visit, "video")}
+                    style={[button("#ffffff"), { flex: 1 }]}
+                  >
+                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Video</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => addActivityAttachment(visit, "signature")}
+                    style={[button("#ffffff"), { flex: 1 }]}
+                  >
+                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Signature</Text>
                   </Pressable>
                 </View>
               </View>

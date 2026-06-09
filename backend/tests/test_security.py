@@ -285,8 +285,8 @@ async def test_organization_governance_simulates_permission_and_scope() -> None:
 class FakeUserRepository:
     def __init__(
         self,
-        identity: tuple[object, object, object, object, list[object]] | None,
-        platform_identity: tuple[object, object, object, object, list[object]] | None = None,
+        identity: tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None,
+        platform_identity: tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None = None,
     ) -> None:
         self.identity = identity
         self.platform_identity = platform_identity
@@ -295,13 +295,13 @@ class FakeUserRepository:
         self,
         email: str,
         organization_slug: str,
-    ) -> tuple[object, object, object, object, list[object]] | None:
+    ) -> tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None:
         return self.identity
 
     async def find_platform_admin_for_user(
         self,
         user_id: object,
-    ) -> tuple[object, object, object, object, list[object]] | None:
+    ) -> tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None:
         return self.platform_identity
 
 
@@ -316,7 +316,7 @@ def build_identity(
     membership_active: bool = True,
     role_name: str = "collector",
     grants: list[object] | None = None,
-) -> tuple[object, object, object, object, list[object]]:
+) -> tuple[object, object, object, object, list[object], list[tuple[object, object]]]:
     user = SimpleNamespace(
         id=user_id or uuid4(),
         email="user@example.com",
@@ -327,7 +327,7 @@ def build_identity(
     organization = SimpleNamespace(id=uuid4(), name=organization_name, slug=organization_slug, is_active=organization_active)
     membership = SimpleNamespace(is_active=membership_active)
     role = SimpleNamespace(name=role_name, permissions="")
-    return user, organization, membership, role, grants or []
+    return user, organization, membership, role, grants or [], []
 
 
 async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -463,6 +463,8 @@ class FakeIdentityForUserCreation:
             project_id=None,
             organization_unit_id=None,
         )
+        self.role_assignment: object | None = None
+        self.operational_profiles: list[object] = []
 
     async def get_by_email(self, email: object) -> object | None:
         return None
@@ -479,11 +481,35 @@ class FakeIdentityForUserCreation:
     async def add_access_grant(self, **_kwargs: object) -> object:
         return self.grant
 
+    async def add_role_assignment(self, **kwargs: object) -> object:
+        self.role_assignment = SimpleNamespace(id=uuid4(), is_active=True, **kwargs)
+        return self.role_assignment
+
+    async def list_role_assignments(self, **_kwargs: object) -> list[object]:
+        if self.role_assignment is None:
+            return []
+        role = SimpleNamespace(id=self.role_assignment.role_id, name="field_officer", display_name="Field Officer")
+        return [(self.role_assignment, role)]
+
+    async def upsert_operational_profile(self, **kwargs: object) -> object:
+        profile = SimpleNamespace(id=uuid4(), created_at=datetime.now(UTC), updated_at=datetime.now(UTC), last_activity_at=None, **kwargs)
+        self.operational_profiles = [profile]
+        return profile
+
+    async def list_operational_profiles(self, **_kwargs: object) -> list[object]:
+        return self.operational_profiles
+
+    async def role_operational_metrics(self, **_kwargs: object) -> dict[str, object]:
+        return {"Assignments": 0, "Submissions": 0}
+
     async def get_user_account(self, *, organization_id: object, user_id: object) -> tuple[object, object, object, object] | None:
         return self.user, self.membership, SimpleNamespace(name="field_officer"), self.grant
 
 
 class FakeRolesForFieldOfficerCreation:
+    async def get_or_create_from_definition(self, *, organization_id: object, definition: object) -> object:
+        return SimpleNamespace(id=uuid4(), name=definition.name)
+
     async def get_by_name(self, *, organization_id: object, name: str) -> object | None:
         if name == "field_officer":
             return SimpleNamespace(id=uuid4(), name="field_officer")
@@ -500,6 +526,8 @@ class FakeFieldOfficerProfilesForUserCreation:
         self.created: list[dict[str, object]] = []
 
     async def get_for_user(self, *, organization_id: object, user_id: object) -> object | None:
+        if self.created:
+            return SimpleNamespace(id=uuid4(), **self.created[0])
         return None
 
     async def create_profile(self, **kwargs: object) -> object:
@@ -543,6 +571,7 @@ async def test_web_created_field_officer_gets_mobile_profile(monkeypatch: pytest
 
     assert created.role_name == "field_officer"
     assert created.login_slug == "acme"
+    assert [profile.profile_type for profile in created.operational_profiles] == ["field_officer"]
     assert len(service.field_officers.created) == 1
     assert service.field_officers.created[0]["organization_id"] == organization_id
     assert service.field_officers.created[0]["user_id"] == service.identity.user.id
@@ -577,7 +606,7 @@ async def test_web_created_field_officer_gets_mobile_profile(monkeypatch: pytest
     ],
 )
 async def test_auth_service_rejects_invalid_or_inactive_accounts(
-    identity: tuple[object, object, object, object, list[object]] | None,
+    identity: tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None,
     password: str,
 ) -> None:
     service = object.__new__(AuthService)

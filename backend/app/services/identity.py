@@ -18,6 +18,7 @@ from app.schemas.identity import (
     UserCreate,
     UserImportIssue,
     UserImportResponse,
+    UserOperationalProfileRead,
     UserRead,
     UserRoleAssignmentCreate,
     UserRoleAssignmentRead,
@@ -36,6 +37,94 @@ class IdentityNotFoundError(Exception):
 
 class IdentityPermissionError(Exception):
     pass
+
+
+ROLE_OPERATIONAL_PROFILE_BLUEPRINTS: dict[str, dict[str, object]] = {
+    "owner": {
+        "display_name": "Organization Owner Profile",
+        "responsibilities": ["Own organization setup and tenant governance", "Approve senior access and role changes", "Monitor organization readiness and risk"],
+        "metrics": ["Active users", "Governance score", "Pending approvals", "High-risk changes"],
+        "group": "Organization Leadership",
+    },
+    "organization_owner": {
+        "display_name": "Organization Owner Profile",
+        "responsibilities": ["Own organization setup and tenant governance", "Approve senior access and role changes", "Monitor organization readiness and risk"],
+        "metrics": ["Active users", "Governance score", "Pending approvals", "High-risk changes"],
+        "group": "Organization Leadership",
+    },
+    "system_admin": {
+        "display_name": "System Administration Profile",
+        "responsibilities": ["Manage users, roles, and access controls", "Support account recovery and device controls", "Maintain platform configuration"],
+        "metrics": ["Users managed", "Role changes", "Locked accounts", "Support actions"],
+        "group": "Administration",
+    },
+    "national_admin": {
+        "display_name": "National Administration Profile",
+        "responsibilities": ["Coordinate national program structures", "Review regional performance", "Oversee cross-project access"],
+        "metrics": ["Regions active", "Project coverage", "Escalations", "National submissions"],
+        "group": "Administration",
+    },
+    "regional_manager": {
+        "display_name": "Regional Manager Profile",
+        "responsibilities": ["Manage regional teams and locations", "Track regional project progress", "Resolve escalated field issues"],
+        "metrics": ["Regional coverage", "Supervisor activity", "Data quality issues", "Late assignments"],
+        "group": "Field Management",
+    },
+    "district_supervisor": {
+        "display_name": "Supervisor Profile",
+        "responsibilities": ["Supervise field officers", "Approve field visit requests", "Review submissions and sync issues"],
+        "metrics": ["Team submissions", "Visit compliance", "Returned records", "Last sync by team"],
+        "group": "Field Management",
+    },
+    "field_officer": {
+        "display_name": "Field Officer Profile",
+        "responsibilities": ["Collect assigned forms", "Sync submissions from the mobile app", "Report field activity and exceptions"],
+        "metrics": ["Assignments completed", "Submissions synced", "Drafts pending", "Data quality flags"],
+        "group": "Field Collection",
+    },
+    "me_manager": {
+        "display_name": "M&E Manager Profile",
+        "responsibilities": ["Own M&E design and data quality", "Manage indicators and review workflows", "Approve reporting-ready data"],
+        "metrics": ["Indicator progress", "Approval queue", "Completeness score", "Quality flags"],
+        "group": "Monitoring & Evaluation",
+    },
+    "project_manager": {
+        "display_name": "Project Manager Profile",
+        "responsibilities": ["Manage project setup and delivery", "Monitor assignments, beneficiaries, and progress", "Coordinate field operations"],
+        "metrics": ["Project health", "Assignments due", "Beneficiary coverage", "Submission throughput"],
+        "group": "Project Delivery",
+    },
+    "data_manager": {
+        "display_name": "Data Manager Profile",
+        "responsibilities": ["Manage imports, cleaning, approvals, and exports", "Resolve duplicates and reconciliation items", "Protect official datasets"],
+        "metrics": ["Pending reviews", "Import issues", "Duplicates", "Export requests"],
+        "group": "Data Management",
+    },
+    "data_analyst": {
+        "display_name": "Data Analyst Profile",
+        "responsibilities": ["Analyze approved data", "Build saved views and dashboards", "Prepare indicator and donor summaries"],
+        "metrics": ["Approved records", "Saved views", "Dashboards", "Report extracts"],
+        "group": "Analytics",
+    },
+    "finance_officer": {
+        "display_name": "Finance Officer Profile",
+        "responsibilities": ["Review budget-linked operations", "Track financial evidence", "Support donor compliance reporting"],
+        "metrics": ["Budget lines", "Cost evidence", "Financial exceptions", "Exported reports"],
+        "group": "Finance",
+    },
+    "compliance_auditor": {
+        "display_name": "Compliance Auditor Profile",
+        "responsibilities": ["Review audit trails and governance events", "Inspect access and export activity", "Flag compliance risks"],
+        "metrics": ["Audit events", "Policy exceptions", "Export logs", "Sensitive changes"],
+        "group": "Governance",
+    },
+    "donor_viewer": {
+        "display_name": "Donor Viewer Profile",
+        "responsibilities": ["View approved reports and aggregate progress", "Review donor-ready outputs", "Monitor read-only project performance"],
+        "metrics": ["Approved indicators", "Published reports", "Project progress", "Last report date"],
+        "group": "External Viewer",
+    },
+}
 
 
 class OrganizationService:
@@ -169,6 +258,84 @@ class UserManagementService:
             home_region=None,
         )
 
+    @staticmethod
+    def _operational_profile_blueprint(role_name: str) -> dict[str, object]:
+        canonical_name = canonical_role(role_name)
+        fallback_label = canonical_name.replace("_", " ").title()
+        return ROLE_OPERATIONAL_PROFILE_BLUEPRINTS.get(
+            canonical_name,
+            {
+                "display_name": f"{fallback_label} Profile",
+                "responsibilities": ["Use assigned permissions within approved organization scope", "Complete assigned work and maintain audit-ready activity"],
+                "metrics": ["Assigned work", "Completed actions", "Pending items", "Recent activity"],
+                "group": "Custom",
+            },
+        )
+
+    async def _sync_operational_profiles(
+        self,
+        *,
+        organization_id: UUID,
+        user_id: UUID,
+        primary_role_name: str | None,
+        assignments: list[tuple[object, object]],
+        user_is_active: bool = True,
+    ) -> list[UserOperationalProfileRead]:
+        grouped: dict[str, list[tuple[object, object]]] = {}
+        for assignment, role in assignments:
+            role_name = canonical_role(str(getattr(role, "name", "")))
+            if not role_name:
+                continue
+            grouped.setdefault(role_name, []).append((assignment, role))
+            await self._ensure_field_officer_profile(organization_id=organization_id, user_id=user_id, role_name=role_name)
+        if primary_role_name:
+            grouped.setdefault(canonical_role(primary_role_name), [])
+
+        for role_name, role_assignments in grouped.items():
+            blueprint = self._operational_profile_blueprint(role_name)
+            active_assignments = [
+                assignment
+                for assignment, _role in role_assignments
+                if bool(getattr(assignment, "is_active", True))
+            ]
+            representative = active_assignments[0] if active_assignments else (role_assignments[0][0] if role_assignments else None)
+            project_ids = [
+                str(project_id)
+                for project_id in (getattr(assignment, "project_id", None) for assignment, _role in role_assignments)
+                if project_id
+            ]
+            metrics = await self.identity.role_operational_metrics(
+                organization_id=organization_id,
+                user_id=user_id,
+                role_name=role_name,
+                project_ids=project_ids,
+            )
+            await self.identity.upsert_operational_profile(
+                organization_id=organization_id,
+                user_id=user_id,
+                profile_type=role_name,
+                display_name=str(blueprint.get("display_name") or role_name.replace("_", " ").title()),
+                status="active" if user_is_active and (active_assignments or not role_assignments) else "inactive",
+                supervisor_user_id=None,
+                primary_project_id=getattr(representative, "project_id", None) if representative is not None else None,
+                primary_geography_id=getattr(representative, "geography_id", None) if representative is not None else None,
+                primary_team_id=getattr(representative, "team_id", None) if representative is not None else None,
+                responsibilities=[str(item) for item in blueprint.get("responsibilities", [])],
+                metrics=metrics,
+                metadata={
+                    "role_name": role_name,
+                    "architecture_group": str(blueprint.get("group") or "Custom"),
+                    "assignment_count": len(role_assignments),
+                    "active_assignment_count": len(active_assignments) if role_assignments else int(user_is_active),
+                    "metric_source": "computed_from_operational_records",
+                    "scope_type": getattr(representative, "scope_type", None) if representative is not None else None,
+                },
+            )
+        return [
+            UserOperationalProfileRead.model_validate(profile)
+            for profile in await self.identity.list_operational_profiles(organization_id=organization_id, user_id=user_id)
+        ]
+
     async def _resolve_assignable_role(self, *, organization_id: UUID, role_name: str, actor_roles: list[str]) -> object:
         canonical_name = canonical_role(role_name)
         if not is_assignable_role(canonical_name, actor_roles):
@@ -244,11 +411,20 @@ class UserManagementService:
         if account is None:
             raise IdentityNotFoundError("User not found")
         organization = await self.organizations.get(organization_id)
+        assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user.id, active_only=False)
+        operational_profiles = await self._sync_operational_profiles(
+            organization_id=organization_id,
+            user_id=user.id,
+            primary_role_name=role.name,
+            assignments=assignments,
+            user_is_active=user.is_active,
+        )
         return self.to_user_read(
             *account,
             login_slug=organization.slug if organization is not None else None,
             temporary_password=payload.password,
-            assignments=await self.identity.list_role_assignments(organization_id=organization_id, user_id=user.id, active_only=False),
+            assignments=assignments,
+            operational_profiles=operational_profiles,
         )
 
     async def import_users_csv(
@@ -354,6 +530,7 @@ class UserManagementService:
         login_slug: str | None = None,
         temporary_password: str | None = None,
         assignments: list[tuple[object, object]] | None = None,
+        operational_profiles: list[UserOperationalProfileRead] | None = None,
     ) -> UserRead:
         assignment_reads = [cls.to_assignment_read(assignment, assignment_role) for assignment, assignment_role in (assignments or [])]
         return UserRead(
@@ -369,14 +546,23 @@ class UserManagementService:
             login_slug=login_slug,
             temporary_password=temporary_password,
             role_assignments=assignment_reads,
+            operational_profiles=operational_profiles or [],
         )
 
     async def list_users(self, organization_id: UUID) -> list[UserRead]:
         users: list[UserRead] = []
         for account in await self.identity.list_user_accounts(organization_id):
             user = account[0]
+            role = account[2]
             assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user.id, active_only=False)
-            users.append(self.to_user_read(*account, assignments=assignments))
+            operational_profiles = await self._sync_operational_profiles(
+                organization_id=organization_id,
+                user_id=user.id,
+                primary_role_name=getattr(role, "name", None),
+                assignments=assignments,
+                user_is_active=user.is_active,
+            )
+            users.append(self.to_user_read(*account, assignments=assignments, operational_profiles=operational_profiles))
         return users
 
     async def update_user(
@@ -460,7 +646,14 @@ class UserManagementService:
             {"type": "user.updated", "organization_id": str(organization_id), "user_id": str(user_id)},
         )
         assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
-        return self.to_user_read(*account, assignments=assignments)
+        operational_profiles = await self._sync_operational_profiles(
+            organization_id=organization_id,
+            user_id=user_id,
+            primary_role_name=getattr(account[2], "name", None),
+            assignments=assignments,
+            user_is_active=account[0].is_active,
+        )
+        return self.to_user_read(*account, assignments=assignments, operational_profiles=operational_profiles)
 
     async def add_role_assignment(
         self,
@@ -504,7 +697,14 @@ class UserManagementService:
             metadata=payload.model_dump(exclude_none=True, mode="json"),
         )
         assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
-        return self.to_user_read(*account, assignments=assignments)
+        operational_profiles = await self._sync_operational_profiles(
+            organization_id=organization_id,
+            user_id=user_id,
+            primary_role_name=getattr(account[2], "name", None),
+            assignments=assignments,
+            user_is_active=account[0].is_active,
+        )
+        return self.to_user_read(*account, assignments=assignments, operational_profiles=operational_profiles)
 
     async def update_role_assignment(
         self,
@@ -565,7 +765,14 @@ class UserManagementService:
             metadata={"assignment_id": str(assignment_id), **payload.model_dump(exclude_none=True, mode="json")},
         )
         assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
-        return self.to_user_read(*account, assignments=assignments)
+        operational_profiles = await self._sync_operational_profiles(
+            organization_id=organization_id,
+            user_id=user_id,
+            primary_role_name=getattr(account[2], "name", None),
+            assignments=assignments,
+            user_is_active=account[0].is_active,
+        )
+        return self.to_user_read(*account, assignments=assignments, operational_profiles=operational_profiles)
 
     async def deactivate_role_assignment(
         self,
@@ -594,7 +801,14 @@ class UserManagementService:
             metadata={"assignment_id": str(assignment_id)},
         )
         assignments = await self.identity.list_role_assignments(organization_id=organization_id, user_id=user_id, active_only=False)
-        return self.to_user_read(*account, assignments=assignments)
+        operational_profiles = await self._sync_operational_profiles(
+            organization_id=organization_id,
+            user_id=user_id,
+            primary_role_name=getattr(account[2], "name", None),
+            assignments=assignments,
+            user_is_active=account[0].is_active,
+        )
+        return self.to_user_read(*account, assignments=assignments, operational_profiles=operational_profiles)
 
     async def reset_password(
         self,

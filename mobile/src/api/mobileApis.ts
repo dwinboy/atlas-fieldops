@@ -232,6 +232,44 @@ export class AttachmentsApi {
       body: attachment,
     });
   }
+
+  async uploadActivityAttachment(token: string, activityId: string, attachment: MobileAttachment, activity: MobileVisitRequest) {
+    const mediaTypeByAttachmentType: Record<MobileAttachment["type"], "photo" | "audio" | "video" | "signature" | "file"> = {
+      Audio: "audio",
+      FileUpload: "file",
+      Photo: "photo",
+      Signature: "signature",
+      Video: "video",
+    };
+    const evidence = await this.http.request<{ id: string }>(`/mobile/operational-activities/${activityId}/attachments`, {
+      method: "POST",
+      token,
+      body: {
+        activity_id: activityId,
+        captured_at: attachment.createdAt,
+        file_name: attachment.localUri.split("/").pop() || `${attachment.type.toLowerCase()}-${attachment.localId}`,
+        latitude: activity.checkInLatitude ?? activity.latitude,
+        longitude: activity.checkInLongitude ?? activity.longitude,
+        media_type: mediaTypeByAttachmentType[attachment.type],
+        metadata_json: {
+          contextType: "OperationalActivity",
+          encrypted: attachment.encrypted,
+          localAttachmentId: attachment.localId,
+          localUri: attachment.localUri,
+          uploadProgress: attachment.uploadProgress,
+        },
+        mime_type: attachment.mimeType,
+        size_bytes: attachment.size,
+        storage_url: attachment.remoteUrl ?? attachment.localUri,
+      },
+    });
+    return {
+      localId: attachment.localId,
+      message: "Operational activity evidence accepted.",
+      serverId: evidence.id,
+      status: "accepted" as const,
+    };
+  }
 }
 
 export class NotificationsApi {
