@@ -47,7 +47,7 @@ const helpCategories = [
     faqs: [
       ["What does the mapping module show?", "The mapping module shows project boundaries, submission locations, beneficiary locations, coverage gaps, supervisor routes, and GPS anomalies. Spatial filters let you zoom into a district, village, or officer route."],
       ["How are field officer assignments managed?", "Supervisors create assignments that specify a form, entity list, target count, deadline, and responsible officers. Officers see their assignments on the mobile app and can start collection immediately."],
-      ["Who uses Atlas?", "NGOs, governments, donors, research teams, health programs, education programs, agriculture teams, and humanitarian operations."],
+      ["Who uses Atlas FieldOps?", "NGOs, governments, donors, research teams, health programs, education programs, agriculture teams, and humanitarian operations."],
     ],
   },
   {
