@@ -11,6 +11,9 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import (
     EntityFrequencyValidationRead,
     EntityFrequencyValidationRequest,
+    ImportCleaningBulkUpdateRequest,
+    ImportCleaningBulkUpdateResponse,
+    ImportCleaningRowRead,
     SubmissionCreate,
     SubmissionHistoryRead,
     SubmissionRead,
@@ -62,6 +65,45 @@ async def list_submissions(
             scope_type=principal.scope_type,
         )
     )
+
+
+@router.get(
+    "/import-cleaning",
+    response_model=list[ImportCleaningRowRead],
+    summary="List imported form rows waiting for cleaning",
+)
+async def list_import_cleaning_rows(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ImportCleaningRowRead]:
+    return await SubmissionService(session).list_import_cleaning_rows(
+        organization_id=UUID(principal.organization_id),
+        actor_user_id=UUID(principal.user_id),
+        scope_type=principal.scope_type,
+    )
+
+
+@router.patch(
+    "/import-cleaning/bulk-responses",
+    response_model=ImportCleaningBulkUpdateResponse,
+    summary="Bulk clean imported form rows",
+)
+async def bulk_update_import_cleaning_rows(
+    payload: ImportCleaningBulkUpdateRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImportCleaningBulkUpdateResponse:
+    try:
+        response = await SubmissionService(session).bulk_update_import_cleaning_rows(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            payload=payload,
+        )
+        await session.commit()
+        return response
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.post(

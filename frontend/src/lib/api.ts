@@ -1056,7 +1056,7 @@ export type FieldVisitRequestRead = {
   organization_id: string;
   project_id: string | null;
   beneficiary_id: string | null;
-  field_officer_id: string;
+  field_officer_id: string | null;
   supervisor_user_id: string | null;
   title: string;
   activity_type: string;
@@ -1119,7 +1119,7 @@ export type SubmissionRead = {
   supervisor_id?: string | null;
   frequency_period?: string | null;
   event_id?: string | null;
-  field_officer_id: string;
+  field_officer_id: string | null;
   status: string;
   server_sequence: number;
   captured_at: string;
@@ -1139,6 +1139,37 @@ export type SubmissionRead = {
   import_batch_id?: string | null;
   imported_at?: string | null;
   imported_by_user_id?: string | null;
+};
+
+export type ImportCleaningRowRead = {
+  id: string;
+  client_submission_id: string;
+  form_id: string;
+  form_name: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  status: string;
+  imported_at?: string | null;
+  imported_by_user_id?: string | null;
+  uploaded_by_name?: string | null;
+  source_system?: string | null;
+  source_record_id?: string | null;
+  missing_fields: string[];
+  missing_field_keys: string[];
+  validation_issues: string[];
+  response_values: Record<string, unknown>;
+  issue_count: number;
+  missing_field_count: number;
+  ready_to_confirm: boolean;
+  quality_status?: string | null;
+  updated_at: string;
+};
+
+export type ImportCleaningBulkUpdateResponse = {
+  updated_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  rows: ImportCleaningRowRead[];
 };
 
 export type SubmissionResponsesUpdate = {
@@ -2086,6 +2117,31 @@ export type DataFormSchemaRead = {
   schema: Record<string, unknown>;
 };
 
+export type FormDataImportIssue = {
+  row_number: number;
+  field_name?: string | null;
+  question_label?: string | null;
+  issue_type: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  suggested_fix?: string | null;
+};
+
+export type FormDataImportResponse = {
+  imported_rows: number;
+  warning_count: number;
+  error_count: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
+};
+
+export type FormDataImportConfirmResponse = {
+  confirmed_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
+};
+
 export type TemplateFieldSummary = {
   field_count: number;
   repeat_group_count: number;
@@ -2929,6 +2985,21 @@ export async function listSubmissions(token: string, status?: string): Promise<S
   return request<SubmissionRead[]>(`/submissions${query}`, { token });
 }
 
+export async function listImportCleaningRows(token: string): Promise<ImportCleaningRowRead[]> {
+  return request<ImportCleaningRowRead[]>("/submissions/import-cleaning", { token });
+}
+
+export async function bulkUpdateImportCleaningRows(
+  token: string,
+  payload: { rows: { submission_id: string; responses: Record<string, unknown> }[]; reason: string },
+): Promise<ImportCleaningBulkUpdateResponse> {
+  return request<ImportCleaningBulkUpdateResponse>("/submissions/import-cleaning/bulk-responses", {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function reviewSubmission(
   token: string,
   submissionId: string,
@@ -3240,6 +3311,35 @@ export async function getFormSchema(token: string, formId: string): Promise<Data
   return request<DataFormSchemaRead>(`/forms/${formId}/schema`, { token });
 }
 
+export async function importFormDataRows(
+  token: string,
+  formId: string,
+  payload: {
+    rows: Record<string, unknown>[];
+    source_name?: string;
+    source_system?: string;
+    import_reason?: string | null;
+  },
+): Promise<FormDataImportResponse> {
+  return request<FormDataImportResponse>(`/forms/${formId}/data-import`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function confirmImportedFormDataRows(
+  token: string,
+  formId: string,
+  payload: { submission_ids: string[]; comment: string },
+): Promise<FormDataImportConfirmResponse> {
+  return request<FormDataImportConfirmResponse>(`/forms/${formId}/data-import/confirm`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
@@ -3297,7 +3397,9 @@ export async function duplicateFormTemplate(
 export const api = {
   analyzeImport,
   applyImportJob,
+  bulkUpdateImportCleaningRows,
   confirmImportJob,
+  confirmImportedFormDataRows,
   createAdministrationApiKey,
   createAdministrationBackup,
   createAdministrationIntegration,
@@ -3357,6 +3459,7 @@ export const api = {
   installProjectSectorIndicators,
   installProjectSectorReports,
   importFieldOfficers,
+  importFormDataRows,
   importOrganizationUnits,
   importUsers,
   inviteFieldOfficer,
@@ -3389,6 +3492,7 @@ export const api = {
   listFormTemplates,
   listGovernancePolicies,
   listIndicators,
+  listImportCleaningRows,
   listImportJobs,
   listImportRows,
   listImportSupportedSources,

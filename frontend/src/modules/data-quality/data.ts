@@ -4,6 +4,7 @@ export type DataQualitySection =
   | "duplicates"
   | "outliers"
   | "gps-issues"
+  | "import-cleaning"
   | "missing-data"
   | "reconciliation"
   | "validation-failures"
@@ -146,6 +147,7 @@ export const dataQualitySections: {
   { id: "duplicates", label: "Duplicates", route: "/data-quality/duplicates", description: "View duplicate groups, compare records, merge, mark valid, or flag for investigation." },
   { id: "outliers", label: "Outliers", route: "/data-quality/outliers", description: "Review statistical, business-rule, location, and behavioral outliers." },
   { id: "gps-issues", label: "GPS Issues", route: "/data-quality/gps-issues", description: "Monitor missing GPS, boundary violations, duplicate coordinates, low accuracy, and suspicious locations." },
+  { id: "import-cleaning", label: "Import Cleaning", route: "/data-quality/import-cleaning", description: "Clean uploaded form rows, resolve missing fields, and confirm records before they power beneficiaries, indicators, dashboards, and reports." },
   { id: "missing-data", label: "Missing Data", route: "/data-quality/missing-data", description: "Track missing required fields, consent, attachments, GPS, and incomplete sections." },
   { id: "reconciliation", label: "Reconciliation", route: "/data-quality/reconciliation", description: "Resolve unlinked submissions, duplicate beneficiaries, profile conflicts, imported unmatched records, and repeated collection issues." },
   { id: "validation-failures", label: "Validation Failures", route: "/data-quality/validation-failures", description: "Review range, logic, cross-field, conditional, and reference-data rule failures." },

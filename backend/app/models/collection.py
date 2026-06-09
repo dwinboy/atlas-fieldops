@@ -207,7 +207,7 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     supervisor_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     frequency_period: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
     event_id: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
-    field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    field_officer_id: Mapped[UUID | None] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True, nullable=True)
     client_submission_id: Mapped[str] = mapped_column(String(160), nullable=False)
     server_sequence: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(40), default="submitted", index=True)

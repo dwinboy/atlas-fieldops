@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
@@ -37,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { getFormSchema, governExport, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, uploadImportFile } from "@/lib/api";
+import { confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -147,7 +147,7 @@ function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): st
   if (isImportedSubmission(submission)) {
     return submission.imported_by_user_id ?? "Uploaded user";
   }
-  return submission.field_officer_id;
+  return submission.field_officer_id ?? "Unassigned collector";
 }
 
 function beneficiaryCodeMap(
@@ -177,7 +177,7 @@ function submissionEntityCode(
 
 function statusBucket(status: string): "approved" | "pending" | "rejectedReturned" | "other" {
   if (status === "approved") return "approved";
-  if (["submitted", "under_review", "pending_review", "resubmitted"].includes(status)) return "pending";
+  if (["import_staged", "submitted", "under_review", "pending_review", "resubmitted"].includes(status)) return "pending";
   if (["rejected", "correction_requested", "needs_correction", "returned"].includes(status)) return "rejectedReturned";
   return "other";
 }
@@ -429,7 +429,37 @@ function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): stri
   }
   const validationIssues = submission.payload_json?._validation_issues;
   if (Array.isArray(validationIssues) && validationIssues.length) warnings.add("Validation issue");
+  const importIssues = submission.payload_json?._import_issues;
+  if (Array.isArray(importIssues) && importIssues.length) {
+    const missingFields = importIssues
+      .filter((issue) => {
+        if (!issue || typeof issue !== "object") return false;
+        const issueType = "issue_type" in issue ? issue.issue_type : null;
+        return issueType === "missing_column" || issueType === "missing_value";
+      })
+      .map((issue) => {
+        if (!issue || typeof issue !== "object") return "";
+        const label = "question_label" in issue ? issue.question_label : null;
+        const field = "field_name" in issue ? issue.field_name : null;
+        return String(label || field || "").trim();
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+    warnings.add(missingFields.length ? `Missing: ${missingFields.join(", ")}` : "Import warning");
+  }
   return Array.from(warnings);
+}
+
+function importBlockingIssues(submission: SubmissionRead | SubmissionRecord): string[] {
+  const validationIssues = submission.payload_json?._validation_issues;
+  if (Array.isArray(validationIssues) && validationIssues.length) {
+    return validationIssues.map((issue) => String(issue)).filter(Boolean);
+  }
+  return [];
+}
+
+function isImportStagedSubmission(submission: SubmissionRead | SubmissionRecord): boolean {
+  return isImportedSubmission(submission) && submission.status === "import_staged";
 }
 
 function previewSubmissionFormId(submission: SubmissionRecord): string {
@@ -1554,7 +1584,10 @@ function FormDataGridWorkspace({
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
   const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
   const [uploading, setUploading] = useState(false);
+  const [confirmingImports, setConfirmingImports] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
+  const router = useRouter();
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const upsertLocalSubmission = useWorkspaceStore((state) => state.upsertLocalSubmission);
   const schemaQuery = useQuery({
@@ -1577,7 +1610,7 @@ function FormDataGridWorkspace({
       if (sourceFilter === "field" && isImportedSubmission(submission)) return false;
       if (statusFilter !== "all") {
         if (statusFilter === "pending_review") {
-          if (!["submitted", "under_review", "pending_review", "resubmitted"].includes(submission.status)) return false;
+          if (!["import_staged", "submitted", "under_review", "pending_review", "resubmitted"].includes(submission.status)) return false;
         } else if (statusFilter === "returned") {
           if (!["rejected", "correction_requested", "needs_correction", "returned"].includes(submission.status)) return false;
         } else if (submission.status !== statusFilter) {
@@ -1595,6 +1628,8 @@ function FormDataGridWorkspace({
       ].join(" ").toLowerCase().includes(term);
     });
   }, [beneficiaryCodes, search, sourceFilter, statusFilter, submissions]);
+  const stagedImportRows = filteredSubmissions.filter(isImportStagedSubmission);
+  const confirmableImportRows = stagedImportRows.filter((submission) => !importBlockingIssues(submission).length);
   const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
 
   async function exportGrid(): Promise<void> {
@@ -1688,23 +1723,75 @@ function FormDataGridWorkspace({
       if (!headers.length || !dataRows.length) {
         throw new Error("The uploaded file must include headers and at least one data row.");
       }
+      const rowObjects = dataRows.map((row) =>
+        Object.fromEntries(headers.map((header, columnIndex) => [header, row[columnIndex]?.trim() ?? ""])),
+      );
       const questionLookup = new Map<string, FormGridQuestion>();
       for (const question of questions) {
         questionLookup.set(question.key.toLowerCase(), question);
         questionLookup.set(question.label.toLowerCase(), question);
       }
+      if (token && token !== "preview-token") {
+        const response = await importFormDataRows(token, formId, {
+          import_reason: `Form-level upload for ${form?.name ?? formId}`,
+          rows: rowObjects,
+          source_name: file.name,
+          source_system: "Form spreadsheet upload",
+        });
+        await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+        setSourceFilter("uploaded");
+        const missingIssues = response.issues.filter((issue) =>
+          issue.issue_type === "missing_column" || issue.issue_type === "missing_value",
+        );
+        const sampleMissing = missingIssues
+          .slice(0, 3)
+          .map((issue) => `${issue.question_label ?? issue.field_name ?? "Field"} on row ${issue.row_number}`)
+          .join("; ");
+        pushToast({
+          title: "Form data imported",
+          description: sampleMissing
+            ? `${response.imported_rows} row(s) staged for cleaning. Missing data found: ${sampleMissing}${missingIssues.length > 3 ? "..." : ""}`
+            : `${response.imported_rows} row(s) staged for cleaning with no missing form fields detected. Confirm them when ready.`,
+          tone: response.error_count ? "danger" : response.warning_count ? "warning" : "success",
+        });
+        return;
+      }
       const now = new Date().toISOString();
       let importedCount = 0;
       dataRows.forEach((row, rowIndex) => {
         const payload: Record<string, unknown> = {};
+        const importIssues: Record<string, unknown>[] = [];
         headers.forEach((header, columnIndex) => {
           const normalizedHeader = header.toLowerCase();
           const question = questionLookup.get(normalizedHeader);
           const value = row[columnIndex]?.trim() ?? "";
-          if (!question || !value) return;
+          if (!question) return;
+          if (!value) {
+            importIssues.push({
+              field_name: question.key,
+              issue_type: "missing_value",
+              message: `${question.label} (${question.key}) is missing for this imported row.`,
+              question_label: question.label,
+              row_number: rowIndex + 1,
+              severity: "warning",
+              suggested_fix: "Add the value if it exists. The row was still imported for review.",
+            });
+            return;
+          }
           payload[question.key] = value;
         });
-        if (!Object.keys(payload).length) return;
+        for (const question of questions) {
+          if (Object.prototype.hasOwnProperty.call(payload, question.key)) continue;
+          importIssues.push({
+            field_name: question.key,
+            issue_type: "missing_column",
+            message: `${question.label} (${question.key}) is missing for this imported row.`,
+            question_label: question.label,
+            row_number: rowIndex + 1,
+            severity: "info",
+            suggested_fix: "Add a matching column if the data exists. The row was still imported for review.",
+          });
+        }
         importedCount += 1;
         const submittedAt =
           row[headers.findIndex((header) => header.toLowerCase() === "submitted_at")] ||
@@ -1753,7 +1840,15 @@ function FormDataGridWorkspace({
           location_name: "Not captured",
           longitude: 0,
           offline_created: false,
-          payload_json: payload,
+          payload_json: {
+            ...payload,
+            _import_issues: importIssues,
+            _validation_issues: importIssues
+              .filter((issue) => issue.severity !== "info")
+              .map((issue) => issue.message),
+            _quality_status: importIssues.some((issue) => issue.severity !== "info") ? "needs_review" : "ready_for_review",
+            _review_required: true,
+          },
           project_id: form?.project_id ?? null,
           project_name: form?.project_name ?? "Project not attached",
           quality_flags: [],
@@ -1765,7 +1860,7 @@ function FormDataGridWorkspace({
           source_form_id: formId,
           source_record_id: String(rowIndex + 2),
           source_system: "Form spreadsheet upload",
-          status: "under_review",
+          status: "import_staged",
           submitted_at: submittedAt,
           supervisor: "Data reviewer",
           survey_id: null,
@@ -1789,14 +1884,6 @@ function FormDataGridWorkspace({
       if (!importedCount) {
         throw new Error("No uploaded columns matched this form's variable names.");
       }
-      if (token && token !== "preview-token") {
-        await uploadImportFile(token, "submissions", file, {
-          importReason: `Form-level upload for ${form?.name ?? formId}`,
-          sourceSystem: "Form spreadsheet upload",
-          targetMode: "existing_form",
-          targetProjectId: form?.project_id ?? null,
-        }).catch(() => undefined);
-      }
       setSourceFilter("uploaded");
       pushToast({
         title: "Form data uploaded",
@@ -1813,6 +1900,48 @@ function FormDataGridWorkspace({
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function confirmCleanedImportedRows(): Promise<void> {
+    if (!token || token === "preview-token") {
+      pushToast({
+        title: "Preview import confirmed",
+        description: "Preview rows stay local. Sign in to confirm imported form data in the platform.",
+        tone: "warning",
+      });
+      return;
+    }
+    if (!confirmableImportRows.length) {
+      pushToast({
+        title: "No cleaned rows ready",
+        description: "Open staged rows, fill required missing fields, save edits, then confirm again.",
+        tone: "warning",
+      });
+      return;
+    }
+    setConfirmingImports(true);
+    try {
+      const response = await confirmImportedFormDataRows(token, formId, {
+        comment: "Cleaned uploaded form data confirmed for platform use.",
+        submission_ids: confirmableImportRows.map((submission) => submission.id),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      setStatusFilter("approved");
+      setSourceFilter("uploaded");
+      pushToast({
+        title: "Imported data confirmed",
+        description: `${response.confirmed_rows} row(s) are now approved and ready for dashboards, reports, indicators, and beneficiary/entity linkage.${response.skipped_rows ? ` ${response.skipped_rows} row(s) still need cleaning.` : ""}`,
+        tone: response.skipped_rows ? "warning" : "success",
+      });
+    } catch (error) {
+      pushToast({
+        title: "Could not confirm import",
+        description: error instanceof Error ? error.message : "Clean staged rows and try again.",
+        tone: "danger",
+      });
+    } finally {
+      setConfirmingImports(false);
     }
   }
 
@@ -1853,6 +1982,14 @@ function FormDataGridWorkspace({
               <UploadCloud aria-hidden="true" />
               {uploading ? "Uploading" : "Upload data"}
             </Button>
+            <Button
+              disabled={confirmingImports || !confirmableImportRows.length}
+              onClick={() => void confirmCleanedImportedRows()}
+              variant="primary"
+            >
+              <CheckCircle2 aria-hidden="true" />
+              {confirmingImports ? "Confirming" : "Confirm cleaned rows"}
+            </Button>
             <input
               accept=".csv,.tsv,.txt,.xlsx"
               className="hidden"
@@ -1888,6 +2025,7 @@ function FormDataGridWorkspace({
           </label>
           <Select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
             <option value="all">All statuses</option>
+            <option value="import_staged">Import staged</option>
             <option value="pending_review">Pending review</option>
             <option value="approved">Approved</option>
             <option value="returned">Returned/rejected</option>
@@ -1899,6 +2037,28 @@ function FormDataGridWorkspace({
           </Select>
         </div>
       </div>
+
+      {stagedImportRows.length ? (
+        <div className="rounded-xl border border-warning/30 bg-warning/8 p-3 text-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold">{stagedImportRows.length} uploaded row(s) are staged for cleaning.</p>
+              <p className="text-muted-foreground">
+                Clean rows with missing required fields, then confirm cleaned rows before they feed dashboards, reports, indicators, or beneficiary/entity profiles.
+              </p>
+            </div>
+            <Button
+              disabled={confirmingImports || !confirmableImportRows.length}
+              onClick={() => void confirmCleanedImportedRows()}
+              size="sm"
+              variant="primary"
+            >
+              <CheckCircle2 aria-hidden="true" />
+              Confirm {confirmableImportRows.length} cleaned
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {showDictionary ? (
         <DataDictionaryPanel
@@ -1912,7 +2072,7 @@ function FormDataGridWorkspace({
           <table className="min-w-[1180px] border-separate border-spacing-0 text-xs">
             <thead>
               <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version"].map((header, index) => (
+                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version", "Actions"].map((header, index) => (
                   <th
                     className={cn(
                       "sticky top-0 z-20 whitespace-nowrap border-b px-2.5 py-2 font-semibold",
@@ -1977,6 +2137,26 @@ function FormDataGridWorkspace({
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionEntityCode(submission, beneficiaryCodes)}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">v{submission.server_sequence}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    {isImportStagedSubmission(submission) ? (
+                      <Button
+                        onClick={() => router.push(`/submissions/all?submissionId=${submission.id}&tab=Responses`)}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <ClipboardPenLine aria-hidden="true" />
+                        Clean row
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => router.push(`/submissions/all?submissionId=${submission.id}`)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        View
+                      </Button>
+                    )}
+                  </td>
                   {questions.map((question) => (
                     <td className="max-w-60 border-b px-2.5 py-2 align-top" key={`${submission.id}-${question.key}`}>
                       <div className="max-h-20 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-1.5 leading-relaxed">

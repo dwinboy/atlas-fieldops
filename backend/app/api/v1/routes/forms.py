@@ -14,6 +14,10 @@ from app.schemas.collection import (
     DataFormRead,
     DataFormSchemaRead,
     DataFormUpdate,
+    FormDataImportConfirmRequest,
+    FormDataImportConfirmResponse,
+    FormDataImportRequest,
+    FormDataImportResponse,
     FormCollectionCompatibility,
     FormControlsSettings,
     FormTemplateDetail,
@@ -21,7 +25,7 @@ from app.schemas.collection import (
     TemplateDuplicateRequest,
     XlsFormWorkbook,
 )
-from app.services.collection import CollectionNotFoundError, FormService
+from app.services.collection import CollectionNotFoundError, FormService, SubmissionService
 from app.services.template_library import TemplateLibraryService
 
 router = APIRouter()
@@ -167,6 +171,63 @@ async def get_form_schema(
         return await FormService(session).get_current_schema(organization_id=UUID(principal.organization_id), form_id=form_id)
     except CollectionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form version not found") from exc
+
+
+@router.post(
+    "/{form_id}/data-import",
+    response_model=FormDataImportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import spreadsheet rows into a draft or published form",
+)
+async def import_form_data(
+    form_id: UUID,
+    payload: FormDataImportRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_CREATE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FormDataImportResponse:
+    try:
+        response = await SubmissionService(session).import_form_rows(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
+            payload=payload,
+        )
+        await session.commit()
+        return response
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/{form_id}/data-import/confirm",
+    response_model=FormDataImportConfirmResponse,
+    summary="Confirm cleaned imported form rows for platform use",
+)
+async def confirm_imported_form_data(
+    form_id: UUID,
+    payload: FormDataImportConfirmRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_REVIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FormDataImportConfirmResponse:
+    try:
+        response = await SubmissionService(session).confirm_imported_form_rows(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
+            payload=payload,
+        )
+        await session.commit()
+        return response
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.patch("/{form_id}/controls", response_model=DataFormRead, summary="Update form governance controls")

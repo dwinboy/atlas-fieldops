@@ -15,11 +15,15 @@ import {
   LocateFixed,
   MapPinned,
   Plus,
+  Save,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Table2,
+  UploadCloud,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
@@ -27,7 +31,15 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { listDataQualitySignals, type CurrentPrincipal, type DataQualitySignalRead } from "@/lib/api";
+import {
+  bulkUpdateImportCleaningRows,
+  confirmImportedFormDataRows,
+  listDataQualitySignals,
+  listImportCleaningRows,
+  type CurrentPrincipal,
+  type DataQualitySignalRead,
+  type ImportCleaningRowRead,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   dataQualitySections,
@@ -158,6 +170,7 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 }
 
 export function DataQualityModule({ principal, token }: DataQualityModuleProps) {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<DataQualitySection>("dashboard");
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [activeIssueTab, setActiveIssueTab] = useState<IssueDetailTab>("Overview");
@@ -169,6 +182,11 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
     enabled: !preview && Boolean(token),
     queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
     queryKey: ["data-quality", "signals", token],
+  });
+  const importCleaningQuery = useQuery({
+    enabled: !preview && Boolean(token),
+    queryFn: () => listImportCleaningRows(token ?? ""),
+    queryKey: ["data-quality", "import-cleaning", token],
   });
   const qualityIssues = useMemo(
     () => (preview ? sampleQualityIssues : (qualitySignalsQuery.data ?? []).map(qualityIssueFromSignal)),
@@ -198,6 +216,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const visibleIssues = useMemo(() => filterIssuesBySection(qualityIssues, activeSection), [activeSection, qualityIssues]);
   const selectedIssue = qualityIssues.find((issue) => issue.id === selectedIssueId) ?? null;
   const roleLabel = principal?.roles?.join(", ") || "Workspace user";
+  const importCleaningRows = preview ? [] : (importCleaningQuery.data ?? []);
 
   function openIssue(issue: QualityIssue, tab: IssueDetailTab = "Overview"): void {
     setSelectedIssueId(issue.id);
@@ -344,6 +363,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
 
       {!selectedIssue && activeSection === "dashboard" ? (
         <QualityLanding
+          importCleaningRows={importCleaningRows}
           issues={qualityIssues}
           onOpenIssue={openIssue}
           onOpenSection={setActiveSection}
@@ -355,6 +375,39 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={duplicateGroups} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
+      {!selectedIssue && activeSection === "import-cleaning" ? (
+        <ImportCleaningSection
+          isLoading={importCleaningQuery.isLoading}
+          onBulkSave={async (rows, reason) => {
+            if (!token) return;
+            const response = await bulkUpdateImportCleaningRows(token, {
+              reason,
+              rows: rows.map((row) => ({ responses: row.responses, submission_id: row.submissionId })),
+            });
+            await importCleaningQuery.refetch();
+            setActionResult(`${response.updated_rows} imported row(s) saved and rechecked. ${response.skipped_rows} row(s) were skipped.`);
+            pushToast({ title: "Bulk cleaning saved", description: "Edited rows were saved, revalidated, and kept in the import cleaning queue if issues remain.", tone: "success" });
+          }}
+          onConfirmRows={async (rows) => {
+            if (!token) return;
+            const rowsByForm = rows.reduce<Record<string, ImportCleaningRowRead[]>>((groups, row) => {
+              groups[row.form_id] = [...(groups[row.form_id] ?? []), row];
+              return groups;
+            }, {});
+            for (const [formId, formRows] of Object.entries(rowsByForm)) {
+              await confirmImportedFormDataRows(token, formId, {
+                comment: "Cleaned imported rows confirmed from Data Quality import cleaning queue.",
+                submission_ids: formRows.map((row) => row.id),
+              });
+            }
+            await importCleaningQuery.refetch();
+            setActionResult(`${rows.length} cleaned imported row(s) confirmed and released for approved-data processing.`);
+            pushToast({ title: "Imported rows confirmed", description: "Cleaned rows are now approved for beneficiary/entity processing and reporting.", tone: "success" });
+          }}
+          onOpenRow={(row) => router.push(`/submissions/all?submissionId=${row.id}&tab=Responses`)}
+          rows={importCleaningRows}
+        />
+      ) : null}
       {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
       {!selectedIssue && activeSection === "reconciliation" ? <IssueTable description="Resolve unlinked submissions, duplicate beneficiary candidates, profile conflicts, imported unmatched records, and repeated collection issues before they affect official results." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/reconciliation" title="Reconciliation Queue" /> : null}
       {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
@@ -387,12 +440,14 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
 }
 
 function QualityLanding({
+  importCleaningRows,
   issues,
   onOpenIssue,
   onOpenSection,
   scores,
   summary,
 }: {
+  importCleaningRows: ImportCleaningRowRead[];
   issues: QualityIssue[];
   onOpenIssue: (issue: QualityIssue) => void;
   onOpenSection: (section: DataQualitySection) => void;
@@ -405,6 +460,7 @@ function QualityLanding({
     { icon: AlertTriangle, label: "Critical Issues", value: summary.criticalIssues, tone: summary.criticalIssues ? "danger" : "success" },
     { icon: GitCompare, label: "Duplicate Records", value: summary.duplicateRecords, tone: "warning" },
     { icon: ClipboardCheck, label: "Reconciliation Queue", value: summary.reconciliationIssues, tone: summary.reconciliationIssues ? "warning" : "success" },
+    { icon: UploadCloud, label: "Import Rows to Clean", value: importCleaningRows.length, tone: importCleaningRows.length ? "warning" : "success" },
     { icon: LocateFixed, label: "GPS Issues", value: summary.gpsIssues, tone: "danger" },
     { icon: ShieldAlert, label: "Validation Failures", value: summary.validationFailures, tone: "warning" },
     { icon: ClipboardCheck, label: "Missing Data Records", value: summary.missingDataRecords, tone: "danger" },
@@ -609,6 +665,346 @@ function QualityRulesSection({ rules }: { rules: QualityRuleRecord[] }) {
           {["Test rule against sample submissions", "Run long checks asynchronously", "Write rule changes to Governance audit trail"].map((item) => (
             <div className="rounded-xl border bg-background p-4 text-sm" key={item}>{item}</div>
           ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ImportCleaningSection({
+  isLoading,
+  onBulkSave,
+  onConfirmRows,
+  onOpenRow,
+  rows,
+}: {
+  isLoading: boolean;
+  onBulkSave: (rows: { submissionId: string; responses: Record<string, unknown> }[], reason: string) => Promise<void>;
+  onConfirmRows: (rows: ImportCleaningRowRead[]) => Promise<void>;
+  onOpenRow: (row: ImportCleaningRowRead) => void;
+  rows: ImportCleaningRowRead[];
+}) {
+  const [busyRowId, setBusyRowId] = useState<string | null>(null);
+  const [activeFormId, setActiveFormId] = useState("");
+  const [bulkDraft, setBulkDraft] = useState<Record<string, Record<string, string>>>({});
+  const [bulkReason, setBulkReason] = useState("Cleaned imported form rows in the Data Quality bulk editor.");
+  const [errorMessage, setErrorMessage] = useState("");
+  const readyRows = rows.filter((row) => row.ready_to_confirm);
+  const issueRows = rows.filter((row) => !row.ready_to_confirm);
+  const formOptions = useMemo(() => {
+    const forms = new Map<string, { id: string; name: string; count: number }>();
+    for (const row of rows) {
+      const current = forms.get(row.form_id);
+      forms.set(row.form_id, { count: (current?.count ?? 0) + 1, id: row.form_id, name: row.form_name });
+    }
+    return Array.from(forms.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }, [rows]);
+  const selectedFormId = activeFormId || formOptions[0]?.id || "";
+  const selectedRows = rows.filter((row) => row.form_id === selectedFormId);
+  const bulkColumns = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of selectedRows) {
+      Object.keys(row.response_values ?? {}).forEach((key) => keys.add(key));
+      row.missing_field_keys.forEach((key) => keys.add(key));
+    }
+    return Array.from(keys).filter(Boolean).slice(0, 24);
+  }, [selectedRows]);
+  const changedRows = selectedRows
+    .map((row) => {
+      const changes = bulkDraft[row.id] ?? {};
+      const responses: Record<string, unknown> = { ...(row.response_values ?? {}) };
+      for (const [key, value] of Object.entries(changes)) {
+        responses[key] = value;
+      }
+      return { changed: Object.keys(changes).length > 0, responses, submissionId: row.id };
+    })
+    .filter((row) => row.changed);
+
+  async function confirmRows(selectedRows: ImportCleaningRowRead[], busyId = "batch"): Promise<void> {
+    if (!selectedRows.length) return;
+    setBusyRowId(busyId);
+    setErrorMessage("");
+    try {
+      await onConfirmRows(selectedRows);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "The selected import rows could not be confirmed.");
+    } finally {
+      setBusyRowId(null);
+    }
+  }
+
+  async function saveBulkChanges(): Promise<void> {
+    if (!changedRows.length) return;
+    setBusyRowId("bulk-save");
+    setErrorMessage("");
+    try {
+      await onBulkSave(changedRows, bulkReason);
+      setBulkDraft({});
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Bulk row cleaning could not be saved.");
+    } finally {
+      setBusyRowId(null);
+    }
+  }
+
+  function cellValue(row: ImportCleaningRowRead, key: string): string {
+    const draftValue = bulkDraft[row.id]?.[key];
+    if (draftValue !== undefined) return draftValue;
+    const value = row.response_values?.[key];
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function updateCell(rowId: string, key: string, value: string): void {
+    setBulkDraft((current) => ({
+      ...current,
+      [rowId]: {
+        ...(current[rowId] ?? {}),
+        [key]: value,
+      },
+    }));
+  }
+
+  const columns: TableColumn<ImportCleaningRowRead>[] = [
+    {
+      header: "Imported row",
+      key: "row",
+      render: (row) => (
+        <div className="min-w-52">
+          <button className="font-medium text-primary hover:underline" onClick={() => onOpenRow(row)} type="button">
+            {row.client_submission_id}
+          </button>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Source row {row.source_record_id ?? "unknown"} · {row.source_system ?? "Uploaded file"}
+          </p>
+        </div>
+      ),
+      value: (row) => `${row.client_submission_id} ${row.source_record_id ?? ""} ${row.source_system ?? ""}`,
+    },
+    {
+      header: "Form / Project",
+      key: "context",
+      render: (row) => (
+        <div className="min-w-48">
+          <p className="font-medium">{row.form_name}</p>
+          <p className="text-[11px] text-muted-foreground">{row.project_name ?? "No project linked"}</p>
+        </div>
+      ),
+      value: (row) => `${row.form_name} ${row.project_name ?? ""}`,
+    },
+    {
+      header: "Readiness",
+      key: "readiness",
+      render: (row) => (
+        <div className="space-y-1">
+          <Badge tone={row.ready_to_confirm ? "success" : "warning"}>
+            {row.ready_to_confirm ? "Ready to confirm" : "Needs cleaning"}
+          </Badge>
+          <p className="text-[11px] text-muted-foreground">{titleCase(row.quality_status ?? row.status)}</p>
+        </div>
+      ),
+      value: (row) => `${row.ready_to_confirm} ${row.quality_status ?? row.status}`,
+    },
+    {
+      header: "Issues",
+      key: "issues",
+      render: (row) => (
+        <div className="min-w-56">
+          <p className="text-sm font-medium">{row.issue_count} issue(s)</p>
+          {row.missing_fields.length ? (
+            <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+              Missing: {row.missing_fields.slice(0, 4).join(", ")}
+              {row.missing_fields.length > 4 ? ` +${row.missing_fields.length - 4} more` : ""}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">No missing required fields detected</p>
+          )}
+        </div>
+      ),
+      value: (row) => `${row.issue_count} ${row.missing_fields.join(" ")}`,
+    },
+    {
+      header: "Uploaded by",
+      key: "uploader",
+      render: (row) => (
+        <div className="min-w-36">
+          <p>{row.uploaded_by_name ?? "Unknown user"}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {row.imported_at ? new Date(row.imported_at).toLocaleDateString() : "Date not captured"}
+          </p>
+        </div>
+      ),
+      value: (row) => `${row.uploaded_by_name ?? ""} ${row.imported_at ?? ""}`,
+    },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (row) => (
+        <div className="flex min-w-56 flex-wrap gap-1.5">
+          <Button onClick={() => onOpenRow(row)} size="sm" type="button" variant="secondary">
+            Clean row
+          </Button>
+          <Button
+            disabled={!row.ready_to_confirm || busyRowId === row.id}
+            onClick={() => confirmRows([row], row.id)}
+            size="sm"
+            type="button"
+          >
+            Confirm
+          </Button>
+        </div>
+      ),
+      value: (row) => row.id,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        action={
+          <Button disabled={!readyRows.length || busyRowId === "batch"} onClick={() => confirmRows(readyRows)} type="button">
+            <CheckCircle2 aria-hidden="true" /> Confirm all ready
+          </Button>
+        }
+        description="Clean uploaded form rows before they become approved platform data. Rows with missing required fields stay staged; cleaned rows can be confirmed and then feed beneficiary/entity processing, indicators, dashboards, and reports."
+        route="/data-quality/import-cleaning"
+        title="Import Cleaning Queue"
+      />
+      <div className="grid gap-3 md:grid-cols-3">
+        <MetricCard icon={UploadCloud} label="Rows waiting" tone={rows.length ? "warning" : "success"} value={rows.length} />
+        <MetricCard icon={CheckCircle2} label="Ready to confirm" tone={readyRows.length ? "success" : "neutral"} value={readyRows.length} />
+        <MetricCard icon={FileWarning} label="Need cleaning" tone={issueRows.length ? "danger" : "success"} value={issueRows.length} />
+      </div>
+      {errorMessage ? (
+        <section className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm" role="alert">
+          {errorMessage}
+        </section>
+      ) : null}
+      {isLoading ? (
+        <section className="rounded-xl border bg-panel p-4 shadow-line" aria-live="polite">
+          <p className="text-sm font-semibold">Loading staged uploaded rows</p>
+          <p className="mt-1 text-sm text-muted-foreground">Atlas is checking uploaded form rows that still need cleaning or confirmation.</p>
+        </section>
+      ) : null}
+      <DataTable
+        columns={columns}
+        emptyLabel="No uploaded form rows are waiting for cleaning"
+        rows={rows}
+        searchLabel="Search import rows, forms, projects, missing fields"
+        title="Uploaded rows staged for cleaning"
+      />
+      <Panel
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!changedRows.length || busyRowId === "bulk-save"} onClick={saveBulkChanges} type="button">
+              <Save aria-hidden="true" /> Save cleaned rows
+            </Button>
+            <Button disabled={!selectedRows.some((row) => row.ready_to_confirm) || busyRowId === "bulk-confirm"} onClick={() => confirmRows(selectedRows.filter((row) => row.ready_to_confirm), "bulk-confirm")} type="button" variant="secondary">
+              <CheckCircle2 aria-hidden="true" /> Confirm ready in form
+            </Button>
+          </div>
+        }
+        title="Bulk row cleaner"
+      >
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="grid gap-1">
+              <label className="text-xs font-semibold" htmlFor="import-cleaning-form-filter">Form to clean</label>
+              <select
+                className="h-8 min-w-72 rounded-lg border bg-background px-2 text-xs shadow-line"
+                id="import-cleaning-form-filter"
+                onChange={(event) => {
+                  setActiveFormId(event.target.value);
+                  setBulkDraft({});
+                }}
+                value={selectedFormId}
+              >
+                {formOptions.map((form) => (
+                  <option key={form.id} value={form.id}>{form.name} ({form.count})</option>
+                ))}
+              </select>
+            </div>
+            <label className="grid flex-1 gap-1">
+              <span className="text-xs font-semibold">Cleaning reason</span>
+              <input
+                className="h-8 rounded-lg border bg-background px-2 text-xs shadow-line"
+                onChange={(event) => setBulkReason(event.target.value)}
+                value={bulkReason}
+              />
+            </label>
+          </div>
+          {selectedRows.length && bulkColumns.length ? (
+            <div className="max-h-[72vh] overflow-auto rounded-xl border bg-background product-scrollbar">
+              <table className="min-w-[1100px] table-fixed border-separate border-spacing-0 text-left text-[11px]">
+                <thead className="sticky top-0 z-10 bg-muted/70 text-muted-foreground shadow-line backdrop-blur">
+                  <tr>
+                    <th className="sticky left-0 z-20 w-44 bg-muted/80 px-2 py-2 font-semibold">Imported row</th>
+                    <th className="w-36 px-2 py-2 font-semibold">Readiness</th>
+                    {bulkColumns.map((key) => (
+                      <th className="w-44 px-2 py-2 font-semibold" key={key}>
+                        <span className="block truncate" title={key}>{titleCase(key)}</span>
+                        <span className="block truncate text-[10px] font-normal" title={key}>{key}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedRows.map((row) => (
+                    <tr className="border-t hover:bg-muted/25" key={row.id}>
+                      <td className="sticky left-0 z-10 border-t bg-background px-2 py-1.5 align-top">
+                        <button className="font-medium text-primary hover:underline" onClick={() => onOpenRow(row)} type="button">
+                          {row.client_submission_id}
+                        </button>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Source row {row.source_record_id ?? "unknown"}</p>
+                      </td>
+                      <td className="border-t px-2 py-1.5 align-top">
+                        <Badge tone={row.ready_to_confirm ? "success" : "warning"}>{row.ready_to_confirm ? "Ready" : "Clean"}</Badge>
+                        {row.missing_field_count ? <p className="mt-1 text-[10px] text-danger">{row.missing_field_count} missing</p> : null}
+                      </td>
+                      {bulkColumns.map((key) => {
+                        const missing = row.missing_field_keys.includes(key);
+                        return (
+                          <td className="border-t px-1.5 py-1.5 align-top" key={key}>
+                            <input
+                              aria-label={`${row.client_submission_id} ${key}`}
+                              className={cn(
+                                "h-7 w-full rounded-md border bg-panel px-2 text-[11px] outline-none transition focus:border-primary",
+                                missing && !cellValue(row, key) ? "border-danger/60 bg-danger/5" : "border-border",
+                              )}
+                              onChange={(event) => updateCell(row.id, key, event.target.value)}
+                              value={cellValue(row, key)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
+              <Table2 aria-hidden="true" className="mb-2" size={18} />
+              Choose a form with staged uploaded rows to edit values in bulk.
+            </div>
+          )}
+          <p className="text-xs leading-5 text-muted-foreground">
+            Save changes first. Atlas rechecks required values and form validation rules after saving; only rows with no blocking issues can be confirmed for approved-data processing.
+          </p>
+        </div>
+      </Panel>
+      <Panel title="How this queue protects reporting data">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border bg-background p-3 text-sm">
+            Uploaded data is staged first, so missing fields do not silently enter official beneficiary records.
+          </div>
+          <div className="rounded-xl border bg-background p-3 text-sm">
+            Users clean rows in the submission response editor, with the form questions and validation issues visible.
+          </div>
+          <div className="rounded-xl border bg-background p-3 text-sm">
+            Confirmed rows become approved submissions and run through beneficiary/entity linking and audit history.
+          </div>
         </div>
       </Panel>
     </div>

@@ -23,6 +23,7 @@ export type SubmissionQualitySeverity = "Low" | "Medium" | "High" | "Critical";
 
 export type SubmissionWorkflowStage =
   | "Draft"
+  | "Import Staged"
   | "Submitted"
   | "Pending Review"
   | "Returned for Correction"

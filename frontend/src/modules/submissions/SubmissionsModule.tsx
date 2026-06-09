@@ -31,6 +31,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -103,6 +104,7 @@ type ParsedFormSchema = {
 };
 
 type ResponseRow = {
+  issues: string[];
   key: string;
   label: string;
   value: unknown;
@@ -285,6 +287,8 @@ export function SubmissionsModule({
   principal,
   token,
 }: SubmissionsModuleProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [activeSection, setActiveSection] =
     useState<SubmissionSection>("dashboard");
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<
@@ -315,6 +319,19 @@ export function SubmissionsModule({
     "submissions.edit",
     "submissions.manage",
   ]);
+
+  useEffect(() => {
+    const slug = pathname.split("/").filter(Boolean).at(1);
+    if (slug && submissionSections.some((section) => section.id === slug)) {
+      setActiveSection(slug as SubmissionSection);
+    }
+    const submissionId = searchParams.get("submissionId");
+    const tab = searchParams.get("tab");
+    if (submissionId) setSelectedSubmissionId(submissionId);
+    if (tab && submissionDetailTabs.includes(tab as SubmissionDetailTab)) {
+      setActiveDetailTab(tab as SubmissionDetailTab);
+    }
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     if (!localSubmissions.length) return;
@@ -590,7 +607,7 @@ export function SubmissionsModule({
         id: submission.client_submission_id,
         project: submission.project_name,
         form: submission.form_name,
-        enumerator: submission.field_officer_id,
+        enumerator: submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
         status: submission.status,
         quality_score: submission.quality_score,
         submitted_at: submission.submitted_at,
@@ -628,8 +645,8 @@ export function SubmissionsModule({
     {
       key: "enumerator",
       header: "Enumerator",
-      value: (submission) => submission.field_officer_id,
-      render: (submission) => submission.field_officer_id,
+      value: (submission) => submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
+      render: (submission) => submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
     },
     {
       key: "location",
@@ -1248,7 +1265,7 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
             <Signal label="Project" value={submission.project_name} />
             <Signal label="Form" value={submission.form_name} />
             <Signal label="Form Version" value={`v${submission.form_version}`} />
-            <Signal label="Enumerator" value={submission.field_officer_id} />
+            <Signal label="Enumerator" value={submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file"} />
             <Signal label="Supervisor" value={submission.supervisor} />
             <Signal
               label="Submitted"
@@ -1370,6 +1387,20 @@ function parseEditedResponse(row: ResponseRow, rawValue: string): unknown {
   return rawValue;
 }
 
+function importIssuesByField(payload: Record<string, unknown>): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const rawIssues = payload._import_issues;
+  if (!Array.isArray(rawIssues)) return map;
+  for (const issue of rawIssues) {
+    if (!issue || typeof issue !== "object") continue;
+    const fieldName = "field_name" in issue ? String(issue.field_name ?? "") : "";
+    const message = "message" in issue ? String(issue.message ?? "") : "";
+    if (!fieldName || !message) continue;
+    map.set(fieldName, [...(map.get(fieldName) ?? []), message]);
+  }
+  return map;
+}
+
 function buildResponseRows(
   payload: Record<string, unknown>,
   formSchema: DataFormSchemaRead | null,
@@ -1377,6 +1408,7 @@ function buildResponseRows(
   const rows: ResponseRow[] = [];
   const usedKeys = new Set<string>();
   const schema = (formSchema?.schema ?? {}) as ParsedFormSchema;
+  const issueMap = importIssuesByField(payload);
   for (const section of schema.sections ?? []) {
     for (const field of section.fields ?? []) {
       const candidates = [field.variable_name, field.id].filter(
@@ -1388,6 +1420,7 @@ function buildResponseRows(
         ) ?? candidates[0] ?? field.id;
       usedKeys.add(payloadKey);
       rows.push({
+        issues: issueMap.get(payloadKey) ?? issueMap.get(field.variable_name ?? "") ?? issueMap.get(field.id) ?? [],
         key: payloadKey,
         label: field.label || humanizeKey(payloadKey),
         value: payload[payloadKey],
@@ -1403,6 +1436,7 @@ function buildResponseRows(
   for (const [key, value] of Object.entries(payload)) {
     if (usedKeys.has(key)) continue;
     rows.push({
+      issues: issueMap.get(key) ?? [],
       key,
       label: humanizeKey(key),
       value,
@@ -1477,6 +1511,7 @@ function ResponsesTab({
   }, [filteredRows]);
   const editableCount = rows.filter((row) => row.source !== "system").length;
   const uploadedCount = rows.filter((row) => row.source === "uploaded").length;
+  const issueCount = rows.reduce((total, row) => total + row.issues.length, 0);
   const blankCount = rows.filter(
     (row) => row.value === null || row.value === undefined || row.value === "",
   ).length;
@@ -1505,8 +1540,8 @@ function ResponsesTab({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border bg-gradient-to-br from-primary/8 via-background to-info/8 p-4">
+    <div className="space-y-3">
+      <div className="rounded-xl border bg-panel p-3 shadow-line">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1517,11 +1552,13 @@ function ResponsesTab({
               <Badge tone={blankCount ? "warning" : "success"}>
                 {blankCount} blank
               </Badge>
+              <Badge tone={issueCount ? "danger" : "success"}>
+                {issueCount} issue{issueCount === 1 ? "" : "s"}
+              </Badge>
             </div>
-            <h3 className="mt-3 text-lg font-semibold">Collected data</h3>
+            <h3 className="mt-2 text-base font-semibold">Clean submission data</h3>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Every value saved against this form is visible here, including
-              imported columns that do not yet exist in the current form schema.
+              Edit staged uploaded rows in a spreadsheet-style workspace. Save edits before confirming imported rows for reports, indicators, and beneficiary/entity records.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1551,7 +1588,7 @@ function ResponsesTab({
             </Button>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
           <label className="relative">
             <Search
               aria-hidden="true"
@@ -1573,7 +1610,7 @@ function ResponsesTab({
       </div>
 
       {editing ? (
-        <div className="rounded-2xl border border-warning/30 bg-warning/8 p-4">
+        <div className="sticky top-2 z-30 rounded-xl border border-warning/30 bg-warning/10 p-3 shadow-line backdrop-blur">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <label className="block flex-1 text-sm font-medium">
               Reason for editing
@@ -1600,43 +1637,58 @@ function ResponsesTab({
         </div>
       ) : null}
 
-      {visibleSections.map(([title, sectionRows]) => (
-        <Panel
-          key={title}
-          title={title}
-          action={
-            <Badge tone={title === "System review metadata" ? "neutral" : "accent"}>
-              {sectionRows.length} fields
-            </Badge>
-          }
-        >
-          <div className="overflow-hidden rounded-xl border">
-            <div className="hidden grid-cols-[minmax(220px,0.75fr)_minmax(220px,1fr)_120px] border-b bg-muted/60 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground md:grid">
-              <span>Field</span>
-              <span>Value</span>
-              <span>Source</span>
-            </div>
-            <div className="divide-y">
-              {sectionRows.map((row) => (
-                <div
-                  className="grid gap-3 bg-background/70 p-3 md:grid-cols-[minmax(220px,0.75fr)_minmax(220px,1fr)_120px] md:items-start"
-                  key={`${row.sectionTitle}-${row.key}`}
-                >
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium">{row.label}</p>
-                      {row.required ? <Badge tone="warning">Required</Badge> : null}
+      <div className="rounded-xl border bg-panel shadow-line">
+        <div className="max-h-[72vh] overflow-auto product-scrollbar">
+          <table className="min-w-[1280px] border-separate border-spacing-0 text-xs">
+            <thead>
+              <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                {["Section", "Question", "Variable", "Required", "Source", "Issue", editing ? "Cleaned value" : "Value"].map((header, index) => (
+                  <th
+                    className={cn(
+                      "sticky top-0 z-20 border-b bg-muted/90 px-2.5 py-2 font-semibold",
+                      index === 0 ? "left-0 z-30 min-w-44" : "",
+                      index === 1 ? "min-w-64" : "",
+                      index === 6 ? "min-w-[420px]" : "",
+                    )}
+                    key={header}
+                  >
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => (
+                <tr className="odd:bg-background even:bg-muted/20" key={`${row.sectionTitle}-${row.key}`}>
+                  <td className="sticky left-0 z-10 max-w-52 border-b bg-inherit px-2.5 py-2 font-medium">
+                    <span className="line-clamp-2">{row.sectionTitle}</span>
+                  </td>
+                  <td className="border-b px-2.5 py-2 align-top">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">{row.label}</span>
+                      {row.hint ? (
+                        <HelpHint label={`About ${row.label}`} title={row.label}>
+                          <p>{row.hint}</p>
+                        </HelpHint>
+                      ) : null}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {row.key} · {row.type}
-                    </p>
-                    {row.hint ? (
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        {row.hint}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div>
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2 font-mono text-[11px] text-muted-foreground">{row.key}</td>
+                  <td className="border-b px-2.5 py-2">{row.required ? <Badge tone="warning">Required</Badge> : <Badge tone="neutral">Optional</Badge>}</td>
+                  <td className="border-b px-2.5 py-2">
+                    <Badge tone={row.source === "form" ? "success" : row.source === "uploaded" ? "warning" : "neutral"}>
+                      {row.source === "form" ? "Form" : row.source === "uploaded" ? "Uploaded" : "System"}
+                    </Badge>
+                  </td>
+                  <td className="border-b px-2.5 py-2 align-top">
+                    <div className="flex max-w-72 flex-wrap gap-1">
+                      {row.issues.length ? row.issues.slice(0, 2).map((issue) => (
+                        <Badge key={issue} tone="danger">{issue}</Badge>
+                      )) : <Badge tone="success">Clean</Badge>}
+                      {row.issues.length > 2 ? <Badge tone="warning">+{row.issues.length - 2}</Badge> : null}
+                    </div>
+                  </td>
+                  <td className="border-b px-2.5 py-2 align-top">
                     {editing && row.source !== "system" ? (
                       <ResponseEditor
                         onChange={(value) => updateEditValue(row.key, value)}
@@ -1644,36 +1696,26 @@ function ResponsesTab({
                         value={editValues[row.key] ?? ""}
                       />
                     ) : (
-                      <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/45 p-3 text-sm leading-6 text-foreground">
-                        {formatResponseValue(row.value)}
-                      </pre>
+                      <div className="max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-2 leading-relaxed">
+                        {formatResponseValue(row.value) || <span className="text-muted-foreground">Blank</span>}
+                      </div>
                     )}
-                  </div>
-                  <div className="flex items-center md:justify-end">
-                    <Badge
-                      tone={
-                        row.source === "form"
-                          ? "success"
-                          : row.source === "uploaded"
-                            ? "warning"
-                            : "neutral"
-                      }
-                    >
-                      {row.source === "form"
-                        ? "Form"
-                        : row.source === "uploaded"
-                          ? "Uploaded"
-                          : "System"}
-                    </Badge>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               ))}
+            </tbody>
+          </table>
+          {!filteredRows.length ? (
+            <div className="p-10 text-center">
+              <Search aria-hidden="true" className="mx-auto text-muted-foreground" size={22} />
+              <p className="mt-3 font-medium">No matching fields</p>
+              <p className="mt-1 text-sm text-muted-foreground">Clear the search to see every saved field for this submission.</p>
             </div>
-          </div>
-        </Panel>
-      ))}
+          ) : null}
+        </div>
+      </div>
       {!visibleSections.length ? (
-        <div className="rounded-2xl border bg-panel p-8 text-center">
+        <div className="hidden rounded-2xl border bg-panel p-8 text-center">
           <Search
             aria-hidden="true"
             className="mx-auto text-muted-foreground"

@@ -3,7 +3,7 @@ import json
 import re
 from datetime import UTC, datetime
 from io import StringIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,12 +34,21 @@ from app.schemas.collection import (
     FieldOfficerInvite,
     FieldOfficerImportIssue,
     FieldOfficerImportResponse,
+    FormDataImportConfirmRequest,
+    FormDataImportConfirmResponse,
+    FormDataImportIssue,
+    FormDataImportRequest,
+    FormDataImportResponse,
+    ImportCleaningBulkUpdateRequest,
+    ImportCleaningBulkUpdateResponse,
+    ImportCleaningRowRead,
     FieldOfficerProfileUpdate,
     FieldOfficerRead,
     FieldOfficerSecurityRead,
     FieldOfficerSubmissionDetailRead,
     FieldOfficerSummaryMetric,
     OfficerAssignmentCreate,
+    FormField,
     FormSchema,
     SubmissionRead,
     SubmissionCreate,
@@ -242,6 +251,72 @@ def _field_response(responses: dict[str, object], field: object) -> object:
         if key and key in responses:
             return responses[key]
     return None
+
+
+def _normalized_import_header(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def _form_import_field_key(field: FormField) -> str:
+    return field.variable_name or field.id
+
+
+def _import_value_for_field(row: dict[str, object], field: FormField) -> tuple[bool, object | None]:
+    aliases = {
+        _normalized_import_header(field.id),
+        _normalized_import_header(field.variable_name),
+        _normalized_import_header(field.label),
+    }
+    for header, value in row.items():
+        if _normalized_import_header(header) in aliases:
+            return True, value
+    return False, None
+
+
+def _parse_import_datetime(value: object, fallback: datetime) -> datetime:
+    parsed = _parse_datetime(value)
+    return parsed if parsed is not None else fallback
+
+
+def _parse_import_float(value: object, fallback: float = 0.0) -> float:
+    if value in (None, ""):
+        return fallback
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return fallback
+
+
+def _form_import_issues_for_row(
+    *,
+    row_number: int,
+    row: dict[str, object],
+    schema: FormSchema,
+) -> tuple[dict[str, object], list[FormDataImportIssue]]:
+    responses: dict[str, object] = {}
+    issues: list[FormDataImportIssue] = []
+    for section in schema.sections:
+        for field in section.fields:
+            field_key = _form_import_field_key(field)
+            has_column, value = _import_value_for_field(row, field)
+            if has_column and not _is_blank(value):
+                responses[field_key] = value
+                continue
+            issue_type = "missing_value" if has_column else "missing_column"
+            severity = "warning" if field.required else "info"
+            issue_action = "Add a value" if has_column else "Add a column or map an existing column"
+            issues.append(
+                FormDataImportIssue(
+                    row_number=row_number,
+                    field_name=field_key,
+                    question_label=field.label,
+                    issue_type=issue_type,
+                    severity=severity,
+                    message=f"{field.label} ({field_key}) is missing for this imported row.",
+                    suggested_fix=f"{issue_action} for {field.label} if the data exists. The row was still imported for review.",
+                )
+            )
+    return responses, issues
 
 
 def _field_appearance_text(field: object) -> str:
@@ -1603,6 +1678,423 @@ class SubmissionService:
         )
         return submission
 
+    async def import_form_rows(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+        payload: FormDataImportRequest,
+    ) -> FormDataImportResponse:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        form_version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
+        if form_version is None:
+            raise CollectionNotFoundError("Form version not found")
+
+        schema = FormSchema.model_validate(form_version.schema_json)
+        question_control_metadata = _question_control_metadata(schema)
+        now = datetime.now(UTC)
+        imported: list[Submission] = []
+        all_issues: list[FormDataImportIssue] = []
+
+        for row_number, raw_row in enumerate(payload.rows, start=1):
+            row = {str(key).strip(): value for key, value in raw_row.items() if str(key).strip()}
+            normalized_row = {_normalized_import_header(key): value for key, value in row.items()}
+            responses, row_issues = _form_import_issues_for_row(row_number=row_number, row=row, schema=schema)
+
+            submitted_at = _parse_import_datetime(normalized_row.get("submitted_at"), now)
+            captured_at = _parse_import_datetime(normalized_row.get("captured_at"), submitted_at)
+            location_captured_at = _parse_import_datetime(normalized_row.get("location_captured_at"), captured_at)
+            latitude = _parse_import_float(normalized_row.get("latitude"))
+            longitude = _parse_import_float(normalized_row.get("longitude"))
+            accuracy = (
+                _parse_import_float(normalized_row.get("accuracy"))
+                if normalized_row.get("accuracy") not in (None, "")
+                else None
+            )
+
+            validation_messages = validate_submission_payload(
+                schema=schema,
+                payload=responses,
+                location_accuracy=accuracy,
+            )
+            row_issues.extend(
+                FormDataImportIssue(
+                    row_number=row_number,
+                    field_name=None,
+                    question_label=None,
+                    issue_type="form_validation",
+                    severity="warning",
+                    message=message,
+                    suggested_fix="Review this row before approval. The row was still imported.",
+                )
+                for message in validation_messages
+            )
+            all_issues.extend(row_issues)
+            import_issue_payload = [issue.model_dump(mode="json") for issue in row_issues]
+            review_issue_messages = [issue.message for issue in row_issues if issue.severity != "info"]
+            submission_payload: dict[str, object] = {
+                **responses,
+                "_question_control_metadata": question_control_metadata,
+                "_import_issues": import_issue_payload,
+                "_validation_issues": review_issue_messages,
+                "_quality_status": "needs_review" if review_issue_messages else "ready_for_review",
+                "_review_required": True,
+                "_source_attribution": {
+                    "source": "Uploaded",
+                    "sourceName": payload.source_name,
+                    "sourceSystem": payload.source_system,
+                    "rowNumber": row_number,
+                    "uploadedByUserId": str(actor_user_id),
+                    "uploadedAt": now.isoformat(),
+                    "importReason": payload.import_reason,
+                },
+            }
+
+            submission = await self.submissions.create(
+                organization_id=organization_id,
+                project_id=form.project_id,
+                survey_id=form.survey_id,
+                form_id=form.id,
+                form_version_id=form_version.id,
+                entity_id=None,
+                entity_type=None,
+                assignment_id=None,
+                supervisor_id=None,
+                frequency_period=None,
+                event_id=None,
+                field_officer_id=None,
+                actor_user_id=actor_user_id,
+                client_submission_id=f"IMP-{uuid4()}",
+                payload_json=submission_payload,
+                device_id="web-form-import",
+                captured_at=captured_at,
+                submitted_at=submitted_at,
+                offline_created=False,
+                latitude=latitude,
+                longitude=longitude,
+                altitude=None,
+                accuracy=accuracy,
+                location_captured_at=location_captured_at,
+                status="import_staged",
+                history_comment="Submission staged from form spreadsheet upload for cleaning",
+            )
+            submission.is_imported = True
+            submission.source_system = payload.source_system
+            submission.source_record_id = str(row_number)
+            submission.source_project_id = str(form.project_id) if form.project_id else None
+            submission.source_form_id = str(form.id)
+            submission.imported_at = now
+            submission.imported_by_user_id = actor_user_id
+            imported.append(submission)
+            self._record_submission_control_signals(
+                organization_id=organization_id,
+                submission=submission,
+                schema=schema,
+                validation_issues=review_issue_messages,
+            )
+
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.data_imported",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={
+                "form_id": str(form.id),
+                "form_status": form.status,
+                "form_version": form_version.version,
+                "imported_rows": len(imported),
+                "warning_count": len([issue for issue in all_issues if issue.severity != "error"]),
+                "error_count": len([issue for issue in all_issues if issue.severity == "error"]),
+                "source_name": payload.source_name,
+                "source_system": payload.source_system,
+            },
+        )
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "form.data_imported",
+                "organization_id": str(organization_id),
+                "form_id": str(form.id),
+                "imported_rows": len(imported),
+            },
+        )
+        await self.session.flush()
+        return FormDataImportResponse(
+            imported_rows=len(imported),
+            warning_count=len([issue for issue in all_issues if issue.severity != "error"]),
+            error_count=len([issue for issue in all_issues if issue.severity == "error"]),
+            issues=all_issues,
+            submissions=[SubmissionRead.model_validate(submission) for submission in imported],
+        )
+
+    async def confirm_imported_form_rows(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+        payload: FormDataImportConfirmRequest,
+    ) -> FormDataImportConfirmResponse:
+        confirmed: list[Submission] = []
+        issues: list[FormDataImportIssue] = []
+        skipped_rows = 0
+        for index, submission_id in enumerate(payload.submission_ids, start=1):
+            submission = await self.submissions.get(organization_id=organization_id, submission_id=submission_id)
+            if submission is None or submission.form_id != form_id or not submission.is_imported:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="not_confirmable",
+                        severity="error",
+                        message="This row is not an imported submission for the selected form.",
+                        suggested_fix="Confirm only uploaded rows from this form.",
+                    )
+                )
+                continue
+            if submission.status == "approved":
+                confirmed.append(submission)
+                continue
+            if submission.status not in {"import_staged", "under_review"}:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="invalid_status",
+                        severity="error",
+                        message=f"{submission.client_submission_id} is {submission.status} and cannot be confirmed as cleaned import data.",
+                        suggested_fix="Return the row to import staging or review before confirming it.",
+                    )
+                )
+                continue
+            validation_issues = submission.payload_json.get("_validation_issues") if isinstance(submission.payload_json, dict) else None
+            if isinstance(validation_issues, list) and validation_issues:
+                skipped_rows += 1
+                for message in validation_issues[:5]:
+                    issues.append(
+                        FormDataImportIssue(
+                            row_number=index,
+                            field_name=None,
+                            issue_type="unresolved_validation",
+                            severity="error",
+                            message=str(message),
+                            suggested_fix="Clean the row in the submission response editor, save it, then confirm again.",
+                        )
+                    )
+                continue
+            await self.submissions.transition(
+                submission=submission,
+                actor_user_id=actor_user_id,
+                to_status="approved",
+                comment=payload.comment,
+            )
+            submission.payload_json = {
+                **(submission.payload_json or {}),
+                "_quality_status": "confirmed_ready_for_use",
+                "_review_required": False,
+                "_import_confirmed_at": datetime.now(UTC).isoformat(),
+                "_import_confirmed_by_user_id": str(actor_user_id),
+            }
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="form.import_row_confirmed",
+                resource_type="submission",
+                resource_id=str(submission.id),
+                metadata={
+                    "form_id": str(form_id),
+                    "client_submission_id": submission.client_submission_id,
+                    "source_system": submission.source_system,
+                    "comment": payload.comment,
+                },
+            )
+            await self._apply_approved_submission_to_beneficiary(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+            )
+            confirmed.append(submission)
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "form.import_rows_confirmed",
+                "organization_id": str(organization_id),
+                "form_id": str(form_id),
+                "confirmed_rows": len(confirmed),
+                "skipped_rows": skipped_rows,
+            },
+        )
+        await self.session.flush()
+        return FormDataImportConfirmResponse(
+            confirmed_rows=len(confirmed),
+            skipped_rows=skipped_rows,
+            issues=issues,
+            submissions=[SubmissionRead.model_validate(submission) for submission in confirmed],
+        )
+
+    async def list_import_cleaning_rows(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        scope_type: str | None = None,
+    ) -> list[ImportCleaningRowRead]:
+        _ = actor_user_id, scope_type
+        rows = await self.submissions.list_import_cleaning_rows(organization_id=organization_id)
+        return [self._import_cleaning_row_read(submission, form, project, uploader) for submission, form, project, uploader in rows]
+
+    async def bulk_update_import_cleaning_rows(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: ImportCleaningBulkUpdateRequest,
+    ) -> ImportCleaningBulkUpdateResponse:
+        updated_rows: list[ImportCleaningRowRead] = []
+        issues: list[FormDataImportIssue] = []
+        skipped_rows = 0
+        for index, row_update in enumerate(payload.rows, start=1):
+            submission = await self.submissions.get(organization_id=organization_id, submission_id=row_update.submission_id)
+            if submission is None or not submission.is_imported:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="not_found",
+                        severity="error",
+                        message="This imported row was not found.",
+                        suggested_fix="Refresh the queue and try again.",
+                    )
+                )
+                continue
+            if submission.status not in {"import_staged", "under_review"}:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="not_editable",
+                        severity="error",
+                        message=f"{submission.client_submission_id} is {submission.status} and cannot be bulk cleaned.",
+                        suggested_fix="Only staged or under-review imported rows can be edited in the cleaning queue.",
+                    )
+                )
+                continue
+            await self.update_responses(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission_id=submission.id,
+                payload=SubmissionResponsesUpdate(responses=row_update.responses, reason=payload.reason),
+            )
+            form = await self.forms.get(organization_id=organization_id, form_id=submission.form_id)
+            project = None
+            uploader = None
+            if submission.project_id is not None:
+                project_result = await self.session.execute(
+                    select(Project).where(
+                        Project.organization_id == organization_id,
+                        Project.id == submission.project_id,
+                        Project.deleted_at.is_(None),
+                    )
+                )
+                project = project_result.scalar_one_or_none()
+            if submission.imported_by_user_id is not None:
+                uploader_result = await self.session.execute(select(User).where(User.id == submission.imported_by_user_id))
+                uploader = uploader_result.scalar_one_or_none()
+            if form is not None:
+                updated_rows.append(self._import_cleaning_row_read(submission, form, project, uploader))
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.import_rows_bulk_cleaned",
+            resource_type="submission",
+            resource_id="bulk",
+            metadata={
+                "updated_rows": len(updated_rows),
+                "skipped_rows": skipped_rows,
+                "reason": payload.reason,
+            },
+        )
+        await self.session.flush()
+        return ImportCleaningBulkUpdateResponse(
+            updated_rows=len(updated_rows),
+            skipped_rows=skipped_rows,
+            issues=issues,
+            rows=updated_rows,
+        )
+
+    def _import_cleaning_row_read(
+        self,
+        submission: Submission,
+        form: DataForm,
+        project: Project | None,
+        uploader: User | None,
+    ) -> ImportCleaningRowRead:
+        payload = submission.payload_json if isinstance(submission.payload_json, dict) else {}
+        import_issues = payload.get("_import_issues")
+        validation_issues = payload.get("_validation_issues")
+        quality_status = payload.get("_quality_status")
+        issue_records = import_issues if isinstance(import_issues, list) else []
+        validation_messages = [str(issue) for issue in validation_issues] if isinstance(validation_issues, list) else []
+        missing_fields = sorted(
+            {
+                str(issue.get("question_label") or issue.get("field_name") or "Unknown field")
+                for issue in issue_records
+                if isinstance(issue, dict) and str(issue.get("issue_type") or "").startswith("missing")
+            }
+        )
+        missing_field_keys = sorted(
+            {
+                str(issue.get("field_name"))
+                for issue in issue_records
+                if (
+                    isinstance(issue, dict)
+                    and str(issue.get("issue_type") or "").startswith("missing")
+                    and issue.get("field_name")
+                )
+            }
+        )
+        blocking_issue_count = len(validation_messages)
+        if not blocking_issue_count:
+            blocking_issue_count = len(
+                [
+                    issue
+                    for issue in issue_records
+                    if isinstance(issue, dict) and str(issue.get("severity") or "").lower() == "error"
+                ]
+            )
+        response_values = {key: value for key, value in payload.items() if isinstance(key, str) and not key.startswith("_")}
+        return ImportCleaningRowRead(
+            id=submission.id,
+            client_submission_id=submission.client_submission_id,
+            form_id=form.id,
+            form_name=form.name,
+            project_id=project.id if project else None,
+            project_name=project.name if project else None,
+            status=submission.status,
+            imported_at=submission.imported_at,
+            imported_by_user_id=submission.imported_by_user_id,
+            uploaded_by_name=uploader.full_name if uploader else None,
+            source_system=submission.source_system,
+            source_record_id=submission.source_record_id,
+            missing_fields=missing_fields,
+            missing_field_keys=missing_field_keys,
+            validation_issues=validation_messages,
+            response_values=response_values,
+            issue_count=len(issue_records) + len(validation_messages),
+            missing_field_count=len(missing_fields),
+            ready_to_confirm=blocking_issue_count == 0,
+            quality_status=str(quality_status) if quality_status is not None else None,
+            updated_at=submission.updated_at,
+        )
+
     def _record_submission_control_signals(
         self,
         *,
@@ -2680,6 +3172,13 @@ class SubmissionService:
             )
             await self.session.flush()
             return submission
+        if submission.is_imported and submission.status in {"import_staged", "under_review"}:
+            clean_responses = await self._revalidate_import_cleaning_payload(
+                submission=submission,
+                responses=clean_responses,
+                protected_payload=protected_payload,
+            )
+            protected_payload = {}
         updated_payload = {**clean_responses, **protected_payload}
         updated = await self.submissions.update_payload(
             submission=submission,
@@ -2727,6 +3226,61 @@ class SubmissionService:
             },
         )
         return updated
+
+    async def _revalidate_import_cleaning_payload(
+        self,
+        *,
+        submission: Submission,
+        responses: dict[str, object],
+        protected_payload: dict[str, object],
+    ) -> dict[str, object]:
+        form_version = await self.forms.get_current_version(
+            organization_id=submission.organization_id,
+            form_id=submission.form_id,
+        )
+        if form_version is None:
+            return responses
+        schema = FormSchema.model_validate(form_version.schema_json)
+        question_control_metadata = _question_control_metadata(schema)
+        _, import_issues = _form_import_issues_for_row(
+            row_number=1,
+            row=responses,
+            schema=schema,
+        )
+        validation_messages = validate_submission_payload(
+            schema=schema,
+            payload=responses,
+            location_accuracy=submission.accuracy,
+        )
+        import_issues.extend(
+            FormDataImportIssue(
+                row_number=1,
+                field_name=None,
+                question_label=None,
+                issue_type="form_validation",
+                severity="warning",
+                message=message,
+                suggested_fix="Fix this value before confirming the imported row for platform use.",
+            )
+            for message in validation_messages
+        )
+        review_issue_messages = [issue.message for issue in import_issues if issue.severity != "info"]
+        source_attribution = protected_payload.get("_source_attribution")
+        return {
+            **responses,
+            "_question_control_metadata": question_control_metadata,
+            "_import_issues": [issue.model_dump(mode="json") for issue in import_issues],
+            "_validation_issues": review_issue_messages,
+            "_quality_status": "cleaned_ready_for_confirmation" if not review_issue_messages else "needs_review",
+            "_review_required": bool(review_issue_messages),
+            "_source_attribution": source_attribution
+            if isinstance(source_attribution, dict)
+            else {
+                "source": "Uploaded",
+                "sourceSystem": submission.source_system,
+                "sourceRecordId": submission.source_record_id,
+            },
+        }
 
     async def history(self, *, organization_id: UUID, submission_id: UUID) -> list[object]:
         return list(await self.submissions.history(organization_id=organization_id, submission_id=submission_id))

@@ -446,11 +446,11 @@ class SubmissionRepository:
         self,
         *,
         organization_id: UUID,
-        project_id: UUID,
-        survey_id: UUID,
+        project_id: UUID | None,
+        survey_id: UUID | None,
         form_id: UUID,
         form_version_id: UUID,
-        field_officer_id: UUID,
+        field_officer_id: UUID | None,
         actor_user_id: UUID,
         client_submission_id: str,
         payload_json: dict[str, Any],
@@ -470,6 +470,7 @@ class SubmissionRepository:
         frequency_period: str | None = None,
         event_id: str | None = None,
         status: str = "submitted",
+        history_comment: str = "Submission received from mobile sync",
     ) -> Submission:
         now = datetime.now(UTC)
         submission = Submission(
@@ -508,7 +509,7 @@ class SubmissionRepository:
             actor_user_id=actor_user_id,
             from_status=None,
             to_status=status,
-            comment="Submission received from mobile sync",
+            comment=history_comment,
         )
         return submission
 
@@ -525,6 +526,30 @@ class SubmissionRepository:
             query = query.where(Submission.field_officer_id == field_officer_id)
         result = await self.session.execute(query.order_by(Submission.sync_received_at.desc()).limit(200))
         return list(result.scalars())
+
+    async def list_import_cleaning_rows(
+        self,
+        *,
+        organization_id: UUID,
+        limit: int = 500,
+    ) -> list[tuple[Submission, DataForm, Project | None, User | None]]:
+        result = await self.session.execute(
+            select(Submission, DataForm, Project, User)
+            .join(DataForm, DataForm.id == Submission.form_id)
+            .outerjoin(Project, Project.id == Submission.project_id)
+            .outerjoin(User, User.id == Submission.imported_by_user_id)
+            .where(
+                Submission.organization_id == organization_id,
+                DataForm.organization_id == organization_id,
+                (Project.organization_id == organization_id) | (Project.id.is_(None)),
+                Submission.deleted_at.is_(None),
+                Submission.is_imported.is_(True),
+                Submission.status.in_(["import_staged", "under_review"]),
+            )
+            .order_by(Submission.updated_at.desc(), Submission.sync_received_at.desc())
+            .limit(limit)
+        )
+        return [(submission, form, project, user) for submission, form, project, user in result.all()]
 
     async def get(self, *, organization_id: UUID, submission_id: UUID) -> Submission | None:
         result = await self.session.execute(

@@ -554,6 +554,23 @@ class DataFormSchemaRead(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class FormDataImportIssue(BaseModel):
+    row_number: int = Field(ge=1)
+    field_name: str | None = None
+    question_label: str | None = None
+    issue_type: str
+    severity: str = Field(default="warning", pattern=r"^(info|warning|error)$")
+    message: str
+    suggested_fix: str | None = None
+
+
+class FormDataImportRequest(BaseModel):
+    rows: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+    source_name: str = Field(default="Form spreadsheet upload", min_length=2, max_length=240)
+    source_system: str = Field(default="Form spreadsheet upload", min_length=2, max_length=120)
+    import_reason: str | None = Field(default=None, max_length=500)
+
+
 class XlsFormSurveyRow(BaseModel):
     type: str
     name: str
@@ -848,7 +865,7 @@ class SubmissionRead(BaseModel):
     supervisor_id: UUID | None = None
     frequency_period: str | None = None
     event_id: str | None = None
-    field_officer_id: UUID
+    field_officer_id: UUID | None = None
     status: str
     server_sequence: int
     captured_at: datetime
@@ -870,6 +887,67 @@ class SubmissionRead(BaseModel):
     imported_by_user_id: UUID | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ImportCleaningRowRead(BaseModel):
+    id: UUID
+    client_submission_id: str
+    form_id: UUID
+    form_name: str
+    project_id: UUID | None = None
+    project_name: str | None = None
+    status: str
+    imported_at: datetime | None = None
+    imported_by_user_id: UUID | None = None
+    uploaded_by_name: str | None = None
+    source_system: str | None = None
+    source_record_id: str | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    missing_field_keys: list[str] = Field(default_factory=list)
+    validation_issues: list[str] = Field(default_factory=list)
+    response_values: dict[str, Any] = Field(default_factory=dict)
+    issue_count: int
+    missing_field_count: int
+    ready_to_confirm: bool
+    quality_status: str | None = None
+    updated_at: datetime
+
+
+class ImportCleaningBulkRowUpdate(BaseModel):
+    submission_id: UUID
+    responses: dict[str, Any]
+
+
+class ImportCleaningBulkUpdateRequest(BaseModel):
+    rows: list[ImportCleaningBulkRowUpdate] = Field(min_length=1, max_length=250)
+    reason: str = Field(default="Bulk cleaned imported form rows.", min_length=4, max_length=1000)
+
+
+class ImportCleaningBulkUpdateResponse(BaseModel):
+    updated_rows: int
+    skipped_rows: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    rows: list[ImportCleaningRowRead] = Field(default_factory=list)
+
+
+class FormDataImportResponse(BaseModel):
+    imported_rows: int
+    warning_count: int
+    error_count: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    submissions: list[SubmissionRead] = Field(default_factory=list)
+
+
+class FormDataImportConfirmRequest(BaseModel):
+    submission_ids: list[UUID] = Field(min_length=1, max_length=500)
+    comment: str = Field(default="Cleaned imported form data confirmed for platform use.", min_length=4, max_length=1000)
+
+
+class FormDataImportConfirmResponse(BaseModel):
+    confirmed_rows: int
+    skipped_rows: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    submissions: list[SubmissionRead] = Field(default_factory=list)
 
 
 class EntityFrequencyValidationRequest(BaseModel):

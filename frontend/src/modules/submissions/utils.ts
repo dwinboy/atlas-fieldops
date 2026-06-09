@@ -13,13 +13,14 @@ export function formatSubmissionStatus(status: string): string {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .replace("Correction Requested", "Returned for Correction")
+    .replace("Import Staged", "Import Staged")
     .replace("Under Review", "Pending Review");
 }
 
 export function statusTone(status: string): BadgeProps["tone"] {
   if (["approved"].includes(status)) return "success";
   if (["rejected"].includes(status)) return "danger";
-  if (["under_review", "submitted", "pending_review", "resubmitted"].includes(status)) return "warning";
+  if (["import_staged", "under_review", "submitted", "pending_review", "resubmitted"].includes(status)) return "warning";
   if (["correction_requested", "needs_correction", "returned"].includes(status)) return "warning";
   if (["archived"].includes(status)) return "neutral";
   return "accent";
@@ -52,6 +53,7 @@ export function reviewStageFromStatus(status: string): SubmissionWorkflowStage {
   if (status === "archived") return "Archived";
   if (["correction_requested", "needs_correction", "returned"].includes(status)) return "Returned for Correction";
   if (status === "resubmitted") return "Resubmitted";
+  if (status === "import_staged") return "Import Staged";
   if (["under_review", "submitted", "pending_review"].includes(status)) return "Pending Review";
   return "Draft";
 }
@@ -188,20 +190,22 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
     });
   }
 
+  const actor = submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file";
+
   return {
     ...submission,
     attachments: [],
     audit_events: [
-      { action: "Submission Created", actor: submission.field_officer_id, created_at: submission.captured_at, new_value: "draft" },
-      { action: "Submission Submitted", actor: submission.field_officer_id, created_at: submission.submitted_at, new_value: submission.status },
+      { action: "Submission Created", actor, created_at: submission.captured_at, new_value: "draft" },
+      { action: "Submission Submitted", actor, created_at: submission.submitted_at, new_value: submission.status },
     ],
     duplicate_risk: qualityScore < 55 ? "possible" : "none",
     form_name: submission.form_id.replaceAll("-", " "),
     form_version: submission.server_sequence,
     gps_status: gpsStatus,
     history: [
-      { action: "Created", actor: submission.field_officer_id, created_at: submission.captured_at },
-      { action: "Submitted", actor: submission.field_officer_id, created_at: submission.submitted_at },
+      { action: "Created", actor, created_at: submission.captured_at },
+      { action: "Submitted", actor, created_at: submission.submitted_at },
     ],
     location_name: submission.latitude && submission.longitude ? "Captured GPS location" : "No location captured",
     project_name: submission.project_id?.replaceAll("-", " ") ?? "Unassigned project",
@@ -245,7 +249,7 @@ export function computeSubmissionsSummary(submissions: SubmissionRecord[]): Subm
 
 export function filterSubmissions(submissions: SubmissionRecord[], section: SubmissionSection): SubmissionRecord[] {
   if (section === "all" || section === "dashboard") return submissions;
-  if (section === "pending-review") return submissions.filter((submission) => ["under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status));
+  if (section === "pending-review") return submissions.filter((submission) => ["import_staged", "under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status));
   if (section === "approved") return submissions.filter((submission) => submission.status === "approved");
   if (section === "rejected") return submissions.filter((submission) => submission.status === "rejected");
   if (section === "returned") return submissions.filter((submission) => ["correction_requested", "needs_correction", "returned"].includes(submission.status));
