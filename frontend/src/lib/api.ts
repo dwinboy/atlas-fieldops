@@ -1442,15 +1442,19 @@ export type ProjectSectorPackRead = {
   terminology: Record<string, string>;
   entity_types: string[];
   form_templates: string[];
+  form_definitions: Record<string, unknown>[];
   indicator_templates: string[];
+  indicator_definitions: Record<string, unknown>[];
   dashboard_widgets: string[];
   report_templates: string[];
+  report_definitions: Record<string, unknown>[];
   validation_rules: string[];
   data_quality_rules: string[];
   workflows: string[];
   mobile_guidance: string[];
   governance_defaults: Record<string, unknown>;
   recommended_settings: Record<string, unknown>;
+  manager_controls: Record<string, unknown>;
 };
 
 export type ProjectSectorInstallRead = {

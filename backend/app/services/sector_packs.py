@@ -3,6 +3,7 @@ from typing import Any
 
 
 SectorPack = dict[str, Any]
+SectorQuestion = dict[str, Any]
 
 
 SECTOR_PACKS: dict[str, SectorPack] = {
@@ -288,13 +289,14 @@ SECTOR_PACKS: dict[str, SectorPack] = {
 
 
 def list_sector_packs() -> list[SectorPack]:
-    return [deepcopy(pack) for pack in SECTOR_PACKS.values()]
+    return [_enriched_sector_pack(pack) for pack in SECTOR_PACKS.values()]
 
 
 def get_sector_pack(sector_id: str | None) -> SectorPack | None:
     if not sector_id:
         return None
-    return deepcopy(SECTOR_PACKS.get(sector_id.strip().lower()))
+    pack = SECTOR_PACKS.get(sector_id.strip().lower())
+    return _enriched_sector_pack(pack) if pack else None
 
 
 def apply_sector_pack(settings: dict[str, Any] | None, sector_id: str | None) -> dict[str, Any]:
@@ -330,13 +332,17 @@ def apply_sector_pack(settings: dict[str, Any] | None, sector_id: str | None) ->
         "terminology": pack["terminology"],
         "entityTypes": pack["entity_types"],
         "formTemplates": pack["form_templates"],
+        "formDefinitions": pack.get("form_definitions", []),
         "indicatorTemplates": pack["indicator_templates"],
+        "indicatorDefinitions": pack.get("indicator_definitions", []),
         "dashboardWidgets": pack["dashboard_widgets"],
         "reportTemplates": pack["report_templates"],
+        "reportDefinitions": pack.get("report_definitions", []),
         "validationRules": pack["validation_rules"],
         "dataQualityRules": pack["data_quality_rules"],
         "workflows": pack["workflows"],
         "mobileGuidance": pack["mobile_guidance"],
+        "managerControls": pack.get("manager_controls", {}),
     }
     return next_settings
 
@@ -351,3 +357,342 @@ def sector_summary(settings: dict[str, Any] | None) -> tuple[str | None, str | N
         str(sector_id) if sector_id else None,
         str(sector_name) if sector_name else None,
     )
+
+
+def _enriched_sector_pack(pack: SectorPack | None) -> SectorPack:
+    next_pack = deepcopy(pack or {})
+    if not next_pack:
+        return next_pack
+    next_pack["form_definitions"] = [
+        _form_definition(next_pack, str(template))
+        for template in next_pack.get("form_templates", [])
+    ]
+    next_pack["indicator_definitions"] = [
+        _indicator_definition(next_pack, str(indicator), index)
+        for index, indicator in enumerate(next_pack.get("indicator_templates", []), start=1)
+    ]
+    next_pack["report_definitions"] = [
+        _report_definition(next_pack, str(report))
+        for report in next_pack.get("report_templates", [])
+    ]
+    next_pack["manager_controls"] = {
+        "customizable": [
+            "terminology",
+            "entity_types",
+            "form_templates",
+            "indicator_templates",
+            "validation_rules",
+            "data_quality_rules",
+            "dashboard_widgets",
+            "report_templates",
+            "mobile_guidance",
+        ],
+        "recommended_review_order": [
+            "Terminology",
+            "Entity model",
+            "Starter forms",
+            "Indicator framework",
+            "Validation and data quality",
+            "Dashboard and report outputs",
+            "Mobile field guidance",
+        ],
+        "expert_note": "Customize the pack before installing assets when donor wording, local terminology, entity types, or reporting rules differ from the default sector model.",
+    }
+    return next_pack
+
+
+def _form_definition(pack: SectorPack, form_name: str) -> dict[str, Any]:
+    kind = _form_kind(form_name)
+    entity_type = _primary_entity(pack)
+    questions = _base_questions(pack, entity_type)
+    questions.extend(_questions_for_kind(pack, entity_type, kind))
+    return {
+        "name": form_name,
+        "code": _variable_name(form_name),
+        "form_type": kind,
+        "entity_type": entity_type,
+        "description": f"{form_name} template for {pack['sector']} programs with consent, entity linkage, GPS evidence, validation, and review controls.",
+        "submission_frequency": _frequency_for_kind(kind),
+        "creates_entity": kind == "registration",
+        "updates_entity": kind != "registration",
+        "requires_existing_entity": kind not in {"registration", "complaint", "incident", "event"},
+        "questions": questions,
+        "sections": [
+            {
+                "id": "identity-consent",
+                "title": "Identity, consent, and location",
+                "question_ids": [question["id"] for question in questions[:5]],
+            },
+            {
+                "id": f"{kind}-content",
+                "title": _section_title(kind),
+                "question_ids": [question["id"] for question in questions[5:]],
+            },
+        ],
+        "indicator_mappings": [
+            {
+                "question": question["variableName"],
+                "indicator_hint": _indicator_hint(pack, question),
+                "component": question.get("indicatorComponent", "evidence"),
+            }
+            for question in questions
+            if question.get("indicatorComponent")
+        ],
+        "profile_mappings": {
+            "entity_name": f"{entity_type}.Name",
+            "phone_number": f"{entity_type}.Phone",
+            "location_name": f"{entity_type}.Location",
+            "gps_location": f"{entity_type}.GPS",
+        },
+        "validation_rules": pack.get("validation_rules", []),
+        "data_quality_rules": pack.get("data_quality_rules", []),
+        "mobile_guidance": pack.get("mobile_guidance", []),
+    }
+
+
+def _indicator_definition(pack: SectorPack, name: str, index: int) -> dict[str, Any]:
+    lower_name = name.lower()
+    unit = "percent" if any(term in lower_name for term in ["rate", "%", "coverage"]) else "count"
+    return {
+        "name": name,
+        "code_hint": f"{str(pack['id']).upper()}.{index:02d}",
+        "definition": f"Measures {name.lower()} for {pack['sector']} programming using approved, reviewed project data.",
+        "unit": unit,
+        "frequency": _recommended_frequency(pack),
+        "baseline_required": True,
+        "target_required": True,
+        "disaggregation": ((pack.get("recommended_settings") or {}).get("indicators") or {}).get("disaggregation", []),
+        "data_source": ((pack.get("recommended_settings") or {}).get("indicators") or {}).get("dataSource", "Approved form submissions"),
+        "approval_rule": "Only approved submissions count toward official results.",
+    }
+
+
+def _report_definition(pack: SectorPack, name: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "description": f"Editable {pack['sector']} report package. Connect indicators, approved records, maps, data quality notes, and narrative before submission.",
+        "sections": [
+            "Executive summary",
+            "Progress against indicators",
+            "Beneficiary/entity coverage",
+            "Geographic coverage and GPS evidence",
+            "Data quality and approval status",
+            "Risks, issues, and corrective actions",
+            "Annex: cleaned data and audit trail",
+        ],
+        "outputs": ["pdf", "xlsx"],
+        "requires_approved_data": True,
+    }
+
+
+def _base_questions(pack: SectorPack, entity_type: str) -> list[SectorQuestion]:
+    return [
+        {
+            "id": "consent",
+            "label": "Consent captured",
+            "type": "consent",
+            "required": True,
+            "variableName": "consent_captured",
+            "definition": "Confirms informed consent before identifiable data is collected.",
+            "sensitivity": "high",
+            "validation": {"blockIfFalse": True, "message": "Consent is required before continuing."},
+        },
+        {
+            "id": "entity_name",
+            "label": f"{entity_type} name",
+            "type": "short_text",
+            "required": True,
+            "variableName": "entity_name",
+            "definition": f"Official {entity_type.lower()} name or primary identifier.",
+            "sensitivity": "personal",
+            "profileField": f"{entity_type}.Name",
+        },
+        {
+            "id": "phone_number",
+            "label": "Phone number",
+            "type": "short_text",
+            "required": False,
+            "variableName": "phone_number",
+            "definition": "Primary contact number used for duplicate checks and follow-up.",
+            "sensitivity": "personal",
+            "profileField": f"{entity_type}.Phone",
+            "validation": {"regex": r"^[+0-9 ()-]{7,20}$", "message": "Enter a valid phone number or leave blank if unavailable."},
+        },
+        {
+            "id": "location",
+            "label": "Village or location",
+            "type": "short_text",
+            "required": True,
+            "variableName": "location_name",
+            "definition": "Project location name, village, facility, site, or community.",
+            "sensitivity": "operational",
+            "profileField": f"{entity_type}.Location",
+        },
+        {
+            "id": "gps",
+            "label": "GPS location",
+            "type": "gps",
+            "required": True,
+            "variableName": "gps_location",
+            "definition": "Collection location evidence used for coverage, duplicate, and field integrity checks.",
+            "sensitivity": "location",
+            "profileField": f"{entity_type}.GPS",
+            "validation": {"accuracyMaximumMeters": 30, "message": "Wait for better GPS accuracy before submitting."},
+        },
+    ]
+
+
+def _questions_for_kind(pack: SectorPack, entity_type: str, kind: str) -> list[SectorQuestion]:
+    if kind == "registration":
+        return [
+            _select_question("sex", "Sex", ["Female", "Male", "Other", "Prefer not to say"], "Sex disaggregation for unique reach reporting."),
+            _number_question("age", "Age", "Age in completed years.", minimum=0, maximum=120),
+            _select_question("disability_status", "Disability status", ["No disability", "Has disability", "Prefer not to say"], "Washington Group-aligned disaggregation placeholder."),
+            _select_question("registration_source", "Registration source", ["Field visit", "Community list", "Partner referral", "Imported record"], "Trace how the entity entered the registry."),
+        ]
+    if kind in {"baseline", "assessment"}:
+        return [
+            _date_question("baseline_date", "Assessment date", "Date this baseline or assessment was completed."),
+            _number_question("baseline_value", "Baseline value", "Starting value for the main project result.", minimum=0),
+            _select_question("service_access", "Current service access", ["None", "Limited", "Adequate", "Good"], "Starting condition before support."),
+            _long_text_question("priority_needs", "Priority needs", "Main needs, constraints, or support priorities identified."),
+        ]
+    if kind in {"monitoring", "follow-up"}:
+        return [
+            _date_question("visit_date", "Visit date", "Date of monitoring or follow-up visit."),
+            _select_question("progress_status", "Progress status", ["On track", "Delayed", "At risk", "Completed"], "Manager review status from this visit."),
+            _number_question("result_value", "Current result value", "Current measured value for the linked indicator.", minimum=0, indicator_component="numerator"),
+            _long_text_question("follow_up_action", "Follow-up action required", "Action needed before the next visit or review."),
+        ]
+    if kind == "attendance":
+        return [
+            _date_question("event_date", "Event date", "Date of training, meeting, campaign, or attendance event."),
+            _number_question("participants_total", "Total participants", "Total people attending the event.", minimum=0, indicator_component="numerator"),
+            _number_question("participants_female", "Female participants", "Female participants for sex disaggregation.", minimum=0),
+            _select_question("attendance_verified", "Attendance verified", ["Verified", "Partially verified", "Not verified"], "Evidence status for attendance records."),
+        ]
+    if kind == "distribution":
+        return [
+            _date_question("distribution_date", "Distribution date", "Date items or services were distributed."),
+            _short_text_question("item_received", "Item or service received", "Name of item, service, or support package."),
+            _number_question("quantity_received", "Quantity received", "Quantity received by the entity.", minimum=0, indicator_component="numerator"),
+            _select_question("recipient_verified", "Recipient verified", ["Yes", "No", "Requires review"], "Confirms support reached the intended person or site."),
+        ]
+    if kind in {"complaint", "incident"}:
+        return [
+            _date_question("incident_date", "Incident or complaint date", "Date the issue occurred or was reported."),
+            _select_question("severity", "Severity", ["Low", "Medium", "High", "Critical"], "Risk level for escalation."),
+            _long_text_question("issue_summary", "Issue summary", "Brief factual description of the issue."),
+            _select_question("requires_follow_up", "Requires follow-up", ["Yes", "No"], "Whether a task, case, or supervisor action is required."),
+        ]
+    return [
+        _date_question("record_date", "Record date", "Date this record was collected."),
+        _select_question("record_status", "Record status", ["Complete", "Partial", "Requires review"], "Completeness state for reviewer triage."),
+        _long_text_question("observations", "Observations", "Operational notes relevant to the project."),
+    ]
+
+
+def _form_kind(name: str) -> str:
+    text = name.lower()
+    if "registration" in text or "intake" in text:
+        return "registration"
+    if "baseline" in text:
+        return "baseline"
+    if "attendance" in text or "training" in text or "campaign" in text or "session" in text:
+        return "attendance"
+    if "distribution" in text:
+        return "distribution"
+    if "complaint" in text:
+        return "complaint"
+    if "incident" in text:
+        return "incident"
+    if "assessment" in text or "observation" in text:
+        return "assessment"
+    if "follow" in text or "referral" in text:
+        return "follow-up"
+    if "monitoring" in text or "visit" in text or "verification" in text or "endline" in text:
+        return "monitoring"
+    return "custom"
+
+
+def _frequency_for_kind(kind: str) -> str:
+    return {
+        "registration": "once_ever",
+        "baseline": "once_per_project",
+        "attendance": "once_per_event",
+        "distribution": "once_per_event",
+        "complaint": "unlimited",
+        "incident": "unlimited",
+        "monitoring": "monthly",
+    }.get(kind, "unlimited")
+
+
+def _section_title(kind: str) -> str:
+    return {
+        "registration": "Profile and duplicate prevention",
+        "baseline": "Baseline values and needs",
+        "assessment": "Assessment findings",
+        "monitoring": "Monitoring progress",
+        "attendance": "Attendance evidence",
+        "distribution": "Distribution evidence",
+        "complaint": "Complaint details and follow-up",
+        "incident": "Incident details and escalation",
+        "follow-up": "Follow-up result",
+    }.get(kind, "Record details")
+
+
+def _primary_entity(pack: SectorPack) -> str:
+    recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
+    beneficiary = recommended.get("beneficiary") if isinstance(recommended.get("beneficiary"), dict) else {}
+    return str(beneficiary.get("primaryEntityType") or "Beneficiary")
+
+
+def _recommended_frequency(pack: SectorPack) -> str:
+    recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
+    indicators = recommended.get("indicators") if isinstance(recommended.get("indicators"), dict) else {}
+    return str(indicators.get("frequency") or "Monthly").lower()
+
+
+def _indicator_hint(pack: SectorPack, question: SectorQuestion) -> str:
+    indicators = pack.get("indicator_templates", [])
+    if not indicators:
+        return "Project indicator"
+    if question.get("indicatorComponent") == "numerator":
+        return str(indicators[0])
+    return str(indicators[min(1, len(indicators) - 1)])
+
+
+def _variable_name(value: str) -> str:
+    return "_".join(part for part in re_split(value.lower()) if part)
+
+
+def re_split(value: str) -> list[str]:
+    import re
+
+    return re.split(r"[^a-z0-9]+", value)
+
+
+def _short_text_question(question_id: str, label: str, definition: str) -> SectorQuestion:
+    return {"id": question_id, "label": label, "type": "short_text", "required": True, "variableName": _variable_name(question_id), "definition": definition, "sensitivity": "operational"}
+
+
+def _long_text_question(question_id: str, label: str, definition: str) -> SectorQuestion:
+    return {"id": question_id, "label": label, "type": "long_text", "required": False, "variableName": _variable_name(question_id), "definition": definition, "sensitivity": "operational"}
+
+
+def _date_question(question_id: str, label: str, definition: str) -> SectorQuestion:
+    return {"id": question_id, "label": label, "type": "date", "required": True, "variableName": _variable_name(question_id), "definition": definition, "sensitivity": "operational", "validation": {"notFuture": True, "message": "Date cannot be in the future."}}
+
+
+def _number_question(question_id: str, label: str, definition: str, *, minimum: int = 0, maximum: int | None = None, indicator_component: str | None = None) -> SectorQuestion:
+    validation: dict[str, Any] = {"min": minimum, "message": f"{label} must be realistic."}
+    if maximum is not None:
+        validation["max"] = maximum
+    question: SectorQuestion = {"id": question_id, "label": label, "type": "number", "required": True, "variableName": _variable_name(question_id), "definition": definition, "sensitivity": "operational", "validation": validation}
+    if indicator_component:
+        question["indicatorComponent"] = indicator_component
+    return question
+
+
+def _select_question(question_id: str, label: str, options: list[str], definition: str) -> SectorQuestion:
+    return {"id": question_id, "label": label, "type": "single_select", "required": True, "variableName": _variable_name(question_id), "definition": definition, "allowedValues": options, "options": [{"label": option, "value": _variable_name(option)} for option in options], "sensitivity": "operational"}

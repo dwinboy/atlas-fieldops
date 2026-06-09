@@ -21,7 +21,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,7 @@ import {
   type ProjectRelatedRecordRead,
   type ProjectSectorPackRead,
   type ProjectSummaryRead,
+  type ProjectUpdate,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
@@ -140,7 +141,7 @@ const defaultProjectDraft: ProjectCreate = {
   status: "draft",
 };
 
-const previewSectorPacks: ProjectSectorPackRead[] = [
+const previewSectorPacks: ProjectSectorPackRead[] = ([
   {
     dashboard_widgets: ["Farmer coverage", "Yield progress", "Input distribution", "Training completion"],
     data_quality_rules: ["Duplicate farmer by phone or name + village", "Static GPS", "Yield outliers"],
@@ -243,7 +244,21 @@ const previewSectorPacks: ProjectSectorPackRead[] = [
     validation_rules: ["Attendance cannot exceed enrollment", "Assessment date cannot be in the future", "School code required"],
     workflows: ["School Registration → Baseline Assessment → Attendance Monitoring → Endline Assessment"],
   },
-];
+] as Array<
+  Omit<
+    ProjectSectorPackRead,
+    | "form_definitions"
+    | "indicator_definitions"
+    | "report_definitions"
+    | "manager_controls"
+  >
+>).map((pack) => ({
+  ...pack,
+  form_definitions: [],
+  indicator_definitions: [],
+  manager_controls: {},
+  report_definitions: [],
+}));
 
 const countryOptions = [
   "Cameroon",
@@ -518,11 +533,15 @@ function applySectorPackToDraft(
     dashboardWidgets: pack.dashboard_widgets,
     dataQualityRules: pack.data_quality_rules,
     entityTypes: pack.entity_types,
+    formDefinitions: pack.form_definitions,
     formTemplates: pack.form_templates,
+    indicatorDefinitions: pack.indicator_definitions,
     id: pack.id,
     indicatorTemplates: pack.indicator_templates,
+    managerControls: pack.manager_controls,
     mobileGuidance: pack.mobile_guidance,
     name: pack.name,
+    reportDefinitions: pack.report_definitions,
     reportTemplates: pack.report_templates,
     sector: pack.sector,
     terminology: pack.terminology,
@@ -929,6 +948,35 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     },
   });
 
+  const updateProjectSettingsMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      settings,
+    }: {
+      projectId: string;
+      settings: Record<string, unknown>;
+    }) =>
+      updateProject(token ?? "", projectId, {
+        settings_json: settings,
+      } satisfies ProjectUpdate),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Sector pack updated",
+        description:
+          "Project-specific terminology, templates, validation, dashboards, and reports were saved.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not save sector pack",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
   const installSectorFormsMutation = useMutation({
     mutationFn: (projectId: string) =>
       installProjectSectorForms(token ?? "", projectId),
@@ -1070,6 +1118,27 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   function openProject(project: ProjectListItemRead): void {
     setSelectedProjectId(project.id);
     setActiveTab("Overview");
+  }
+
+  function saveProjectSettings(settings: Record<string, unknown>): void {
+    if (!detail) return;
+    if (preview) {
+      queryClient.setQueryData(
+        ["projects", "detail", token, detail.id],
+        { ...detail, settings_json: settings },
+      );
+      pushToast({
+        title: "Sector pack updated",
+        description:
+          "Project-specific sector settings were saved in this local preview.",
+        tone: "success",
+      });
+      return;
+    }
+    updateProjectSettingsMutation.mutate({
+      projectId: detail.id,
+      settings,
+    });
   }
 
   const projectColumns: TableColumn<ProjectListItemRead>[] = [
@@ -1259,6 +1328,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           installSectorFormsPending={installSectorFormsMutation.isPending}
           installSectorIndicatorsPending={installSectorIndicatorsMutation.isPending}
           installSectorReportsPending={installSectorReportsMutation.isPending}
+          isSavingSettings={updateProjectSettingsMutation.isPending}
           onClose={() => setSelectedProjectId(null)}
           onInstallSectorForms={() => {
             if (preview) {
@@ -1320,6 +1390,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
             setActiveView("organizations");
             router.push("/users-teams");
           }}
+          onUpdateSettings={saveProjectSettings}
           preview={preview}
           tab={activeTab}
           setTab={setActiveTab}
@@ -1564,6 +1635,7 @@ function ProjectDetailWorkspace({
   installSectorFormsPending,
   installSectorIndicatorsPending,
   installSectorReportsPending,
+  isSavingSettings,
   onClose,
   onInstallSectorForms,
   onInstallSectorIndicators,
@@ -1574,6 +1646,7 @@ function ProjectDetailWorkspace({
   onOpenReports,
   onOpenSubmissions,
   onOpenTeams,
+  onUpdateSettings,
   preview,
   setTab,
   tab,
@@ -1584,6 +1657,7 @@ function ProjectDetailWorkspace({
   installSectorFormsPending: boolean;
   installSectorIndicatorsPending: boolean;
   installSectorReportsPending: boolean;
+  isSavingSettings: boolean;
   onClose: () => void;
   onInstallSectorForms: () => void;
   onInstallSectorIndicators: () => void;
@@ -1594,6 +1668,7 @@ function ProjectDetailWorkspace({
   onOpenReports: () => void;
   onOpenSubmissions: () => void;
   onOpenTeams: () => void;
+  onUpdateSettings: (settings: Record<string, unknown>) => void;
   preview: boolean;
   setTab: (tab: ProjectTab) => void;
   tab: ProjectTab;
@@ -1722,7 +1797,14 @@ function ProjectDetailWorkspace({
       ) : null}
       {tab === "Data Quality" ? <ProjectDataQuality detail={detail} /> : null}
       {tab === "Governance" ? <ProjectGovernance detail={detail} /> : null}
-      {tab === "Settings" ? <ProjectSettings detail={detail} /> : null}
+      {tab === "Settings" ? (
+        <ProjectSettings
+          canManageProjects={canManageProjects}
+          detail={detail}
+          isSaving={isSavingSettings}
+          onUpdateSettings={onUpdateSettings}
+        />
+      ) : null}
       {tab === "Audit Trail" ? <AuditTrail detail={detail} /> : null}
     </section>
   );
@@ -2240,23 +2322,269 @@ function RelatedTab({
   );
 }
 
-function ProjectSettings({ detail }: { detail: ProjectDetailRead }) {
+function ProjectSettings({
+  canManageProjects,
+  detail,
+  isSaving,
+  onUpdateSettings,
+}: {
+  canManageProjects: boolean;
+  detail: ProjectDetailRead;
+  isSaving: boolean;
+  onUpdateSettings: (settings: Record<string, unknown>) => void;
+}) {
+  const [settings, setSettings] = useState<Record<string, unknown>>(() =>
+    sanitizeProjectSettings(detail.settings_json),
+  );
+
+  useEffect(() => {
+    setSettings(sanitizeProjectSettings(detail.settings_json));
+  }, [detail.id, detail.settings_json]);
+
+  const draft = { settings_json: settings };
+  const sectorSettings = sectionSettings(draft, "sector");
+  const beneficiarySettings = sectionSettings(draft, "beneficiary");
+  const terminology =
+    typeof sectorSettings.terminology === "object" &&
+    sectorSettings.terminology !== null &&
+    !Array.isArray(sectorSettings.terminology)
+      ? (sectorSettings.terminology as Record<string, unknown>)
+      : {};
+  const sectorName =
+    settingText(draft, "sector", "name") || detail.sector_name || "Custom sector";
+  const setSection = (section: string, patch: Record<string, unknown>): void => {
+    setSettings((current) => {
+      const currentSection =
+        typeof current[section] === "object" &&
+        current[section] !== null &&
+        !Array.isArray(current[section])
+          ? (current[section] as Record<string, unknown>)
+          : {};
+      return {
+        ...current,
+        [section]: {
+          ...currentSection,
+          ...patch,
+        },
+      };
+    });
+  };
+  const setSector = (patch: Record<string, unknown>): void =>
+    setSection("sector", patch);
+  const setTerminology = (key: string, value: string): void => {
+    setSector({ terminology: { ...terminology, [key]: value } });
+  };
+  const setSectorList = (key: string, value: string): void =>
+    setSector({ [key]: splitLines(value) });
+  const setBeneficiary = (patch: Record<string, unknown>): void =>
+    setSection("beneficiary", patch);
+
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {[
-        ["Project Status", detail.status],
-        ["Ownership", detail.owner ?? "Unassigned"],
-        ["Default Locations", detail.region ?? detail.country ?? "All areas"],
-        ["Default Teams", `${detail.teams.length} assigned team(s)`],
-        ["Approval Requirements", "Project manager approval before closure"],
-        ["Retention Rules", "Controlled by Governance"],
-        ["Consent Policies", "Inherited from forms and governance"],
-        ["Read-only Rules", "Closed projects become read-only"],
-      ].map(([label, value]) => (
-        <Signal key={label} label={label} value={value} />
-      ))}
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        {[
+          ["Project Status", detail.status],
+          ["Ownership", detail.owner ?? "Unassigned"],
+          ["Default Locations", detail.region ?? detail.country ?? "All areas"],
+          ["Default Teams", `${detail.teams.length} assigned team(s)`],
+        ].map(([label, value]) => (
+          <Signal key={label} label={label} value={value} />
+        ))}
+      </div>
+
+      <div className="rounded-2xl border bg-background/50 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <Badge tone="support">Sector Pack Manager</Badge>
+            <h3 className="mt-2 font-semibold">{sectorName}</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Customize this project&apos;s sector pack before installing or updating
+              starter forms, indicators, dashboards, and reports. These settings
+              stay inside the project and do not create another module.
+            </p>
+          </div>
+          <Button
+            disabled={!canManageProjects || isSaving}
+            onClick={() => onUpdateSettings(settings)}
+            variant="primary"
+          >
+            {isSaving ? "Saving..." : "Save sector pack"}
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-3">
+            <div className="rounded-xl border bg-panel p-3">
+              <h4 className="text-sm font-semibold">Terminology</h4>
+              <div className="mt-3 grid gap-2">
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Primary entity name"
+                  onChange={(event) =>
+                    setTerminology("primary_entity", event.target.value)
+                  }
+                  value={String(terminology.primary_entity ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Secondary entities"
+                  onChange={(event) =>
+                    setTerminology("secondary_entities", event.target.value)
+                  }
+                  value={String(terminology.secondary_entities ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Field visit label"
+                  onChange={(event) =>
+                    setTerminology("field_visit", event.target.value)
+                  }
+                  value={String(terminology.field_visit ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Submission label"
+                  onChange={(event) =>
+                    setTerminology("submission", event.target.value)
+                  }
+                  value={String(terminology.submission ?? "")}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-panel p-3">
+              <h4 className="text-sm font-semibold">Entity controls</h4>
+              <div className="mt-3 grid gap-2">
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Primary entity type"
+                  onChange={(event) =>
+                    setBeneficiary({ primaryEntityType: event.target.value })
+                  }
+                  value={String(beneficiarySettings.primaryEntityType ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Beneficiary code format"
+                  onChange={(event) =>
+                    setBeneficiary({ codeFormat: event.target.value })
+                  }
+                  value={String(beneficiarySettings.codeFormat ?? "")}
+                />
+                <ListEditor
+                  disabled={!canManageProjects}
+                  label="Custom entity types"
+                  onChange={(value) => setSectorList("entityTypes", value)}
+                  value={joinLines(settingStringList(draft, "sector", "entityTypes"))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Custom form templates"
+              onChange={(value) => setSectorList("formTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "formTemplates"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Custom indicators"
+              onChange={(value) => setSectorList("indicatorTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "indicatorTemplates"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Validation rules"
+              onChange={(value) => setSectorList("validationRules", value)}
+              value={joinLines(settingStringList(draft, "sector", "validationRules"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Data quality rules"
+              onChange={(value) => setSectorList("dataQualityRules", value)}
+              value={joinLines(settingStringList(draft, "sector", "dataQualityRules"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Dashboard widgets"
+              onChange={(value) => setSectorList("dashboardWidgets", value)}
+              value={joinLines(settingStringList(draft, "sector", "dashboardWidgets"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Report templates"
+              onChange={(value) => setSectorList("reportTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "reportTemplates"))}
+            />
+            <div className="md:col-span-2">
+              <ListEditor
+                disabled={!canManageProjects}
+                label="Mobile field guidance"
+                onChange={(value) => setSectorList("mobileGuidance", value)}
+                value={joinLines(settingStringList(draft, "sector", "mobileGuidance"))}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
+}
+
+function FieldInput({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      <span>{label}</span>
+      <Input disabled={disabled} onChange={onChange} value={value} />
+    </label>
+  );
+}
+
+function ListEditor({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      <span>{label}</span>
+      <Textarea
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        rows={5}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function joinLines(value: string[]): string {
+  return value.join("\n");
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function AuditTrail({ detail }: { detail: ProjectDetailRead }) {

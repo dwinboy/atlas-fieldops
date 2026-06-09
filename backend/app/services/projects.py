@@ -299,8 +299,9 @@ class ProjectsService:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing starter forms.")
         installed = 0
         skipped = 0
-        for form_name in pack.get("form_templates", []):
-            name = str(form_name)
+        form_definitions = self._sector_form_definitions(pack)
+        for form_definition in form_definitions:
+            name = str(form_definition.get("name") or form_definition.get("title") or "Sector Starter Form")
             slug = self._starter_slug(project.slug, name)
             existing = await self.session.execute(
                 select(DataForm.id).where(
@@ -319,10 +320,10 @@ class ProjectsService:
                 created_by_user_id=actor_user_id,
                 name=name,
                 slug=slug,
-                description=f"Sector starter form for {pack['name']}. Review questions, mappings, validation, and permissions before publishing.",
+                description=str(form_definition.get("description") or f"Sector starter form for {pack['name']}. Review questions, mappings, validation, and permissions before publishing."),
                 status="draft",
                 current_version=1,
-                controls_json=self._sector_form_controls(pack, name),
+                controls_json=self._sector_form_controls(pack, form_definition),
                 is_active=True,
             )
             self.session.add(form)
@@ -332,7 +333,7 @@ class ProjectsService:
                     organization_id=organization_id,
                     form_id=form.id,
                     version=1,
-                    schema_json=self._sector_form_schema(pack, name),
+                    schema_json=self._sector_form_schema(pack, form_definition),
                     offline_compatible=True,
                     published_at=None,
                 )
@@ -363,8 +364,8 @@ class ProjectsService:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing indicator templates.")
         installed = 0
         skipped = 0
-        for index, indicator_name in enumerate(pack.get("indicator_templates", []), start=1):
-            name = str(indicator_name)
+        for index, indicator_definition in enumerate(self._sector_indicator_definitions(pack), start=1):
+            name = str(indicator_definition.get("name") or f"Sector indicator {index}")
             code = self._indicator_code(pack["id"], project.slug, name, index)
             existing = await self.session.execute(
                 select(MonitoringIndicator.id).where(
@@ -383,13 +384,20 @@ class ProjectsService:
                     survey_id=None,
                     code=code,
                     name=name,
-                    description=f"Sector indicator template from {pack['name']}. Set baseline, target, formula, and disaggregation before reporting.",
-                    unit="count",
-                    reporting_frequency="monthly",
+                    description=str(indicator_definition.get("definition") or f"Sector indicator template from {pack['name']}. Set baseline, target, formula, and disaggregation before reporting."),
+                    unit=str(indicator_definition.get("unit") or "count"),
+                    reporting_frequency=str(indicator_definition.get("frequency") or "monthly"),
                     baseline_value=0,
                     target_value=0,
                     current_value=0,
-                    formula=None,
+                    formula=json.dumps(
+                        {
+                            "dataSource": indicator_definition.get("data_source"),
+                            "disaggregation": indicator_definition.get("disaggregation", []),
+                            "approvalRule": indicator_definition.get("approval_rule"),
+                        },
+                        ensure_ascii=False,
+                    ),
                     is_active=True,
                 )
             )
@@ -419,8 +427,8 @@ class ProjectsService:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing report templates.")
         installed = 0
         skipped = 0
-        for report_name in pack.get("report_templates", []):
-            name = str(report_name)
+        for report_definition in self._sector_report_definitions(pack):
+            name = str(report_definition.get("name") or "Sector report")
             existing = await self.session.execute(
                 select(DonorReport.id).where(
                     DonorReport.organization_id == organization_id,
@@ -441,8 +449,8 @@ class ProjectsService:
                     donor=project.donor,
                     report_type="sector",
                     status="draft",
-                    summary=f"Draft sector report package from {pack['name']}. Connect approved indicators, maps, data quality notes, and narrative before issuing.",
-                    export_formats=["pdf", "xlsx"],
+                    summary=str(report_definition.get("description") or f"Draft sector report package from {pack['name']}. Connect approved indicators, maps, data quality notes, and narrative before issuing."),
+                    export_formats=list(report_definition.get("outputs", ["pdf", "xlsx"])) if isinstance(report_definition.get("outputs"), list) else ["pdf", "xlsx"],
                 )
             )
             installed += 1
@@ -489,51 +497,122 @@ class ProjectsService:
 
     def _project_sector_pack(self, project: Project) -> dict[str, object] | None:
         sector_id, _ = sector_summary(project.settings_json)
-        return get_sector_pack(sector_id)
+        pack = get_sector_pack(sector_id)
+        sector_settings = (
+            project.settings_json.get("sector")
+            if isinstance(project.settings_json, dict)
+            else None
+        )
+        if not isinstance(sector_settings, dict):
+            return pack
+        if pack is None:
+            pack = {
+                "id": sector_settings.get("id") or "custom",
+                "name": sector_settings.get("name") or "Custom Sector",
+                "sector": sector_settings.get("sector") or "Custom",
+                "description": "Custom organization sector pack.",
+                "terminology": {},
+                "entity_types": [],
+                "form_templates": [],
+                "indicator_templates": [],
+                "dashboard_widgets": [],
+                "report_templates": [],
+                "validation_rules": [],
+                "data_quality_rules": [],
+                "workflows": [],
+                "mobile_guidance": [],
+                "governance_defaults": {},
+                "recommended_settings": project.settings_json,
+            }
+        mapping = {
+            "dashboardWidgets": "dashboard_widgets",
+            "dataQualityRules": "data_quality_rules",
+            "entityTypes": "entity_types",
+            "formDefinitions": "form_definitions",
+            "formTemplates": "form_templates",
+            "indicatorDefinitions": "indicator_definitions",
+            "indicatorTemplates": "indicator_templates",
+            "mobileGuidance": "mobile_guidance",
+            "reportDefinitions": "report_definitions",
+            "reportTemplates": "report_templates",
+            "validationRules": "validation_rules",
+            "workflows": "workflows",
+        }
+        for source_key, target_key in mapping.items():
+            value = sector_settings.get(source_key)
+            if isinstance(value, list):
+                pack[target_key] = value
+        terminology = sector_settings.get("terminology")
+        if isinstance(terminology, dict):
+            pack["terminology"] = terminology
+        for key in ("id", "name", "sector"):
+            if sector_settings.get(key):
+                pack[key] = sector_settings[key]
+        return pack
 
-    def _sector_form_schema(self, pack: dict[str, object], form_name: str) -> dict[str, object]:
-        entity_type = str(((pack.get("recommended_settings") or {}).get("beneficiary") or {}).get("primaryEntityType") or "Beneficiary") if isinstance(pack.get("recommended_settings"), dict) else "Beneficiary"
-        fields = [
-            {"id": "consent", "label": "Consent captured", "type": "consent", "required": True, "variableName": "consent_captured", "helpText": "Confirm informed consent before collecting data."},
-            {"id": "entity_name", "label": f"{entity_type} name", "type": "short_text", "required": True, "variableName": "entity_name", "helpText": f"Official {entity_type.lower()} name or identifier."},
-            {"id": "location", "label": "Village or location", "type": "short_text", "required": True, "variableName": "location_name", "helpText": "Use the project location naming convention."},
-            {"id": "gps", "label": "GPS location", "type": "gps", "required": True, "variableName": "gps_location", "helpText": "Capture location evidence where field policy requires it."},
-            {"id": "notes", "label": "Field notes", "type": "long_text", "required": False, "variableName": "field_notes", "helpText": "Add relevant observations for the supervisor or reviewer."},
+    def _sector_form_schema(self, pack: dict[str, object], form_definition: dict[str, object]) -> dict[str, object]:
+        form_name = str(form_definition.get("name") or "Sector Starter Form")
+        fields = list(form_definition.get("questions", [])) if isinstance(form_definition.get("questions"), list) else []
+        sections = list(form_definition.get("sections", [])) if isinstance(form_definition.get("sections"), list) else []
+        if not fields:
+            fields = self._fallback_sector_questions(pack, form_name)
+        schema_sections = sections or [
+            {
+                "id": "section-identification",
+                "title": "Identification and consent",
+                "description": "Confirm consent, entity identity, and collection location.",
+                "question_ids": [str(field.get("id")) for field in fields if isinstance(field, dict) and field.get("id")],
+            }
         ]
         return {
             "title": form_name,
-            "description": f"Starter {form_name} instrument for {pack['name']}.",
+            "description": str(form_definition.get("description") or f"Starter {form_name} instrument for {pack['name']}."),
             "version": 1,
             "language": "English",
             "sector": {"id": pack["id"], "name": pack["name"]},
+            "formType": form_definition.get("form_type"),
+            "entityType": form_definition.get("entity_type"),
+            "indicatorMappings": form_definition.get("indicator_mappings", []),
+            "profileMappings": form_definition.get("profile_mappings", {}),
             "sections": [
                 {
-                    "id": "section-identification",
-                    "title": "Identification and consent",
-                    "description": "Confirm consent, entity identity, and collection location.",
-                    "fields": fields,
+                    **section,
+                    "fields": [
+                        field
+                        for field in fields
+                        if isinstance(field, dict)
+                        and str(field.get("id")) in set(section.get("question_ids", []))
+                    ],
                 }
+                for section in schema_sections
             ],
         }
 
-    def _sector_form_controls(self, pack: dict[str, object], form_name: str) -> dict[str, object]:
+    def _sector_form_controls(self, pack: dict[str, object], form_definition: dict[str, object]) -> dict[str, object]:
+        form_name = str(form_definition.get("name") or "Sector Starter Form")
         recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
         beneficiary = recommended.get("beneficiary") if isinstance(recommended, dict) and isinstance(recommended.get("beneficiary"), dict) else {}
+        creates_entity = bool(form_definition.get("creates_entity"))
+        requires_existing_entity = bool(form_definition.get("requires_existing_entity"))
         return {
             "entity_controls": {
                 "linked_to_entity": True,
-                "entity_type": beneficiary.get("primaryEntityType", "Beneficiary"),
-                "creates_new_entity": "Registration" in form_name,
-                "updates_existing_entity": "Registration" not in form_name,
-                "requires_existing_entity": "Registration" not in form_name,
+                "entity_type": form_definition.get("entity_type") or beneficiary.get("primaryEntityType", "Beneficiary"),
+                "creates_new_entity": creates_entity,
+                "updates_existing_entity": bool(form_definition.get("updates_entity")),
+                "requires_existing_entity": requires_existing_entity,
                 "allows_anonymous": False,
-                "submission_frequency": "once_per_project" if "Baseline" in form_name or "Registration" in form_name else "monthly",
+                "submission_frequency": form_definition.get("submission_frequency") or ("once_per_project" if "Baseline" in form_name or "Registration" in form_name else "monthly"),
                 "matching_fields": beneficiary.get("duplicateFields", ["Phone", "Name + Village", "GPS"]),
                 "duplicate_action": "review",
                 "prefill_profile": True,
                 "profile_update_mode": beneficiary.get("profileUpdateRule", "Require review for sensitive changes"),
             },
             "governance": pack.get("governance_defaults", {}),
+            "validation": form_definition.get("validation_rules", pack.get("validation_rules", [])),
+            "data_quality": form_definition.get("data_quality_rules", pack.get("data_quality_rules", [])),
+            "beneficiary_mapping": form_definition.get("profile_mappings", {}),
+            "indicator_mapping": form_definition.get("indicator_mappings", []),
             "instrument": {
                 "sector_pack": {
                     "id": pack["id"],
@@ -545,6 +624,52 @@ class ProjectsService:
                 }
             },
         }
+
+    def _sector_form_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+        template_names = [str(name) for name in pack.get("form_templates", [])]
+        definitions = pack.get("form_definitions")
+        if isinstance(definitions, list) and definitions:
+            valid_definitions = [definition for definition in definitions if isinstance(definition, dict)]
+            definition_names = [str(definition.get("name") or "") for definition in valid_definitions]
+            if template_names and definition_names == template_names:
+                return valid_definitions
+            if not template_names:
+                return valid_definitions
+        return [{"name": name} for name in template_names]
+
+    def _sector_indicator_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+        template_names = [str(name) for name in pack.get("indicator_templates", [])]
+        definitions = pack.get("indicator_definitions")
+        if isinstance(definitions, list) and definitions:
+            valid_definitions = [definition for definition in definitions if isinstance(definition, dict)]
+            definition_names = [str(definition.get("name") or "") for definition in valid_definitions]
+            if template_names and definition_names == template_names:
+                return valid_definitions
+            if not template_names:
+                return valid_definitions
+        return [{"name": name} for name in template_names]
+
+    def _sector_report_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+        template_names = [str(name) for name in pack.get("report_templates", [])]
+        definitions = pack.get("report_definitions")
+        if isinstance(definitions, list) and definitions:
+            valid_definitions = [definition for definition in definitions if isinstance(definition, dict)]
+            definition_names = [str(definition.get("name") or "") for definition in valid_definitions]
+            if template_names and definition_names == template_names:
+                return valid_definitions
+            if not template_names:
+                return valid_definitions
+        return [{"name": name} for name in template_names]
+
+    def _fallback_sector_questions(self, pack: dict[str, object], form_name: str) -> list[dict[str, object]]:
+        entity_type = str(((pack.get("recommended_settings") or {}).get("beneficiary") or {}).get("primaryEntityType") or "Beneficiary") if isinstance(pack.get("recommended_settings"), dict) else "Beneficiary"
+        return [
+            {"id": "consent", "label": "Consent captured", "type": "consent", "required": True, "variableName": "consent_captured", "helpText": "Confirm informed consent before collecting data."},
+            {"id": "entity_name", "label": f"{entity_type} name", "type": "short_text", "required": True, "variableName": "entity_name", "helpText": f"Official {entity_type.lower()} name or identifier."},
+            {"id": "location", "label": "Village or location", "type": "short_text", "required": True, "variableName": "location_name", "helpText": "Use the project location naming convention."},
+            {"id": "gps", "label": "GPS location", "type": "gps", "required": True, "variableName": "gps_location", "helpText": "Capture location evidence where field policy requires it."},
+            {"id": "notes", "label": "Field notes", "type": "long_text", "required": False, "variableName": "field_notes", "helpText": "Add relevant observations for the supervisor or reviewer."},
+        ]
 
     @staticmethod
     def _mark_sector_install(settings: dict[str, object] | None, key: str) -> dict[str, object]:

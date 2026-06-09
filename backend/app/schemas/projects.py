@@ -249,15 +249,19 @@ class ProjectSectorPackRead(BaseModel):
     terminology: dict[str, str] = Field(default_factory=dict)
     entity_types: list[str] = Field(default_factory=list)
     form_templates: list[str] = Field(default_factory=list)
+    form_definitions: list[dict[str, Any]] = Field(default_factory=list)
     indicator_templates: list[str] = Field(default_factory=list)
+    indicator_definitions: list[dict[str, Any]] = Field(default_factory=list)
     dashboard_widgets: list[str] = Field(default_factory=list)
     report_templates: list[str] = Field(default_factory=list)
+    report_definitions: list[dict[str, Any]] = Field(default_factory=list)
     validation_rules: list[str] = Field(default_factory=list)
     data_quality_rules: list[str] = Field(default_factory=list)
     workflows: list[str] = Field(default_factory=list)
     mobile_guidance: list[str] = Field(default_factory=list)
     governance_defaults: dict[str, Any] = Field(default_factory=dict)
     recommended_settings: dict[str, Any] = Field(default_factory=dict)
+    manager_controls: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProjectSectorInstallRead(BaseModel):

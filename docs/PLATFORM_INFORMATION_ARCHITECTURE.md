@@ -136,7 +136,7 @@ Startup feature ownership:
 
 ## Sector Pack Architecture
 
-Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, form templates, indicator templates, dashboard widgets, report templates, validation rules, data quality rules, governance defaults, and mobile guidance.
+Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, editable form instruments, question metadata, indicator definitions, dashboard widgets, report packages, validation rules, data quality rules, governance defaults, and mobile guidance.
 
 Canonical owner:
 
@@ -148,6 +148,21 @@ Canonical owner:
 - Field Operations and Mobile own sector-specific field guidance, assignment behavior, offline expectations, and evidence capture.
 
 Project setup may install sector starter forms, indicator templates, and report packages. Installed assets must be editable drafts until the responsible M&E manager reviews project-specific wording, mappings, validation rules, approval workflow, and donor reporting requirements.
+
+Sector packs include:
+
+- Form definitions with sections, question labels, variable names, definitions, sensitivity levels, validation rules, beneficiary profile mappings, indicator hints, GPS/consent controls, and mobile guidance.
+- Indicator definitions with units, reporting frequency, baseline/target expectations, disaggregation, source-of-truth rules, and approved-data requirements.
+- Report definitions with standard sections for executive summary, indicator progress, beneficiary/entity coverage, GPS evidence, data quality, risks, corrective actions, annexes, and export formats.
+- Manager controls that identify which pack elements can be customized inside the project workspace.
+
+Sector Pack Manager:
+
+- Lives in Project Settings, because customization is project-specific.
+- Allows authorized managers to customize terminology, entity types, form template names, indicators, validation rules, data quality checks, dashboard widgets, report templates, and mobile field guidance.
+- Saves changes to `project.settings_json` so project setup, form installation, mobile sync, reports, and dashboards read one shared configuration.
+- Does not create industry-specific modules or duplicate form, indicator, beneficiary, assignment, submission, report, governance, or mobile systems.
+- Installed forms and reports remain draft/editable until project governance approves them.
 
 Initial supported packs:
 
@@ -161,7 +176,7 @@ Initial supported packs:
 Rules:
 
 - Do not create separate top-level modules for each industry.
-- Sector packs must remain editable by M&E managers because donor requirements and project designs differ.
+- Sector packs must remain editable by M&E managers because donor requirements, local terminology, project designs, locations, and reporting rules differ.
 - Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed indicators, beneficiary/entity linkage, data quality review, and audit history.
 - Custom sectors must use the same project, form, beneficiary, assignment, submission, indicator, report, governance, and mobile sync architecture.
 
