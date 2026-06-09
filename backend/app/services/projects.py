@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import AuditLog
-from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project, Submission
+from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project, Submission, Survey
 from app.models.operations import Beneficiary, DataQualitySignal, DonorReport, MonitoringIndicator, OperationalTeam
 from app.repositories.audit import AuditRepository
 from app.schemas.projects import (
@@ -297,6 +297,7 @@ class ProjectsService:
         pack = self._project_sector_pack(project)
         if pack is None:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing starter forms.")
+        survey = await self._sector_survey(organization_id, actor_user_id, project, pack)
         installed = 0
         skipped = 0
         form_definitions = self._sector_form_definitions(pack)
@@ -316,7 +317,7 @@ class ProjectsService:
             form = DataForm(
                 organization_id=organization_id,
                 project_id=project.id,
-                survey_id=None,
+                survey_id=survey.id,
                 created_by_user_id=actor_user_id,
                 name=name,
                 slug=slug,
@@ -356,6 +357,52 @@ class ProjectsService:
             skipped_forms=skipped,
             message=f"{installed} starter form(s) installed for {pack['name']}. {skipped} already existed.",
         )
+
+    async def _sector_survey(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        project: Project,
+        pack: dict[str, object],
+    ) -> Survey:
+        code = self._starter_slug(project.slug, f"{pack['id']}-starter-instruments")[:120]
+        existing = await self.session.execute(
+            select(Survey).where(
+                Survey.organization_id == organization_id,
+                Survey.project_id == project.id,
+                Survey.code == code,
+                Survey.deleted_at.is_(None),
+            )
+        )
+        survey = existing.scalar_one_or_none()
+        if survey is not None:
+            return survey
+        survey = Survey(
+            organization_id=organization_id,
+            project_id=project.id,
+            created_by_user_id=actor_user_id,
+            owner_user_id=actor_user_id,
+            manager_user_id=actor_user_id,
+            title=f"{pack['name']} Starter Instruments",
+            code=code,
+            description="Project-level survey container for sector starter forms. Review, edit, approve, and publish each form before field rollout.",
+            survey_type="sector_starter_pack",
+            status="draft",
+            start_date=project.start_date.date() if project.start_date else None,
+            end_date=project.end_date.date() if project.end_date else None,
+            geographic_scope=project.region or project.country,
+            target_population=str(((pack.get("recommended_settings") or {}).get("beneficiary") or {}).get("primaryEntityType") or "Beneficiaries") if isinstance(pack.get("recommended_settings"), dict) else "Beneficiaries",
+            governance_json={
+                "source": "sector_pack",
+                "sector_id": pack.get("id"),
+                "sector_name": pack.get("name"),
+                "approvedDataOnly": True,
+            },
+            is_active=True,
+        )
+        self.session.add(survey)
+        await self.session.flush()
+        return survey
 
     async def install_sector_indicators(self, organization_id: UUID, actor_user_id: UUID, project_id: UUID) -> ProjectSectorInstallRead:
         project = await self._get_project(organization_id, project_id)
