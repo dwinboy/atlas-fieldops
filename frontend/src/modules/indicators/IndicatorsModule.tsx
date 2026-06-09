@@ -234,7 +234,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 
   const indicators = useMemo(() => {
     const backendIndicators = preview ? previewIndicators : (indicatorsQuery.data ?? []).map(mapApiIndicator);
-    const merged = [...localIndicators, ...backendIndicators];
+    const merged = preview ? [...localIndicators, ...backendIndicators] : backendIndicators;
     return merged.filter((indicator, index, rows) => rows.findIndex((row) => row.id === indicator.id) === index);
   }, [indicatorsQuery.data, localIndicators, preview]);
   const indicatorTargets = preview ? sampleIndicatorTargets : [];
@@ -458,7 +458,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       {!selectedIndicator && activeSection === "logframes" ? <Logframes rows={logframeRows} /> : null}
       {!selectedIndicator && activeSection === "targets" ? <Targets targets={indicatorTargets} /> : null}
       {!selectedIndicator && activeSection === "baselines" ? <Baselines baselines={indicatorBaselines} /> : null}
-      {!selectedIndicator && activeSection === "reports" ? <IndicatorReports onOpenReports={() => setActiveView("analytics")} /> : null}
+      {!selectedIndicator && activeSection === "reports" ? <IndicatorReports onOpenReports={() => setActiveView("analytics")} reports={preview ? previewReports : []} /> : null}
       <CreateIndicatorModal
         canSubmit={canManageIndicators && !createIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
         draft={indicatorDraft}
@@ -754,7 +754,7 @@ function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   );
 }
 
-function IndicatorReports({ onOpenReports }: { onOpenReports: () => void }) {
+function IndicatorReports({ onOpenReports, reports }: { onOpenReports: () => void; reports: IndicatorReport[] }) {
   const columns: TableColumn<IndicatorReport>[] = [
     { key: "name", header: "Report", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -766,7 +766,7 @@ function IndicatorReports({ onOpenReports }: { onOpenReports: () => void }) {
   return (
     <section className="space-y-4">
       <SectionHeader action={<Button onClick={onOpenReports} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>} description="Prepare indicator-specific reports while formal outputs, scheduled reports, and exports remain owned by the Reports module." route="/indicators/reports" title="Indicator Reports" />
-      <DataTable columns={columns} emptyLabel="No indicator reports yet" rows={previewReports} searchLabel="Search indicator reports, project, period" title="Indicator reports" />
+      <DataTable columns={columns} emptyLabel="No indicator reports yet" rows={reports} searchLabel="Search indicator reports, project, period" title="Indicator reports" />
     </section>
   );
 }

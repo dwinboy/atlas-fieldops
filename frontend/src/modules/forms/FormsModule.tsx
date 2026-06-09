@@ -503,7 +503,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               form_id: previewSubmissionFormId(submission),
             })),
           ]
-        : [...(submissionsQuery.data ?? []), ...localSubmissions],
+        : (submissionsQuery.data ?? []),
     [localSubmissions, preview, submissionsQuery.data],
   );
   const linkedBeneficiaryCodes = useMemo(
@@ -522,7 +522,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     const backendForms = (formsQuery.data ?? []).map(normalizeBackendForm);
     const rawForms = preview
       ? [...previewForms, ...localForms]
-      : [...localForms, ...backendForms];
+      : backendForms;
     const baseForms = Array.from(
       new Map(rawForms.map((form) => [form.id, form])).values(),
     );

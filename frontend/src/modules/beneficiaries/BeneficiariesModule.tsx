@@ -97,7 +97,7 @@ export function BeneficiariesModule({
 
   const backendEntities = (entitiesQuery.data ?? []).map(mapBeneficiaryRead);
   const entities = useMemo(
-    () => [...localEntities, ...(preview ? previewEntities : backendEntities)],
+    () => (preview ? [...localEntities, ...previewEntities] : backendEntities),
     [backendEntities, localEntities, preview],
   );
   const linkedSubmissionRows = useMemo<SubmissionRead[]>(

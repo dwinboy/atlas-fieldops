@@ -110,6 +110,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const boundaries = useMemo(() => (preview ? previewBoundaries : []), [preview]);
   const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
   const indicatorGeography = useMemo(() => (preview ? previewIndicatorGeography : []), [preview]);
+  const spatialIssues = useMemo(() => (preview ? previewSpatialIssues : []), [preview]);
   const restricted = isRestrictedMapViewer(principal);
   const privacyVisibility: LayerVisibility = restricted ? "Aggregated" : "Internal";
 
@@ -246,6 +247,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         privacyVisibility={privacyVisibility}
         selectedFeature={selectedFeature}
         setActiveSection={setActiveSection}
+        spatialIssues={spatialIssues}
       />
     </section>
   );
@@ -452,6 +454,7 @@ function SectionContent({
   privacyVisibility,
   selectedFeature,
   setActiveSection,
+  spatialIssues,
 }: {
   activeSection: MappingSection;
   boundaries: BoundaryRecord[];
@@ -462,12 +465,15 @@ function SectionContent({
   privacyVisibility: LayerVisibility;
   selectedFeature: MapFeatureRecord | null;
   setActiveSection: (section: MappingSection) => void;
+  spatialIssues: SpatialQualityIssue[];
 }) {
   if (activeSection === "layers") return <LayersTable layers={mapLayers} />;
   if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} />;
   if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} />;
   if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} />;
-  if (activeSection === "data-quality-maps") return <SpatialQualityWorkspace />;
+  if (activeSection === "data-quality-maps") {
+    return <SpatialQualityWorkspace issues={spatialIssues} />;
+  }
 
   const features = filterFeaturesBySection(mapFeatures, activeSection);
   const columns: TableColumn<MapFeatureRecord>[] = [
@@ -598,7 +604,7 @@ function IndicatorWorkspace({ indicatorGeography }: { indicatorGeography: Indica
   );
 }
 
-function SpatialQualityWorkspace() {
+function SpatialQualityWorkspace({ issues }: { issues: SpatialQualityIssue[] }) {
   const columns: TableColumn<SpatialQualityIssue>[] = [
     { key: "issue", header: "Issue", value: (row) => row.issueType, render: (row) => <span className="font-medium">{row.issueType}</span> },
     { key: "submission", header: "Submission", value: (row) => row.submissionId, render: (row) => row.submissionId },
@@ -615,7 +621,7 @@ function SpatialQualityWorkspace() {
         route="/mapping/data-quality-maps"
         title="Data Quality Maps"
       />
-      <DataTable columns={columns} emptyLabel="No spatial quality issues detected" rows={previewSpatialIssues} searchLabel="Search issue, submission, enumerator, location" title="Spatial quality issue table" />
+      <DataTable columns={columns} emptyLabel="No spatial quality issues detected" rows={issues} searchLabel="Search issue, submission, enumerator, location" title="Spatial quality issue table" />
     </section>
   );
 }
