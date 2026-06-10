@@ -3063,6 +3063,14 @@ export async function listDataQualitySignals(
   return request<DataQualitySignalRead[]>(`/operations/data-quality/signals${query}`, { token });
 }
 
+export async function updateDataQualitySignal(
+  token: string,
+  signalId: string,
+  payload: { status: "open" | "assigned" | "under_investigation" | "resolved" | "closed"; comment?: string | null },
+): Promise<DataQualitySignalRead> {
+  return request<DataQualitySignalRead>(`/operations/data-quality/signals/${signalId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function getProjectEntities(token: string, projectId: string): Promise<BeneficiaryRead[]> {
   return request<BeneficiaryRead[]>(`/projects/${projectId}/beneficiaries`, { token });
 }

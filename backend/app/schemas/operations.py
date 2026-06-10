@@ -146,6 +146,11 @@ class DataQualitySignalRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DataQualitySignalUpdate(BaseModel):
+    status: str = Field(pattern=r"^(open|assigned|under_investigation|resolved|closed)$")
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class EntityPrefillRead(BaseModel):
     entity_id: UUID
     values: dict[str, object]

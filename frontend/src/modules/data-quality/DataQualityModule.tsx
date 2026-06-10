@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -37,6 +37,7 @@ import {
   ApiError,
   listDataQualitySignals,
   listImportCleaningRows,
+  updateDataQualitySignal,
   type CurrentPrincipal,
   type DataQualitySignalRead,
   type ImportCleaningRowRead,
@@ -109,6 +110,7 @@ function signalSeverity(value: string): QualitySeverity {
 function signalIssueType(value: string): QualityIssueType {
   const normalized = value.toLowerCase();
   if (
+    normalized.includes("possible_duplicate_entity") ||
     normalized.includes("profile_conflict") ||
     normalized.includes("missing_entity_link") ||
     normalized.includes("entity_link") ||
@@ -143,6 +145,7 @@ function qualityIssueFromSignal(signal: DataQualitySignalRead): QualityIssue {
     description: signal.summary,
     enumerator: "Unknown",
     evidence: evidence.length ? evidence : [`Confidence: ${Math.round(signal.confidence * 100)}%`],
+    evidenceJson: signal.evidence_json,
     form: String(signal.evidence_json?.form_name ?? "Unknown form"),
     id: signal.id,
     location: String(signal.evidence_json?.location ?? signal.evidence_json?.community ?? "Unknown location"),
@@ -188,6 +191,19 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
     enabled: !preview && Boolean(token),
     queryFn: () => listImportCleaningRows(token ?? ""),
     queryKey: ["data-quality", "import-cleaning", token],
+  });
+  const updateSignalMutation = useMutation({
+    mutationFn: ({ comment, signalId, status }: { comment: string; signalId: string; status: "assigned" | "under_investigation" | "resolved" | "closed" }) =>
+      updateDataQualitySignal(token ?? "", signalId, { comment, status }),
+    onSuccess: async (signal) => {
+      await qualitySignalsQuery.refetch();
+      setSelectedIssueId(null);
+      setActionResult(`${titleCase(signal.signal_type)} was marked ${titleCase(signal.status)}.`);
+      pushToast({ title: "Reconciliation updated", description: signal.summary, tone: "success" });
+    },
+    onError: () => {
+      pushToast({ title: "Could not update issue", description: "Check your permission to manage beneficiary and data-quality records.", tone: "danger" });
+    },
   });
   const qualityIssues = useMemo(
     () => (preview ? sampleQualityIssues : (qualitySignalsQuery.data ?? []).map(qualityIssueFromSignal)),
@@ -410,7 +426,17 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
         />
       ) : null}
       {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
-      {!selectedIssue && activeSection === "reconciliation" ? <IssueTable description="Resolve unlinked submissions, duplicate beneficiary candidates, profile conflicts, imported unmatched records, and repeated collection issues before they affect official results." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/reconciliation" title="Reconciliation Queue" /> : null}
+      {!selectedIssue && activeSection === "reconciliation" ? (
+        <ReconciliationSection
+          isUpdating={updateSignalMutation.isPending}
+          issues={visibleIssues}
+          onMarkResolved={(issue) => updateSignalMutation.mutate({ comment: "Reviewed from reconciliation queue.", signalId: issue.id, status: "resolved" })}
+          onMarkUnderInvestigation={(issue) => updateSignalMutation.mutate({ comment: "Assigned for reconciliation investigation.", signalId: issue.id, status: "under_investigation" })}
+          onOpenBeneficiary={(beneficiaryId) => router.push(`/beneficiaries?beneficiaryId=${beneficiaryId}`)}
+          onOpenIssue={openIssue}
+          onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
+        />
+      ) : null}
       {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
@@ -960,6 +986,96 @@ function ImportCleaningSection({
           Choose a form with staged uploaded rows to edit values in bulk.
         </div>
       )}
+    </div>
+  );
+}
+
+function evidenceText(issue: QualityIssue, key: string): string {
+  const value = issue.evidenceJson?.[key];
+  return typeof value === "string" && value.trim() ? value : "";
+}
+
+function ReconciliationSection({
+  isUpdating,
+  issues,
+  onMarkResolved,
+  onMarkUnderInvestigation,
+  onOpenBeneficiary,
+  onOpenIssue,
+  onOpenSubmission,
+}: {
+  isUpdating: boolean;
+  issues: QualityIssue[];
+  onMarkResolved: (issue: QualityIssue) => void;
+  onMarkUnderInvestigation: (issue: QualityIssue) => void;
+  onOpenBeneficiary: (beneficiaryId: string) => void;
+  onOpenIssue: (issue: QualityIssue) => void;
+  onOpenSubmission: (submissionId: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        description="Resolve unlinked approved submissions, possible duplicate beneficiaries, profile conflicts, and imported records that need a human data-manager decision before they enter official results."
+        route="/data-quality/reconciliation"
+        title="Reconciliation Queue"
+      />
+      <div className="grid gap-3">
+        {issues.map((issue) => {
+          const candidateId = evidenceText(issue, "candidate_beneficiary_id");
+          const candidateUid = evidenceText(issue, "candidate_beneficiary_uid") || evidenceText(issue, "beneficiary_uid");
+          const matchedFields = Array.isArray(issue.evidenceJson?.matched_fields)
+            ? issue.evidenceJson?.matched_fields.map(String).join(", ")
+            : "";
+          return (
+            <article className="rounded-xl border bg-panel p-3.5 shadow-line" key={issue.id}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
+                    <Badge tone={statusTone(issue.status)}>{issue.status}</Badge>
+                    <Badge tone="warning">{issue.type}</Badge>
+                  </div>
+                  <h3 className="mt-2 font-semibold">{issue.title}</h3>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{issue.description}</p>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
+                    <span>Submission: {issue.submissionId}</span>
+                    <span>Candidate: {candidateUid || "None"}</span>
+                    <span>Matched: {matchedFields || "Not recorded"}</span>
+                    <span>Recommended: {issue.recommendedAction}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button onClick={() => onOpenIssue(issue)} size="sm" type="button" variant="secondary">
+                    Review details
+                  </Button>
+                  {issue.submissionId !== "Not linked" ? (
+                    <Button onClick={() => onOpenSubmission(issue.submissionId)} size="sm" type="button" variant="secondary">
+                      Open submission
+                    </Button>
+                  ) : null}
+                  {candidateId ? (
+                    <Button onClick={() => onOpenBeneficiary(candidateId)} size="sm" type="button" variant="secondary">
+                      Open candidate
+                    </Button>
+                  ) : null}
+                  <Button disabled={isUpdating} onClick={() => onMarkUnderInvestigation(issue)} size="sm" type="button" variant="secondary">
+                    Investigate
+                  </Button>
+                  <Button disabled={isUpdating} onClick={() => onMarkResolved(issue)} size="sm" type="button">
+                    Mark reviewed
+                  </Button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+        {!issues.length ? (
+          <div className="rounded-xl border border-success/30 bg-success/10 p-4">
+            <p className="text-sm font-semibold">No reconciliation items need action.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Approved submissions are linked or waiting in normal review queues.</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

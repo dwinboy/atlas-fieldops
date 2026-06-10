@@ -62,13 +62,11 @@ export function calculateQualityScore(submission: SubmissionRead): number {
   const payload = submission.payload_json ?? {};
   const mobileIntegrity = mobileIntegrityPayload(payload);
   const mobileScore = typeof mobileIntegrity?.score === "number" ? mobileIntegrity.score : null;
-  const values = Object.entries(payload)
-    .filter(([key]) => !key.startsWith("_"))
-    .map(([, value]) => value);
+  const values = Object.values(normalizedSubmissionAnswers(payload));
   const completeness = values.length ? Math.round((values.filter((value) => value !== null && value !== undefined && value !== "").length / values.length) * 100) : 60;
   const gpsPenalty = !submission.latitude || !submission.longitude ? 25 : submission.accuracy && submission.accuracy > 20 ? 15 : 0;
   const statusPenalty = submission.status === "rejected" ? 35 : ["correction_requested", "needs_correction"].includes(submission.status) ? 20 : 0;
-  const duplicatePenalty = Object.keys(payload).some((key) => key.includes("phone") || key.includes("household") || key.includes("beneficiary")) ? 0 : 5;
+  const duplicatePenalty = Object.keys(normalizedSubmissionAnswers(payload)).some((key) => key.includes("phone") || key.includes("household") || key.includes("beneficiary")) ? 0 : 5;
   const calculatedScore = Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
   return mobileScore === null ? calculatedScore : Math.min(calculatedScore, mobileScore);
 }
@@ -84,6 +82,25 @@ function mobileIntegrityPayload(payload: Record<string, unknown>): Record<string
   const rawIntegrity = payload._mobile_integrity;
   if (!rawIntegrity || typeof rawIntegrity !== "object" || Array.isArray(rawIntegrity)) return null;
   return rawIntegrity as Record<string, unknown>;
+}
+
+function normalizedSubmissionAnswers(payload: Record<string, unknown>): Record<string, unknown> {
+  const answers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") && key !== "responses") answers[key] = value;
+  }
+  const responseRows = Array.isArray(payload.responses)
+    ? payload.responses
+    : Array.isArray(payload._mobile_responses)
+      ? payload._mobile_responses
+      : [];
+  for (const row of responseRows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const response = row as Record<string, unknown>;
+    const key = String(response.variableName ?? response.variable_name ?? response.questionId ?? response.question_id ?? "").trim();
+    if (key) answers[key] = response.value;
+  }
+  return answers;
 }
 
 function mobileIntegritySignals(payload: Record<string, unknown>): {

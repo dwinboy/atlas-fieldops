@@ -21,6 +21,7 @@ from app.schemas.operations import (
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
+    DataQualitySignalUpdate,
     DonorReportCreate,
     DonorReportRead,
     EntityDuplicateCandidateRead,
@@ -469,6 +470,27 @@ async def list_quality_signals(
         status=status_filter,
         signal_type=signal_type,
     )
+
+
+@router.patch("/data-quality/signals/{signal_id}", response_model=DataQualitySignalRead, summary="Update data quality signal status")
+async def update_quality_signal(
+    signal_id: UUID,
+    payload: DataQualitySignalUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataQualitySignalRead:
+    try:
+        signal = await OperationsService(session).update_quality_signal(
+            organization_uuid(principal),
+            signal_id,
+            payload,
+            actor_user_id=user_uuid(principal),
+        )
+        await session.commit()
+        return signal
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/beneficiaries/search", response_model=list[BeneficiaryRead], summary="Search beneficiary and entity registry")

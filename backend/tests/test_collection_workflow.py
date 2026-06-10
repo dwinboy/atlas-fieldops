@@ -3,18 +3,30 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.permissions import Permission, permissions_for_roles
+from app.models.base import Base
+from app.models.collection import DataForm, DataFormVersion, Project, Survey
+from app.models.collection import FieldOfficerProfile
+from app.models.identity import Organization, User
+from app.schemas.auth import CurrentPrincipal
+from app.models.operations import Beneficiary
 from app.schemas.collection import (
     DataFormCreate,
+    FormDataImportConfirmRequest,
+    FormDataImportRequest,
     FormControlsSettings,
     SubmissionCreate,
     SubmissionReviewAction,
     SurveyCreate,
     SurveyGovernanceSettings,
 )
-from app.services.collection import form_schema_compatibility, form_schema_to_xlsform
+from app.schemas.mobile import MobileSubmissionUpload
+from app.services.collection import SubmissionService, form_schema_compatibility, form_schema_to_xlsform
 from app.services.form_engine import FormEngine
+from app.services.mobile import MobileService
 
 
 def test_enterprise_roles_have_collection_permissions() -> None:
@@ -249,3 +261,248 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
     assert compatibility.xlsform_ready is True
     assert compatibility.has_gps is True
     assert compatibility.media_field_count == 1
+
+
+@pytest.mark.asyncio
+async def test_confirmed_imported_form_row_creates_linked_beneficiary() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Test Org", slug="test-org"),
+                User(id=actor_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Farmer Project", slug="farmer-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=actor_user_id,
+                    owner_user_id=actor_user_id,
+                    title="Registration",
+                    code="REG-1",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=actor_user_id,
+                    name="Farmer Registration",
+                    slug="farmer-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "creates_new_entity": True,
+                            "updates_existing_entity": False,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "farmer_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                    {"id": "village", "variable_name": "village", "type": "text", "label": "Village"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportRequest(
+                rows=[{"farmer_name": "Amina Farmer", "phone": "677000001", "village": "Bamenda"}],
+                source_name="farmers.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="Test upload",
+            ),
+        )
+        assert imported.imported_rows == 1
+        submission_id = imported.submissions[0].id
+
+        confirmed = await service.confirm_imported_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportConfirmRequest(submission_ids=[submission_id], comment="Cleaned"),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert confirmed.confirmed_rows == 1
+        assert beneficiary.beneficiary_uid.startswith("FRM-")
+        assert beneficiary.display_name == "Amina Farmer"
+        assert beneficiary.project_id == project_id
+        assert beneficiary.profile_json["sourceSubmissionId"] == str(submission_id)
+
+
+@pytest.mark.asyncio
+async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after_approval() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Mobile Org", slug="mobile-org"),
+                User(id=field_user_id, email="field@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Mobile Project", slug="mobile-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Mobile Registration",
+                    code="MOB-REG",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Mobile Farmer Registration",
+                    slug="mobile-farmer-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "q_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "q_phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                    {"id": "q_village", "variable_name": "village", "type": "text", "label": "Village"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field@example.org",
+            full_name="Field Officer",
+            organization_slug="mobile-org",
+            organization_name="Mobile Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        uploaded = await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-draft-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Farmer",
+                responses=[
+                    {"questionId": "q_name", "variableName": "farmer_name", "value": "Mobile Farmer", "updatedAt": now},
+                    {"questionId": "q_phone", "variableName": "phone", "value": "677000002", "updatedAt": now},
+                    {"questionId": "q_village", "variableName": "village", "value": "Bafut", "updatedAt": now},
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                device_id="android-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        assert uploaded.status == "synced"
+
+        submissions = await SubmissionService(session).list_submissions(
+            organization_id=organization_id,
+            status=None,
+            actor_user_id=field_user_id,
+            scope_type="own",
+        )
+        assert len(submissions) == 1
+        submission = submissions[0]
+        assert submission.payload_json["farmer_name"] == "Mobile Farmer"
+        assert submission.payload_json["_mobile_responses"][0]["questionId"] == "q_name"
+        assert submission.offline_created is True
+        assert submission.field_officer_id == officer_id
+
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved mobile record"),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert beneficiary.beneficiary_uid.startswith("FRM-")
+        assert beneficiary.display_name == "Mobile Farmer"
+        assert beneficiary.project_id == project_id

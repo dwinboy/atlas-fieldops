@@ -38,6 +38,8 @@ class FormEngine:
         issues: list[FormValidationIssue] = []
         for field in self.flatten_fields(schema):
             value = payload.get(field.id)
+            if value is None and field.variable_name:
+                value = payload.get(field.variable_name)
             if field.required and value in (None, "", []):
                 issues.append(FormValidationIssue(field.id, "Required field is missing."))
             if value is None:

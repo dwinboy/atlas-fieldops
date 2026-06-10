@@ -6,7 +6,8 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { navItems } from "@/lib/marketing/content";
+import { StatusDot } from "@/components/ui/status-dot";
+import { footerColumns, navItems } from "@/lib/marketing/content";
 import { cn } from "@/lib/utils";
 
 export function MarketingShell({ children }: { children: ReactNode }) {
@@ -85,30 +86,36 @@ export function MarketingShell({ children }: { children: ReactNode }) {
             <p className="mt-4 max-w-md text-sm leading-6 text-white/68">
               Monitoring, evaluation, offline data collection, and operational intelligence for teams doing mission-critical field work.
             </p>
+            <Link className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-white/68 transition hover:text-white" href="/status">
+              <StatusDot tone="online" />
+              All systems operational
+            </Link>
           </div>
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Product", ["Features", "Solutions", "Pricing", "Case Studies"]],
-              ["Company", ["About", "Security", "Careers", "Status"]],
-              ["Resources", ["Resources", "Blog", "Case Studies", "Documentation"]],
-              ["Action", ["Book demo", "Contact", "Sign in", "Privacy", "Terms"]]
-            ].map(([title, links]) => (
-              <div key={title as string}>
-                <h2 className="text-sm font-semibold">{title as string}</h2>
+          <nav aria-label="Footer" className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {footerColumns.map((column) => (
+              <div key={column.title}>
+                <h2 className="text-sm font-semibold">{column.title}</h2>
                 <ul className="mt-4 space-y-3 text-sm text-white/68">
-                  {(links as string[]).map((link) => (
-                    <li key={link}>
-                      <Link
-                        className="hover:text-white"
-                        href={link === "Sign in" ? "/login" : `/${link.toLowerCase().replaceAll(" ", "-")}`}
-                      >
-                        {link}
+                  {column.links.map((link) => (
+                    <li key={link.label}>
+                      <Link className="transition hover:text-white" href={link.href}>
+                        {link.label}
                       </Link>
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
+          </nav>
+        </div>
+        <div className="border-t border-white/10">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-xs text-white/55 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <p>&copy; {new Date().getFullYear()} Atlas FieldOps. All rights reserved.</p>
+            <div className="flex gap-5">
+              <Link className="transition hover:text-white" href="/privacy">Privacy</Link>
+              <Link className="transition hover:text-white" href="/terms">Terms</Link>
+              <Link className="transition hover:text-white" href="/security">Security</Link>
+            </div>
           </div>
         </div>
       </footer>

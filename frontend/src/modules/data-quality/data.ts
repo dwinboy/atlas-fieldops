@@ -60,6 +60,7 @@ export type QualityIssue = {
   description: string;
   recommendedAction: string;
   evidence: string[];
+  evidenceJson?: Record<string, unknown>;
 };
 
 export type DuplicateGroup = {

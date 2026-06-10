@@ -717,7 +717,7 @@ const starterTemplates: StarterTemplate[] = [
 
 const defaultControlsDraft: FormControlsDraft = {
   accessibilityMode: "standard",
-  allowAnonymous: false,
+  allowAnonymous: true,
   allowManualCoordinates: false,
   approvalEscalationHours: 48,
   assignmentMode: "assigned_only",
@@ -726,7 +726,7 @@ const defaultControlsDraft: FormControlsDraft = {
   autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
   backCheckRequired: false,
   backCheckSamplePercent: 10,
-  beneficiarySearch: "optional",
+  beneficiarySearch: "disabled",
   blockWithoutConsent: true,
   boundaryValidation: false,
   businessPurpose: "Support project monitoring, review, and donor-ready evidence.",
@@ -799,7 +799,7 @@ const defaultControlsDraft: FormControlsDraft = {
   preventFutureDates: true,
   repeatGroupPolicy: "review_large",
   reportingPeriod: "quarterly",
-  respondentIdentification: "existing_or_new",
+  respondentIdentification: "anonymous_allowed",
   resultArea: "",
   reviewComments: "",
   reviewApprover: "me_manager",
@@ -1498,7 +1498,11 @@ function controlsDraftToApiControls(
         : "No specific field officer selection saved.",
     },
     entity_controls: {
-      linked_to_entity: controls.requiresEntity || !controls.allowAnonymous,
+      linked_to_entity:
+        controls.requiresEntity ||
+        controls.profileUpdateMode !== "never" ||
+        controls.respondentIdentification !== "anonymous_allowed" ||
+        Object.values(controls.profileMappings).some(Boolean),
       entity_type: controls.entityType,
       creates_new_entity:
         /registration/i.test(form.name) || controls.profileUpdateMode === "after_submission",

@@ -1,10 +1,11 @@
-import { ArrowRight, Check, MapPin, RadioTower, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, MapPin, RadioTower, ShieldCheck, Smartphone } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { industries, metrics, platformFeatures, pricingTiers, trustLogos, workflowSteps } from "@/lib/marketing/content";
+import { cn } from "@/lib/utils";
 
 export function SectionIntro({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
   return (
@@ -278,6 +279,17 @@ export function PricingCards() {
               </li>
             ))}
           </ul>
+          <Link
+            className={cn(
+              "mt-6 inline-flex h-11 w-full items-center justify-center rounded-md px-5 text-sm font-semibold transition",
+              tier.featured
+                ? "bg-white text-[#0f766e] hover:bg-white/90"
+                : "bg-[#0f766e] text-white hover:bg-[#115e59]"
+            )}
+            href={tier.cta.href}
+          >
+            {tier.cta.label}
+          </Link>
         </article>
       ))}
     </div>
@@ -294,6 +306,22 @@ export function SimplePageHero({ eyebrow, title, text, children }: { eyebrow: st
         {children}
       </div>
     </section>
+  );
+}
+
+export function FAQAccordion({ items }: { items: { question: string; answer: string }[] }) {
+  return (
+    <div className="space-y-4">
+      {items.map((item) => (
+        <details className="group rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={item.question}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-semibold text-[#10201c] [&::-webkit-details-marker]:hidden">
+            {item.question}
+            <ChevronDown aria-hidden="true" className="shrink-0 text-[#0f766e] transition-transform group-open:rotate-180" size={20} />
+          </summary>
+          <p className="mt-3 text-sm leading-6 text-[#52615d]">{item.answer}</p>
+        </details>
+      ))}
+    </div>
   );
 }
 

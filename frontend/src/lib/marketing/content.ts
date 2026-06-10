@@ -217,6 +217,47 @@ export const useCasePages = [
 
 export const trustLogos = ["NGOs", "Governments", "Donors", "Research Teams", "Health Programs", "Education Programs"];
 
+export const footerColumns = [
+  {
+    title: "Product",
+    links: [
+      { label: "Features", href: "/features" },
+      { label: "Solutions", href: "/solutions" },
+      { label: "Use Cases", href: "/use-cases" },
+      { label: "Templates", href: "/templates" },
+      { label: "Pricing", href: "/pricing" },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { label: "About", href: "/about" },
+      { label: "Case Studies", href: "/case-studies" },
+      { label: "Careers", href: "/careers" },
+      { label: "Security", href: "/security" },
+      { label: "Status", href: "/status" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { label: "Resources", href: "/resources" },
+      { label: "Blog", href: "/blog" },
+      { label: "Documentation", href: "/documentation" },
+      { label: "Help Center", href: "/help" },
+    ],
+  },
+  {
+    title: "Get Started",
+    links: [
+      { label: "Book a demo", href: "/book-demo" },
+      { label: "Start free trial", href: "/signup" },
+      { label: "Contact sales", href: "/contact" },
+      { label: "Sign in", href: "/login" },
+    ],
+  },
+];
+
 export const metrics = [
   { label: "Records processed daily", value: "10M+" },
   { label: "Offline sync reliability", value: "99.9%" },
@@ -230,6 +271,7 @@ export const pricingTiers = [
     price: "Contact sales",
     description: "For one program launching reliable surveys, mobile collection, review queues, and basic reports.",
     features: ["Projects and forms", "Offline mobile collection", "Submission review", "Basic dashboards", "Email support"],
+    cta: { label: "Talk to sales", href: "/contact" },
   },
   {
     name: "Professional",
@@ -237,12 +279,14 @@ export const pricingTiers = [
     description: "For growing teams managing multiple projects, locations, field officers, data quality, and donor reporting.",
     features: ["Everything in Starter", "GIS mapping", "Indicator tracking", "Data quality rules", "Advanced exports", "Implementation support"],
     featured: true,
+    cta: { label: "Book a demo", href: "/book-demo" },
   },
   {
     name: "Enterprise",
     price: "Custom",
     description: "For organizations needing multi-tenant controls, integrations, security review, governance, and dedicated support.",
     features: ["Everything in Professional", "Advanced RBAC", "Audit and governance", "API access", "SSO readiness", "Dedicated success plan"],
+    cta: { label: "Contact sales", href: "/contact" },
   },
 ];
 

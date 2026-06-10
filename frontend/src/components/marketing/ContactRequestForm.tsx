@@ -91,8 +91,11 @@ export function ContactRequestForm({
           </dl>
         </div>
         <div className="mt-5 flex flex-wrap gap-3">
+          <a className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59]" href="/demo">
+            Explore the demo while you wait
+          </a>
           <button
-            className="h-11 rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59]"
+            className="h-11 rounded-md border border-black/10 px-5 text-sm font-semibold text-[#10201c] transition hover:bg-black/[0.03]"
             onClick={() => {
               setSubmittedRequest(null);
               setSubmitState("idle");
@@ -177,14 +180,17 @@ export function ContactRequestForm({
           value={request.message}
         />
       </label>
-      <button
-        className="mt-5 inline-flex h-11 items-center gap-2 rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-60"
-        disabled={submitState === "submitting"}
-        type="submit"
-      >
-        <Send aria-hidden="true" size={16} />
-        {submitState === "submitting" ? "Sending..." : "Submit request"}
-      </button>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <button
+          className="inline-flex h-11 items-center gap-2 rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-60"
+          disabled={submitState === "submitting"}
+          type="submit"
+        >
+          <Send aria-hidden="true" size={16} />
+          {submitState === "submitting" ? "Sending..." : "Submit request"}
+        </button>
+        <p className="text-xs text-[#52615d]">We typically respond within 1 business day.</p>
+      </div>
     </form>
   );
 }

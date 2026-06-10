@@ -26,6 +26,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import {
+  ApprovalStatusChart,
+  FormResponseChart,
+} from "@/components/dashboard/DashboardCharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -100,8 +104,6 @@ type QualityWorkflowStep = {
   icon: typeof Plus;
 };
 
-type DashboardHelpId = "dailyFocus" | "formActivity";
-
 type DashboardAlert = {
   detail: string;
   label: string;
@@ -109,55 +111,6 @@ type DashboardAlert = {
   value: string;
   view: WorkspaceView;
 };
-
-function ContextHelp({
-  activeHelp,
-  children,
-  id,
-  setActiveHelp,
-  title,
-}: {
-  activeHelp: DashboardHelpId | null;
-  children: ReactNode;
-  id: DashboardHelpId;
-  setActiveHelp: (id: DashboardHelpId | null) => void;
-  title: string;
-}) {
-  const open = activeHelp === id;
-
-  return (
-    <div className="relative inline-flex">
-      <button
-        aria-expanded={open}
-        aria-label={`Help: ${title}`}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-line transition hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-        onClick={() => setActiveHelp(open ? null : id)}
-        type="button"
-      >
-        <HelpCircle aria-hidden="true" size={15} />
-      </button>
-      {open ? (
-        <div
-          aria-label={title}
-          className="absolute right-0 top-9 z-30 w-72 rounded-xl border bg-panel p-3 text-left shadow-elevated"
-          role="dialog"
-        >
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground">
-            {children}
-          </div>
-          <button
-            className="mt-3 text-xs font-medium text-primary hover:underline"
-            onClick={() => setActiveHelp(null)}
-            type="button"
-          >
-            Close
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
   const roles = new Set(
@@ -395,7 +348,6 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
 
 export function Dashboard({ token, principal }: DashboardProps) {
   const [dashboardResult, setDashboardResult] = useState("");
-  const [activeHelp, setActiveHelp] = useState<DashboardHelpId | null>(null);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setLastActionResult = useWorkspaceStore(
@@ -459,6 +411,16 @@ export function Dashboard({ token, principal }: DashboardProps) {
     formPerformance[0] ??
     null;
   const formPerformanceTotals = getFormPerformanceTotals(formPerformance);
+  const formResponseChartData = formPerformance
+    .filter((item) => item.totalSubmissions > 0)
+    .slice(0, 6)
+    .map((item) => ({
+      name:
+        item.form.name.length > 22
+          ? `${item.form.name.slice(0, 21)}…`
+          : item.form.name,
+      responses: item.totalSubmissions,
+    }));
   const formStatsLoading = formsQuery.isLoading || submissionsQuery.isLoading;
   const dashboardLoading =
     summaryQuery.isLoading ||
@@ -1441,6 +1403,14 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 </button>
               ))}
             </div>
+            <div className="mt-4 rounded-xl border bg-background/80 p-3">
+              <ApprovalStatusChart
+                approved={approvalOverview.approved}
+                pending={approvalOverview.pending}
+                rejected={approvalOverview.rejected}
+                returned={approvalOverview.returned}
+              />
+            </div>
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Reviewed</span>
@@ -1566,18 +1536,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Data collection
               </p>
-              <ContextHelp
-                activeHelp={activeHelp}
-                id="formActivity"
-                setActiveHelp={setActiveHelp}
-                title="Active form cards"
-              >
+              <HelpHint label="About active form cards" title="Active form cards">
                 <p>
                   These cards show forms that are live or already receiving
                   responses. Open a card to see its purpose, responses, sync
                   count, review status, and edit actions.
                 </p>
-              </ContextHelp>
+              </HelpHint>
             </div>
             <h2
               id="form-activity-title"
@@ -1612,6 +1577,30 @@ export function Dashboard({ token, principal }: DashboardProps) {
             ))}
           </div>
         </div>
+
+        {formStatsLoading ? (
+          <div className="mt-5 rounded-2xl border bg-background/70 p-4">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="mt-4 h-32 w-full" />
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border bg-background/80 p-4 shadow-line">
+            <p className="text-sm font-semibold">Response volume by form</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Submission counts for the most active forms.
+            </p>
+            <div className="mt-4">
+              {formResponseChartData.length ? (
+                <FormResponseChart data={formResponseChartData} />
+              ) : (
+                <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed text-center text-xs text-muted-foreground">
+                  No form responses yet. Published forms will appear here once
+                  data starts coming in.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {formStatsLoading ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-3">
@@ -1910,17 +1899,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Today
               </p>
-              <ContextHelp
-                activeHelp={activeHelp}
-                id="dailyFocus"
-                setActiveHelp={setActiveHelp}
-                title="Daily focus"
-              >
+              <HelpHint label="About daily focus" title="Daily focus">
                 <p>
                   Use this section to jump into review, sync, quality, or field
                   activity when something needs attention today.
                 </p>
-              </ContextHelp>
+              </HelpHint>
             </div>
             <h2
               id="daily-focus-title"

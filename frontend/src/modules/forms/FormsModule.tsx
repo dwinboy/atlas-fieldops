@@ -171,8 +171,37 @@ function submissionEntityCode(
   submission: SubmissionRead | SubmissionRecord,
   beneficiaryCodes: Map<string, string>,
 ): string {
-  if (!submission.entity_id) return "Not linked";
-  return beneficiaryCodes.get(submission.entity_id) ?? submission.entity_id;
+  const processing = submission.payload_json?._beneficiary_processing;
+  const processedCode =
+    processing && typeof processing === "object" && !Array.isArray(processing)
+      ? String(
+          (processing as Record<string, unknown>).beneficiary_uid ??
+            (processing as Record<string, unknown>).candidate_beneficiary_uid ??
+            "",
+        )
+      : "";
+  if (!submission.entity_id) return processedCode || "Not linked";
+  return beneficiaryCodes.get(submission.entity_id) ?? processedCode || submission.entity_id;
+}
+
+function submissionAnswerMap(submission: SubmissionRead | SubmissionRecord): Record<string, unknown> {
+  const payload = submission.payload_json ?? {};
+  const answers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") && key !== "responses") answers[key] = value;
+  }
+  const responseRows = Array.isArray(payload.responses)
+    ? payload.responses
+    : Array.isArray(payload._mobile_responses)
+      ? payload._mobile_responses
+      : [];
+  for (const row of responseRows) {
+    if (!row || typeof row !== "object") continue;
+    const response = row as { questionId?: unknown; question_id?: unknown; variableName?: unknown; variable_name?: unknown; value?: unknown };
+    const key = String(response.variableName ?? response.variable_name ?? response.questionId ?? response.question_id ?? "").trim();
+    if (key) answers[key] = response.value;
+  }
+  return answers;
 }
 
 function statusBucket(status: string): "approved" | "pending" | "rejectedReturned" | "other" {
@@ -284,12 +313,10 @@ function averageDuration(submissions: (SubmissionRead | SubmissionRecord)[]): st
 function buildQuestionAnalytics(submissions: (SubmissionRead | SubmissionRecord)[]) {
   const questionKeys = new Set<string>();
   submissions.forEach((submission) => {
-    Object.keys(submission.payload_json ?? {})
-      .filter((key) => !key.startsWith("_"))
-      .forEach((key) => questionKeys.add(key));
+    Object.keys(submissionAnswerMap(submission)).forEach((key) => questionKeys.add(key));
   });
   return Array.from(questionKeys).map((key) => {
-    const values = submissions.map((submission) => submission.payload_json?.[key]);
+    const values = submissions.map((submission) => submissionAnswerMap(submission)[key]);
     const answered = values.filter((value) => value !== null && value !== undefined && value !== "");
     const missing = submissions.length - answered.length;
     const counts = new Map<string, number>();
@@ -382,8 +409,8 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
 function payloadColumns(submissions: (SubmissionRead | SubmissionRecord)[]): FormGridQuestion[] {
   const keys = new Map<string, FormGridQuestion>();
   for (const submission of submissions) {
-    for (const [key, value] of Object.entries(submission.payload_json ?? {})) {
-      if (key.startsWith("_") || keys.has(key)) continue;
+    for (const [key, value] of Object.entries(submissionAnswerMap(submission))) {
+      if (keys.has(key)) continue;
       keys.set(key, {
         key,
         label: key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
@@ -419,6 +446,17 @@ function formatCell(value: unknown): string {
 function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): string[] {
   const warnings = new Set<string>();
   if (submission.status !== "approved") warnings.add("Pending review");
+  const processing = submission.payload_json?._beneficiary_processing;
+  if (processing && typeof processing === "object" && !Array.isArray(processing)) {
+    const processingRecord = processing as Record<string, unknown>;
+    const status = String(processingRecord.status ?? "");
+    const action = String(processingRecord.action ?? "");
+    const proposals = Number(processingRecord.profile_update_proposals ?? 0);
+    if (status === "reconciliation_required") warnings.add("Reconciliation required");
+    if (status === "processed" && action === "created") warnings.add("Beneficiary created");
+    if (status === "processed" && action === "linked") warnings.add("Beneficiary linked");
+    if (proposals > 0) warnings.add("Profile update review");
+  }
   if (submission.latitude === null || submission.latitude === undefined || submission.longitude === null || submission.longitude === undefined) warnings.add("Missing GPS");
   if (submission.accuracy && submission.accuracy > 20) warnings.add("Low GPS accuracy");
   if ("duplicate_risk" in submission && submission.duplicate_risk && submission.duplicate_risk !== "none") warnings.add("Duplicate risk");
@@ -730,6 +768,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
         <div className="flex justify-end gap-2">
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">
             View data
+          </Button>
+          <Button onClick={() => openFormData(form.id, "source=uploaded")} size="sm" variant="secondary">
+            <UploadCloud aria-hidden="true" />
+            Upload
           </Button>
           <Button
             onClick={() => openFormBuilder(form)}
@@ -1434,8 +1476,9 @@ function FormStatusCards({
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="primary">
                     Continue Editing
                   </Button>
-                  <Button onClick={() => onOpenData(form)} size="sm" variant="secondary">
-                    Preview
+                  <Button onClick={() => onOpenData(form, "source=uploaded")} size="sm" variant="secondary">
+                    <UploadCloud aria-hidden="true" />
+                    Upload Data
                   </Button>
                   <Button disabled={!canManageForms || !form.project_id} onClick={() => onEdit(form)} size="sm" variant="secondary">
                     Publish
@@ -1447,6 +1490,10 @@ function FormStatusCards({
                   <Button onClick={() => onOpenData(form)} size="sm" variant="primary">
                     <Table2 aria-hidden="true" />
                     View Data
+                  </Button>
+                  <Button onClick={() => onOpenData(form, "source=uploaded")} size="sm" variant="secondary">
+                    <UploadCloud aria-hidden="true" />
+                    Upload Data
                   </Button>
                   <Button disabled={!canManageForms} onClick={() => onAssign(form)} size="sm" variant="secondary">
                     Assign
@@ -1624,7 +1671,7 @@ function FormDataGridWorkspace({
         submissionActorLabel(submission),
         submission.status,
         entityCode,
-        ...Object.values(submission.payload_json ?? {}).map(formatCell),
+        ...Object.values(submissionAnswerMap(submission)).map(formatCell),
       ].join(" ").toLowerCase().includes(term);
     });
   }, [beneficiaryCodes, search, sourceFilter, statusFilter, submissions]);
@@ -1664,7 +1711,7 @@ function FormDataGridWorkspace({
         ...Object.fromEntries(
           questions.map((question) => [
             question.label,
-            formatCell(submission.payload_json?.[question.key]),
+            formatCell(submissionAnswerMap(submission)[question.key]),
           ]),
         ),
       })),
@@ -2125,7 +2172,16 @@ function FormDataGridWorkspace({
                   <td className="border-b px-2.5 py-2">
                     <div className="flex max-w-64 flex-wrap gap-1">
                       {rowQualityWarnings(submission).map((warning) => (
-                        <Badge key={warning} tone={warning === "Pending review" ? "warning" : "danger"}>
+                        <Badge
+                          key={warning}
+                          tone={
+                            warning === "Beneficiary created" || warning === "Beneficiary linked"
+                              ? "success"
+                              : warning === "Pending review" || warning === "Profile update review"
+                                ? "warning"
+                                : "danger"
+                          }
+                        >
                           {warning}
                         </Badge>
                       ))}
@@ -2163,7 +2219,7 @@ function FormDataGridWorkspace({
                   {questions.map((question) => (
                     <td className="max-w-60 border-b px-2.5 py-2 align-top" key={`${submission.id}-${question.key}`}>
                       <div className="max-h-20 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-1.5 leading-relaxed">
-                        {formatCell(submission.payload_json?.[question.key]) || <span className="text-muted-foreground">Blank</span>}
+                        {formatCell(submissionAnswerMap(submission)[question.key]) || <span className="text-muted-foreground">Blank</span>}
                       </div>
                     </td>
                   ))}

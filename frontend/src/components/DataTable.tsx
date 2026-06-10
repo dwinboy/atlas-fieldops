@@ -1,19 +1,23 @@
 "use client";
 
-import { ArrowDownUp, Search, X } from "lucide-react";
+import { ArrowDownUp, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export type TableColumn<T> = {
   key: string;
   header: string;
   render: (row: T) => ReactNode;
   align?: "left" | "right";
+  sortValue?: (row: T) => string | number;
   value?: (row: T) => string;
 };
+
+const PAGE_SIZE = 25;
 
 export function DataTable<T>({
   columns,
@@ -30,9 +34,10 @@ export function DataTable<T>({
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(
-    columns.find((column) => column.value)?.key ?? null,
+    columns.find((column) => column.value || column.sortValue)?.key ?? null,
   );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(0);
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchingRows = normalizedQuery
@@ -44,19 +49,33 @@ export function DataTable<T>({
         )
       : rows;
     const sortedColumn = columns.find(
-      (column) => column.key === sortKey && column.value,
+      (column) => column.key === sortKey && (column.value || column.sortValue),
     );
     if (!sortedColumn) {
       return matchingRows;
     }
+    const getSortValue = sortedColumn.sortValue ?? sortedColumn.value;
     return [...matchingRows].sort((left, right) => {
-      const leftValue = sortedColumn.value?.(left) ?? "";
-      const rightValue = sortedColumn.value?.(right) ?? "";
-      return sortDirection === "asc"
-        ? leftValue.localeCompare(rightValue)
-        : rightValue.localeCompare(leftValue);
+      const leftValue = getSortValue?.(left) ?? "";
+      const rightValue = getSortValue?.(right) ?? "";
+      const comparison =
+        typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue));
+      return sortDirection === "asc" ? comparison : -comparison;
     });
   }, [columns, query, rows, sortDirection, sortKey]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pagedRows = useMemo(
+    () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [filteredRows, safePage],
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [query, sortKey, sortDirection]);
 
   return (
     <section
@@ -97,7 +116,7 @@ export function DataTable<T>({
       </div>
 
       <div className="divide-y md:hidden">
-        {filteredRows.map((row, index) => (
+        {pagedRows.map((row, index) => (
           <article className="space-y-3 px-4 py-4" key={index}>
             {columns.map((column) => (
               <div className="grid gap-1" key={column.key}>
@@ -129,11 +148,18 @@ export function DataTable<T>({
 
       <div className="hidden max-h-[68vh] overflow-auto product-scrollbar md:block">
         <table className="w-full min-w-[920px] text-left text-xs">
-          <thead className="sticky top-0 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
+          <thead className="sticky top-0 z-20 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
-              {columns.map((column) => (
-                <th key={column.key} className="whitespace-nowrap px-2.5 py-2 font-semibold">
-                  {column.value ? (
+              {columns.map((column, columnIndex) => (
+                <th
+                  key={column.key}
+                  className={cn(
+                    "whitespace-nowrap px-2.5 py-2 font-semibold",
+                    columnIndex === 0 &&
+                      "sticky left-0 z-10 border-r border-border/60 bg-muted/45 backdrop-blur",
+                  )}
+                >
+                  {column.value || column.sortValue ? (
                     <button
                       className={
                         column.align === "right"
@@ -171,22 +197,37 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filteredRows.map((row, index) => (
-              <tr key={index} className="transition-colors hover:bg-muted/35">
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={
-                      column.align === "right"
-                        ? "max-w-72 px-2.5 py-2 text-right align-top"
-                        : "max-w-72 px-2.5 py-2 align-top"
-                    }
-                  >
-                    <div className="min-w-0 truncate">{column.render(row)}</div>
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {pagedRows.map((row, index) => {
+              const striped = index % 2 === 1;
+              return (
+                <tr
+                  key={index}
+                  className={cn(
+                    "group transition-colors hover:bg-muted/35",
+                    striped && "bg-muted/20",
+                  )}
+                >
+                  {columns.map((column, columnIndex) => (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "max-w-72 px-2.5 py-2 align-top",
+                        column.align === "right" && "text-right",
+                        columnIndex === 0 &&
+                          cn(
+                            "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                            striped && "bg-muted/20",
+                          ),
+                      )}
+                    >
+                      <div className="min-w-0 truncate" title={column.value?.(row)}>
+                        {column.render(row)}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
             {filteredRows.length === 0 ? (
               <tr>
                 <td
@@ -209,6 +250,39 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {filteredRows.length > PAGE_SIZE ? (
+        <div className="flex flex-col gap-2 border-t bg-muted/15 px-3 py-2.5 text-[11px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Showing {safePage * PAGE_SIZE + 1}–
+            {Math.min((safePage + 1) * PAGE_SIZE, filteredRows.length)} of{" "}
+            {filteredRows.length}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Button
+              disabled={safePage === 0}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
+              size="sm"
+              variant="secondary"
+            >
+              <ChevronLeft aria-hidden="true" />
+              Previous
+            </Button>
+            <span className="px-1 font-medium text-foreground">
+              Page {safePage + 1} of {pageCount}
+            </span>
+            <Button
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+              size="sm"
+              variant="secondary"
+            >
+              Next
+              <ChevronRight aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

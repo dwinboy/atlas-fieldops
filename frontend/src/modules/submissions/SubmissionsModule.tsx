@@ -138,6 +138,18 @@ type MobileIntegrityPayload = {
   signals: MobileIntegritySignal[];
 };
 
+type BeneficiaryProcessingStatus = {
+  action?: string;
+  beneficiaryId?: string;
+  beneficiaryUid?: string;
+  candidateBeneficiaryUid?: string;
+  matchedFields?: string[];
+  processedAt?: string;
+  profileUpdateProposals?: number;
+  reason?: string;
+  status?: string;
+};
+
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
@@ -240,6 +252,25 @@ function getMobileIntegrityStatus(submission: SubmissionRecord): string {
   return stringValue(submission.payload_json?._mobile_integrity_status) ?? "not_evaluated";
 }
 
+function getBeneficiaryProcessingStatus(submission: SubmissionRecord): BeneficiaryProcessingStatus | null {
+  const raw = asRecord(submission.payload_json?._beneficiary_processing);
+  if (!raw) return null;
+  const matchedFields = Array.isArray(raw.matched_fields)
+    ? raw.matched_fields.filter((field): field is string => typeof field === "string")
+    : undefined;
+  return {
+    action: stringValue(raw.action),
+    beneficiaryId: stringValue(raw.beneficiary_id),
+    beneficiaryUid: stringValue(raw.beneficiary_uid),
+    candidateBeneficiaryUid: stringValue(raw.candidate_beneficiary_uid),
+    matchedFields,
+    processedAt: stringValue(raw.processed_at),
+    profileUpdateProposals: numberValue(raw.profile_update_proposals),
+    reason: stringValue(raw.reason),
+    status: stringValue(raw.status),
+  };
+}
+
 function mobileIntegrityTone(integrity: MobileIntegrityPayload | null): BadgeProps["tone"] {
   if (!integrity) return "neutral";
   if (integrity.riskLevel === "high" || integrity.signals.some((signal) => signal.severity === "critical")) return "danger";
@@ -252,6 +283,20 @@ function mobileIntegrityLabel(integrity: MobileIntegrityPayload | null): string 
   if (integrity.riskLevel === "high") return "High risk";
   if (integrity.riskLevel === "medium") return "Review";
   return "Clear";
+}
+
+function submissionSourceLabel(submission: SubmissionRecord): string {
+  if (submission.offline_created) return "Mobile / Field Submitted";
+  if (submission.is_imported || submission.import_batch_id || submission.imported_at) return "Uploaded / Imported";
+  return "Web Entry";
+}
+
+function submissionActorLabel(submission: SubmissionRecord): string {
+  if (submission.offline_created) return submission.field_officer_id ?? "Field officer";
+  if (submission.is_imported || submission.import_batch_id || submission.imported_at) {
+    return submission.imported_by_user_id ?? "Uploaded user";
+  }
+  return submission.field_officer_id ?? "Web user";
 }
 
 function formatDurationSeconds(seconds: number | null | undefined): string {
@@ -410,8 +455,21 @@ export function SubmissionsModule({
       submissionId: string;
     }) => reviewSubmission(token ?? "", submissionId, { action, comment }),
     onSuccess: async (submission, variables) => {
+      const processing = getBeneficiaryProcessingStatus(normalizeSubmission(submission));
+      const processingNote =
+        variables.action === "approve" && processing?.status === "processed"
+          ? processing.action === "created"
+            ? ` Beneficiary ${processing.beneficiaryUid ?? ""} was created.`
+            : ` Submission was linked to beneficiary ${processing.beneficiaryUid ?? ""}.`
+          : variables.action === "approve" && processing?.status === "reconciliation_required"
+            ? " Beneficiary processing needs reconciliation before it becomes official entity data."
+            : "";
+      const approvalNote =
+        variables.action === "approve"
+          ? " Approved data is now eligible for beneficiary/entity linking, indicators, analysis, and reports."
+          : "";
       setReviewResult(
-        `${submission.client_submission_id} is now ${formatSubmissionStatus(submission.status)}. Reviewer note: ${variables.comment}`,
+        `${submission.client_submission_id} is now ${formatSubmissionStatus(submission.status)}.${approvalNote}${processingNote} Reviewer note: ${variables.comment}`,
       );
       pushToast({
         title: "Submission updated",
@@ -607,7 +665,8 @@ export function SubmissionsModule({
         id: submission.client_submission_id,
         project: submission.project_name,
         form: submission.form_name,
-        enumerator: submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
+        source: submissionSourceLabel(submission),
+        submitted_or_uploaded_by: submissionActorLabel(submission),
         status: submission.status,
         quality_score: submission.quality_score,
         submitted_at: submission.submitted_at,
@@ -637,6 +696,16 @@ export function SubmissionsModule({
       ),
     },
     {
+      key: "source",
+      header: "Source",
+      value: (submission) => submissionSourceLabel(submission),
+      render: (submission) => (
+        <Badge tone={submission.offline_created ? "success" : submission.is_imported ? "warning" : "neutral"}>
+          {submissionSourceLabel(submission)}
+        </Badge>
+      ),
+    },
+    {
       key: "form",
       header: "Form",
       value: (submission) => submission.form_name,
@@ -644,9 +713,9 @@ export function SubmissionsModule({
     },
     {
       key: "enumerator",
-      header: "Enumerator",
-      value: (submission) => submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
-      render: (submission) => submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file",
+      header: "Submitted By",
+      value: (submission) => submissionActorLabel(submission),
+      render: (submission) => submissionActorLabel(submission),
     },
     {
       key: "location",
@@ -1253,6 +1322,7 @@ function SubmissionDetailWorkspace({
 
 function OverviewTab({ submission }: { submission: SubmissionRecord }) {
   const integrity = getMobileIntegrity(submission);
+  const processing = getBeneficiaryProcessingStatus(submission);
   return (
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1265,7 +1335,8 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
             <Signal label="Project" value={submission.project_name} />
             <Signal label="Form" value={submission.form_name} />
             <Signal label="Form Version" value={`v${submission.form_version}`} />
-            <Signal label="Enumerator" value={submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file"} />
+            <Signal label="Source" value={submissionSourceLabel(submission)} tone={submission.offline_created ? "success" : "neutral"} />
+            <Signal label="Submitted / Uploaded By" value={submissionActorLabel(submission)} />
             <Signal label="Supervisor" value={submission.supervisor} />
             <Signal
               label="Submitted"
@@ -1306,6 +1377,41 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
         </Panel>
       </div>
       <Panel title="Beneficiary Link">
+        {processing ? (
+          <div className="mb-3 rounded-xl border bg-background/60 p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold">
+                  {processing.status === "processed"
+                    ? processing.action === "created"
+                      ? "Beneficiary created from approved submission"
+                      : "Submission linked to beneficiary"
+                    : "Beneficiary reconciliation required"}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {processing.beneficiaryUid
+                    ? `Beneficiary code: ${processing.beneficiaryUid}`
+                    : processing.candidateBeneficiaryUid
+                      ? `Possible existing beneficiary: ${processing.candidateBeneficiaryUid}`
+                      : processing.reason ?? "Approval processing has not produced a beneficiary code yet."}
+                </p>
+                {processing.profileUpdateProposals ? (
+                  <p className="mt-1 text-xs font-medium text-warning">
+                    {processing.profileUpdateProposals} profile update proposal(s) need review.
+                  </p>
+                ) : null}
+                {processing.matchedFields?.length ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Matched fields: {processing.matchedFields.join(", ")}
+                  </p>
+                ) : null}
+              </div>
+              <Badge tone={processing.status === "processed" ? "success" : "warning"}>
+                {humanizeKey(processing.status ?? "pending")}
+              </Badge>
+            </div>
+          </div>
+        ) : null}
         {submission.entity_id ? (
           <div className="flex flex-col gap-3 rounded-xl border border-success/30 bg-success/10 p-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -1401,12 +1507,32 @@ function importIssuesByField(payload: Record<string, unknown>): Map<string, stri
   return map;
 }
 
+function normalizedSubmissionAnswers(payload: Record<string, unknown>): Record<string, unknown> {
+  const answers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") && key !== "responses") answers[key] = value;
+  }
+  const responseRows = Array.isArray(payload.responses)
+    ? payload.responses
+    : Array.isArray(payload._mobile_responses)
+      ? payload._mobile_responses
+      : [];
+  for (const row of responseRows) {
+    if (!row || typeof row !== "object") continue;
+    const response = row as { questionId?: unknown; question_id?: unknown; variableName?: unknown; variable_name?: unknown; value?: unknown };
+    const key = String(response.variableName ?? response.variable_name ?? response.questionId ?? response.question_id ?? "").trim();
+    if (key) answers[key] = response.value;
+  }
+  return answers;
+}
+
 function buildResponseRows(
   payload: Record<string, unknown>,
   formSchema: DataFormSchemaRead | null,
 ): ResponseRow[] {
   const rows: ResponseRow[] = [];
   const usedKeys = new Set<string>();
+  const answers = normalizedSubmissionAnswers(payload);
   const schema = (formSchema?.schema ?? {}) as ParsedFormSchema;
   const issueMap = importIssuesByField(payload);
   for (const section of schema.sections ?? []) {
@@ -1416,14 +1542,14 @@ function buildResponseRows(
       );
       const payloadKey =
         candidates.find((candidate) =>
-          Object.prototype.hasOwnProperty.call(payload, candidate),
+          Object.prototype.hasOwnProperty.call(answers, candidate),
         ) ?? candidates[0] ?? field.id;
       usedKeys.add(payloadKey);
       rows.push({
         issues: issueMap.get(payloadKey) ?? issueMap.get(field.variable_name ?? "") ?? issueMap.get(field.id) ?? [],
         key: payloadKey,
         label: field.label || humanizeKey(payloadKey),
-        value: payload[payloadKey],
+        value: answers[payloadKey],
         type: field.type,
         sectionTitle: section.title || "Form responses",
         source: "form",
@@ -1433,7 +1559,7 @@ function buildResponseRows(
       });
     }
   }
-  for (const [key, value] of Object.entries(payload)) {
+  for (const [key, value] of Object.entries(answers)) {
     if (usedKeys.has(key)) continue;
     rows.push({
       issues: issueMap.get(key) ?? [],
@@ -1441,8 +1567,21 @@ function buildResponseRows(
       label: humanizeKey(key),
       value,
       type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "text",
-      sectionTitle: key.startsWith("_") ? "System review metadata" : "Uploaded / legacy fields",
-      source: key.startsWith("_") ? "system" : "uploaded",
+      sectionTitle: "Uploaded / legacy fields",
+      source: "uploaded",
+      required: false,
+    });
+  }
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") || usedKeys.has(key)) continue;
+    rows.push({
+      issues: [],
+      key,
+      label: humanizeKey(key),
+      value,
+      type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "text",
+      sectionTitle: "System review metadata",
+      source: "system",
       required: false,
     });
   }

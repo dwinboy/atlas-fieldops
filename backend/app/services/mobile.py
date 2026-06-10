@@ -49,6 +49,17 @@ def _form_status(value: str) -> str:
     }.get(value.lower(), value.title())
 
 
+def _flatten_mobile_responses(responses: list[dict[str, Any]]) -> dict[str, Any]:
+    flattened: dict[str, Any] = {}
+    for response in responses:
+        variable_name = str(response.get("variableName") or response.get("variable_name") or "").strip()
+        question_id = str(response.get("questionId") or response.get("question_id") or "").strip()
+        key = variable_name or question_id
+        if key:
+            flattened[key] = response.get("value")
+    return flattened
+
+
 def _assignment_status(is_active: bool) -> str:
     return "Assigned" if is_active else "Paused"
 
@@ -1145,6 +1156,7 @@ class MobileService:
             accuracy=location_payload.get("accuracy"),
             timestamp=location_payload.get("timestamp") or now,
         )
+        flattened_responses = _flatten_mobile_responses(response_payload)
         submission_payload = SubmissionCreate(
             client_submission_id=payload.local_id,
             project_id=form.project_id,
@@ -1157,7 +1169,8 @@ class MobileService:
             frequency_period=payload.frequency_period,
             event_id=payload.event_id,
             payload={
-                "responses": response_payload,
+                **flattened_responses,
+                "_mobile_responses": response_payload,
                 "_mobile_location_status": "captured" if payload.location or derived_location else "not_required_or_missing",
                 "_mobile_integrity": payload.integrity_signals or {},
                 "_mobile_integrity_status": self._integrity_status(payload.integrity_signals),

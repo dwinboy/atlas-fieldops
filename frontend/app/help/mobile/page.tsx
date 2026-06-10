@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FAQAccordion, SectionIntro, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { faqSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
@@ -83,6 +83,12 @@ export default function MobileHelpPage() {
               </ol>
             </article>
           ))}
+        </section>
+        <section className="bg-white py-20">
+          <SectionIntro eyebrow="FAQs" title="Common mobile field app questions" text="Quick answers for field officers preparing devices, collecting data offline, and syncing submissions." />
+          <div className="mx-auto mt-12 max-w-4xl px-4 sm:px-6 lg:px-8">
+            <FAQAccordion items={mobileFaqs} />
+          </div>
         </section>
       </main>
     </MarketingShell>

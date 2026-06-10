@@ -47,6 +47,7 @@ from app.schemas.operations import (
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
+    DataQualitySignalUpdate,
     DonorReportCreate,
     ExportJobCreate,
     ExportJobRead,
@@ -1798,6 +1799,51 @@ class OperationsService:
             signal_type=signal_type,
         )
         return [DataQualitySignalRead.model_validate(signal) for signal in signals]
+
+    async def update_quality_signal(
+        self,
+        organization_id: UUID,
+        signal_id: UUID,
+        payload: DataQualitySignalUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> DataQualitySignalRead:
+        result = await self.session.execute(
+            select(DataQualitySignal).where(
+                DataQualitySignal.organization_id == organization_id,
+                DataQualitySignal.id == signal_id,
+            )
+        )
+        signal = result.scalar_one_or_none()
+        if signal is None:
+            raise ValueError("Data quality signal not found.")
+        previous_status = signal.status
+        evidence = dict(signal.evidence_json or {})
+        history = evidence.get("statusHistory")
+        signal.evidence_json = {
+            **evidence,
+            "statusHistory": [
+                *(history if isinstance(history, list) else []),
+                {
+                    "from": previous_status,
+                    "to": payload.status,
+                    "comment": payload.comment,
+                    "changedByUserId": str(actor_user_id) if actor_user_id else None,
+                    "changedAt": datetime.now(UTC).isoformat(),
+                },
+            ],
+        }
+        signal.status = payload.status
+        self.session.add(signal)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="data_quality.signal_status_updated",
+            resource_type="data_quality_signal",
+            resource_id=str(signal.id),
+            metadata={"from": previous_status, "to": payload.status, "comment": payload.comment},
+        )
+        await self.session.flush()
+        return DataQualitySignalRead.model_validate(signal)
 
     async def search_beneficiaries(
         self,

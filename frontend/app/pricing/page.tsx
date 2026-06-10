@@ -24,7 +24,7 @@ export default function PricingPage() {
           <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
             <div className="border-b p-5">
               <h2 className="text-xl font-semibold">Plan comparison</h2>
-              <p className="mt-1 text-sm text-[#52615d]">Billing integration can attach to these plan capabilities later.</p>
+              <p className="mt-1 text-sm text-[#52615d]">See what&apos;s included as your program grows from a single project to an enterprise deployment.</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
