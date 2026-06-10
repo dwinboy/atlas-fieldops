@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LifeBuoy, RotateCcw } from "lucide-react";
+import { LifeBuoy, Loader2, RotateCcw } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -186,6 +186,11 @@ export function WorkspaceApp() {
       <>
         <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
           <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
+            <Loader2
+              aria-hidden="true"
+              className="mx-auto mb-4 animate-spin text-primary"
+              size={24}
+            />
             <p className="text-sm font-semibold">Opening workspace</p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Atlas is restoring your secure session and loading the selected module.
@@ -216,6 +221,11 @@ export function WorkspaceApp() {
       <>
         <section className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
           <div className="max-w-sm rounded-2xl border bg-panel p-6 shadow-line">
+            <Loader2
+              aria-hidden="true"
+              className="mx-auto mb-4 animate-spin text-primary"
+              size={24}
+            />
             <p className="text-sm font-semibold">
               Checking your workspace access
             </p>

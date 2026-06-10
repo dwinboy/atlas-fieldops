@@ -2,7 +2,6 @@
 
 import {
   ArrowRight,
-  CheckCircle2,
   ChevronRight,
   ChevronLeft,
   Command,
@@ -12,7 +11,9 @@ import {
   PanelLeftClose,
   RadioTower,
   Sun,
+  X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -291,9 +292,6 @@ export function AppShell({
     >
       <aside
         className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col"
-        onMouseEnter={() => {
-          if (collapsedSidebar) setSidebarCollapsed(false);
-        }}
       >
         <div className="shrink-0">
           <div
@@ -504,7 +502,44 @@ export function AppShell({
         </header>
 
         {mobileNavOpen ? (
-          <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>
+          <AnimatePresence>
+            <motion.div
+              key="mobile-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-30 bg-background/70 backdrop-blur-sm lg:hidden"
+              aria-hidden="true"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <motion.div
+              key="mobile-drawer"
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+              className="fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r bg-panel/98 p-3 shadow-elevated backdrop-blur-xl lg:hidden"
+              role="dialog"
+              aria-label="Navigation menu"
+              aria-modal="true"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <OrganizationMark logoUrl={organizationLogoUrl} name={organizationLabel} />
+                <Button
+                  aria-label="Close navigation"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto product-scrollbar">
+                {navigation}
+              </div>
+            </motion.div>
+          </AnimatePresence>
         ) : null}
 
         {!focusedEditorRoute ? (
@@ -538,7 +573,6 @@ export function AppShell({
                           </span>
                         ))}
                       </nav>
-                      <Badge tone={activeTone.badge}>{activeItem.route}</Badge>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <h1 className="text-lg font-semibold tracking-tight">
@@ -555,22 +589,6 @@ export function AppShell({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                  <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-line">
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="text-success"
-                      size={13}
-                    />
-                    Workspace healthy
-                  </span>
-                  <Button
-                    onClick={() => setCommandOpen(true)}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Command aria-hidden="true" />
-                    Search actions
-                  </Button>
                   {nextActionItem ? (
                     <Button
                       onClick={() => {

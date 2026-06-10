@@ -3,6 +3,7 @@ const BACKEND_URL = "https://backend-production-13c9.up.railway.app";
 
 const nextConfig = {
   reactStrictMode: true,
+  transpilePackages: ["recharts"],
   images: {
     remotePatterns: [
       {

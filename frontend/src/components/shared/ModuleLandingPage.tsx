@@ -1,7 +1,8 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ type ModuleArea = {
   label: string;
   route: string;
   description: string;
+  icon?: LucideIcon;
 };
 
 type ModuleLandingPageProps = {
@@ -34,29 +36,30 @@ export function ModuleLandingPage({
   title,
   description,
   icon: Icon,
-  status = "Workspace ready",
+  status = "Ready",
   areas,
   actions = [],
   className,
 }: ModuleLandingPageProps) {
+  const router = useRouter();
+
   return (
-    <section className={cn("space-y-3", className)}>
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
-              <Icon aria-hidden="true" size={18} />
+    <section className={cn("space-y-4", className)}>
+      <div className="rounded-xl border bg-panel p-4 shadow-line">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
+              <Icon aria-hidden="true" size={20} />
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold tracking-tight">
-                  {title}
-                </h2>
+                <h2 className="text-base font-semibold tracking-tight">{title}</h2>
                 <HelpHint label={`About ${title}`} title={title}>
                   {description}
                 </HelpHint>
                 <Badge tone="success">{status}</Badge>
               </div>
+              <p className="mt-1 text-sm text-muted-foreground">{description}</p>
             </div>
           </div>
           {actions.length ? (
@@ -78,30 +81,41 @@ export function ModuleLandingPage({
         </div>
       </div>
 
-      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-        {areas.map((area) => (
-          <article
-            key={area.route}
-            className="rounded-lg border bg-panel p-3 shadow-sm"
-          >
-            <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <Sparkles aria-hidden="true" size={13} />
-              </span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-[13px] font-semibold">{area.label}</h3>
-                  <HelpHint label={`About ${area.label}`} title={area.label}>
-                    {area.description}
-                  </HelpHint>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {areas.map((area) => {
+          const AreaIcon = area.icon;
+          return (
+            <button
+              key={area.route}
+              type="button"
+              onClick={() => router.push(area.route)}
+              className="group rounded-xl border bg-panel p-4 text-left shadow-sm transition-all duration-200 ease-product hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  {AreaIcon ? (
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <AreaIcon aria-hidden="true" size={15} />
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                      <ChevronRight aria-hidden="true" size={15} />
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold leading-tight">{area.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{area.description}</p>
+                  </div>
                 </div>
-                <p className="mt-2 truncate rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                  {area.route}
-                </p>
+                <ArrowRight
+                  aria-hidden="true"
+                  className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                  size={14}
+                />
               </div>
-            </div>
-          </article>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </section>
   );
