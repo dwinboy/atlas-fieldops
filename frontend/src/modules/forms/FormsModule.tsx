@@ -181,7 +181,7 @@ function submissionEntityCode(
         )
       : "";
   if (!submission.entity_id) return processedCode || "Not linked";
-  return beneficiaryCodes.get(submission.entity_id) ?? processedCode || submission.entity_id;
+  return beneficiaryCodes.get(submission.entity_id) ?? (processedCode || submission.entity_id);
 }
 
 function submissionAnswerMap(submission: SubmissionRead | SubmissionRecord): Record<string, unknown> {

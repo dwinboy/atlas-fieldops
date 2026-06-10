@@ -265,7 +265,7 @@ function getBeneficiaryProcessingStatus(submission: SubmissionRecord): Beneficia
     candidateBeneficiaryUid: stringValue(raw.candidate_beneficiary_uid),
     matchedFields,
     processedAt: stringValue(raw.processed_at),
-    profileUpdateProposals: numberValue(raw.profile_update_proposals),
+    profileUpdateProposals: numberValue(raw.profile_update_proposals) ?? undefined,
     reason: stringValue(raw.reason),
     status: stringValue(raw.status),
   };
