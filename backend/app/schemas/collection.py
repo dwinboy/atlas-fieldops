@@ -22,6 +22,7 @@ class SubmissionStatus(StrEnum):
     REJECTED = "rejected"
     CORRECTION_REQUESTED = "correction_requested"
     RESUBMITTED = "resubmitted"
+    ARCHIVED = "archived"
 
 
 class SurveyStatus(StrEnum):
@@ -39,6 +40,16 @@ class SurveyRole(StrEnum):
     DATA_QUALITY_OFFICER = "data_quality_officer"
     ENUMERATOR = "enumerator"
     ANALYST = "analyst"
+
+
+FORM_TYPES = {
+    "registration",
+    "monitoring",
+    "follow_up",
+    "verification",
+    "assessment",
+    "custom",
+}
 
 
 SURVEY_TYPES = {
@@ -422,6 +433,7 @@ class FormVersioningSettings(BaseModel):
 class FormCollectionAccessSettings(BaseModel):
     selection_mode: str = Field(default="assigned_only", pattern=r"^(assigned_only|project_team|open_link)$")
     field_officer_ids: list[UUID] = Field(default_factory=list, max_length=200)
+    team_ids: list[UUID] = Field(default_factory=list, max_length=100)
     assigned_at: datetime | None = None
     assigned_by_user_id: UUID | None = None
     notes: str | None = Field(default=None, max_length=500)
@@ -516,19 +528,33 @@ class DataFormCreate(BaseModel):
     project_id: UUID
     survey_id: UUID
     description: str | None = Field(default=None, max_length=2000)
+    form_type: str | None = Field(default=None, max_length=40)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def validate_form_type(self) -> "DataFormCreate":
+        if self.form_type is not None and self.form_type not in FORM_TYPES:
+            raise ValueError("form_type must be a supported type or custom")
+        return self
 
 
 class DataFormUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
+    form_type: str | None = Field(default=None, max_length=40)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def validate_form_type(self) -> "DataFormUpdate":
+        if self.form_type is not None and self.form_type not in FORM_TYPES:
+            raise ValueError("form_type must be a supported type or custom")
+        return self
 
 
 class DataFormRead(BaseModel):
@@ -538,6 +564,7 @@ class DataFormRead(BaseModel):
     name: str
     slug: str
     description: str | None
+    form_type: str | None = None
     status: str
     current_version: int
     controls_json: dict[str, Any] = Field(default_factory=dict)
@@ -550,6 +577,8 @@ class DataFormSchemaRead(BaseModel):
     form_id: UUID
     version: int
     form_schema: dict[str, Any] = Field(alias="schema")
+    published_at: datetime | None = None
+    published_by_user_id: UUID | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -885,6 +914,41 @@ class SubmissionRead(BaseModel):
     import_batch_id: UUID | None = None
     imported_at: datetime | None = None
     imported_by_user_id: UUID | None = None
+    reviewed_by_user_id: UUID | None = None
+    reviewed_at: datetime | None = None
+    review_comments: str | None = None
+    approved_by_user_id: UUID | None = None
+    approved_at: datetime | None = None
+    beneficiary_code: str | None = None
+    submitted_by_name: str | None = None
+    review_quality: int | None = None
+    redacted_fields: list[str] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class CorrectionLogEntryRead(BaseModel):
+    submission_id: UUID
+    submission_key: str
+    corrected_field: str
+    old_value: Any = None
+    new_value: Any = None
+    corrected_by: UUID | None = None
+    corrected_at: datetime
+    reason: str | None = None
+    change_type: str
+    review_comment: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SubmissionRepeatRowRead(BaseModel):
+    id: UUID
+    submission_id: UUID
+    parent_submission_key: str
+    field_id: str
+    row_index: int
+    row_json: dict[str, Any]
 
     model_config = {"from_attributes": True}
 
@@ -967,7 +1031,7 @@ class EntityFrequencyValidationRead(BaseModel):
 
 
 class SubmissionReviewAction(BaseModel):
-    action: str = Field(pattern=r"^(approve|reject|request_correction|start_review)$")
+    action: str = Field(pattern=r"^(approve|reject|request_correction|start_review|archive)$")
     comment: str = Field(min_length=2, max_length=4000)
 
 

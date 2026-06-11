@@ -12,19 +12,29 @@ from app.models.collection import DataForm, DataFormVersion, Project, Survey
 from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, User
 from app.schemas.auth import CurrentPrincipal
-from app.models.operations import Beneficiary
+from app.models.operations import Beneficiary, DataQualitySignal
 from app.schemas.collection import (
     DataFormCreate,
+    DeviceMetadata,
+    EntityFrequencyValidationRequest,
     FormDataImportConfirmRequest,
     FormDataImportRequest,
     FormControlsSettings,
+    LocationCapture,
     SubmissionCreate,
+    SubmissionResponsesUpdate,
     SubmissionReviewAction,
     SurveyCreate,
     SurveyGovernanceSettings,
 )
 from app.schemas.mobile import MobileSubmissionUpload
-from app.services.collection import SubmissionService, form_schema_compatibility, form_schema_to_xlsform
+from app.services.collection import (
+    CollectionConflictError,
+    InvalidWorkflowTransitionError,
+    SubmissionService,
+    form_schema_compatibility,
+    form_schema_to_xlsform,
+)
 from app.services.form_engine import FormEngine
 from app.services.mobile import MobileService
 
@@ -506,3 +516,514 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
         assert beneficiary.beneficiary_uid.startswith("FRM-")
         assert beneficiary.display_name == "Mobile Farmer"
         assert beneficiary.project_id == project_id
+
+
+async def _seed_dedup_environment(controls_json: dict[str, object]) -> dict[str, object]:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    session = session_factory()
+
+    organization_id = uuid4()
+    field_user_id = uuid4()
+    manager_user_id = uuid4()
+    project_id = uuid4()
+    survey_id = uuid4()
+    form_id = uuid4()
+    version_id = uuid4()
+    officer_id = uuid4()
+    now = datetime.now(UTC)
+    suffix = organization_id.hex[:10]
+    session.add_all(
+        [
+            Organization(id=organization_id, name="Dedup Org", slug=f"dedup-org-{suffix}"),
+            User(id=field_user_id, email=f"field-{suffix}@example.org", full_name="Field Officer", password_hash="x"),
+            User(id=manager_user_id, email=f"manager-{suffix}@example.org", full_name="Manager", password_hash="x"),
+            FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+            Project(id=project_id, organization_id=organization_id, name="Dedup Project", slug=f"dedup-project-{suffix}", status="active"),
+            Survey(
+                id=survey_id,
+                organization_id=organization_id,
+                project_id=project_id,
+                created_by_user_id=manager_user_id,
+                owner_user_id=manager_user_id,
+                title="Dedup Registration",
+                code=f"DEDUP-{suffix}",
+                survey_type="registration",
+                status="active",
+            ),
+            DataForm(
+                id=form_id,
+                organization_id=organization_id,
+                project_id=project_id,
+                survey_id=survey_id,
+                created_by_user_id=manager_user_id,
+                name="Dedup Farmer Registration",
+                slug=f"dedup-farmer-registration-{suffix}",
+                status="published",
+                current_version=1,
+                controls_json=controls_json,
+            ),
+            DataFormVersion(
+                id=version_id,
+                organization_id=organization_id,
+                form_id=form_id,
+                version=1,
+                schema_json={
+                    "sections": [
+                        {
+                            "id": "identity",
+                            "title": "Identity",
+                            "fields": [
+                                {"id": "q_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                {"id": "q_phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                {"id": "q_village", "variable_name": "village", "type": "text", "label": "Village"},
+                                {"id": "q_district", "variable_name": "district", "type": "text", "label": "District"},
+                                {"id": "household_members", "variable_name": "household_members", "type": "repeat_group", "label": "Household Members"},
+                            ],
+                        }
+                    ]
+                },
+                offline_compatible=True,
+                published_at=now,
+            ),
+        ]
+    )
+    await session.commit()
+    return {
+        "session": session,
+        "organization_id": organization_id,
+        "field_user_id": field_user_id,
+        "manager_user_id": manager_user_id,
+        "project_id": project_id,
+        "survey_id": survey_id,
+        "form_id": form_id,
+        "now": now,
+    }
+
+
+def _dedup_submission_payload(
+    env: dict[str, object],
+    *,
+    client_submission_id: str,
+    payload: dict[str, object],
+    entity_id=None,
+) -> SubmissionCreate:
+    now = env["now"]
+    return SubmissionCreate(
+        client_submission_id=client_submission_id,
+        project_id=env["project_id"],
+        survey_id=env["survey_id"],
+        form_id=env["form_id"],
+        form_version=1,
+        entity_id=entity_id,
+        payload=payload,
+        captured_at=now,
+        submitted_at=now,
+        offline_created=False,
+        device=DeviceMetadata(device_id="device-test-001", platform="android"),
+        location=LocationCapture(latitude=5.9, longitude=10.1, accuracy=8.0, timestamp=now),
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_entity_frequency_blocks_repeat_submission_for_entity() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {"submission_frequency": "once_ever"}})
+    session: object = env["session"]
+    async with session:
+        beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-FREQ1",
+            beneficiary_type="Farmer",
+            display_name="Existing Farmer",
+        )
+        session.add(beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="freq-001", payload={"farmer_name": "Existing Farmer"}, entity_id=beneficiary.id
+            ),
+        )
+        await session.commit()
+
+        unlimited_check = await service.validate_entity_frequency(
+            organization_id=env["organization_id"],
+            payload=EntityFrequencyValidationRequest(
+                form_id=env["form_id"], entity_id=beneficiary.id, project_id=env["project_id"], frequency_rule="unlimited"
+            ),
+        )
+        assert unlimited_check.allowed is True
+
+        blocked_check = await service.validate_entity_frequency(
+            organization_id=env["organization_id"],
+            payload=EntityFrequencyValidationRequest(
+                form_id=env["form_id"], entity_id=beneficiary.id, project_id=env["project_id"], frequency_rule="once_ever"
+            ),
+        )
+        assert blocked_check.allowed is False
+        assert blocked_check.decision == "blocked"
+        assert blocked_check.existing_submission_id == submission.id
+
+        other_entity_check = await service.validate_entity_frequency(
+            organization_id=env["organization_id"],
+            payload=EntityFrequencyValidationRequest(
+                form_id=env["form_id"], entity_id=uuid4(), project_id=env["project_id"], frequency_rule="once_ever"
+            ),
+        )
+        assert other_entity_check.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_create_submission_enforces_once_ever_frequency() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {"submission_frequency": "once_ever"}})
+    session: object = env["session"]
+    async with session:
+        beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-FREQ2",
+            beneficiary_type="Farmer",
+            display_name="Repeat Farmer",
+        )
+        session.add(beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="freq-100", payload={"farmer_name": "Repeat Farmer"}, entity_id=beneficiary.id
+            ),
+        )
+        await session.commit()
+
+        with pytest.raises(CollectionConflictError):
+            await service.create_submission(
+                organization_id=env["organization_id"],
+                actor_user_id=env["field_user_id"],
+                payload=_dedup_submission_payload(
+                    env, client_submission_id="freq-101", payload={"farmer_name": "Repeat Farmer"}, entity_id=beneficiary.id
+                ),
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("duplicate_action", "expected_queue", "expected_audit_action"),
+    [
+        ("warn", "data_quality", "beneficiary.duplicate_flagged_warning"),
+        ("review", "review", "beneficiary.duplicate_flagged_for_review"),
+    ],
+)
+async def test_duplicate_action_creates_beneficiary_with_quality_signal(
+    duplicate_action: str, expected_queue: str, expected_audit_action: str
+) -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": True,
+                "requires_existing_entity": False,
+                "duplicate_action": duplicate_action,
+                "duplicate_threshold": 40,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        existing_beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-DUP1",
+            beneficiary_type="Farmer",
+            display_name="Jane Doe",
+            community="Kumbo",
+        )
+        session.add(existing_beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="dup-001",
+                payload={"farmer_name": "Jane Doe", "village": "Bafut", "phone": "677000111"},
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiaries = (await session.execute(select(Beneficiary))).scalars().all()
+        assert len(beneficiaries) == 2
+        new_beneficiary = next(b for b in beneficiaries if b.id != existing_beneficiary.id)
+        assert new_beneficiary.display_name == "Jane Doe"
+
+        processing = submission.payload_json["_beneficiary_processing"]
+        assert processing["action"] == "created"
+        assert processing["duplicate_warning"]["duplicate_score"] == 45
+        assert processing["duplicate_warning"]["duplicate_action"] == duplicate_action
+
+        signal = (await session.execute(select(DataQualitySignal))).scalar_one()
+        assert signal.signal_type == "possible_duplicate_entity"
+        assert signal.evidence_json["recommended_queue"] == expected_queue
+
+
+@pytest.mark.asyncio
+async def test_duplicate_threshold_override_routes_low_score_match_to_reconciliation() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": True,
+                "requires_existing_entity": False,
+                "duplicate_threshold": 40,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        existing_beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-DUP2",
+            beneficiary_type="Farmer",
+            display_name="John Smith",
+            community="Kumbo",
+        )
+        session.add(existing_beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="dup-100", payload={"farmer_name": "John Smith", "village": "Bafut"}
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiaries = (await session.execute(select(Beneficiary))).scalars().all()
+        assert len(beneficiaries) == 1
+
+        processing = submission.payload_json["_beneficiary_processing"]
+        assert processing["status"] == "reconciliation_required"
+        assert processing["duplicate_score"] == 45
+
+        signal = (await session.execute(select(DataQualitySignal))).scalar_one()
+        assert signal.evidence_json["recommended_queue"] == "reconciliation"
+
+
+@pytest.mark.asyncio
+async def test_unique_fields_links_existing_beneficiary_via_custom_field() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": True,
+                "requires_existing_entity": False,
+                "unique_fields": ["district"],
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        existing_beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-UNIQ1",
+            beneficiary_type="Farmer",
+            display_name="Existing Person",
+            district="Mezam",
+        )
+        session.add(existing_beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="uniq-001", payload={"farmer_name": "New Person", "district": "Mezam"}
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        beneficiaries = (await session.execute(select(Beneficiary))).scalars().all()
+        assert len(beneficiaries) == 1
+
+        processing = submission.payload_json["_beneficiary_processing"]
+        assert processing["action"] == "linked"
+        assert processing["beneficiary_id"] == str(existing_beneficiary.id)
+        assert submission.entity_id == existing_beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_review_submission_archive_transition_locks_approved_submission() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="archive-001", payload={"farmer_name": "Archive Person", "phone": "677000111"}
+            ),
+        )
+        await session.commit()
+
+        approved = await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Looks good"),
+        )
+        await session.commit()
+        assert approved.status == "approved"
+        assert approved.approved_by_user_id == env["manager_user_id"]
+        assert approved.approved_at is not None
+        assert approved.reviewed_by_user_id == env["manager_user_id"]
+        assert approved.review_comments == "Looks good"
+
+        archived = await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="archive", comment="Cycle closed"),
+        )
+        await session.commit()
+        assert archived.status == "archived"
+
+        with pytest.raises(InvalidWorkflowTransitionError):
+            await service.review_submission(
+                organization_id=env["organization_id"],
+                actor_user_id=env["manager_user_id"],
+                submission_id=submission.id,
+                payload=SubmissionReviewAction(action="approve", comment="Reopen attempt"),
+            )
+
+
+@pytest.mark.asyncio
+async def test_update_responses_on_approved_submission_creates_correction_log_entry() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env, client_submission_id="correction-001", payload={"farmer_name": "Original Name", "phone": "677000222"}
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        await service.update_responses(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionResponsesUpdate(
+                responses={"farmer_name": "Corrected Name", "phone": "677000222"},
+                reason="Spelling correction from supervisor visit",
+            ),
+        )
+        await session.commit()
+
+        corrections = await service.list_corrections(
+            organization_id=env["organization_id"],
+            submission_id=submission.id,
+        )
+        assert len(corrections) == 1
+        entry = corrections[0]
+        assert entry.submission_id == submission.id
+        assert entry.submission_key == "correction-001"
+        assert entry.corrected_field == "farmer_name"
+        assert entry.old_value == "Original Name"
+        assert entry.new_value == "Corrected Name"
+        assert entry.reason == "Spelling correction from supervisor visit"
+        assert entry.change_type == "change_request"
+        assert entry.corrected_by == env["manager_user_id"]
+
+
+@pytest.mark.asyncio
+async def test_create_submission_with_repeat_group_persists_repeat_rows() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="repeat-001",
+                payload={
+                    "farmer_name": "Household Head",
+                    "household_members": [
+                        {"member_name": "Member One", "age": 12},
+                        {"member_name": "Member Two", "age": 34},
+                    ],
+                },
+            ),
+        )
+        await session.commit()
+
+        rows = await service.list_repeat_rows(
+            organization_id=env["organization_id"],
+            submission_id=submission.id,
+        )
+        assert [row.row_index for row in rows] == [0, 1]
+        assert rows[0].field_id == "household_members"
+        assert rows[0].parent_submission_key == "repeat-001"
+        assert rows[0].row_json == {"member_name": "Member One", "age": 12}
+        assert rows[1].row_json == {"member_name": "Member Two", "age": 34}

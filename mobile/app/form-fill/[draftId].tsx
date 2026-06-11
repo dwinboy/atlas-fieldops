@@ -55,7 +55,10 @@ export default function FormFillScreen() {
   );
 
   const allIssues: FormValidationIssue[] = useMemo(
-    () => (draft && formVersion && (submitAttempted || reviewMode) ? validationService.validate(formVersion, draft) : []),
+    () =>
+      draft && formVersion && (submitAttempted || reviewMode)
+        ? [...validationService.validate(formVersion, draft), ...dataCollection.evaluateRiskIssues(draft, formVersion)]
+        : [],
     [draft, formVersion, submitAttempted, reviewMode, refreshKey],
   );
 

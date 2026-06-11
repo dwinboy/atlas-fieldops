@@ -3,6 +3,7 @@ import json
 import re
 from datetime import UTC, datetime
 from io import StringIO
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -19,11 +20,15 @@ from app.models.identity import Organization, User
 from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, SessionLog, VisitRecord
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
+from app.repositories.governance import GovernanceRepository
 from app.repositories.identity import IdentityRepository, RoleRepository
 from app.schemas.collection import (
+    CorrectionLogEntryRead,
     DataFormCreate,
     DataFormSchemaRead,
     DataFormUpdate,
+    EntityFrequencyValidationRead,
+    EntityFrequencyValidationRequest,
     FieldOfficerActivityEventRead,
     FieldOfficerAssignmentDetailRead,
     FieldOfficerDeviceDetailRead,
@@ -52,6 +57,7 @@ from app.schemas.collection import (
     FormSchema,
     SubmissionRead,
     SubmissionCreate,
+    SubmissionRepeatRowRead,
     SubmissionReviewAction,
     SubmissionResponsesUpdate,
     SurveyCreate,
@@ -414,6 +420,49 @@ def _question_control_metadata(schema: FormSchema) -> dict[str, dict[str, object
                 "tags": _field_metadata_tags(field),
             }
     return metadata
+
+
+SENSITIVE_PRIVACY_LEVELS = {"pii", "restricted"}
+
+
+def _sensitive_payload_keys(payload_json: dict[str, Any]) -> set[str]:
+    metadata = payload_json.get("_question_control_metadata")
+    if not isinstance(metadata, dict):
+        return set()
+    keys: set[str] = set()
+    for key, meta in metadata.items():
+        if not isinstance(meta, dict):
+            continue
+        privacy = meta.get("privacy")
+        if not isinstance(privacy, dict):
+            continue
+        if privacy.get("sensitivity") in SENSITIVE_PRIVACY_LEVELS or privacy.get("maskOnScreen"):
+            keys.add(key)
+    return keys
+
+
+def _redact_payload_json(payload_json: dict[str, Any], *, can_view_sensitive: bool) -> tuple[dict[str, Any], list[str]]:
+    if can_view_sensitive:
+        return payload_json, []
+    sensitive_keys = _sensitive_payload_keys(payload_json)
+    redacted_keys = sorted(
+        key for key in sensitive_keys if payload_json.get(key) not in (None, "")
+    )
+    if not redacted_keys:
+        return payload_json, []
+    redacted = dict(payload_json)
+    for key in redacted_keys:
+        redacted[key] = None
+    return redacted, redacted_keys
+
+
+def _repeat_group_field_ids(schema: FormSchema) -> list[str]:
+    return [
+        field.id
+        for section in schema.sections
+        for field in section.fields
+        if field.type in {"repeat_group", "repeatable_group"}
+    ]
 
 
 def _parse_number(value: object) -> float | None:
@@ -1220,6 +1269,7 @@ class FormService:
             description=payload.description,
             schema_json=payload.form_schema.model_dump(mode="json"),
             publish=payload.publish,
+            form_type=payload.form_type,
         )
         if not form.controls_json:
             await self.forms.update_controls(form=form, controls_json=FormControlsSettings().model_dump(mode="json"))
@@ -1264,10 +1314,12 @@ class FormService:
         previous_status = form.status
         form, version = await self.forms.save_schema_revision(
             form=form,
+            actor_user_id=actor_user_id,
             name=payload.name,
             description=payload.description,
             schema_json=payload.form_schema.model_dump(mode="json"),
             publish=payload.publish,
+            form_type=payload.form_type,
         )
         if not form.controls_json:
             await self.forms.update_controls(
@@ -1301,6 +1353,54 @@ class FormService:
         )
         return form
 
+    async def archive_form(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+    ) -> DataForm:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        if form.status != "published":
+            raise InvalidWorkflowTransitionError("Only published forms can be archived")
+        previous_status = form.status
+        form = await self.forms.update_status(form=form, status="archived")
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.archived",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={"previous_status": previous_status, "status": form.status},
+        )
+        return form
+
+    async def restore_form(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+    ) -> DataForm:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        if form.status != "archived":
+            raise InvalidWorkflowTransitionError("Only archived forms can be restored")
+        previous_status = form.status
+        form = await self.forms.update_status(form=form, status="published")
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="form.restored",
+            resource_type="form",
+            resource_id=str(form.id),
+            metadata={"previous_status": previous_status, "status": form.status},
+        )
+        return form
+
     async def list_forms(self, organization_id: UUID) -> list[DataForm]:
         forms = list(await self.forms.list(organization_id))
         for form in forms:
@@ -1315,7 +1415,13 @@ class FormService:
         version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
         if version is None:
             raise CollectionNotFoundError("Form version not found")
-        return DataFormSchemaRead(form_id=form.id, version=version.version, schema=version.schema_json)
+        return DataFormSchemaRead(
+            form_id=form.id,
+            version=version.version,
+            schema=version.schema_json,
+            published_at=version.published_at,
+            published_by_user_id=version.published_by_user_id,
+        )
 
     async def get_controls(self, *, organization_id: UUID, form_id: UUID) -> FormControlsSettings:
         form = await self.forms.get(organization_id=organization_id, form_id=form_id)
@@ -1548,6 +1654,19 @@ class SubmissionService:
         "approve": "approved",
         "reject": "rejected",
         "request_correction": "correction_requested",
+        "archive": "archived",
+    }
+
+    ARCHIVABLE_STATUSES = {"approved", "rejected", "correction_requested"}
+
+    ENTITY_FREQUENCY_LABELS = {
+        "once_ever": "one submission, ever",
+        "once_per_project": "one submission per project",
+        "once_per_year": "one submission per year",
+        "once_per_season": "one submission per season",
+        "once_per_quarter": "one submission per quarter",
+        "once_per_month": "one submission per month",
+        "once_per_event": "one submission per event",
     }
 
     def __init__(self, session: AsyncSession) -> None:
@@ -1558,6 +1677,7 @@ class SubmissionService:
         self.submissions = SubmissionRepository(session)
         self.sync = SyncRepository(session)
         self.audit = AuditRepository(session)
+        self.governance = GovernanceRepository(session)
 
     async def create_submission(
         self,
@@ -1591,6 +1711,25 @@ class SubmissionService:
             survey_id=payload.survey_id,
         ) is None:
             raise CollectionNotFoundError("Survey not found for the selected project")
+        controls_json = form.controls_json or {}
+        entity_controls = self._entity_controls(controls_json)
+        frequency_rule = str(entity_controls.get("submission_frequency") or "unlimited")
+        if payload.entity_id is not None and frequency_rule != "unlimited":
+            conflict = await self.submissions.find_conflicting_submission_for_frequency(
+                organization_id=organization_id,
+                entity_id=payload.entity_id,
+                form_id=payload.form_id,
+                frequency_rule=frequency_rule,
+                frequency_period=payload.frequency_period,
+                event_id=payload.event_id,
+                project_id=payload.project_id,
+            )
+            if conflict is not None:
+                label = self.ENTITY_FREQUENCY_LABELS.get(frequency_rule, frequency_rule)
+                raise CollectionConflictError(
+                    f"This form allows {label} for this entity, and submission "
+                    f"{conflict.client_submission_id} already covers that scope."
+                )
         schema = FormSchema.model_validate(form_version.schema_json)
         validation_issues = validate_submission_payload(
             schema=schema,
@@ -1605,6 +1744,19 @@ class SubmissionService:
             submission_payload["_validation_issues"] = validation_issues
             submission_payload["_quality_status"] = "needs_review"
             submission_payload["_review_required"] = True
+        governance = self._governance_settings(controls_json)
+        duplicate_detection_fields = governance.get("duplicate_detection_fields")
+        if governance.get("duplicate_submissions_allowed") is False and isinstance(duplicate_detection_fields, list) and duplicate_detection_fields:
+            duplicate_submission = await self._find_duplicate_submission(
+                organization_id=organization_id,
+                form_id=payload.form_id,
+                payload_values=self._flat_payload_values(payload.payload),
+                detection_fields=duplicate_detection_fields,
+            )
+            if duplicate_submission is not None:
+                submission_payload["_duplicate_submission_signal"] = duplicate_submission
+                submission_payload["_quality_status"] = "needs_review"
+                submission_payload["_review_required"] = True
         submission = await self.submissions.create(
             organization_id=organization_id,
             project_id=payload.project_id,
@@ -1676,7 +1828,43 @@ class SubmissionService:
             schema=schema,
             validation_issues=validation_issues,
         )
+        await self._sync_repeat_rows(organization_id=organization_id, submission=submission, schema=schema)
         return submission
+
+    async def validate_entity_frequency(
+        self,
+        *,
+        organization_id: UUID,
+        payload: EntityFrequencyValidationRequest,
+    ) -> EntityFrequencyValidationRead:
+        if payload.frequency_rule == "unlimited" or payload.entity_id is None:
+            return EntityFrequencyValidationRead(
+                allowed=True,
+                decision="allowed",
+                reason="This form allows repeat submissions or no entity was selected.",
+            )
+        conflict = await self.submissions.find_conflicting_submission_for_frequency(
+            organization_id=organization_id,
+            entity_id=payload.entity_id,
+            form_id=payload.form_id,
+            frequency_rule=payload.frequency_rule,
+            frequency_period=payload.frequency_period,
+            event_id=payload.event_id,
+            project_id=payload.project_id,
+        )
+        if conflict is None:
+            return EntityFrequencyValidationRead(
+                allowed=True,
+                decision="allowed",
+                reason="No existing submission was found for the selected entity and frequency scope.",
+            )
+        label = self.ENTITY_FREQUENCY_LABELS.get(payload.frequency_rule, payload.frequency_rule)
+        return EntityFrequencyValidationRead(
+            allowed=False,
+            decision="blocked",
+            reason=f"This form allows {label} for this entity, and a submission already exists for this entity in that scope.",
+            existing_submission_id=conflict.id,
+        )
 
     async def import_form_rows(
         self,
@@ -2223,6 +2411,26 @@ class SubmissionService:
                         )
                     )
 
+    async def _sync_repeat_rows(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        schema: FormSchema,
+    ) -> None:
+        payload = submission.payload_json or {}
+        for field_id in _repeat_group_field_ids(schema):
+            value = payload.get(field_id)
+            if not isinstance(value, list):
+                continue
+            rows = [row for row in value if isinstance(row, dict)]
+            await self.submissions.replace_repeat_rows(
+                organization_id=organization_id,
+                submission=submission,
+                field_id=field_id,
+                rows=rows,
+            )
+
     async def list_submissions(
         self,
         *,
@@ -2230,14 +2438,131 @@ class SubmissionService:
         status: str | None = None,
         actor_user_id: UUID | None = None,
         scope_type: str = "organization",
-    ) -> list[Submission]:
+        can_view_sensitive: bool = False,
+    ) -> list[SubmissionRead]:
         field_officer_id: UUID | None = None
         if scope_type == "own" and actor_user_id is not None:
             officer = await self.officers.get_for_user(organization_id=organization_id, user_id=actor_user_id)
             if officer is None:
                 return []
             field_officer_id = officer.id
-        return await self.submissions.list_for_review(organization_id, status, field_officer_id)
+        submissions = await self.submissions.list_for_review(organization_id, status, field_officer_id)
+        return await self._enrich_submissions(
+            organization_id=organization_id, submissions=submissions, can_view_sensitive=can_view_sensitive
+        )
+
+    async def _enrich_submissions(
+        self,
+        *,
+        organization_id: UUID,
+        submissions: list[Submission],
+        can_view_sensitive: bool = False,
+    ) -> list[SubmissionRead]:
+        entity_ids = {submission.entity_id for submission in submissions if submission.entity_id is not None}
+        field_officer_ids = {
+            submission.field_officer_id for submission in submissions if submission.field_officer_id is not None
+        }
+        beneficiary_codes = await self.submissions.beneficiary_codes(
+            organization_id=organization_id, entity_ids=entity_ids
+        )
+        officer_names = await self.submissions.field_officer_names(
+            organization_id=organization_id, field_officer_ids=field_officer_ids
+        )
+        enriched: list[SubmissionRead] = []
+        for submission in submissions:
+            review_summary = self._submission_review_summary(submission)
+            payload_json, redacted_fields = _redact_payload_json(
+                submission.payload_json or {}, can_view_sensitive=can_view_sensitive
+            )
+            enriched.append(
+                SubmissionRead.model_validate(submission, from_attributes=True).model_copy(
+                    update={
+                        "payload_json": payload_json,
+                        "redacted_fields": redacted_fields,
+                        "beneficiary_code": beneficiary_codes.get(submission.entity_id)
+                        if submission.entity_id
+                        else None,
+                        "submitted_by_name": officer_names.get(submission.field_officer_id)
+                        if submission.field_officer_id
+                        else None,
+                        "review_quality": self._review_quality_score(review_summary),
+                    }
+                )
+            )
+        return enriched
+
+    def _review_quality_score(self, review_summary: dict[str, object]) -> int:
+        critical_signals = int(review_summary.get("critical_mobile_integrity_signal_count") or 0)
+        signal_count = int(review_summary.get("mobile_integrity_signal_count") or 0)
+        other_signals = max(0, signal_count - critical_signals)
+        validation_issues = int(review_summary.get("validation_issue_count") or 0)
+        score = 100 - (10 * critical_signals) - (5 * other_signals) - (5 * validation_issues)
+        return max(0, score)
+
+    async def list_corrections(
+        self,
+        *,
+        organization_id: UUID,
+        submission_id: UUID,
+    ) -> list[CorrectionLogEntryRead]:
+        submission = await self.submissions.get(organization_id=organization_id, submission_id=submission_id)
+        if submission is None:
+            raise CollectionNotFoundError("Submission not found")
+        versions = await self.governance.list_data_versions(
+            organization_id, entity_type="submission", entity_id=str(submission.id)
+        )
+        entries: list[CorrectionLogEntryRead] = []
+        for version in sorted(versions, key=lambda item: item.created_at):
+            if version.change_type not in {"response_edit", "change_request"}:
+                continue
+            changes = version.field_changes_json or {}
+            field_changes = changes.get("field_changes")
+            if not isinstance(field_changes, dict):
+                continue
+            reason = changes.get("reason")
+            submission_key = changes.get("client_submission_id") or submission.client_submission_id
+            for field_id, change in field_changes.items():
+                if not isinstance(change, dict):
+                    continue
+                entries.append(
+                    CorrectionLogEntryRead(
+                        submission_id=submission.id,
+                        submission_key=submission_key,
+                        corrected_field=field_id,
+                        old_value=change.get("old"),
+                        new_value=change.get("new"),
+                        corrected_by=version.changed_by_user_id,
+                        corrected_at=version.created_at,
+                        reason=reason,
+                        change_type=version.change_type,
+                        review_comment=None,
+                    )
+                )
+        return entries
+
+    async def list_repeat_rows(
+        self,
+        *,
+        organization_id: UUID,
+        submission_id: UUID,
+    ) -> list[SubmissionRepeatRowRead]:
+        submission = await self.submissions.get(organization_id=organization_id, submission_id=submission_id)
+        if submission is None:
+            raise CollectionNotFoundError("Submission not found")
+        rows = await self.submissions.list_repeat_rows(organization_id=organization_id, submission_id=submission_id)
+        return [SubmissionRepeatRowRead.model_validate(row) for row in rows]
+
+    async def list_repeat_rows_for_form(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+    ) -> list[SubmissionRepeatRowRead]:
+        form = await self.forms.get(organization_id=organization_id, form_id=form_id)
+        if form is None:
+            raise CollectionNotFoundError("Form not found")
+        rows = await self.submissions.list_repeat_rows_for_form(organization_id=organization_id, form_id=form_id)
+        return [SubmissionRepeatRowRead.model_validate(row) for row in rows]
 
     async def review_submission(
         self,
@@ -2251,8 +2576,12 @@ class SubmissionService:
         if submission is None:
             raise CollectionNotFoundError("Submission not found")
         to_status = self.REVIEW_TRANSITIONS[payload.action]
+        if submission.status == "archived":
+            raise InvalidWorkflowTransitionError("Archived submissions are immutable")
         if submission.status in {"approved", "rejected"} and payload.action == "start_review":
             raise InvalidWorkflowTransitionError("Terminal submission cannot return to review")
+        if payload.action == "archive" and submission.status not in self.ARCHIVABLE_STATUSES:
+            raise InvalidWorkflowTransitionError("Only approved, rejected, or returned submissions can be archived")
         review_summary = self._submission_review_summary(submission)
         await self.submissions.transition(
             submission=submission,
@@ -2361,6 +2690,19 @@ class SubmissionService:
         mapped_longitude = self._float_from_object(mapped_profile_values.get("longitude"))
         latitude = mapped_latitude if mapped_latitude is not None else submission.latitude
         longitude = mapped_longitude if mapped_longitude is not None else submission.longitude
+        submitted_profile_values: dict[str, str | None] = {
+            "display_name": display_name,
+            "phone_number": phone,
+            "national_id": national_id,
+            "household_id": household_id,
+            "community": village,
+            "region": self._string_from_object(mapped_profile_values.get("region")) or self._string_value(values, "region"),
+            "district": self._string_from_object(mapped_profile_values.get("district")) or self._string_value(values, "district"),
+            "sex": self._string_from_object(mapped_profile_values.get("sex")) or self._string_value(values, "gender", "sex"),
+        }
+        unique_field_keys = [
+            key for key in (self._profile_key_from_mapping(field) for field in controls.get("unique_fields") or []) if key
+        ]
         existing = await self._find_beneficiary_for_submission(
             organization_id=organization_id,
             submission=submission,
@@ -2369,18 +2711,32 @@ class SubmissionService:
             national_id=national_id,
             household_id=household_id,
             village=village,
+            submitted_profile_values=submitted_profile_values,
+            unique_field_keys=unique_field_keys,
         )
+        duplicate_warning: dict[str, object] | None = None
         if existing is None:
-            possible_duplicate = await self._possible_duplicate_for_submission(
-                organization_id=organization_id,
-                submission=submission,
-                display_name=display_name,
-                phone=phone,
-                national_id=national_id,
-                household_id=household_id,
-                village=village,
+            duplicate_mode = str(controls.get("duplicate_mode") or "weighted")
+            duplicate_action = str(controls.get("duplicate_action") or "block")
+            raw_threshold = controls.get("duplicate_threshold")
+            duplicate_threshold = (
+                int(raw_threshold) if isinstance(raw_threshold, (int, float)) and 0 <= raw_threshold <= 100 else 60
             )
-            if possible_duplicate is not None:
+            possible_duplicate = (
+                None
+                if duplicate_mode == "exact"
+                else await self._possible_duplicate_for_submission(
+                    organization_id=organization_id,
+                    submission=submission,
+                    display_name=display_name,
+                    phone=phone,
+                    national_id=national_id,
+                    household_id=household_id,
+                    village=village,
+                    threshold=duplicate_threshold,
+                )
+            )
+            if possible_duplicate is not None and duplicate_action == "block":
                 beneficiary, score, matched_fields = possible_duplicate
                 processing_time = datetime.now(UTC).isoformat()
                 submission.payload_json = {
@@ -2429,6 +2785,49 @@ class SubmissionService:
                 )
                 await self.session.flush()
                 return
+            if possible_duplicate is not None:
+                beneficiary, score, matched_fields = possible_duplicate
+                recommended_queue = "review" if duplicate_action == "review" else "data_quality"
+                self.session.add(
+                    DataQualitySignal(
+                        organization_id=organization_id,
+                        submission_id=submission.id,
+                        beneficiary_id=beneficiary.id,
+                        signal_type="possible_duplicate_entity",
+                        severity="high" if score >= 90 else "medium",
+                        confidence=score / 100,
+                        summary="Approved submission may belong to an existing beneficiary; record was created pending review.",
+                        status="open",
+                        evidence_json={
+                            "beneficiary_uid": beneficiary.beneficiary_uid,
+                            "client_submission_id": submission.client_submission_id,
+                            "matched_fields": matched_fields,
+                            "score": score,
+                            "recommended_queue": recommended_queue,
+                            "duplicate_action": duplicate_action,
+                        },
+                    )
+                )
+                await self.audit.append(
+                    organization_id=organization_id,
+                    actor_user_id=actor_user_id,
+                    action="beneficiary.duplicate_flagged_for_review" if duplicate_action == "review" else "beneficiary.duplicate_flagged_warning",
+                    resource_type="submission",
+                    resource_id=str(submission.id),
+                    metadata={
+                        "candidate_beneficiary_id": str(beneficiary.id),
+                        "candidate_beneficiary_uid": beneficiary.beneficiary_uid,
+                        "score": score,
+                        "matched_fields": matched_fields,
+                    },
+                )
+                duplicate_warning = {
+                    "candidate_beneficiary_id": str(beneficiary.id),
+                    "candidate_beneficiary_uid": beneficiary.beneficiary_uid,
+                    "duplicate_score": score,
+                    "matched_fields": matched_fields,
+                    "duplicate_action": duplicate_action,
+                }
             if bool(controls.get("requires_existing_entity") or controls.get("requiresExistingEntity")):
                 processing_time = datetime.now(UTC).isoformat()
                 submission.payload_json = {
@@ -2528,15 +2927,18 @@ class SubmissionService:
             await self.session.flush()
             submission.entity_id = beneficiary.id
             submission.entity_type = beneficiary.beneficiary_type
+            beneficiary_processing: dict[str, object] = {
+                "status": "processed",
+                "action": "created",
+                "beneficiary_id": str(beneficiary.id),
+                "beneficiary_uid": beneficiary.beneficiary_uid,
+                "processed_at": created_at,
+            }
+            if duplicate_warning is not None:
+                beneficiary_processing["duplicate_warning"] = duplicate_warning
             submission.payload_json = {
                 **(submission.payload_json or {}),
-                "_beneficiary_processing": {
-                    "status": "processed",
-                    "action": "created",
-                    "beneficiary_id": str(beneficiary.id),
-                    "beneficiary_uid": beneficiary.beneficiary_uid,
-                    "processed_at": created_at,
-                },
+                "_beneficiary_processing": beneficiary_processing,
             }
             self._record_beneficiary_lineage(
                 organization_id=organization_id,
@@ -2818,6 +3220,50 @@ class SubmissionService:
         controls = controls_json.get("entity_controls") if isinstance(controls_json.get("entity_controls"), dict) else {}
         return controls
 
+    def _governance_settings(self, controls_json: dict[str, object]) -> dict[str, object]:
+        governance = controls_json.get("governance") if isinstance(controls_json.get("governance"), dict) else {}
+        return governance
+
+    async def _find_duplicate_submission(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        payload_values: dict[str, object],
+        detection_fields: list[object],
+    ) -> dict[str, object] | None:
+        fingerprint: dict[str, str] = {}
+        for field in detection_fields:
+            key = str(field).strip().lower()
+            if not key:
+                continue
+            value = payload_values.get(key)
+            if value is None or value == "":
+                continue
+            fingerprint[key] = str(value).strip().lower()
+        if not fingerprint:
+            return None
+        result = await self.session.execute(
+            select(Submission).where(
+                Submission.organization_id == organization_id,
+                Submission.form_id == form_id,
+                Submission.deleted_at.is_(None),
+                Submission.status != "rejected",
+            )
+        )
+        for other in result.scalars():
+            other_values = self._flat_payload_values(other.payload_json or {})
+            if all(
+                other_values.get(key) is not None and str(other_values.get(key)).strip().lower() == value
+                for key, value in fingerprint.items()
+            ):
+                return {
+                    "matched_submission_id": str(other.id),
+                    "matched_client_submission_id": other.client_submission_id,
+                    "matched_fields": list(fingerprint.keys()),
+                }
+        return None
+
     def _string_from_object(self, value: object) -> str | None:
         if value is None:
             return None
@@ -2935,6 +3381,24 @@ class SubmissionService:
     def _normalize_phone(self, value: str | None) -> str:
         return re.sub(r"\D+", "", value or "")
 
+    def _beneficiary_field_value(self, beneficiary: Beneficiary, profile_key: str) -> str | None:
+        direct_attrs = {
+            "display_name": beneficiary.display_name,
+            "phone_number": beneficiary.phone_number,
+            "community": beneficiary.community,
+            "region": beneficiary.region,
+            "district": beneficiary.district,
+            "sex": beneficiary.sex,
+        }
+        if profile_key in direct_attrs:
+            return self._string_from_object(direct_attrs[profile_key])
+        profile = beneficiary.profile_json or {}
+        camel = re.sub(r"_([a-z])", lambda match: match.group(1).upper(), profile_key)
+        value = profile.get(profile_key)
+        if value in (None, ""):
+            value = profile.get(camel)
+        return self._string_from_object(value)
+
     async def _find_beneficiary_for_submission(
         self,
         *,
@@ -2945,6 +3409,8 @@ class SubmissionService:
         national_id: str | None,
         household_id: str | None,
         village: str | None,
+        submitted_profile_values: dict[str, str | None] | None = None,
+        unique_field_keys: list[str] | None = None,
     ) -> Beneficiary | None:
         if submission.entity_id is not None:
             result = await self.session.execute(
@@ -2966,6 +3432,8 @@ class SubmissionService:
         normalized_phone = self._normalize_phone(phone)
         normalized_name = display_name.strip().lower()
         normalized_village = (village or "").strip().lower()
+        submitted_profile_values = submitted_profile_values or {}
+        unique_field_keys = unique_field_keys or []
         for beneficiary in result.scalars():
             profile = beneficiary.profile_json or {}
             if normalized_phone and self._normalize_phone(beneficiary.phone_number) == normalized_phone:
@@ -2993,6 +3461,13 @@ class SubmissionService:
                 <= 50
             ):
                 return beneficiary
+            for profile_key in unique_field_keys:
+                submitted_value = submitted_profile_values.get(profile_key)
+                if not submitted_value:
+                    continue
+                existing_value = self._beneficiary_field_value(beneficiary, profile_key)
+                if existing_value and existing_value.strip().lower() == submitted_value.strip().lower():
+                    return beneficiary
         return None
 
     async def _possible_duplicate_for_submission(
@@ -3005,6 +3480,7 @@ class SubmissionService:
         national_id: str | None,
         household_id: str | None,
         village: str | None,
+        threshold: int = 60,
     ) -> tuple[Beneficiary, int, list[str]] | None:
         result = await self.session.execute(
             select(Beneficiary).where(
@@ -3053,7 +3529,7 @@ class SubmissionService:
                     score += 40
                     matched_fields.append(f"GPS within {max(1, round(distance))}m")
             score = min(score, 100)
-            if score < 60:
+            if score < threshold:
                 continue
             if best is None or score > best[1]:
                 best = (beneficiary, score, matched_fields)
@@ -3141,7 +3617,6 @@ class SubmissionService:
                     previous_json=submission.payload_json,
                     current_json={**clean_responses, **protected_payload},
                     field_changes_json={
-                        "status": "pending_review",
                         "reason": payload.reason,
                         "field_changes": field_changes,
                         "client_submission_id": submission.client_submission_id,
@@ -3225,6 +3700,10 @@ class SubmissionService:
                 "submission_id": str(submission.id),
             },
         )
+        form_version = await self.forms.get_current_version(organization_id=organization_id, form_id=submission.form_id)
+        if form_version is not None:
+            schema = FormSchema.model_validate(form_version.schema_json)
+            await self._sync_repeat_rows(organization_id=organization_id, submission=updated, schema=schema)
         return updated
 
     async def _revalidate_import_cleaning_payload(

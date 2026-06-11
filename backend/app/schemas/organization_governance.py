@@ -35,6 +35,18 @@ class TeamCreate(BaseModel):
     project_id: UUID | None = None
 
 
+class TeamUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    code: str | None = Field(default=None, min_length=2, max_length=80, pattern=r"^[a-z0-9-]+$")
+    team_type: str | None = Field(default=None, max_length=80)
+    department_id: UUID | None = None
+    organization_unit_id: UUID | None = None
+    manager_user_id: UUID | None = None
+    region: str | None = Field(default=None, max_length=160)
+    project_id: UUID | None = None
+    is_active: bool | None = None
+
+
 class TeamRead(BaseModel):
     id: UUID
     name: str

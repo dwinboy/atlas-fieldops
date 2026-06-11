@@ -35,7 +35,7 @@ export default function ServicesPage() {
             {services.map((service) => (
               <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={service}>
                 <h2 className="text-lg font-semibold">{service}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#52615d]">
+                <p className="mt-2 text-sm leading-6 text-[#5b6a65]">
                   Structured delivery for enterprise teams that need dependable workflows, clean data, and adoption across field teams.
                 </p>
               </article>

@@ -77,6 +77,7 @@ import {
   toCsv,
   toneFromHealth,
 } from "@/modules/governance/utils";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type GovernanceModuleProps = {
   principal?: CurrentPrincipal | null;
@@ -249,6 +250,7 @@ function buildAuditEvents({
 export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   const [activeSection, setActiveSection] = useState<GovernanceSection>("dashboard");
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageGovernance = Boolean(
@@ -338,7 +340,31 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
     { key: "stage", header: "Stage", value: (approval) => approval.stage, render: (approval) => <Badge tone={severityTone(approval.stage)}>{approval.stage}</Badge> },
     { key: "sla", header: "SLA", value: (approval) => String(approval.sla_hours), render: (approval) => `${approval.age_hours}/${approval.sla_hours}h` },
     { key: "comments", header: "Comments", value: (approval) => String(approval.comments_required), render: (approval) => approval.comments_required ? "Required" : "Optional" },
-    { key: "actions", header: "Actions", align: "right", render: () => <div className="flex justify-end gap-2"><Button disabled={!canManageGovernance} size="sm" variant="secondary">Review</Button><Button disabled={!canManageGovernance} size="sm" variant="ghost">Escalate</Button></div> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (approval) => (
+        <div className="flex justify-end gap-2">
+          <Button
+            disabled={!canManageGovernance}
+            onClick={() => pushToast({ description: `Connect a governance approval workflow service to review the "${approval.approval_type}" request. This control is a preview for now.`, title: "Approval review isn't available yet", tone: "warning" })}
+            size="sm"
+            variant="secondary"
+          >
+            Review
+          </Button>
+          <Button
+            disabled={!canManageGovernance}
+            onClick={() => pushToast({ description: `Connect a governance approval workflow service to escalate the "${approval.approval_type}" request to a reviewer. This control is a preview for now.`, title: "Escalation isn't available yet", tone: "warning" })}
+            size="sm"
+            variant="ghost"
+          >
+            Escalate
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const retentionColumns: TableColumn<RetentionPolicyRead>[] = [

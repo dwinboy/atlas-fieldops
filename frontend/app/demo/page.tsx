@@ -26,18 +26,18 @@ export default function DemoPage() {
       <main>
         <section className="px-4 py-20 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-5xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0f766e]">Demo environment</p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#10201c] md:text-6xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Demo environment</p>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-6xl">
               Try the platform with safe sample data.
             </h1>
-            <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-[#52615d]">
+            <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-[#5b6a65]">
               The demo workspace shows how a real M&E team can create a project, build forms, register beneficiaries, review submissions, monitor quality, and report impact without exposing customer data.
             </p>
             <div className="mt-7 flex flex-wrap justify-center gap-3">
-              <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white hover:bg-[#115e59]" href="/login">
+              <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white hover:bg-[#0b7a70]" href="/login">
                 Open demo sign in
               </Link>
-              <Link className="inline-flex h-11 items-center rounded-md border border-black/10 bg-white px-5 text-sm font-semibold text-[#10201c] hover:bg-black/[0.03]" href="/book-demo">
+              <Link className="inline-flex h-11 items-center rounded-md border border-black/10 bg-white px-5 text-sm font-semibold text-[#0c1f1b] hover:bg-black/[0.03]" href="/book-demo">
                 Book guided demo
               </Link>
             </div>
@@ -46,8 +46,8 @@ export default function DemoPage() {
         <section className="mx-auto grid max-w-7xl gap-4 px-4 pb-20 sm:px-6 md:grid-cols-2 lg:px-8">
           {demoModules.map(([title, text]) => (
             <article className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm" key={title}>
-              <h2 className="text-xl font-semibold text-[#10201c]">{title}</h2>
-              <p className="mt-3 text-sm leading-6 text-[#52615d]">{text}</p>
+              <h2 className="text-xl font-semibold text-[#0c1f1b]">{title}</h2>
+              <p className="mt-3 text-sm leading-6 text-[#5b6a65]">{text}</p>
             </article>
           ))}
         </section>

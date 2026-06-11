@@ -9,6 +9,7 @@ import {
   FileUp,
   KeyRound,
   Lock,
+  Pencil,
   Plus,
   RotateCcw,
   SearchCheck,
@@ -23,9 +24,11 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { UserProfileLink } from "@/components/ui/user-link";
 import {
   createRole,
   createTeam,
@@ -47,6 +50,7 @@ import {
   listWorkforceProfiles,
   resetUserPassword,
   simulateAccess,
+  updateTeam,
   updateUser,
   updateUserRoleAssignment,
   type AccessCatalog,
@@ -97,7 +101,7 @@ type UsersTeamsModuleProps = {
   token: string | null;
 };
 
-type ModalMode = "access-test" | "edit-user" | "import-users" | "role" | "role-assignment" | "team" | "user" | null;
+type ModalMode = "access-test" | "edit-team" | "edit-user" | "import-users" | "role" | "role-assignment" | "team" | "user" | null;
 type AccessEditDraft = {
   geography_id: string;
   is_active: boolean;
@@ -133,8 +137,15 @@ const defaultTeamDraft = {
   code: "",
   manager_user_id: "",
   name: "",
+  organization_unit_id: "",
   region: "",
   team_type: "field_team",
+};
+
+const defaultEditTeamDraft = {
+  ...defaultTeamDraft,
+  id: "",
+  is_active: true,
 };
 
 const defaultRoleDraft = {
@@ -171,6 +182,14 @@ const roleProfileTabs: { id: RoleProfileTab; label: string }[] = [
   { id: "quality", label: "Data Quality" },
   { id: "governance", label: "Governance" },
   { id: "mobile", label: "Mobile Readiness" },
+];
+
+type RolesTabView = "list" | "architecture" | "matrix";
+
+const rolesTabViews: { id: RolesTabView; label: string }[] = [
+  { id: "list", label: "Roles list" },
+  { id: "architecture", label: "Role architecture" },
+  { id: "matrix", label: "Permission matrix" },
 ];
 
 const emptyAccessCatalog = { roles: [], permissions: [], scope_types: [], workflow_actions: [] };
@@ -322,11 +341,13 @@ function profilesForUser(user: UserRead | null): UserOperationalProfileRead[] {
 
 export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [activeSection, setActiveSection] = useState<UsersTeamsSection>("dashboard");
+  const [rolesView, setRolesView] = useState<RolesTabView>("list");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedRoleProfileUserId, setSelectedRoleProfileUserId] = useState<string | null>(null);
   const [selectedRoleProfileType, setSelectedRoleProfileType] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState(defaultUserDraft);
   const [teamDraft, setTeamDraft] = useState(defaultTeamDraft);
+  const [editTeamDraft, setEditTeamDraft] = useState(defaultEditTeamDraft);
   const [roleDraft, setRoleDraft] = useState(defaultRoleDraft);
   const [accessDraft, setAccessDraft] = useState(defaultAccessDraft);
   const [accessEditDraft, setAccessEditDraft] = useState<AccessEditDraft>(defaultAccessEditDraft);
@@ -453,6 +474,20 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     setModalMode("user");
   }
 
+  function openEditTeam(team: TeamRead): void {
+    setEditTeamDraft({
+      code: team.code,
+      id: team.id,
+      is_active: team.is_active,
+      manager_user_id: team.manager_user_id ?? "",
+      name: team.name,
+      organization_unit_id: team.organization_unit_id ?? "",
+      region: team.region ?? "",
+      team_type: team.team_type,
+    });
+    setModalMode("edit-team");
+  }
+
   function openEditUserAccess(user: UserRead): void {
     const roleName = user.role_name ?? defaultAssignableRole;
     const role = roleCatalogByName.get(roleName);
@@ -554,6 +589,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         code: teamDraft.code,
         manager_user_id: teamDraft.manager_user_id || null,
         name: teamDraft.name,
+        organization_unit_id: teamDraft.organization_unit_id || null,
         region: teamDraft.region || null,
         team_type: teamDraft.team_type,
       }),
@@ -564,6 +600,26 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       pushToast({ title: "Team created", description: `${team.name} is ready for assignments.`, tone: "success" });
     },
     onError: () => pushToast({ title: "Could not create team", description: "Check the team code and your team management permission.", tone: "danger" }),
+  });
+
+  const updateTeamMutation = useMutation({
+    mutationFn: () =>
+      updateTeam(token ?? "", editTeamDraft.id, {
+        code: editTeamDraft.code,
+        is_active: editTeamDraft.is_active,
+        manager_user_id: editTeamDraft.manager_user_id || null,
+        name: editTeamDraft.name,
+        organization_unit_id: editTeamDraft.organization_unit_id || null,
+        region: editTeamDraft.region || null,
+        team_type: editTeamDraft.team_type,
+      }),
+    onSuccess: async (team) => {
+      setModalMode(null);
+      setEditTeamDraft(defaultEditTeamDraft);
+      await invalidateUsersTeams();
+      pushToast({ title: "Team updated", description: `${team.name} has been updated.`, tone: "success" });
+    },
+    onError: () => pushToast({ title: "Could not update team", description: "Check the team code and your team management permission.", tone: "danger" }),
   });
 
   const createRoleMutation = useMutation({
@@ -732,26 +788,45 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       header: "Actions",
       align: "right",
       render: (user) => (
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-1.5">
           <Button onClick={() => openRoleProfile(user)} size="sm" variant="secondary">
             <UserCog aria-hidden="true" />
-            Profile
+            View profile
           </Button>
-          <Button disabled={preview || !canManageUsers || resetPasswordMutation.isPending} onClick={() => resetPasswordMutation.mutate(user.id)} size="sm" variant="secondary">
-            <RotateCcw aria-hidden="true" />
-            Reset
-          </Button>
-          <Button disabled={preview || !canManageUsers || saveRoleAssignmentMutation.isPending} onClick={() => openRoleAssignments(user)} size="sm" variant="secondary">
-            <ShieldCheck aria-hidden="true" />
-            Manage roles
-          </Button>
-          <Button disabled={preview || !canManageUsers || updateUserAccessMutation.isPending} onClick={() => openEditUserAccess(user)} size="sm" variant="ghost">
-            <UserCog aria-hidden="true" />
-            Edit scope
-          </Button>
-          <Button disabled={preview || !canManageUsers || updateUserStatusMutation.isPending} onClick={() => updateUserStatusMutation.mutate({ is_active: !user.is_active, user })} size="sm" variant="ghost">
-            {user.is_active ? "Deactivate" : "Activate"}
-          </Button>
+          <ActionMenu
+            label={`More actions for ${user.full_name}`}
+            items={[
+              {
+                key: "reset-password",
+                label: "Reset password",
+                icon: <RotateCcw aria-hidden="true" />,
+                disabled: preview || !canManageUsers || resetPasswordMutation.isPending,
+                onSelect: () => resetPasswordMutation.mutate(user.id),
+              },
+              {
+                key: "manage-roles",
+                label: "Manage roles",
+                icon: <ShieldCheck aria-hidden="true" />,
+                disabled: preview || !canManageUsers || saveRoleAssignmentMutation.isPending,
+                onSelect: () => openRoleAssignments(user),
+              },
+              {
+                key: "edit-scope",
+                label: "Edit access scope",
+                icon: <KeyRound aria-hidden="true" />,
+                disabled: preview || !canManageUsers || updateUserAccessMutation.isPending,
+                onSelect: () => openEditUserAccess(user),
+              },
+              {
+                key: "toggle-status",
+                label: user.is_active ? "Deactivate account" : "Activate account",
+                icon: user.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />,
+                tone: user.is_active ? "danger" : "default",
+                disabled: preview || !canManageUsers || updateUserStatusMutation.isPending,
+                onSelect: () => updateUserStatusMutation.mutate({ is_active: !user.is_active, user }),
+              },
+            ]}
+          />
         </div>
       ),
     },
@@ -793,8 +868,30 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
     },
     { key: "type", header: "Type", value: (team) => team.team_type, render: (team) => <span className="capitalize">{team.team_type.replace("_", " ")}</span> },
     { key: "region", header: "Region", value: (team) => team.region ?? "", render: (team) => team.region ?? "All regions" },
+    {
+      key: "unit",
+      header: "Organization Unit",
+      value: (team) => units.find((unit) => unit.id === team.organization_unit_id)?.name ?? "",
+      render: (team) => {
+        const unit = units.find((candidate) => candidate.id === team.organization_unit_id);
+        return unit ? <span>{unit.name}</span> : <span className="text-xs text-muted-foreground">Not placed in hierarchy</span>;
+      },
+    },
     { key: "members", header: "Members", value: (team) => String(profiles.filter((profile) => profile.team_id === team.id).length), render: (team) => <Badge tone="neutral">{profiles.filter((profile) => profile.team_id === team.id).length} members</Badge> },
     { key: "status", header: "Status", value: (team) => (team.is_active ? "active" : "inactive"), render: (team) => <Badge tone={statusTone(team.is_active)}>{team.is_active ? "Active" : "Inactive"}</Badge> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (team) => (
+        <div className="flex justify-end">
+          <Button disabled={preview || !canManageTeams} onClick={() => openEditTeam(team)} size="sm" variant="secondary">
+            <Pencil aria-hidden="true" />
+            Edit
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const activityColumns: TableColumn<(typeof activityLogs)[number]>[] = [
@@ -824,14 +921,6 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
-              <Plus aria-hidden="true" />
-              Create user
-            </Button>
-            <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("import-users")} variant="secondary">
-              <FileUp aria-hidden="true" />
-              Import CSV
-            </Button>
             <Button onClick={() => setModalMode("access-test")} variant="secondary">
               <SearchCheck aria-hidden="true" />
               Test access
@@ -862,12 +951,16 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           onClose={closeRoleProfile}
           onOpenAccess={() => openEditUserAccess(selectedRoleProfileUser)}
           onOpenRoles={() => openRoleAssignments(selectedRoleProfileUser)}
+          onResetPassword={() => resetPasswordMutation.mutate(selectedRoleProfileUser.id)}
           onSelectProfile={setSelectedRoleProfileType}
+          onToggleStatus={() => updateUserStatusMutation.mutate({ is_active: !selectedRoleProfileUser.is_active, user: selectedRoleProfileUser })}
           profile={selectedRoleProfile}
           profiles={selectedRoleProfileProfiles}
           projects={projects}
+          resettingPassword={resetPasswordMutation.isPending}
           sessions={sessions}
           teams={teams}
+          togglingStatus={updateUserStatusMutation.isPending}
           user={selectedRoleProfileUser}
           workforceProfile={profileForUser(profiles, selectedRoleProfileUser.id)}
         />
@@ -890,10 +983,14 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         <section className="space-y-4">
           <SectionHeader
             action={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={() => downloadCsv("atlas-users.csv", users.map((user) => ({ email: user.email, full_name: user.full_name, role: user.role_name ?? "", status: user.is_active ? "active" : "inactive", scope: user.scope_type ?? "" })))} variant="secondary">
                   <Download aria-hidden="true" />
                   Export
+                </Button>
+                <Button disabled={preview || !canManageUsers} onClick={() => setModalMode("import-users")} variant="secondary">
+                  <FileUp aria-hidden="true" />
+                  Import CSV
                 </Button>
                 <Button disabled={!canManageUsers || !roleOptions.length} onClick={openCreateUserModal} variant="primary">
                   <Plus aria-hidden="true" />
@@ -920,9 +1017,26 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
             description="Define role templates and permission sets by module, feature, action, and access scope."
             title="Role Management"
           />
-          <DataTable columns={roleColumns} emptyLabel="No roles have been configured yet" rows={roles} searchLabel="Search roles or permissions" title="Roles" />
-          <RoleArchitecturePanel catalog={catalog.roles} />
-          <PermissionMatrix groups={permissionGroups} roles={roles} />
+          <div className="flex gap-1.5 overflow-x-auto product-scrollbar">
+            {rolesTabViews.map((view) => (
+              <button
+                className={cn(
+                  "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                  rolesView === view.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
+                )}
+                key={view.id}
+                onClick={() => setRolesView(view.id)}
+                type="button"
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+          {rolesView === "list" ? (
+            <DataTable columns={roleColumns} emptyLabel="No roles have been configured yet" rows={roles} searchLabel="Search roles or permissions" title="Roles" />
+          ) : null}
+          {rolesView === "architecture" ? <RoleArchitecturePanel catalog={catalog.roles} /> : null}
+          {rolesView === "matrix" ? <PermissionMatrix groups={permissionGroups} roles={roles} /> : null}
         </section>
       ) : null}
 
@@ -943,16 +1057,21 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
       ) : null}
 
       {!selectedRoleProfileUser && activeSection === "organizations" ? (
-        <OrganizationsSection organizationName={organizationQuery.data?.name ?? principal?.organization_name ?? "Organization workspace"} units={units} summary={summary} />
+        <OrganizationsSection
+          onOpenSection={setActiveSection}
+          organizationName={organizationQuery.data?.name ?? principal?.organization_name ?? "Organization workspace"}
+          profiles={profiles}
+          summary={summary}
+          teams={teams}
+          units={units}
+          users={users}
+        />
       ) : null}
 
       {!selectedRoleProfileUser && activeSection === "permissions" ? (
         <PermissionsSection
-          canManageUsers={canManageUsers}
           catalog={catalog}
           catalogGroups={permissionGroups}
-          onEditPrimaryAccess={openEditUserAccess}
-          onManageRoles={openRoleAssignments}
           onOpenAccessTest={() => setModalMode("access-test")}
           onOpenUserProfile={openRoleProfile}
           roles={roles}
@@ -1037,6 +1156,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
         onOpenChange={(open) => setModalMode(open ? "team" : null)}
         onSubmit={() => createTeamMutation.mutate()}
         open={modalMode === "team"}
+        units={units}
+        users={users}
+      />
+      <EditTeamModal
+        canSubmit={!preview && canManageTeams && Boolean(editTeamDraft.name && editTeamDraft.code) && !updateTeamMutation.isPending}
+        draft={editTeamDraft}
+        onChange={setEditTeamDraft}
+        onOpenChange={(open) => setModalMode(open ? "edit-team" : null)}
+        onSubmit={() => updateTeamMutation.mutate()}
+        open={modalMode === "edit-team"}
+        units={units}
         users={users}
       />
       <CreateRoleModal
@@ -1134,12 +1264,16 @@ function RoleSpecificProfileWorkspace({
   onClose,
   onOpenAccess,
   onOpenRoles,
+  onResetPassword,
   onSelectProfile,
+  onToggleStatus,
   profile,
   profiles,
   projects,
+  resettingPassword,
   sessions,
   teams,
+  togglingStatus,
   user,
   workforceProfile,
 }: {
@@ -1148,12 +1282,16 @@ function RoleSpecificProfileWorkspace({
   onClose: () => void;
   onOpenAccess: () => void;
   onOpenRoles: () => void;
+  onResetPassword: () => void;
   onSelectProfile: (profileType: string | null) => void;
+  onToggleStatus: () => void;
   profile: UserOperationalProfileRead | null;
   profiles: UserOperationalProfileRead[];
   projects: { id: string; name: string; project_code: string }[];
+  resettingPassword: boolean;
   sessions: SessionLogRead[];
   teams: TeamRead[];
+  togglingStatus: boolean;
   user: UserRead;
   workforceProfile?: WorkforceProfileRead;
 }) {
@@ -1221,6 +1359,14 @@ function RoleSpecificProfileWorkspace({
             <Button disabled={!canManage} onClick={onOpenAccess} variant="secondary">
               <KeyRound aria-hidden="true" />
               Edit primary scope
+            </Button>
+            <Button disabled={!canManage || resettingPassword} onClick={onResetPassword} variant="secondary">
+              <RotateCcw aria-hidden="true" />
+              Reset password
+            </Button>
+            <Button disabled={!canManage || togglingStatus} onClick={onToggleStatus} variant={user.is_active ? "danger" : "secondary"}>
+              {user.is_active ? <Lock aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+              {user.is_active ? "Deactivate account" : "Activate account"}
             </Button>
             <Button onClick={onClose} variant="ghost">Close profile</Button>
           </div>
@@ -1595,10 +1741,33 @@ function RoleArchitecturePanel({ catalog }: { catalog: AccessCatalog["roles"] })
   );
 }
 
-function OrganizationsSection({ organizationName, summary, units }: { organizationName: string; summary: UsersTeamsSummaryRead; units: { id: string; name: string; code: string; unit_type: string; parent_unit_id: string | null; region: string | null }[] }) {
+type OrgUnitSummary = { id: string; name: string; code: string; unit_type: string; parent_unit_id: string | null; region: string | null };
+
+function OrganizationsSection({
+  onOpenSection,
+  organizationName,
+  profiles,
+  summary,
+  teams,
+  units,
+  users,
+}: {
+  onOpenSection: (section: UsersTeamsSection) => void;
+  organizationName: string;
+  profiles: WorkforceProfileRead[];
+  summary: UsersTeamsSummaryRead;
+  teams: TeamRead[];
+  units: OrgUnitSummary[];
+  users: UserRead[];
+}) {
+  const rootUnits = units.filter((unit) => !unit.parent_unit_id || !units.some((candidate) => candidate.id === unit.parent_unit_id));
+  const unassignedTeams = teams.filter((team) => !team.organization_unit_id || !units.some((unit) => unit.id === team.organization_unit_id));
+  const teamMemberUserIds = new Set(profiles.filter((profile) => profile.team_id).map((profile) => profile.user_id));
+  const unassignedUsers = users.filter((user) => !teamMemberUserIds.has(user.id));
+
   return (
     <section className="space-y-4">
-      <SectionHeader description="Manage the tenant organization structure and keep identity assignments aligned to offices, regions, and locations." title="Organization Structure" />
+      <SectionHeader description="See how regions, offices, teams, and people fit together — expand a level to drill into the next." title="Organization Structure" />
       <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
         <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <Building2 aria-hidden="true" className="text-primary" size={22} />
@@ -1612,16 +1781,55 @@ function OrganizationsSection({ organizationName, summary, units }: { organizati
         </div>
         <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <h3 className="font-semibold">Hierarchy</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Regions and offices contain teams, and teams contain people. Click a row to expand it.
+          </p>
           <div className="mt-4 space-y-2">
-            {units.map((unit) => (
-              <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/50 px-3 py-3" key={unit.id}>
-                <div>
-                  <p className="font-medium">{unit.name}</p>
-                  <p className="text-xs text-muted-foreground">{unit.code} · {unit.unit_type} · {unit.region ?? "No region"}</p>
+            {rootUnits.length ? (
+              rootUnits.map((unit) => (
+                <OrgUnitNode key={unit.id} profiles={profiles} teams={teams} unit={unit} units={units} users={users} />
+              ))
+            ) : (
+              <p className="rounded-lg border bg-background/50 px-3 py-3 text-xs text-muted-foreground">
+                No regions or offices have been set up yet. Add organizational units to build out your hierarchy.
+              </p>
+            )}
+            {unassignedTeams.length || unassignedUsers.length ? (
+              <details className="rounded-lg border bg-background/50 px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Not yet assigned to a region or office
+                </summary>
+                <div className="mt-2 space-y-2 border-l pl-4">
+                  {unassignedTeams.length ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                      <span>
+                        Open a team and choose &quot;Place in organization
+                        structure&quot; to move it into the hierarchy above.
+                      </span>
+                      <Button onClick={() => onOpenSection("teams")} size="sm" variant="secondary">
+                        Go to Teams
+                      </Button>
+                    </div>
+                  ) : null}
+                  {unassignedTeams.map((team) => (
+                    <TeamNode key={team.id} profiles={profiles} team={team} users={users} />
+                  ))}
+                  {unassignedUsers.length ? (
+                    <div className="rounded-lg border bg-panel/60 px-3 py-2">
+                      <p className="text-sm font-medium">People without a team</p>
+                      <div className="mt-2 space-y-1.5">
+                        {unassignedUsers.map((user) => (
+                          <div className="flex items-center justify-between gap-3 text-xs" key={user.id}>
+                            <p className="font-medium">{user.full_name}</p>
+                            {user.role_name ? <Badge tone="neutral">{user.role_name}</Badge> : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-                <Badge tone={unit.parent_unit_id ? "neutral" : "accent"}>{unit.parent_unit_id ? "Child unit" : "Root"}</Badge>
-              </div>
-            ))}
+              </details>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1629,22 +1837,114 @@ function OrganizationsSection({ organizationName, summary, units }: { organizati
   );
 }
 
+function OrgUnitNode({
+  depth = 0,
+  profiles,
+  teams,
+  unit,
+  units,
+  users,
+}: {
+  depth?: number;
+  profiles: WorkforceProfileRead[];
+  teams: TeamRead[];
+  unit: OrgUnitSummary;
+  units: OrgUnitSummary[];
+  users: UserRead[];
+}) {
+  const childUnits = units.filter((candidate) => candidate.parent_unit_id === unit.id);
+  const unitTeams = teams.filter((team) => team.organization_unit_id === unit.id);
+
+  return (
+    <details className="rounded-lg border bg-background/50 px-3 py-2" open={depth === 0}>
+      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium">
+        <span>
+          {unit.name}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {unit.code} · {unit.unit_type}
+            {unit.region ? ` · ${unit.region}` : ""}
+          </span>
+        </span>
+        <Badge tone="neutral">
+          {unitTeams.length} {unitTeams.length === 1 ? "team" : "teams"}
+        </Badge>
+      </summary>
+      <div className="mt-2 space-y-2 border-l pl-4">
+        {unitTeams.map((team) => (
+          <TeamNode key={team.id} profiles={profiles} team={team} users={users} />
+        ))}
+        {childUnits.map((child) => (
+          <OrgUnitNode depth={depth + 1} key={child.id} profiles={profiles} teams={teams} unit={child} units={units} users={users} />
+        ))}
+        {!unitTeams.length && !childUnits.length ? (
+          <p className="text-xs text-muted-foreground">No teams or sub-units here yet.</p>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function TeamNode({ profiles, team, users }: { profiles: WorkforceProfileRead[]; team: TeamRead; users: UserRead[] }) {
+  const members = profiles.filter((profile) => profile.team_id === team.id);
+  return (
+    <details className="rounded-lg border bg-panel/60 px-3 py-2">
+      <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium">
+        <span>
+          {team.name}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {team.code} · {team.team_type.replaceAll("_", " ")}
+            {team.region ? ` · ${team.region}` : ""}
+          </span>
+        </span>
+        <Badge tone="accent">
+          {members.length} {members.length === 1 ? "person" : "people"}
+        </Badge>
+      </summary>
+      <div className="mt-2 space-y-1.5">
+        {members.length ? (
+          members.map((profile) => {
+            const user = users.find((candidate) => candidate.id === profile.user_id);
+            const supervisor = profile.supervisor_user_id ? users.find((candidate) => candidate.id === profile.supervisor_user_id) : null;
+            return (
+              <div className="flex items-center justify-between gap-3 text-xs" key={profile.id}>
+                <div>
+                  <p className="font-medium">
+                    <UserProfileLink userId={user?.id}>{user?.full_name ?? "Unknown user"}</UserProfileLink>
+                  </p>
+                  <p className="text-muted-foreground">
+                    {profile.job_title}
+                    {supervisor ? (
+                      <>
+                        {" · reports to "}
+                        <UserProfileLink userId={supervisor.id}>{supervisor.full_name}</UserProfileLink>
+                      </>
+                    ) : (
+                      ""
+                    )}
+                  </p>
+                </div>
+                {user?.role_name ? <Badge tone="neutral">{user.role_name}</Badge> : null}
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-xs text-muted-foreground">No team members assigned yet.</p>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function PermissionsSection({
-  canManageUsers,
   catalog,
   catalogGroups,
-  onEditPrimaryAccess,
-  onManageRoles,
   onOpenAccessTest,
   onOpenUserProfile,
   roles,
   users,
 }: {
-  canManageUsers: boolean;
   catalog: AccessCatalog;
   catalogGroups: ReturnType<typeof groupPermissions>;
-  onEditPrimaryAccess: (user: UserRead) => void;
-  onManageRoles: (user: UserRead) => void;
   onOpenAccessTest: () => void;
   onOpenUserProfile: (user: UserRead) => void;
   roles: RoleRead[];
@@ -1663,10 +1963,7 @@ function PermissionsSection({
         <InsightCard icon={UsersRound} title="Manage a user" items={["Open user profile", "Manage role assignments", "Edit primary access scope"]} />
       </div>
       <UserPermissionControlPanel
-        canManageUsers={canManageUsers}
         catalog={catalog}
-        onEditPrimaryAccess={onEditPrimaryAccess}
-        onManageRoles={onManageRoles}
         onOpenUserProfile={onOpenUserProfile}
         roles={roles}
         users={users}
@@ -1699,18 +1996,12 @@ function permissionsForUser(user: UserRead, roles: RoleRead[], catalog: AccessCa
 }
 
 function UserPermissionControlPanel({
-  canManageUsers,
   catalog,
-  onEditPrimaryAccess,
-  onManageRoles,
   onOpenUserProfile,
   roles,
   users,
 }: {
-  canManageUsers: boolean;
   catalog: AccessCatalog;
-  onEditPrimaryAccess: (user: UserRead) => void;
-  onManageRoles: (user: UserRead) => void;
   onOpenUserProfile: (user: UserRead) => void;
   roles: RoleRead[];
   users: UserRead[];
@@ -1769,18 +2060,6 @@ function UserPermissionControlPanel({
       value: (row) => String(row.canReview),
       render: (row) => <Badge tone={row.canReview ? "success" : "neutral"}>{row.canReview ? "Allowed" : "Not assigned"}</Badge>,
     },
-    {
-      key: "actions",
-      header: "Actions",
-      align: "right",
-      render: (row) => (
-        <div className="flex justify-end gap-2">
-          <Button onClick={() => onOpenUserProfile(row.user)} size="sm" variant="secondary">Open profile</Button>
-          <Button disabled={!canManageUsers} onClick={() => onManageRoles(row.user)} size="sm" variant="secondary">Manage roles</Button>
-          <Button disabled={!canManageUsers} onClick={() => onEditPrimaryAccess(row.user)} size="sm" variant="ghost">Edit scope</Button>
-        </div>
-      ),
-    },
   ];
 
   return (
@@ -1789,7 +2068,7 @@ function UserPermissionControlPanel({
         <div>
           <h3 className="text-sm font-semibold">User permission control</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Use this table when someone cannot upload data, clean imports, or review submissions. Open their profile, then manage role assignments or edit scope.
+            Use this table when someone cannot upload data, clean imports, or review submissions. Select a user to open their profile, then manage role assignments or edit scope.
           </p>
         </div>
         <Badge tone="support">{rows.filter((row) => row.canImport).length}/{rows.length} can upload</Badge>
@@ -2323,13 +2602,14 @@ function ImportUsersModal({ canSubmit, file, onFileChange, onOpenChange, onSubmi
   );
 }
 
-function CreateTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, users }: {
+function CreateTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, units, users }: {
   canSubmit: boolean;
   draft: typeof defaultTeamDraft;
   onChange: (draft: typeof defaultTeamDraft) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
+  units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
   users: UserRead[];
 }) {
   return (
@@ -2352,10 +2632,91 @@ function CreateTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, o
             {users.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
           </Select>
         </div>
+        <label className="text-sm font-medium">
+          Place in organization structure
+          <Select
+            className="mt-2"
+            onChange={(event) => onChange({ ...draft, organization_unit_id: event.target.value })}
+            value={draft.organization_unit_id}
+          >
+            <option value="">Not placed yet (shows as &quot;unassigned&quot;)</option>
+            {units.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name} ({unit.code} · {unit.unit_type})
+              </option>
+            ))}
+          </Select>
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">
+            Choosing a region or office places this team in the Organizations
+            hierarchy so it&apos;s easy to find later.
+          </span>
+        </label>
       </div>
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
         <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">Create team</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function EditTeamModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, units, users }: {
+  canSubmit: boolean;
+  draft: typeof defaultEditTeamDraft;
+  onChange: (draft: typeof defaultEditTeamDraft) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  units: { id: string; name: string; code: string; unit_type: string; region: string | null }[];
+  users: UserRead[];
+}) {
+  return (
+    <Modal description="Update this team's details, lead, and place in the organization structure." onOpenChange={onOpenChange} open={open} title={`Edit team${draft.name ? `: ${draft.name}` : ""}`} contentClassName="max-w-2xl">
+      <div className="grid gap-4 p-5">
+        <Input placeholder="Team name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input placeholder="Team code" value={draft.code} onChange={(event) => onChange({ ...draft, code: event.target.value.toUpperCase() })} />
+          <Input placeholder="Region or location" value={draft.region} onChange={(event) => onChange({ ...draft, region: event.target.value })} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Select value={draft.team_type} onChange={(event) => onChange({ ...draft, team_type: event.target.value })}>
+            <option value="field_team">Field team</option>
+            <option value="data_quality">Data quality</option>
+            <option value="monitoring">Monitoring</option>
+            <option value="analysis">Analysis</option>
+          </Select>
+          <Select value={draft.manager_user_id} onChange={(event) => onChange({ ...draft, manager_user_id: event.target.value })}>
+            <option value="">No team lead yet</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{user.full_name}</option>)}
+          </Select>
+        </div>
+        <label className="text-sm font-medium">
+          Place in organization structure
+          <Select
+            className="mt-2"
+            onChange={(event) => onChange({ ...draft, organization_unit_id: event.target.value })}
+            value={draft.organization_unit_id}
+          >
+            <option value="">Not placed yet (shows as &quot;unassigned&quot;)</option>
+            {units.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name} ({unit.code} · {unit.unit_type})
+              </option>
+            ))}
+          </Select>
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">
+            Choosing a region or office places this team in the Organizations
+            hierarchy so it&apos;s easy to find later.
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input checked={draft.is_active} onChange={(event) => onChange({ ...draft, is_active: event.target.checked })} type="checkbox" />
+          Team is active
+        </label>
+      </div>
+      <div className="flex justify-end gap-2 border-t px-5 py-4">
+        <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">Save changes</Button>
       </div>
     </Modal>
   );

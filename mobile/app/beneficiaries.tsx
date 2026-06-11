@@ -1,12 +1,39 @@
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAppContext } from "@/context/AppContext";
+import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
+import type { MobileAssignment, MobileEntity } from "@/models/contracts";
+
+const dataCollection = new DataCollectionSessionService(localDatabase);
+
+const ACTIVE_ASSIGNMENT_STATUSES = new Set(["Assigned", "InProgress", "Overdue"]);
+
+function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssignment; formName: string }[] {
+  const seenForms = new Set<string>();
+  const results: { assignment: MobileAssignment; formName: string }[] = [];
+  for (const assignment of localDatabase.assignments.list()) {
+    if (!assignment.formId || !assignment.formVersionId) continue;
+    if (!ACTIVE_ASSIGNMENT_STATUSES.has(assignment.status)) continue;
+    if (seenForms.has(assignment.formId)) continue;
+    const formVersion = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
+    if (!formVersion) continue;
+    const settings = formVersion.entitySettings;
+    if (!settings.linkedToEntity || settings.entityType !== entity.entityType) continue;
+    if (!settings.updatesExistingEntity && !settings.requiresExistingEntity) continue;
+    seenForms.add(assignment.formId);
+    const form = localDatabase.forms.list().find((f) => f.id === assignment.formId);
+    results.push({ assignment, formName: form?.name ?? "Form" });
+  }
+  return results;
+}
 
 export default function BeneficiariesScreen() {
-  const { refreshKey, isSyncing, syncWork } = useAppContext();
+  const router = useRouter();
+  const { refreshKey, isSyncing, syncWork, refresh } = useAppContext();
   const [search, setSearch] = useState("");
 
   const beneficiaries = useMemo(() => {
@@ -27,6 +54,16 @@ export default function BeneficiariesScreen() {
     });
   }, [search, refreshKey]);
 
+  function startDraft(entity: MobileEntity, assignment: MobileAssignment) {
+    try {
+      const result = dataCollection.startForm(assignment.localId, entity.localId);
+      refresh();
+      router.push(`/form-fill/${result.draft.localId}`);
+    } catch (err) {
+      Alert.alert("Could not start form", err instanceof Error ? err.message : "Sync your work and try again.");
+    }
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
       <ScrollView
@@ -35,10 +72,10 @@ export default function BeneficiariesScreen() {
       >
         <View style={{ gap: 4 }}>
           <Text style={{ color: "#12332b", fontSize: 22, fontWeight: "800" }}>
-            Assigned beneficiaries
+            Beneficiaries
           </Text>
           <Text style={{ color: "#49635a", fontSize: 13 }}>
-            These are the beneficiary records downloaded for your assigned field work.
+            Search the beneficiary records synced to this device, and continue data collection on any linked form.
           </Text>
         </View>
 
@@ -67,6 +104,7 @@ export default function BeneficiariesScreen() {
               entity.location.community,
               entity.location.district,
             ].filter(Boolean).join(", ");
+            const actions = entity.status === "Active" ? eligibleAssignmentsFor(entity) : [];
 
             return (
               <View key={entity.localId} style={beneficiaryCard}>
@@ -92,6 +130,34 @@ export default function BeneficiariesScreen() {
                     <Text style={mutedText}>{entity.assignedFormIds.length} assigned form(s)</Text>
                   ) : null}
                 </View>
+
+                {actions.length > 0 ? (
+                  <View style={{ gap: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: "#eef3f1", paddingTop: 10 }}>
+                    <Text style={{ color: "#8aa79b", fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Continue data collection
+                    </Text>
+                    {actions.map(({ assignment, formName }) => (
+                      <Pressable
+                        key={assignment.localId}
+                        onPress={() => startDraft(entity, assignment)}
+                        style={{
+                          backgroundColor: "#12332b",
+                          borderRadius: 10,
+                          paddingVertical: 9,
+                          paddingHorizontal: 12,
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ color: "white", fontWeight: "700", fontSize: 13 }} numberOfLines={1}>
+                          {formName}
+                        </Text>
+                        <Text style={{ color: "#d7efe7", fontWeight: "700", fontSize: 13 }}>Start →</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             );
           })

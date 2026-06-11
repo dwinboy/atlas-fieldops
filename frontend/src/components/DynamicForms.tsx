@@ -115,15 +115,18 @@ import {
   createForm,
   createPublicCollectionLink,
   exportFormXlsForm,
+  FORM_TYPES,
   getFormCollectionCompatibility,
   listSubmissions,
   listForms,
+  listMasterDataEntries,
   listPrograms,
   listSurveys,
   reviewSubmission,
   updateFormControls,
   type DataFormRead,
   type FormControlsSettings,
+  type FormType,
   type FormWorkflowStage,
   type ProgramRead,
   type SubmissionRead,
@@ -3178,6 +3181,7 @@ export function DynamicForms({
   const [newFormDialogOpen, setNewFormDialogOpen] = useState(false);
   const [newFormName, setNewFormName] = useState("New survey form");
   const [newFormDescription, setNewFormDescription] = useState("");
+  const [newFormType, setNewFormType] = useState<FormType | "">("");
   const [newFormChannel, setNewFormChannel] =
     useState<DistributionChannel>("survey_app");
   const [newFormBlocks, setNewFormBlocks] = useState<string[]>([
@@ -3260,6 +3264,16 @@ export function DynamicForms({
     queryFn: () => listForms(token ?? ""),
     enabled: Boolean(token && !isPreview),
   });
+  const masterDataQuery = useQuery({
+    queryKey: ["master-data-categories", token],
+    queryFn: () => listMasterDataEntries(token ?? ""),
+    enabled: Boolean(token && !isPreview),
+  });
+  const choiceListCategories = useMemo(
+    () =>
+      Array.from(new Set((masterDataQuery.data ?? []).map((entry) => entry.category))).sort(),
+    [masterDataQuery.data],
+  );
   const formSubmissionsQuery = useQuery({
     queryKey: ["form-submissions", token, selectedFormId],
     queryFn: () => listSubmissions(token ?? ""),
@@ -3557,6 +3571,7 @@ export function DynamicForms({
         name: payload.form.name,
         slug: `${slugify(payload.form.name)}-${Date.now().toString(36)}`,
         description: payload.form.sections[0]?.description ?? null,
+        form_type: newFormType || null,
         schema: toMobileSchema(payload.form) as Record<string, unknown>,
         publish: payload.publish,
       }),
@@ -5748,6 +5763,21 @@ export function DynamicForms({
             />
           </label>
 
+          <label className="mt-4 block text-sm">
+            <span className="mb-1 block font-medium">Form type</span>
+            <Select
+              onChange={(event) => setNewFormType(event.target.value as FormType | "")}
+              value={newFormType}
+            >
+              <option value="">Unspecified</option>
+              {FORM_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type.replace("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </label>
+
           <div className="mt-4">
             <p className="text-sm font-medium">3. Distribution channel</p>
             <div className="mt-1">
@@ -7551,6 +7581,7 @@ export function DynamicForms({
                             Reference list
                             <Input
                               className="mt-2"
+                              list={`choice-list-categories-${binding.id}`}
                               onChange={(event) =>
                                 updateSelectedFormControls((controls) => ({
                                   ...controls,
@@ -7570,6 +7601,11 @@ export function DynamicForms({
                               }
                               value={binding.reference_list_name}
                             />
+                            <datalist id={`choice-list-categories-${binding.id}`}>
+                              {choiceListCategories.map((category) => (
+                                <option key={category} value={category} />
+                              ))}
+                            </datalist>
                           </label>
                           <label className="text-sm font-medium">
                             Parent list
@@ -7597,6 +7633,85 @@ export function DynamicForms({
                             />
                           </label>
                         </div>
+                        {binding.source === "existing" ? (
+                          <div className="mt-3 grid gap-3 md:grid-cols-3">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                              <input
+                                checked={binding.allow_inactive_values}
+                                className="h-4 w-4 rounded border-input"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                allow_inactive_values:
+                                                  event.target.checked,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="checkbox"
+                              />
+                              Allow inactive values
+                            </label>
+                            <label className="text-sm font-medium">
+                              Effective from
+                              <Input
+                                className="mt-2"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                effective_from:
+                                                  event.target.value || null,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="date"
+                                value={binding.effective_from ?? ""}
+                              />
+                            </label>
+                            <label className="text-sm font-medium">
+                              Effective to
+                              <Input
+                                className="mt-2"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                effective_to:
+                                                  event.target.value || null,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="date"
+                                value={binding.effective_to ?? ""}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   ) : (

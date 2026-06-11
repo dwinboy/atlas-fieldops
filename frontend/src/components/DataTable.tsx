@@ -197,37 +197,25 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {pagedRows.map((row, index) => {
-              const striped = index % 2 === 1;
-              return (
-                <tr
-                  key={index}
-                  className={cn(
-                    "group transition-colors hover:bg-muted/35",
-                    striped && "bg-muted/20",
-                  )}
-                >
-                  {columns.map((column, columnIndex) => (
-                    <td
-                      key={column.key}
-                      className={cn(
-                        "max-w-72 px-2.5 py-2 align-top",
-                        column.align === "right" && "text-right",
-                        columnIndex === 0 &&
-                          cn(
-                            "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
-                            striped && "bg-muted/20",
-                          ),
-                      )}
-                    >
-                      <div className="min-w-0 truncate" title={column.value?.(row)}>
-                        {column.render(row)}
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+            {pagedRows.map((row, index) => (
+              <tr key={index} className="group transition-colors hover:bg-muted/35">
+                {columns.map((column, columnIndex) => (
+                  <td
+                    key={column.key}
+                    className={cn(
+                      "max-w-72 px-2.5 py-2 align-top",
+                      column.align === "right" && "text-right tabular-nums",
+                      columnIndex === 0 &&
+                        "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                    )}
+                  >
+                    <div className="min-w-0 truncate" title={column.value?.(row)}>
+                      {column.render(row)}
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
             {filteredRows.length === 0 ? (
               <tr>
                 <td

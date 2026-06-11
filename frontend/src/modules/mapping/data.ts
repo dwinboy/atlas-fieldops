@@ -74,8 +74,6 @@ export type MapFeatureRecord = {
   district: string;
   latitude: number;
   longitude: number;
-  x: number;
-  y: number;
   status: SpatialStatus;
   qualityScore: number;
   gpsAccuracy: number;
@@ -219,8 +217,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 88,
     region: "Northwest",
     status: "Healthy",
-    x: 32,
-    y: 33,
   },
   {
     category: "Submission",
@@ -237,8 +233,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 94,
     region: "Northwest",
     status: "Healthy",
-    x: 37,
-    y: 39,
   },
   {
     category: "Beneficiary",
@@ -256,8 +250,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     region: "Littoral",
     sensitive: true,
     status: "Warning",
-    x: 54,
-    y: 62,
   },
   {
     category: "Facility",
@@ -274,8 +266,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 91,
     region: "West",
     status: "Healthy",
-    x: 47,
-    y: 49,
   },
   {
     category: "Quality",
@@ -292,8 +282,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 61,
     region: "Far North",
     status: "Critical",
-    x: 72,
-    y: 23,
   },
   {
     category: "Indicator",
@@ -310,8 +298,6 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 85,
     region: "West",
     status: "Warning",
-    x: 43,
-    y: 55,
   },
 ];
 

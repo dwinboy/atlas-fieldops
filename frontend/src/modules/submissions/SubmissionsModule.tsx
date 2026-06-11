@@ -26,7 +26,6 @@ import {
   Search,
   ShieldAlert,
   SlidersHorizontal,
-  UserCheck,
   X,
   XCircle,
   type LucideIcon,
@@ -40,12 +39,16 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal, DataFormRead, DataFormSchemaRead } from "@/lib/api";
+import type { CurrentPrincipal, DataFormRead, DataFormSchemaRead, UserRead } from "@/lib/api";
 import {
   governExport,
   getFormSchema,
+  listFormRepeatRows,
   listForms,
+  listSubmissionCorrections,
+  listSubmissionRepeatRows,
   listSubmissions,
+  listUsers,
   reviewSubmission,
   updateSubmissionResponses,
 } from "@/lib/api";
@@ -65,6 +68,7 @@ import {
   getPreviewSubmissions,
   normalizeSubmission,
   qualityTone,
+  resolveSubmissionAssignments,
   slaStatus,
   slaTone,
   statusTone,
@@ -114,6 +118,7 @@ type ResponseRow = {
   required: boolean;
   hint?: string | null;
   options?: FormFieldMeta["options"];
+  redacted?: boolean;
 };
 
 type MobileIntegritySignal = {
@@ -292,6 +297,7 @@ function submissionSourceLabel(submission: SubmissionRecord): string {
 }
 
 function submissionActorLabel(submission: SubmissionRecord): string {
+  if (submission.submitted_by_name) return submission.submitted_by_name;
   if (submission.offline_created) return submission.field_officer_id ?? "Field officer";
   if (submission.is_imported || submission.import_batch_id || submission.imported_at) {
     return submission.imported_by_user_id ?? "Uploaded user";
@@ -349,6 +355,7 @@ export function SubmissionsModule({
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const preview = isPreview(token);
   const canReview = hasAnyPermission(principal, [
     "submissions.review",
@@ -406,6 +413,18 @@ export function SubmissionsModule({
     }
     return map;
   }, [formsQuery.data]);
+  const usersQuery = useQuery({
+    queryKey: ["submissions-module", "users", token],
+    queryFn: () => listUsers(token ?? ""),
+    enabled: Boolean(token && !preview && canReview),
+  });
+  const userMap = useMemo(() => {
+    const map = new Map<string, UserRead>();
+    for (const user of usersQuery.data ?? []) {
+      map.set(user.id, user);
+    }
+    return map;
+  }, [usersQuery.data]);
 
   const submissions = useMemo(
     () => {
@@ -413,7 +432,8 @@ export function SubmissionsModule({
       return (submissionsQuery.data ?? []).map((submission) => {
         const normalized = normalizeSubmission(submission);
         const form = formMap.get(submission.form_id);
-        return form
+        const assignments = resolveSubmissionAssignments(submission, userMap);
+        const withForm = form
           ? {
               ...normalized,
               form_name: form.name,
@@ -423,9 +443,10 @@ export function SubmissionsModule({
                 : "Project link missing",
             }
           : normalized;
+        return { ...withForm, ...assignments };
       });
     },
-    [formMap, preview, previewRows, submissionsQuery.data],
+    [formMap, preview, previewRows, submissionsQuery.data, userMap],
   );
   const summary = useMemo(
     () => computeSubmissionsSummary(submissions),
@@ -435,6 +456,41 @@ export function SubmissionsModule({
     () => filterSubmissions(submissions, activeSection),
     [activeSection, submissions],
   );
+  const [filterProjectName, setFilterProjectName] = useState("");
+  const [filterFormName, setFilterFormName] = useState("");
+  const [filterReviewer, setFilterReviewer] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const submissionFilters = {
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+    formName: filterFormName,
+    projectName: filterProjectName,
+    reviewer: filterReviewer,
+  };
+  function setSubmissionFilters(patch: Partial<typeof submissionFilters>): void {
+    if (patch.projectName !== undefined) setFilterProjectName(patch.projectName);
+    if (patch.formName !== undefined) setFilterFormName(patch.formName);
+    if (patch.reviewer !== undefined) setFilterReviewer(patch.reviewer);
+    if (patch.dateFrom !== undefined) setFilterDateFrom(patch.dateFrom);
+    if (patch.dateTo !== undefined) setFilterDateTo(patch.dateTo);
+  }
+  const filteredSubmissions = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const toTime = filterDateTo ? new Date(filterDateTo).getTime() : null;
+    return visibleSubmissions.filter((submission) => {
+      if (filterProjectName && submission.project_name !== filterProjectName) return false;
+      if (filterFormName && submission.form_name !== filterFormName) return false;
+      if (filterReviewer && submission.reviewer !== filterReviewer) return false;
+      if (fromTime !== null || toTime !== null) {
+        if (!submission.submitted_at) return false;
+        const submittedTime = new Date(submission.submitted_at).getTime();
+        if (fromTime !== null && submittedTime < fromTime) return false;
+        if (toTime !== null && submittedTime > toTime) return false;
+      }
+      return true;
+    });
+  }, [filterDateFrom, filterDateTo, filterFormName, filterProjectName, filterReviewer, visibleSubmissions]);
   const selectedSubmission =
     submissions.find((submission) => submission.id === selectedSubmissionId) ??
     null;
@@ -450,7 +506,7 @@ export function SubmissionsModule({
       comment,
       submissionId,
     }: {
-      action: Exclude<ReviewAction, "archive">;
+      action: ReviewAction;
       comment: string;
       submissionId: string;
     }) => reviewSubmission(token ?? "", submissionId, { action, comment }),
@@ -561,7 +617,7 @@ export function SubmissionsModule({
     const comment =
       trimmedComment || `Reviewer selected ${action.replace("_", " ")}.`;
 
-    if (preview || action === "archive") {
+    if (preview) {
       setPreviewRows((current) =>
         applyPreviewReviewAction(
           current,
@@ -696,6 +752,13 @@ export function SubmissionsModule({
       ),
     },
     {
+      key: "beneficiary_code",
+      header: "Beneficiary Code",
+      value: (submission) => submission.beneficiary_code ?? "",
+      render: (submission) =>
+        submission.beneficiary_code ?? <span className="text-muted-foreground">—</span>,
+    },
+    {
       key: "source",
       header: "Source",
       value: (submission) => submissionSourceLabel(submission),
@@ -757,6 +820,34 @@ export function SubmissionsModule({
       ),
     },
     {
+      key: "review_quality",
+      header: "Review Quality",
+      align: "right",
+      value: (submission) =>
+        submission.review_quality === null || submission.review_quality === undefined
+          ? ""
+          : String(submission.review_quality),
+      render: (submission) =>
+        submission.review_quality === null || submission.review_quality === undefined ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <Badge tone={qualityTone(submission.review_quality)}>{submission.review_quality}%</Badge>
+        ),
+    },
+    {
+      key: "approved_by",
+      header: "Approved By",
+      value: (submission) => submission.approved_by_user_id ?? "",
+      render: (submission) => submission.approved_by_user_id ?? <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "approved_at",
+      header: "Approved At",
+      value: (submission) => submission.approved_at ?? "",
+      render: (submission) =>
+        submission.approved_at ? formatDateTime(submission.approved_at) : <span className="text-muted-foreground">—</span>,
+    },
+    {
       key: "integrity",
       header: "Integrity",
       align: "right",
@@ -784,6 +875,19 @@ export function SubmissionsModule({
             <Eye aria-hidden="true" />
             View
           </Button>
+          {submission.latitude && submission.longitude ? (
+            <Button
+              onClick={() => {
+                setPendingMapFeatureId(`submission-${submission.id}`);
+                setActiveView("map");
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              <MapPin aria-hidden="true" />
+              Map
+            </Button>
+          ) : null}
           <Button
             disabled={!canReview}
             onClick={() => openSubmission(submission, "Workflow")}
@@ -876,12 +980,14 @@ export function SubmissionsModule({
           onApplyReviewAction={applyReviewAction}
           onClose={() => setSelectedSubmissionId(null)}
           onSaveResponses={saveResponses}
+          preview={preview}
           reviewComment={reviewComment}
           reviewResult={reviewResult}
           setReviewComment={setReviewComment}
           setTab={setActiveDetailTab}
           submission={selectedSubmission}
           tab={activeDetailTab}
+          token={token}
         />
       ) : null}
 
@@ -895,33 +1001,43 @@ export function SubmissionsModule({
         />
       ) : null}
 
-      {!selectedSubmission && activeSection !== "dashboard" ? (
+      {!selectedSubmission && activeSection === "data" ? (
+        <section className="space-y-4">
+          <SectionHeader
+            description={
+              submissionSections.find((section) => section.id === "data")
+                ?.description ?? "Spreadsheet view of collected field values"
+            }
+            route="/submissions/data"
+            title="Data Explorer"
+          />
+          <DataExplorerSection
+            forms={formsQuery.data ?? []}
+            onOpenSubmission={openSubmission}
+            preview={preview}
+            submissions={submissions}
+            token={token}
+          />
+        </section>
+      ) : null}
+
+      {!selectedSubmission && activeSection !== "dashboard" && activeSection !== "data" ? (
         <section className="space-y-4">
           <SectionHeader
             action={
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={!canReview}
-                  onClick={() => setActiveSection("pending-review")}
-                  variant="primary"
-                >
-                  <UserCheck aria-hidden="true" />
-                  Assign reviewer
-                </Button>
-                <Button
-                  disabled={!canExport || !visibleSubmissions.length}
-                  onClick={() =>
-                    exportSubmissionsCsv("atlas-submission-view.csv", visibleSubmissions, {
-                      section: activeSection,
-                      visible_statuses: Array.from(new Set(visibleSubmissions.map((submission) => submission.status))),
-                    })
-                  }
-                  variant="secondary"
-                >
-                  <Download aria-hidden="true" />
-                  Export view
-                </Button>
-              </div>
+              <Button
+                disabled={!canExport || !filteredSubmissions.length}
+                onClick={() =>
+                  exportSubmissionsCsv("atlas-submission-view.csv", filteredSubmissions, {
+                    section: activeSection,
+                    visible_statuses: Array.from(new Set(filteredSubmissions.map((submission) => submission.status))),
+                  })
+                }
+                variant="secondary"
+              >
+                <Download aria-hidden="true" />
+                Export view
+              </Button>
             }
             description={
               submissionSections.find((section) => section.id === activeSection)
@@ -936,11 +1052,16 @@ export function SubmissionsModule({
                 ?.label ?? "Submissions"
             }
           />
-          <SubmissionFilters activeSection={activeSection} submissions={visibleSubmissions} />
+          <SubmissionFilters
+            activeSection={activeSection}
+            filters={submissionFilters}
+            onChange={setSubmissionFilters}
+            submissions={visibleSubmissions}
+          />
           <DataTable
             columns={columns}
             emptyLabel="No submissions match this view yet"
-            rows={visibleSubmissions}
+            rows={filteredSubmissions}
             searchLabel="Search submissions, forms, projects, officers, location"
             title="Submission list"
           />
@@ -966,17 +1087,26 @@ function SubmissionsDashboard({
   submissions: SubmissionRecord[];
   summary: ReturnType<typeof computeSubmissionsSummary>;
 }) {
-  const cards: {
+  type MetricCard = {
     icon: LucideIcon;
     label: string;
     tone?: BadgeProps["tone"];
     value: string | number;
-  }[] = [
+  };
+  const volumeCards: MetricCard[] = [
     {
       icon: FileSearch,
       label: "Total Submissions",
       value: summary.total_submissions,
     },
+    {
+      icon: Clock3,
+      label: "Today's Submissions",
+      value: summary.todays_submissions,
+    },
+    { icon: FileArchive, label: "Archived", value: summary.archived },
+  ];
+  const reviewPipelineCards: MetricCard[] = [
     {
       icon: ShieldAlert,
       label: "Pending Review",
@@ -1001,12 +1131,8 @@ function SubmissionsDashboard({
       tone: summary.returned ? "warning" : "neutral",
       value: summary.returned,
     },
-    { icon: FileArchive, label: "Archived", value: summary.archived },
-    {
-      icon: Clock3,
-      label: "Today's Submissions",
-      value: summary.todays_submissions,
-    },
+  ];
+  const qualityCards: MetricCard[] = [
     {
       icon: Flag,
       label: "Quality Alerts",
@@ -1024,6 +1150,11 @@ function SubmissionsDashboard({
       tone: summary.approval_rate >= 70 ? "success" : "warning",
       value: `${summary.approval_rate}%`,
     },
+  ];
+  const cardGroups: { label: string; cards: MetricCard[] }[] = [
+    { label: "Volume", cards: volumeCards },
+    { label: "Review Pipeline", cards: reviewPipelineCards },
+    { label: "Quality & Performance", cards: qualityCards },
   ];
   const reviewQueue = submissions
     .filter((submission) =>
@@ -1047,26 +1178,43 @@ function SubmissionsDashboard({
         new Date(left.item.created_at).getTime(),
     )
     .slice(0, 5);
+  const reviewerWorkload = Object.entries(
+    submissions.reduce<Record<string, number>>((counts, submission) => {
+      counts[submission.reviewer] = (counts[submission.reviewer] ?? 0) + 1;
+      return counts;
+    }, {}),
+  )
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5);
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {cards.map((card) => (
-          <article
-            className="rounded-xl border bg-panel p-3 shadow-line"
-            key={card.label}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <card.icon
-                aria-hidden="true"
-                className="text-primary"
-                size={18}
-              />
-              {card.tone ? <Badge tone={card.tone}>Live</Badge> : null}
+      <div className="space-y-4">
+        {cardGroups.map((group) => (
+          <div key={group.label}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {group.label}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {group.cards.map((card) => (
+                <article
+                  className="rounded-xl border bg-panel p-3 shadow-line"
+                  key={card.label}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <card.icon
+                      aria-hidden="true"
+                      className="text-primary"
+                      size={18}
+                    />
+                    {card.tone ? <Badge tone={card.tone}>Live</Badge> : null}
+                  </div>
+                  <p className="mt-4 text-2xl font-semibold">{card.value}</p>
+                  <p className="text-xs text-muted-foreground">{card.label}</p>
+                </article>
+              ))}
             </div>
-            <p className="mt-4 text-2xl font-semibold">{card.value}</p>
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-          </article>
+          </div>
         ))}
       </div>
 
@@ -1156,18 +1304,16 @@ function SubmissionsDashboard({
         </Panel>
         <Panel title="Reviewer Workload">
           <div className="space-y-3">
-            {["Grace M.", "Samuel K.", "Data Manager"].map((reviewer) => {
-              const count = submissions.filter(
-                (submission) => submission.reviewer === reviewer,
-              ).length;
-              return (
-                <Signal
-                  key={reviewer}
-                  label={reviewer}
-                  value={`${count} assigned`}
-                />
-              );
-            })}
+            {reviewerWorkload.map(([reviewer, count]) => (
+              <Signal
+                key={reviewer}
+                label={reviewer}
+                value={`${count} assigned`}
+              />
+            ))}
+            {!reviewerWorkload.length ? (
+              <EmptyMini label="No submissions to summarize yet." />
+            ) : null}
           </div>
         </Panel>
         <Panel title="Approval Trends">
@@ -1201,12 +1347,14 @@ function SubmissionDetailWorkspace({
   onApplyReviewAction,
   onClose,
   onSaveResponses,
+  preview,
   reviewComment,
   reviewResult,
   setReviewComment,
   setTab,
   submission,
   tab,
+  token,
 }: {
   canEditResponses: boolean;
   canReview: boolean;
@@ -1219,12 +1367,14 @@ function SubmissionDetailWorkspace({
     responses: Record<string, unknown>,
     reason: string,
   ) => void;
+  preview: boolean;
   reviewComment: string;
   reviewResult: string;
   setReviewComment: (value: string) => void;
   setTab: (tab: SubmissionDetailTab) => void;
   submission: SubmissionRecord;
   tab: SubmissionDetailTab;
+  token: string | null;
 }) {
   return (
     <section className="space-y-4 rounded-xl border bg-panel p-3.5 shadow-line">
@@ -1279,7 +1429,9 @@ function SubmissionDetailWorkspace({
           formSchema={formSchema}
           isSaving={isSavingResponses}
           onSave={onSaveResponses}
+          preview={preview}
           submission={submission}
+          token={token}
         />
       ) : null}
       {tab === "Workflow" ? (
@@ -1298,13 +1450,16 @@ function SubmissionDetailWorkspace({
       ) : null}
       {tab === "Location" ? <LocationTab submission={submission} /> : null}
       {tab === "History" ? (
-        <TimelineRows
-          rows={submission.history.map((item) => ({
-            label: item.action,
-            meta: `${item.actor}${item.comment ? ` · ${item.comment}` : ""}`,
-            time: item.created_at,
-          }))}
-        />
+        <div className="space-y-4">
+          <TimelineRows
+            rows={submission.history.map((item) => ({
+              label: item.action,
+              meta: `${item.actor}${item.comment ? ` · ${item.comment}` : ""}`,
+              time: item.created_at,
+            }))}
+          />
+          <CorrectionsPanel preview={preview} submission={submission} token={token} />
+        </div>
       ) : null}
       {tab === "Audit Trail" ? (
         <TimelineRows
@@ -1420,7 +1575,8 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
                 <p className="text-sm font-semibold">Linked to beneficiary/entity</p>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {submission.entity_type ?? "Beneficiary"} · {submission.entity_id}
+                {submission.entity_type ?? "Beneficiary"}
+                {submission.beneficiary_code ? ` · ${submission.beneficiary_code}` : ` · ${submission.entity_id}`}
               </p>
             </div>
             <Badge tone="success">Timeline ready</Badge>
@@ -1449,10 +1605,45 @@ function humanizeKey(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function formatResponseValue(value: unknown): string {
+function optionLabelFor(value: unknown, options?: FormFieldMeta["options"]): string {
+  const match = options?.find(
+    (option) => String(option.value ?? option.name ?? option.label) === String(value),
+  );
+  return match?.label ?? humanizeKey(String(value));
+}
+
+function formatGeoValue(record: Record<string, unknown>): string | null {
+  const lat = record.latitude ?? record.lat;
+  const lon = record.longitude ?? record.lng ?? record.lon;
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  if (lat === undefined || lon === undefined || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  const accuracy = record.accuracy ?? record.gps_accuracy;
+  return accuracy != null
+    ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${accuracy}m)`
+    : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function formatResponseValue(value: unknown, type?: string, options?: FormFieldMeta["options"]): string {
   if (value === null || value === undefined || value === "") return "Blank";
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  if (Array.isArray(value)) {
+    if (!value.length) return "Blank";
+    if (value.every((item) => item === null || typeof item !== "object")) {
+      return value.map((item) => optionLabelFor(item, options)).join(", ");
+    }
+    return JSON.stringify(value, null, 2);
+  }
+  if (typeof value === "object") {
+    if (type === "gps" || type === "geopoint" || type === "location") {
+      const geo = formatGeoValue(value as Record<string, unknown>);
+      if (geo) return geo;
+    }
+    return JSON.stringify(value, null, 2);
+  }
+  if (options?.length) return optionLabelFor(value, options);
   return String(value);
 }
 
@@ -1529,9 +1720,11 @@ function normalizedSubmissionAnswers(payload: Record<string, unknown>): Record<s
 function buildResponseRows(
   payload: Record<string, unknown>,
   formSchema: DataFormSchemaRead | null,
+  redactedFields: string[] = [],
 ): ResponseRow[] {
   const rows: ResponseRow[] = [];
   const usedKeys = new Set<string>();
+  const redacted = new Set(redactedFields);
   const answers = normalizedSubmissionAnswers(payload);
   const schema = (formSchema?.schema ?? {}) as ParsedFormSchema;
   const issueMap = importIssuesByField(payload);
@@ -1556,6 +1749,7 @@ function buildResponseRows(
         required: Boolean(field.required),
         hint: field.hint,
         options: field.options,
+        redacted: redacted.has(payloadKey),
       });
     }
   }
@@ -1593,7 +1787,9 @@ function ResponsesTab({
   formSchema,
   isSaving,
   onSave,
+  preview,
   submission,
+  token,
 }: {
   canEdit: boolean;
   formSchema: DataFormSchemaRead | null;
@@ -1603,11 +1799,13 @@ function ResponsesTab({
     responses: Record<string, unknown>,
     reason: string,
   ) => void;
+  preview: boolean;
   submission: SubmissionRecord;
+  token: string | null;
 }) {
   const rows = useMemo(
-    () => buildResponseRows(submission.payload_json, formSchema),
-    [formSchema, submission.payload_json],
+    () => buildResponseRows(submission.payload_json, formSchema, submission.redacted_fields),
+    [formSchema, submission.payload_json, submission.redacted_fields],
   );
   const [editing, setEditing] = useState(false);
   const [editReason, setEditReason] = useState("");
@@ -1633,7 +1831,7 @@ function ResponsesTab({
     const term = searchTerm.trim().toLowerCase();
     if (!term) return rows;
     return rows.filter((row) =>
-      [row.label, row.key, row.sectionTitle, row.type, formatResponseValue(row.value)]
+      [row.label, row.key, row.sectionTitle, row.type, formatResponseValue(row.value, row.type, row.options)]
         .join(" ")
         .toLowerCase()
         .includes(term),
@@ -1708,7 +1906,7 @@ function ResponsesTab({
                 variable: row.key,
                 section: row.sectionTitle,
                 source: row.source,
-                value: formatResponseValue(row.value),
+                value: row.redacted ? "Hidden (sensitive)" : formatResponseValue(row.value, row.type, row.options),
               })))}
               size="sm"
               variant="secondary"
@@ -1828,7 +2026,14 @@ function ResponsesTab({
                     </div>
                   </td>
                   <td className="border-b px-2.5 py-2 align-top">
-                    {editing && row.source !== "system" ? (
+                    {row.redacted ? (
+                      <div className="flex flex-col gap-1 rounded bg-background/65 p-2">
+                        <Badge tone="warning">Hidden (sensitive)</Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          Requires data export permission to view or edit.
+                        </span>
+                      </div>
+                    ) : editing && row.source !== "system" ? (
                       <ResponseEditor
                         onChange={(value) => updateEditValue(row.key, value)}
                         row={row}
@@ -1836,7 +2041,7 @@ function ResponsesTab({
                       />
                     ) : (
                       <div className="max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-2 leading-relaxed">
-                        {formatResponseValue(row.value) || <span className="text-muted-foreground">Blank</span>}
+                        {formatResponseValue(row.value, row.type, row.options) || <span className="text-muted-foreground">Blank</span>}
                       </div>
                     )}
                   </td>
@@ -1866,7 +2071,322 @@ function ResponsesTab({
           </p>
         </div>
       ) : null}
+      <RepeatGroupsPanel
+        formSchema={formSchema}
+        preview={preview}
+        submission={submission}
+        token={token}
+      />
     </div>
+  );
+}
+
+const DATA_EXPLORER_MAIN_VIEW = "__main__";
+
+function DataExplorerSection({
+  forms,
+  onOpenSubmission,
+  preview,
+  submissions,
+  token,
+}: {
+  forms: DataFormRead[];
+  onOpenSubmission: (submission: SubmissionRecord) => void;
+  preview: boolean;
+  submissions: SubmissionRecord[];
+  token: string | null;
+}) {
+  const [selectedFormId, setSelectedFormId] = useState("");
+  const [activeView, setActiveView] = useState(DATA_EXPLORER_MAIN_VIEW);
+
+  useEffect(() => {
+    if (!selectedFormId && forms.length) {
+      setSelectedFormId(forms[0].id);
+    }
+  }, [forms, selectedFormId]);
+
+  useEffect(() => {
+    setActiveView(DATA_EXPLORER_MAIN_VIEW);
+  }, [selectedFormId]);
+
+  const formSchemaQuery = useQuery({
+    queryKey: ["submissions-module", "data-explorer-schema", token, selectedFormId],
+    queryFn: () => getFormSchema(token ?? "", selectedFormId),
+    enabled: Boolean(token && !preview && selectedFormId),
+  });
+
+  const formRows = useMemo(
+    () => submissions.filter((submission) => submission.form_id === selectedFormId),
+    [submissions, selectedFormId],
+  );
+
+  const fieldColumns = useMemo(() => {
+    const schema = (formSchemaQuery.data?.schema ?? {}) as ParsedFormSchema;
+    const columns: { key: string; label: string; type: string; options?: FormFieldMeta["options"] }[] = [];
+    for (const section of schema.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.type === "repeat_group" || field.type === "repeatable_group") continue;
+        const key = field.variable_name || field.id;
+        columns.push({ key, label: field.label || humanizeKey(key), type: field.type, options: field.options });
+      }
+    }
+    return columns;
+  }, [formSchemaQuery.data]);
+
+  const repeatGroups = useMemo(() => {
+    const schema = (formSchemaQuery.data?.schema ?? {}) as ParsedFormSchema;
+    const groups: { id: string; label: string }[] = [];
+    for (const section of schema.sections ?? []) {
+      for (const field of section.fields ?? []) {
+        if (field.type === "repeat_group" || field.type === "repeatable_group") {
+          groups.push({ id: field.id, label: field.label || humanizeKey(field.id) });
+        }
+      }
+    }
+    return groups;
+  }, [formSchemaQuery.data]);
+
+  const formRepeatRowsQuery = useQuery({
+    queryKey: ["submissions-module", "data-explorer-repeat-rows", token, selectedFormId],
+    queryFn: () => listFormRepeatRows(token ?? "", selectedFormId),
+    enabled: Boolean(token && !preview && selectedFormId && repeatGroups.length > 0),
+  });
+
+  const activeRepeatGroup = repeatGroups.find((group) => group.id === activeView) ?? null;
+
+  const repeatRows = useMemo(
+    () => (formRepeatRowsQuery.data ?? []).filter((row) => row.field_id === activeView),
+    [formRepeatRowsQuery.data, activeView],
+  );
+
+  const repeatColumns = useMemo(
+    () => Array.from(new Set(repeatRows.flatMap((row) => Object.keys(row.row_json)))),
+    [repeatRows],
+  );
+
+  function exportMainCsv(): void {
+    const rows = formRows.map((submission) => {
+      const answers = normalizedSubmissionAnswers(submission.payload_json);
+      const redacted = new Set(submission.redacted_fields ?? []);
+      const row: Record<string, string | number | boolean | null> = {
+        "Submission ID": submission.client_submission_id,
+        Status: formatSubmissionStatus(submission.status),
+        Submitted: formatDateTime(submission.submitted_at),
+      };
+      for (const column of fieldColumns) {
+        row[column.label] = redacted.has(column.key)
+          ? "Hidden (sensitive)"
+          : formatResponseValue(answers[column.key], column.type, column.options);
+      }
+      return row;
+    });
+    downloadCsv(`atlas-data-${selectedFormId || "form"}.csv`, rows);
+  }
+
+  function exportRepeatCsv(): void {
+    if (!activeRepeatGroup) return;
+    const rows = repeatRows.map((repeatRow) => {
+      const row: Record<string, string | number | boolean | null> = {
+        "Submission ID": repeatRow.parent_submission_key,
+        Row: repeatRow.row_index + 1,
+      };
+      for (const column of repeatColumns) {
+        row[humanizeKey(column)] = formatResponseValue(repeatRow.row_json[column]);
+      }
+      return row;
+    });
+    downloadCsv(`atlas-data-${selectedFormId || "form"}-${activeRepeatGroup.id}.csv`, rows);
+  }
+
+  const exportDisabled =
+    activeView === DATA_EXPLORER_MAIN_VIEW
+      ? !formRows.length || !fieldColumns.length
+      : !repeatRows.length || !repeatColumns.length;
+
+  return (
+    <Panel
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <Select onChange={(event) => setSelectedFormId(event.target.value)} value={selectedFormId}>
+            <option value="">Select a form</option>
+            {forms.map((form) => (
+              <option key={form.id} value={form.id}>
+                {form.name}
+              </option>
+            ))}
+          </Select>
+          <Button
+            disabled={exportDisabled}
+            onClick={activeView === DATA_EXPLORER_MAIN_VIEW ? exportMainCsv : exportRepeatCsv}
+            size="sm"
+            variant="secondary"
+          >
+            <Download aria-hidden="true" />
+            Export CSV
+          </Button>
+        </div>
+      }
+      title="Field data by form"
+    >
+      {preview ? (
+        <p className="rounded-xl border bg-background/60 p-3 text-sm text-muted-foreground">
+          Connect to the API to browse field-level submission data.
+        </p>
+      ) : !selectedFormId ? (
+        <EmptyMini label="Select a form to view its collected data." />
+      ) : formSchemaQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading form schema…</p>
+      ) : (
+        <div className="space-y-3">
+          {repeatGroups.length ? (
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Data Explorer views">
+              <button
+                aria-selected={activeView === DATA_EXPLORER_MAIN_VIEW}
+                className={cn(
+                  "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                  activeView === DATA_EXPLORER_MAIN_VIEW
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-panel hover:bg-muted",
+                )}
+                onClick={() => setActiveView(DATA_EXPLORER_MAIN_VIEW)}
+                role="tab"
+                type="button"
+              >
+                Main data
+              </button>
+              {repeatGroups.map((group) => (
+                <button
+                  aria-selected={activeView === group.id}
+                  className={cn(
+                    "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                    activeView === group.id
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "bg-panel hover:bg-muted",
+                  )}
+                  key={group.id}
+                  onClick={() => setActiveView(group.id)}
+                  role="tab"
+                  type="button"
+                >
+                  {group.label} (repeat)
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {activeView === DATA_EXPLORER_MAIN_VIEW ? (
+            !fieldColumns.length ? (
+              <EmptyMini label="This form's published schema has no fields yet." />
+            ) : !formRows.length ? (
+              <EmptyMini label="No submissions recorded for this form yet." />
+            ) : (
+              <div className="max-h-[72vh] overflow-auto product-scrollbar">
+                <table className="min-w-max border-separate border-spacing-0 text-xs">
+                  <thead>
+                    <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                      <th className="sticky left-0 top-0 z-30 min-w-44 border-b bg-muted/90 px-2.5 py-2 font-semibold">
+                        Submission ID
+                      </th>
+                      <th className="sticky top-0 z-20 border-b bg-muted/90 px-2.5 py-2 font-semibold">Status</th>
+                      <th className="sticky top-0 z-20 whitespace-nowrap border-b bg-muted/90 px-2.5 py-2 font-semibold">
+                        Submitted
+                      </th>
+                      {fieldColumns.map((column) => (
+                        <th
+                          className="sticky top-0 z-20 min-w-40 border-b bg-muted/90 px-2.5 py-2 font-semibold"
+                          key={column.key}
+                        >
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formRows.map((submission) => {
+                      const answers = normalizedSubmissionAnswers(submission.payload_json);
+                      const redacted = new Set(submission.redacted_fields ?? []);
+                      return (
+                        <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
+                          <td className="sticky left-0 z-10 max-w-52 border-b bg-inherit px-2.5 py-2 font-medium">
+                            <button className="text-left text-primary" onClick={() => onOpenSubmission(submission)} type="button">
+                              {submission.client_submission_id}
+                            </button>
+                          </td>
+                          <td className="border-b px-2.5 py-2">
+                            <Badge tone={statusTone(submission.status)}>{formatSubmissionStatus(submission.status)}</Badge>
+                          </td>
+                          <td className="whitespace-nowrap border-b px-2.5 py-2 text-muted-foreground">
+                            {formatDateTime(submission.submitted_at)}
+                          </td>
+                          {fieldColumns.map((column) => (
+                            <td className="border-b px-2.5 py-2" key={column.key}>
+                              {redacted.has(column.key) ? (
+                                <Badge tone="warning">Hidden (sensitive)</Badge>
+                              ) : (
+                                formatResponseValue(answers[column.key], column.type, column.options) || (
+                                  <span className="text-muted-foreground">Blank</span>
+                                )
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : formRepeatRowsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading repeat group rows…</p>
+          ) : !repeatRows.length ? (
+            <EmptyMini label="No repeat group rows recorded for this form yet." />
+          ) : (
+            <div className="max-h-[72vh] overflow-auto product-scrollbar">
+              <table className="min-w-max border-separate border-spacing-0 text-xs">
+                <thead>
+                  <tr className="bg-muted/75 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                    <th className="sticky left-0 top-0 z-30 min-w-44 border-b bg-muted/90 px-2.5 py-2 font-semibold">
+                      Submission ID
+                    </th>
+                    <th className="sticky top-0 z-20 border-b bg-muted/90 px-2.5 py-2 font-semibold">Row</th>
+                    {repeatColumns.map((column) => (
+                      <th className="sticky top-0 z-20 min-w-40 border-b bg-muted/90 px-2.5 py-2 font-semibold" key={column}>
+                        {humanizeKey(column)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {repeatRows.map((row) => {
+                    const parentSubmission = formRows.find(
+                      (submission) => submission.client_submission_id === row.parent_submission_key,
+                    );
+                    return (
+                      <tr className="odd:bg-background even:bg-muted/20" key={row.id}>
+                        <td className="sticky left-0 z-10 max-w-52 border-b bg-inherit px-2.5 py-2 font-medium">
+                          {parentSubmission ? (
+                            <button className="text-left text-primary" onClick={() => onOpenSubmission(parentSubmission)} type="button">
+                              {row.parent_submission_key}
+                            </button>
+                          ) : (
+                            row.parent_submission_key
+                          )}
+                        </td>
+                        <td className="border-b px-2.5 py-2 text-muted-foreground">{row.row_index + 1}</td>
+                        {repeatColumns.map((column) => (
+                          <td className="border-b px-2.5 py-2" key={column}>
+                            {formatResponseValue(row.row_json[column]) || <span className="text-muted-foreground">Blank</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -2315,11 +2835,23 @@ function LocationTab({ submission }: { submission: SubmissionRecord }) {
   );
 }
 
+type SubmissionFiltersState = {
+  dateFrom: string;
+  dateTo: string;
+  formName: string;
+  projectName: string;
+  reviewer: string;
+};
+
 function SubmissionFilters({
   activeSection,
+  filters,
+  onChange,
   submissions,
 }: {
   activeSection: SubmissionSection;
+  filters: SubmissionFiltersState;
+  onChange: (patch: Partial<SubmissionFiltersState>) => void;
   submissions: SubmissionRecord[];
 }) {
   const projects = Array.from(
@@ -2332,9 +2864,18 @@ function SubmissionFilters({
     new Set(submissions.map((submission) => submission.reviewer)),
   );
   const sectionStatusLabel = submissionSections.find((section) => section.id === activeSection)?.label ?? "Current status";
+  const hasActiveFilters =
+    Boolean(filters.projectName) ||
+    Boolean(filters.formName) ||
+    Boolean(filters.reviewer) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-2 xl:grid-cols-5">
-      <Select>
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <Select
+        onChange={(event) => onChange({ projectName: event.target.value })}
+        value={filters.projectName}
+      >
         <option value="">All projects</option>
         {projects.map((project) => (
           <option key={project} value={project}>
@@ -2342,7 +2883,10 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
-      <Select>
+      <Select
+        onChange={(event) => onChange({ formName: event.target.value })}
+        value={filters.formName}
+      >
         <option value="">All forms</option>
         {forms.map((form) => (
           <option key={form} value={form}>
@@ -2353,7 +2897,10 @@ function SubmissionFilters({
       <Select disabled value={activeSection}>
         <option value={activeSection}>{sectionStatusLabel}</option>
       </Select>
-      <Select>
+      <Select
+        onChange={(event) => onChange({ reviewer: event.target.value })}
+        value={filters.reviewer}
+      >
         <option value="">All reviewers</option>
         {reviewers.map((reviewer) => (
           <option key={reviewer} value={reviewer}>
@@ -2361,7 +2908,30 @@ function SubmissionFilters({
           </option>
         ))}
       </Select>
-      <Input placeholder="Date range" />
+      <div className="col-span-2 flex gap-2 md:col-span-1">
+        <Input
+          aria-label="Submitted from"
+          onChange={(event) => onChange({ dateFrom: event.target.value })}
+          type="date"
+          value={filters.dateFrom}
+        />
+        <Input
+          aria-label="Submitted to"
+          onChange={(event) => onChange({ dateTo: event.target.value })}
+          type="date"
+          value={filters.dateTo}
+        />
+      </div>
+      <Button
+        disabled={!hasActiveFilters}
+        onClick={() =>
+          onChange({ dateFrom: "", dateTo: "", formName: "", projectName: "", reviewer: "" })
+        }
+        variant="ghost"
+      >
+        <SlidersHorizontal aria-hidden="true" />
+        Clear filters
+      </Button>
     </div>
   );
 }
@@ -2432,6 +3002,156 @@ function Signal({
         </Badge>
       ) : null}
     </div>
+  );
+}
+
+function CorrectionsPanel({
+  preview,
+  submission,
+  token,
+}: {
+  preview: boolean;
+  submission: SubmissionRecord;
+  token: string | null;
+}) {
+  const correctionsQuery = useQuery({
+    queryKey: ["submissions-module", "corrections", submission.id, token],
+    queryFn: () => listSubmissionCorrections(token ?? "", submission.id),
+    enabled: Boolean(token && !preview),
+  });
+  const corrections = correctionsQuery.data ?? [];
+
+  return (
+    <Panel title="Correction History">
+      {preview ? (
+        <p className="rounded-xl border bg-background/60 p-3 text-sm text-muted-foreground">
+          Connect to the API to view correction history for this submission.
+        </p>
+      ) : correctionsQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading corrections…</p>
+      ) : corrections.length ? (
+        <div className="overflow-x-auto product-scrollbar">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1.5">Field</th>
+                <th className="px-2 py-1.5">Old Value</th>
+                <th className="px-2 py-1.5">New Value</th>
+                <th className="px-2 py-1.5">Reason</th>
+                <th className="px-2 py-1.5">Corrected By</th>
+                <th className="px-2 py-1.5">Corrected At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {corrections.map((entry, index) => (
+                <tr
+                  className="border-t border-border/60"
+                  key={`${entry.submission_id}-${entry.corrected_field}-${index}`}
+                >
+                  <td className="px-2 py-1.5 font-medium">{entry.corrected_field}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">
+                    {formatCorrectionValue(entry.old_value)}
+                  </td>
+                  <td className="px-2 py-1.5">{formatCorrectionValue(entry.new_value)}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{entry.reason ?? "—"}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{entry.corrected_by ?? "—"}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{formatDateTime(entry.corrected_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyMini label="No corrections recorded for this submission." />
+      )}
+    </Panel>
+  );
+}
+
+function formatCorrectionValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function RepeatGroupsPanel({
+  formSchema,
+  preview,
+  submission,
+  token,
+}: {
+  formSchema: DataFormSchemaRead | null;
+  preview: boolean;
+  submission: SubmissionRecord;
+  token: string | null;
+}) {
+  const repeatRowsQuery = useQuery({
+    queryKey: ["submissions-module", "repeat-rows", submission.id, token],
+    queryFn: () => listSubmissionRepeatRows(token ?? "", submission.id),
+    enabled: Boolean(token && !preview),
+  });
+  const rows = repeatRowsQuery.data ?? [];
+  if (preview || repeatRowsQuery.isLoading || !rows.length) {
+    return null;
+  }
+
+  const schema = (formSchema?.schema ?? {}) as ParsedFormSchema;
+  const fieldLabels = new Map<string, string>();
+  for (const section of schema.sections ?? []) {
+    for (const field of section.fields ?? []) {
+      if (field.type === "repeat_group" || field.type === "repeatable_group") {
+        fieldLabels.set(field.id, field.label ?? field.id);
+      }
+    }
+  }
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const existing = groups.get(row.field_id) ?? [];
+    existing.push(row);
+    groups.set(row.field_id, existing);
+  }
+
+  return (
+    <>
+      {Array.from(groups.entries()).map(([fieldId, groupRows]) => {
+        const columns = Array.from(
+          new Set(groupRows.flatMap((row) => Object.keys(row.row_json))),
+        );
+        return (
+          <Panel key={fieldId} title={`Repeat group: ${fieldLabels.get(fieldId) ?? fieldId}`}>
+            <div className="overflow-x-auto product-scrollbar">
+              <table className="w-full min-w-[480px] text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-2 py-1.5">#</th>
+                    {columns.map((column) => (
+                      <th className="px-2 py-1.5" key={column}>
+                        {humanizeKey(column)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupRows
+                    .sort((a, b) => a.row_index - b.row_index)
+                    .map((row) => (
+                      <tr className="border-t border-border/60" key={row.id}>
+                        <td className="px-2 py-1.5 text-muted-foreground">{row.row_index + 1}</td>
+                        {columns.map((column) => (
+                          <td className="px-2 py-1.5" key={column}>
+                            {formatCorrectionValue(row.row_json[column])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        );
+      })}
+    </>
   );
 }
 

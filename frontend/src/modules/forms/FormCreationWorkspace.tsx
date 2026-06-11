@@ -41,10 +41,12 @@ import {
   listFieldOfficers,
   listProjects,
   listSurveys,
+  listTeams,
   updateForm,
   updateFormControls,
   type FieldOfficerRead,
   type FormControlsSettings,
+  type TeamRead,
 } from "@/lib/api";
 import {
   createField,
@@ -87,6 +89,7 @@ type PublishSuccessSummary = {
   formName: string;
   projectName: string;
   selectedOfficerCount: number;
+  selectedTeamCount: number;
   version: number;
 };
 
@@ -113,6 +116,7 @@ type FormControlsDraft = {
   approvalEscalationHours: number;
   assignmentMode: "assigned_only" | "project_team" | "open_link";
   assignedFieldOfficerIds: string[];
+  assignedTeamIds: string[];
   auditTrail: boolean;
   autoAssignmentRule: string;
   backCheckRequired: boolean;
@@ -325,13 +329,124 @@ const setupDefaults: FormSetupDraft = {
   projectName: projectOptions[0] ?? "Project",
 };
 
-function MobileFormPreview({ form }: { form: DynamicForm }) {
+type PreviewFrame = "mobile" | "tablet" | "web";
+
+function MobileFormPreview({
+  form,
+  frame = "mobile",
+}: {
+  form: DynamicForm;
+  frame?: PreviewFrame;
+}) {
   const pages = form.pages?.length
     ? form.pages
     : [{ id: "default-page", title: "Page 1" }];
+  const isWeb = frame === "web";
+
+  const fieldList = (
+    <div
+      className={cn(
+        "mt-3 space-y-3",
+        isWeb && "space-y-4",
+      )}
+    >
+      {pages.map((page) => {
+        const pageSections = form.sections.filter(
+          (section) => section.pageId === page.id,
+        );
+        return (
+          <section className="space-y-3" key={page.id}>
+            {pageSections.map((section) => {
+              const fields = form.fields.filter(
+                (field) => field.sectionId === section.id,
+              );
+              return (
+                <div
+                  className="rounded-xl border bg-panel p-3"
+                  key={section.id}
+                >
+                  <h4 className="text-sm font-semibold">{section.title}</h4>
+                  <div
+                    className={cn(
+                      "mt-3 space-y-3",
+                      isWeb && "space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0",
+                    )}
+                  >
+                    {fields.map((field, index) => (
+                      <label
+                        className="block rounded-lg border bg-background p-3 text-xs"
+                        key={field.id}
+                      >
+                        <span className="flex items-start gap-1.5 font-semibold">
+                          <span className="text-muted-foreground">
+                            {index + 1}.
+                          </span>
+                          <span>{field.label}</span>
+                          {field.required ? (
+                            <span className="text-danger">*</span>
+                          ) : null}
+                        </span>
+                        {field.hint ? (
+                          <span className="mt-1 block text-[11px] text-muted-foreground">
+                            {field.hint}
+                          </span>
+                        ) : null}
+                        <MobilePreviewInput field={field} />
+                      </label>
+                    ))}
+                    {!fields.length ? (
+                      <div className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
+                        No questions in this section yet.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
+      {!form.fields.length ? (
+        <div className="rounded-xl border border-dashed bg-panel p-5 text-center text-xs text-muted-foreground">
+          Add a question to see it in preview.
+        </div>
+      ) : null}
+    </div>
+  );
+
+  if (isWeb) {
+    return (
+      <div className="w-full overflow-hidden rounded-xl border bg-background shadow-elevated">
+        <div className="flex items-center justify-between border-b bg-panel px-4 py-2.5 text-xs font-semibold">
+          <span>{form.name}</span>
+          <span className="text-muted-foreground">Preview</span>
+        </div>
+        <div className="max-h-[72vh] overflow-y-auto bg-muted/30 p-4 product-scrollbar">
+          <div className="rounded-xl border bg-panel p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+              Draft form
+            </p>
+            <h3 className="mt-1 text-base font-semibold">{form.name}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {form.fields.length} question
+              {form.fields.length === 1 ? "" : "s"} ready for testing.
+            </p>
+          </div>
+          {fieldList}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-[320px] overflow-hidden rounded-[2rem] border-[10px] border-foreground bg-background shadow-elevated">
+    <div
+      className={cn(
+        "overflow-hidden border-foreground bg-background shadow-elevated",
+        frame === "tablet"
+          ? "w-[480px] rounded-2xl border-[6px]"
+          : "w-[320px] rounded-[2rem] border-[10px]",
+      )}
+    >
       <div className="flex items-center justify-between border-b bg-foreground px-4 py-2 text-[11px] font-semibold text-background">
         <span>Atlas FieldOps</span>
         <span>Preview</span>
@@ -347,64 +462,7 @@ function MobileFormPreview({ form }: { form: DynamicForm }) {
             ready for mobile testing.
           </p>
         </div>
-        <div className="mt-3 space-y-3">
-          {pages.map((page) => {
-            const pageSections = form.sections.filter(
-              (section) => section.pageId === page.id,
-            );
-            return (
-              <section className="space-y-3" key={page.id}>
-                {pageSections.map((section) => {
-                  const fields = form.fields.filter(
-                    (field) => field.sectionId === section.id,
-                  );
-                  return (
-                    <div
-                      className="rounded-xl border bg-panel p-3"
-                      key={section.id}
-                    >
-                      <h4 className="text-sm font-semibold">{section.title}</h4>
-                      <div className="mt-3 space-y-3">
-                        {fields.map((field, index) => (
-                          <label
-                            className="block rounded-lg border bg-background p-3 text-xs"
-                            key={field.id}
-                          >
-                            <span className="flex items-start gap-1.5 font-semibold">
-                              <span className="text-muted-foreground">
-                                {index + 1}.
-                              </span>
-                              <span>{field.label}</span>
-                              {field.required ? (
-                                <span className="text-danger">*</span>
-                              ) : null}
-                            </span>
-                            {field.hint ? (
-                              <span className="mt-1 block text-[11px] text-muted-foreground">
-                                {field.hint}
-                              </span>
-                            ) : null}
-                            <MobilePreviewInput field={field} />
-                          </label>
-                        ))}
-                        {!fields.length ? (
-                          <div className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
-                            No questions in this section yet.
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
-            );
-          })}
-          {!form.fields.length ? (
-            <div className="rounded-xl border border-dashed bg-panel p-5 text-center text-xs text-muted-foreground">
-              Add a question to see it in mobile preview.
-            </div>
-          ) : null}
-        </div>
+        {fieldList}
       </div>
     </div>
   );
@@ -722,6 +780,7 @@ const defaultControlsDraft: FormControlsDraft = {
   approvalEscalationHours: 48,
   assignmentMode: "assigned_only",
   assignedFieldOfficerIds: [],
+  assignedTeamIds: [],
   auditTrail: true,
   autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
   backCheckRequired: false,
@@ -866,6 +925,35 @@ const previewFieldOfficers: FieldOfficerRead[] = [
     supervisor_name: "Demo Supervisor",
     supervisor_user_id: "preview-supervisor-demo",
     user_id: "preview-user-james",
+  },
+];
+
+const previewTeams: TeamRead[] = [
+  {
+    code: "TEAM-NW",
+    created_at: "2024-01-01T00:00:00Z",
+    department_id: null,
+    id: "preview-team-nw",
+    is_active: true,
+    manager_user_id: null,
+    name: "North West Field Team",
+    organization_unit_id: null,
+    project_id: null,
+    region: "North West",
+    team_type: "field",
+  },
+  {
+    code: "TEAM-CE",
+    created_at: "2024-01-01T00:00:00Z",
+    department_id: null,
+    id: "preview-team-ce",
+    is_active: true,
+    manager_user_id: null,
+    name: "Central Field Team",
+    organization_unit_id: null,
+    project_id: null,
+    region: "Central",
+    team_type: "field",
   },
 ];
 
@@ -1489,13 +1577,17 @@ function controlsDraftToApiControls(
         controls.assignmentMode === "assigned_only"
           ? controls.assignedFieldOfficerIds
           : [],
-      assigned_at: controls.assignedFieldOfficerIds.length
+      team_ids:
+        controls.assignmentMode === "assigned_only"
+          ? controls.assignedTeamIds
+          : [],
+      assigned_at: controls.assignedFieldOfficerIds.length || controls.assignedTeamIds.length
         ? new Date().toISOString()
         : null,
       assigned_by_user_id: null,
-      notes: controls.assignedFieldOfficerIds.length
-        ? "Specific field officers selected in form controls."
-        : "No specific field officer selection saved.",
+      notes: controls.assignedFieldOfficerIds.length || controls.assignedTeamIds.length
+        ? "Specific teams or field officers selected in form controls."
+        : "No specific team or field officer selection saved.",
     },
     entity_controls: {
       linked_to_entity:
@@ -2273,6 +2365,7 @@ function controlsDraftFromApiControls(
           ? "assigned_only"
           : "project_team",
     assignedFieldOfficerIds: stringArrayValue(collectionAccess.field_officer_ids),
+    assignedTeamIds: stringArrayValue(collectionAccess.team_ids),
     auditTrail: booleanValue(controls.audit && asRecord(controls.audit).immutable, true),
     autoAssignmentRule: firstRuleText(instrument.auto_assignment_rules),
     backCheckRequired: booleanValue(
@@ -3494,15 +3587,15 @@ export function validateFormForPublish(
       category: "Assignment rules",
       complete:
         controls.assignmentMode === "assigned_only"
-          ? controls.assignedFieldOfficerIds.length > 0
+          ? controls.assignedFieldOfficerIds.length > 0 || controls.assignedTeamIds.length > 0
           : Boolean(controls.assignmentMode),
       description:
         mobileCollection
-          ? "Mobile or web-and-mobile forms restricted to assigned users must select the field officers who should receive the form."
-          : "Choose whether this form is restricted to selected field officers, the project team, or controlled web entry.",
+          ? "Mobile or web-and-mobile forms restricted to assigned users must select the field officers or teams who should receive the form."
+          : "Choose whether this form is restricted to selected field officers/teams, the project team, or controlled web entry.",
       id: "assignment",
       jumpTo: "controls",
-      label: "Field officer access configured",
+      label: "Field officer or team access configured",
       required: controls.assignmentMode === "assigned_only" && mobileCollection,
       warning: !(controls.assignmentMode === "assigned_only" && mobileCollection),
     }),
@@ -4598,6 +4691,11 @@ export function FormCreationWorkspace({
     queryFn: () => listFieldOfficers(token ?? ""),
     queryKey: ["form-builder-field-officers", token],
   });
+  const teamsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listTeams(token ?? ""),
+    queryKey: ["form-builder-teams", token],
+  });
   const tenantProjects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   const tenantSurveys = useMemo(() => surveysQuery.data ?? [], [surveysQuery.data]);
   const fieldOfficerOptions = useMemo(
@@ -4606,6 +4704,13 @@ export function FormCreationWorkspace({
         .filter((officer) => officer.is_active)
         .sort((first, second) => first.full_name.localeCompare(second.full_name)),
     [fieldOfficersQuery.data, preview],
+  );
+  const teamOptions = useMemo(
+    () =>
+      (preview ? previewTeams : teamsQuery.data ?? [])
+        .filter((team) => team.is_active)
+        .sort((first, second) => first.name.localeCompare(second.name)),
+    [teamsQuery.data, preview],
   );
   const formSchemaQuery = useQuery({
     enabled: Boolean(initialForm && token && !preview),
@@ -4683,7 +4788,8 @@ export function FormCreationWorkspace({
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
   const [publishSuccessSummary, setPublishSuccessSummary] =
     useState<PublishSuccessSummary | null>(null);
-  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [previewDeviceMode, setPreviewDeviceMode] =
+    useState<PreviewFrame>("mobile");
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const selectedProject = useMemo(
     () =>
@@ -4888,6 +4994,37 @@ export function FormCreationWorkspace({
     setControlsDraft((current) => ({
       ...current,
       assignedFieldOfficerIds: [],
+    }));
+  }
+
+  function toggleAssignedTeam(teamId: string): void {
+    setControlsDraft((current) => {
+      const selected = new Set(current.assignedTeamIds);
+      if (selected.has(teamId)) {
+        selected.delete(teamId);
+      } else {
+        selected.add(teamId);
+      }
+      return {
+        ...current,
+        assignmentMode: "assigned_only",
+        assignedTeamIds: Array.from(selected),
+      };
+    });
+  }
+
+  function selectAllTeams(): void {
+    setControlsDraft((current) => ({
+      ...current,
+      assignmentMode: "assigned_only",
+      assignedTeamIds: teamOptions.map((team) => team.id),
+    }));
+  }
+
+  function clearAssignedTeams(): void {
+    setControlsDraft((current) => ({
+      ...current,
+      assignedTeamIds: [],
     }));
   }
 
@@ -5696,6 +5833,10 @@ export function FormCreationWorkspace({
             controlsDraft.assignmentMode === "assigned_only"
               ? controlsDraft.assignedFieldOfficerIds.length
               : 0,
+          selectedTeamCount:
+            controlsDraft.assignmentMode === "assigned_only"
+              ? controlsDraft.assignedTeamIds.length
+              : 0,
           version: saved.current_version,
         });
         setPublishSuccessOpen(true);
@@ -5703,7 +5844,7 @@ export function FormCreationWorkspace({
           assignmentDelivery.deliveryErrors.length
             ? `${saved.name} was published, but ${assignmentDelivery.deliveryErrors.length} field officer assignment needs attention.`
             : controlsDraft.assignmentMode === "assigned_only"
-              ? `${saved.name} was published and sent to ${assignmentDelivery.deliveredOfficerCount} selected field officer${assignmentDelivery.deliveredOfficerCount === 1 ? "" : "s"}.`
+              ? `${saved.name} was published and sent to ${assignmentDelivery.deliveredOfficerCount} selected field officer${assignmentDelivery.deliveredOfficerCount === 1 ? "" : "s"}${controlsDraft.assignedTeamIds.length ? `, plus members of ${controlsDraft.assignedTeamIds.length} selected team${controlsDraft.assignedTeamIds.length === 1 ? "" : "s"}` : ""}.`
               : `${saved.name} was published under ${selectedProject?.name ?? "the selected project"}.`,
         );
         setStage("review");
@@ -5751,6 +5892,10 @@ export function FormCreationWorkspace({
       selectedOfficerCount:
         controlsDraft.assignmentMode === "assigned_only"
           ? controlsDraft.assignedFieldOfficerIds.length
+          : 0,
+      selectedTeamCount:
+        controlsDraft.assignmentMode === "assigned_only"
+          ? controlsDraft.assignedTeamIds.length
           : 0,
       version: nextPublishedForm.activeVersion,
     });
@@ -5915,7 +6060,7 @@ export function FormCreationWorkspace({
                   Next: Configure Controls
                 </Button>
                 <Button
-                  onClick={() => setMobilePreviewOpen(true)}
+                  onClick={() => setStage("preview")}
                   size="sm"
                   variant="secondary"
                 >
@@ -6510,17 +6655,6 @@ export function FormCreationWorkspace({
           />
         </section>
       ) : null}
-
-      <Modal
-        description="Mobile view opens as a test-only preview. It does not create a real submission."
-        onOpenChange={setMobilePreviewOpen}
-        open={mobilePreviewOpen}
-        title="Mobile form preview"
-      >
-        <div className="flex justify-center p-5">
-          {draftForm ? <MobileFormPreview form={draftForm} /> : null}
-        </div>
-      </Modal>
 
       {stage === "controls" ? (
         <section className="space-y-3">
@@ -7594,6 +7728,10 @@ export function FormCreationWorkspace({
                           event.target.value === "assigned_only"
                             ? controlsDraft.assignedFieldOfficerIds
                             : [],
+                        assignedTeamIds:
+                          event.target.value === "assigned_only"
+                            ? controlsDraft.assignedTeamIds
+                            : [],
                       })
                     }
                     value={controlsDraft.assignmentMode}
@@ -7674,6 +7812,81 @@ export function FormCreationWorkspace({
                           No active field officers found. Create field officer
                           users in Users & Teams or Field Operations before
                           assigning this form.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                {controlsDraft.assignmentMode === "assigned_only" ? (
+                  <div className="sm:col-span-2 rounded-lg border bg-background p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Teams who can collect this form
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          Everyone on a selected team will be prepared to
+                          collect this form, in addition to any field
+                          officers picked above.
+                        </p>
+                      </div>
+                      <Badge tone={controlsDraft.assignedTeamIds.length ? "success" : "warning"}>
+                        {controlsDraft.assignedTeamIds.length} selected
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        disabled={!teamOptions.length}
+                        onClick={selectAllTeams}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        Select all
+                      </Button>
+                      <Button
+                        disabled={!controlsDraft.assignedTeamIds.length}
+                        onClick={clearAssignedTeams}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                    <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1 product-scrollbar">
+                      {teamsQuery.isLoading && !preview ? (
+                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                          Loading teams...
+                        </div>
+                      ) : teamOptions.length ? (
+                        teamOptions.map((team) => (
+                          <label
+                            className="flex cursor-pointer items-start gap-3 rounded-md border bg-panel px-3 py-2 transition hover:border-primary/40 hover:bg-primary/5"
+                            key={team.id}
+                          >
+                            <input
+                              checked={controlsDraft.assignedTeamIds.includes(team.id)}
+                              className="mt-1 h-4 w-4"
+                              onChange={() => toggleAssignedTeam(team.id)}
+                              type="checkbox"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold">
+                                {team.name}
+                              </span>
+                              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                {[team.code, team.team_type, team.region]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <div className="rounded-md border border-dashed bg-panel/70 p-3 text-sm text-muted-foreground">
+                          No active teams found. Create teams in Users & Teams
+                          before assigning this form.
                         </div>
                       )}
                     </div>
@@ -8812,69 +9025,39 @@ export function FormCreationWorkspace({
               "Preview submissions are not counted as real submissions.",
             ]}
           />
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="flex flex-wrap gap-1.5 rounded-lg border bg-panel p-1.5">
             {(
               [
-                [
-                  "Web Preview",
-                  MonitorSmartphone,
-                  "Desktop staff collection and manager review.",
-                ],
-                [
-                  "Tablet Preview",
-                  TabletSmartphone,
-                  "Supervisor-friendly operational layout.",
-                ],
-                [
-                  "Mobile Preview",
-                  Smartphone,
-                  "Enumerator mode for offline collection.",
-                ],
-              ] satisfies [string, LucideIcon, string][]
-            ).map(([title, Icon, description]) => (
-              <div
-                className="rounded-xl border bg-panel p-3.5 shadow-line"
-                key={String(title)}
+                ["web", MonitorSmartphone, "Web"],
+                ["tablet", TabletSmartphone, "Tablet"],
+                ["mobile", Smartphone, "Mobile"],
+              ] satisfies [PreviewFrame, LucideIcon, string][]
+            ).map(([mode, Icon, label]) => (
+              <button
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition",
+                  previewDeviceMode === mode
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-transparent bg-background hover:border-primary/40 hover:bg-primary/5",
+                )}
+                key={mode}
+                onClick={() => setPreviewDeviceMode(mode)}
+                type="button"
               >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{title}</h3>
-                  <Icon aria-hidden="true" className="text-primary" size={19} />
-                </div>
-                <div className="mt-4 rounded-xl border bg-background/70 p-4">
-                  <p className="text-sm font-semibold">
-                    {draftForm?.name ?? setup.formName}
-                  </p>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    Preview mode
-                    <HelpHint label={`About ${title}`} title={title}>
-                      {description}
-                    </HelpHint>
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    {(draftForm?.fields ?? []).slice(0, 4).map((field) => (
-                      <div
-                        className="rounded-lg border bg-panel px-3 py-2"
-                        key={field.id}
-                      >
-                        <p className="text-sm font-medium">
-                          {field.label}
-                          {field.required ? " *" : ""}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {field.type} · {field.variableName}
-                        </p>
-                      </div>
-                    ))}
-                    {draftForm?.fields.length ? null : (
-                      <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-5 text-center text-sm text-muted-foreground">
-                        No questions yet. Return to Builder and add questions.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                <Icon aria-hidden="true" size={15} />
+                {label}
+              </button>
             ))}
           </div>
+          {draftForm?.fields.length ? (
+            <div className="flex justify-center">
+              <MobileFormPreview form={draftForm} frame={previewDeviceMode} />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-10 text-center text-sm text-muted-foreground">
+              No questions yet. Return to Builder and add questions.
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -9193,7 +9376,7 @@ export function FormCreationWorkspace({
                 {publishSuccessSummary.projectName}.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border bg-background/70 p-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Published version
@@ -9208,6 +9391,14 @@ export function FormCreationWorkspace({
                 </p>
                 <p className="mt-1 text-xl font-semibold">
                   {publishSuccessSummary.selectedOfficerCount}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-background/70 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Selected teams
+                </p>
+                <p className="mt-1 text-xl font-semibold">
+                  {publishSuccessSummary.selectedTeamCount}
                 </p>
               </div>
               <div className="rounded-lg border bg-background/70 p-3">
@@ -9230,12 +9421,20 @@ export function FormCreationWorkspace({
                   ))}
                 </ul>
               </div>
-            ) : (
+            ) : null}
+            {publishSuccessSummary.selectedTeamCount ? (
+              <div className="rounded-lg border bg-background/70 p-3 text-sm text-muted-foreground">
+                Members of {publishSuccessSummary.selectedTeamCount} selected
+                team{publishSuccessSummary.selectedTeamCount === 1 ? "" : "s"}{" "}
+                will see this form the next time they sync the mobile app.
+              </div>
+            ) : null}
+            {!publishSuccessSummary.deliveryErrors.length && !publishSuccessSummary.selectedTeamCount ? (
               <div className="rounded-lg border bg-background/70 p-3 text-sm text-muted-foreground">
                 The published form is available for the selected field officers
                 through Field Operations and mobile sync.
               </div>
-            )}
+            ) : null}
             <div className="flex flex-wrap justify-end gap-2">
               <Button
                 onClick={() => setPublishSuccessOpen(false)}

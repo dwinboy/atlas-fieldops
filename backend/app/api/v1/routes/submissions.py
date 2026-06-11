@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
-from app.core.permissions import Permission
+from app.core.permissions import Permission, has_permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import (
+    CorrectionLogEntryRead,
     EntityFrequencyValidationRead,
     EntityFrequencyValidationRequest,
     ImportCleaningBulkUpdateRequest,
@@ -17,14 +18,23 @@ from app.schemas.collection import (
     SubmissionCreate,
     SubmissionHistoryRead,
     SubmissionRead,
+    SubmissionRepeatRowRead,
     SubmissionReviewAction,
     SubmissionResponsesUpdate,
     SyncBatchCreate,
     SyncBatchRead,
 )
-from app.services.collection import CollectionNotFoundError, InvalidWorkflowTransitionError, SubmissionService
+from app.services.collection import CollectionConflictError, CollectionNotFoundError, InvalidWorkflowTransitionError, SubmissionService
 
 router = APIRouter()
+
+
+def principal_can_view_sensitive(principal: CurrentPrincipal) -> bool:
+    return (
+        principal.platform_admin
+        or has_permission(principal.roles, Permission.DATA_EXPORT)
+        or Permission.DATA_EXPORT.value in set(principal.permissions)
+    )
 
 
 @router.post(
@@ -37,17 +47,9 @@ async def validate_entity_frequency(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_CREATE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> EntityFrequencyValidationRead:
-    _ = principal, session
-    if payload.frequency_rule == "unlimited" or payload.entity_id is None:
-        return EntityFrequencyValidationRead(
-            allowed=True,
-            decision="allowed",
-            reason="This form allows repeat submissions or no entity was selected.",
-        )
-    return EntityFrequencyValidationRead(
-        allowed=True,
-        decision="allowed",
-        reason="No existing submission was found for the selected entity and frequency scope.",
+    return await SubmissionService(session).validate_entity_frequency(
+        organization_id=UUID(principal.organization_id),
+        payload=payload,
     )
 
 
@@ -63,6 +65,7 @@ async def list_submissions(
             status=status_filter,
             actor_user_id=UUID(principal.user_id),
             scope_type=principal.scope_type,
+            can_view_sensitive=principal_can_view_sensitive(principal),
         )
     )
 
@@ -128,6 +131,9 @@ async def create_submission(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CollectionConflictError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise
@@ -194,6 +200,63 @@ async def submission_history(
         organization_id=UUID(principal.organization_id),
         submission_id=submission_id,
     )
+
+
+@router.get(
+    "/{submission_id}/corrections",
+    response_model=list[CorrectionLogEntryRead],
+    summary="Read submission correction history log",
+)
+async def submission_corrections(
+    submission_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[object]:
+    try:
+        return await SubmissionService(session).list_corrections(
+            organization_id=UUID(principal.organization_id),
+            submission_id=submission_id,
+        )
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{submission_id}/repeat-groups",
+    response_model=list[SubmissionRepeatRowRead],
+    summary="Read submission repeat group rows",
+)
+async def submission_repeat_groups(
+    submission_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[SubmissionRepeatRowRead]:
+    try:
+        return await SubmissionService(session).list_repeat_rows(
+            organization_id=UUID(principal.organization_id),
+            submission_id=submission_id,
+        )
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/by-form/{form_id}/repeat-groups",
+    response_model=list[SubmissionRepeatRowRead],
+    summary="Read repeat group rows for all submissions of a form",
+)
+async def form_repeat_groups(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[SubmissionRepeatRowRead]:
+    try:
+        return await SubmissionService(session).list_repeat_rows_for_form(
+            organization_id=UUID(principal.organization_id),
+            form_id=form_id,
+        )
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/sync", response_model=SyncBatchRead, summary="Process an offline mobile sync batch")

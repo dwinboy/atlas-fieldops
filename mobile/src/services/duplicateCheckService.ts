@@ -5,7 +5,7 @@ function normalize(value: string | null | undefined): string {
 }
 
 export class DuplicateCheckService {
-  check(input: DuplicateCheckInput, candidates: MobileEntity[]): DuplicateCheckResult[] {
+  check(input: DuplicateCheckInput, candidates: MobileEntity[], threshold = 60): DuplicateCheckResult[] {
     return candidates
       .map((entity) => {
         const matchedFields: string[] = [];
@@ -37,7 +37,7 @@ export class DuplicateCheckService {
           level: score >= 90 ? "LikelyDuplicate" : score >= 60 ? "PossibleDuplicate" : "NoMatch",
         } satisfies DuplicateCheckResult;
       })
-      .filter((result) => result.level !== "NoMatch")
+      .filter((result) => result.score >= threshold)
       .sort((a, b) => b.score - a.score);
   }
 }

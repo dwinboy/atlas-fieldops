@@ -395,6 +395,9 @@ export type MobileFormEntitySettings = {
   allowsAnonymousSubmission: boolean;
   frequencyRule: FrequencyRule;
   prefillMappings: PrefillMapping[];
+  duplicateMode: "exact" | "fuzzy" | "weighted";
+  duplicateThreshold: number;
+  duplicateAction: "block" | "warn" | "review";
 };
 
 export type MobileForm = LocalRecord & {

@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import (
@@ -17,12 +17,14 @@ from app.models.collection import (
     OfficerAssignment,
     Project,
     Submission,
+    SubmissionRepeatRow,
     SubmissionStatusHistory,
     SubmissionVersion,
     Survey,
     SurveyTeamMember,
 )
 from app.models.identity import User
+from app.models.operations import Beneficiary
 
 
 class FieldOfficerRepository:
@@ -157,6 +159,7 @@ class FormRepository:
         description: str | None,
         schema_json: dict[str, Any],
         publish: bool,
+        form_type: str | None = None,
     ) -> tuple[DataForm, DataFormVersion]:
         status = "published" if publish else "draft"
         form = DataForm(
@@ -167,6 +170,7 @@ class FormRepository:
             name=name,
             slug=slug,
             description=description,
+            form_type=form_type,
             status=status,
             current_version=1,
         )
@@ -179,6 +183,7 @@ class FormRepository:
             schema_json=schema_json,
             offline_compatible=True,
             published_at=datetime.now(UTC) if publish else None,
+            published_by_user_id=created_by_user_id if publish else None,
         )
         self.session.add(version)
         await self.session.flush()
@@ -224,19 +229,29 @@ class FormRepository:
         await self.session.flush()
         return form
 
+    async def update_status(self, *, form: DataForm, status: str) -> DataForm:
+        form.status = status
+        form.updated_at = datetime.now(UTC)
+        await self.session.flush()
+        return form
+
     async def save_schema_revision(
         self,
         *,
         form: DataForm,
+        actor_user_id: UUID,
         name: str,
         description: str | None,
         schema_json: dict[str, Any],
         publish: bool,
+        form_type: str | None = None,
     ) -> tuple[DataForm, DataFormVersion]:
         now = datetime.now(UTC)
         form.name = name
         form.description = description
         form.updated_at = now
+        if form_type is not None:
+            form.form_type = form_type
 
         if form.status == "published":
             next_version = form.current_version + 1
@@ -247,6 +262,7 @@ class FormRepository:
                 schema_json=schema_json,
                 offline_compatible=True,
                 published_at=now if publish else None,
+                published_by_user_id=actor_user_id if publish else None,
             )
             self.session.add(version)
             form.current_version = next_version
@@ -266,6 +282,7 @@ class FormRepository:
                 schema_json=schema_json,
                 offline_compatible=True,
                 published_at=now if publish else None,
+                published_by_user_id=actor_user_id if publish else None,
             )
             self.session.add(version)
         else:
@@ -273,6 +290,7 @@ class FormRepository:
             version.offline_compatible = True
             if publish:
                 version.published_at = now
+                version.published_by_user_id = actor_user_id
         form.status = "published" if publish else "draft"
         await self.session.flush()
         return form, version
@@ -442,6 +460,42 @@ class SubmissionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def find_conflicting_submission_for_frequency(
+        self,
+        *,
+        organization_id: UUID,
+        entity_id: UUID,
+        form_id: UUID,
+        frequency_rule: str,
+        frequency_period: str | None = None,
+        event_id: str | None = None,
+        project_id: UUID | None = None,
+        exclude_submission_id: UUID | None = None,
+    ) -> Submission | None:
+        if frequency_rule == "unlimited":
+            return None
+        if frequency_rule == "once_per_event" and not event_id:
+            return None
+        if frequency_rule in {"once_per_year", "once_per_season", "once_per_quarter", "once_per_month"} and not frequency_period:
+            return None
+        query = select(Submission).where(
+            Submission.organization_id == organization_id,
+            Submission.form_id == form_id,
+            Submission.entity_id == entity_id,
+            Submission.deleted_at.is_(None),
+            Submission.status != "rejected",
+        )
+        if exclude_submission_id is not None:
+            query = query.where(Submission.id != exclude_submission_id)
+        if frequency_rule == "once_per_project":
+            query = query.where(Submission.project_id == project_id)
+        elif frequency_rule == "once_per_event":
+            query = query.where(Submission.event_id == event_id)
+        elif frequency_rule in {"once_per_year", "once_per_season", "once_per_quarter", "once_per_month"}:
+            query = query.where(Submission.frequency_period == frequency_period)
+        result = await self.session.execute(query.order_by(Submission.sync_received_at.desc()).limit(1))
+        return result.scalar_one_or_none()
+
     async def create(
         self,
         *,
@@ -573,6 +627,13 @@ class SubmissionRepository:
         submission.status = to_status
         if to_status == "resubmitted":
             submission.server_sequence += 1
+        now = datetime.now(UTC)
+        submission.reviewed_by_user_id = actor_user_id
+        submission.reviewed_at = now
+        submission.review_comments = comment
+        if to_status == "approved":
+            submission.approved_by_user_id = actor_user_id
+            submission.approved_at = now
         await self.add_status_history(
             organization_id=submission.organization_id,
             submission_id=submission.id,
@@ -650,6 +711,80 @@ class SubmissionRepository:
                 SubmissionStatusHistory.submission_id == submission_id,
             )
             .order_by(SubmissionStatusHistory.created_at)
+        )
+        return list(result.scalars())
+
+    async def beneficiary_codes(self, *, organization_id: UUID, entity_ids: set[UUID]) -> dict[UUID, str]:
+        if not entity_ids:
+            return {}
+        result = await self.session.execute(
+            select(Beneficiary.id, Beneficiary.beneficiary_uid).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id.in_(entity_ids),
+            )
+        )
+        return {row.id: row.beneficiary_uid for row in result.all()}
+
+    async def field_officer_names(self, *, organization_id: UUID, field_officer_ids: set[UUID]) -> dict[UUID, str]:
+        if not field_officer_ids:
+            return {}
+        result = await self.session.execute(
+            select(FieldOfficerProfile.id, User.full_name)
+            .join(User, User.id == FieldOfficerProfile.user_id)
+            .where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.id.in_(field_officer_ids),
+            )
+        )
+        return {row.id: row.full_name for row in result.all()}
+
+    async def replace_repeat_rows(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        field_id: str,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        await self.session.execute(
+            delete(SubmissionRepeatRow).where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                SubmissionRepeatRow.submission_id == submission.id,
+                SubmissionRepeatRow.field_id == field_id,
+            )
+        )
+        for index, row in enumerate(rows):
+            self.session.add(
+                SubmissionRepeatRow(
+                    organization_id=organization_id,
+                    submission_id=submission.id,
+                    parent_submission_key=submission.client_submission_id,
+                    field_id=field_id,
+                    row_index=index,
+                    row_json=row,
+                )
+            )
+
+    async def list_repeat_rows(self, *, organization_id: UUID, submission_id: UUID) -> list[SubmissionRepeatRow]:
+        result = await self.session.execute(
+            select(SubmissionRepeatRow)
+            .where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                SubmissionRepeatRow.submission_id == submission_id,
+            )
+            .order_by(SubmissionRepeatRow.field_id, SubmissionRepeatRow.row_index)
+        )
+        return list(result.scalars())
+
+    async def list_repeat_rows_for_form(self, *, organization_id: UUID, form_id: UUID) -> list[SubmissionRepeatRow]:
+        result = await self.session.execute(
+            select(SubmissionRepeatRow)
+            .join(Submission, Submission.id == SubmissionRepeatRow.submission_id)
+            .where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                Submission.form_id == form_id,
+            )
+            .order_by(SubmissionRepeatRow.field_id, SubmissionRepeatRow.parent_submission_key, SubmissionRepeatRow.row_index)
         )
         return list(result.scalars())
 

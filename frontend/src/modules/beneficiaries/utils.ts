@@ -1,3 +1,4 @@
+import type { FieldOfficerRead, ProjectListItemRead, SubmissionRead } from "@/lib/api";
 import type {
   BeneficiaryEntity,
   DuplicateCandidate,
@@ -176,6 +177,26 @@ export function entityFromDraft(
   };
 }
 
+export function enrichEntity(
+  entity: BeneficiaryEntity,
+  submissions: SubmissionRead[],
+  projects: Map<string, ProjectListItemRead>,
+  officers: Map<string, FieldOfficerRead>,
+): BeneficiaryEntity {
+  const latestOfficerSubmission = [...submissions]
+    .filter((submission) => submission.field_officer_id)
+    .sort((left, right) => new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime())[0];
+  const assignedOfficer = latestOfficerSubmission
+    ? officers.get(latestOfficerSubmission.field_officer_id as string)?.full_name ?? entity.assignedOfficer
+    : entity.assignedOfficer;
+  return {
+    ...entity,
+    assignedOfficer,
+    formsCompleted: submissions.length,
+    projectName: projects.get(entity.projectId)?.name ?? entity.projectName,
+  };
+}
+
 export function formatEntityDate(value?: string): string {
   if (!value) return "Not recorded";
   return new Date(value).toLocaleDateString();
@@ -186,4 +207,14 @@ export function frequencyLabel(value: string): string {
     .replace(/^once_/, "Once ")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  return [
+    headers.map(escape).join(","),
+    ...rows.map((row) => headers.map((header) => escape(row[header])).join(",")),
+  ].join("\n");
 }

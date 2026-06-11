@@ -28,7 +28,7 @@ export default function SolutionsPage() {
             {solutionPages.map((solution) => (
               <Link className="rounded-xl border border-black/10 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg" href={`/solutions/${solution.slug}`} key={solution.slug}>
                 <h2 className="text-lg font-semibold">{solution.audience}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#52615d]">{solution.description}</p>
+                <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{solution.description}</p>
               </Link>
             ))}
           </div>

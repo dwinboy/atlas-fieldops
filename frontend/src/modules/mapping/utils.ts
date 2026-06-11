@@ -80,6 +80,33 @@ export function maskCoordinate(value: number, visibility: LayerVisibility): stri
   return value.toFixed(5);
 }
 
+export function maskedCoordinates(
+  feature: { latitude: number; longitude: number; sensitive?: boolean },
+  visibility: LayerVisibility,
+): [number, number] {
+  if (feature.sensitive && (visibility === "Aggregated" || visibility === "Restricted")) {
+    return [Math.round(feature.latitude * 100) / 100, Math.round(feature.longitude * 100) / 100];
+  }
+  return [feature.latitude, feature.longitude];
+}
+
+export type BoundingBox = { north: number; south: number; east: number; west: number };
+
+export function isFeatureInBounds(feature: { latitude: number; longitude: number }, bounds: BoundingBox): boolean {
+  return (
+    feature.latitude <= bounds.north &&
+    feature.latitude >= bounds.south &&
+    feature.longitude >= bounds.west &&
+    feature.longitude <= bounds.east
+  );
+}
+
+export function pointColor(status: string): string {
+  if (status === "Healthy") return "bg-success";
+  if (status === "Warning") return "bg-warning";
+  return "bg-danger";
+}
+
 export function validateGpsPoint({
   accuracy,
   insideBoundary,

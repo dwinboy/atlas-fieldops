@@ -12,7 +12,7 @@ from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project
 from app.models.collection import Submission
-from app.models.operations import Beneficiary
+from app.models.operations import Beneficiary, WorkforceProfile
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import DeviceMetadata, LocationCapture, SubmissionCreate
 from app.schemas.mobile import (
@@ -518,6 +518,16 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
         "once_per_event": "OncePerEventPerEntity",
         "unlimited": "Unlimited",
     }
+    duplicate_mode = str(entity_controls.get("duplicate_mode") or "weighted")
+    if duplicate_mode not in {"exact", "fuzzy", "weighted"}:
+        duplicate_mode = "weighted"
+    duplicate_action = str(entity_controls.get("duplicate_action") or "block")
+    if duplicate_action not in {"block", "warn", "review"}:
+        duplicate_action = "block"
+    raw_threshold = entity_controls.get("duplicate_threshold")
+    duplicate_threshold = (
+        int(raw_threshold) if isinstance(raw_threshold, (int, float)) and 0 <= raw_threshold <= 100 else 60
+    )
     return {
         "linkedToEntity": bool(entity_controls.get("is_entity_linked", False)),
         "entityType": entity_controls.get("entity_type"),
@@ -527,6 +537,9 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
         "allowsAnonymousSubmission": bool(entity_controls.get("allows_anonymous_submission", True)),
         "frequencyRule": frequency_map.get(frequency, frequency if frequency in frequency_map.values() else "Unlimited"),
         "prefillMappings": entity_controls.get("prefill_mappings") or [],
+        "duplicateMode": duplicate_mode,
+        "duplicateThreshold": duplicate_threshold,
+        "duplicateAction": duplicate_action,
     }
 
 
@@ -633,7 +646,7 @@ class MobileService:
         )
         return list(result.scalars())
 
-    async def _forms_for_officer_access(self, organization_id: UUID, officer_id: UUID) -> list[DataForm]:
+    async def _forms_for_officer_access(self, organization_id: UUID, officer_id: UUID, user_id: UUID) -> list[DataForm]:
         result = await self.session.execute(
             select(DataForm)
             .where(
@@ -644,9 +657,30 @@ class MobileService:
             )
             .order_by(DataForm.name)
         )
+        all_forms = list(result.scalars())
+        forms_with_team_filter = [
+            form
+            for form in all_forms
+            if isinstance(form.controls_json, dict)
+            and isinstance(form.controls_json.get("collection_access"), dict)
+            and form.controls_json["collection_access"].get("selection_mode") == "assigned_only"
+            and form.controls_json["collection_access"].get("team_ids")
+        ]
+        team_id: UUID | None = None
+        if forms_with_team_filter:
+            workforce_result = await self.session.execute(
+                select(WorkforceProfile.team_id).where(
+                    WorkforceProfile.organization_id == organization_id,
+                    WorkforceProfile.user_id == user_id,
+                    WorkforceProfile.deleted_at.is_(None),
+                )
+            )
+            team_id = workforce_result.scalar_one_or_none()
+
         officer_key = str(officer_id)
+        team_key = str(team_id) if team_id is not None else None
         forms: list[DataForm] = []
-        for form in result.scalars():
+        for form in all_forms:
             controls = form.controls_json or {}
             collection_access = controls.get("collection_access")
             if not isinstance(collection_access, dict):
@@ -655,6 +689,14 @@ class MobileService:
                 continue
             selected_officers = collection_access.get("field_officer_ids")
             if isinstance(selected_officers, list) and officer_key in {str(item) for item in selected_officers}:
+                forms.append(form)
+                continue
+            selected_teams = collection_access.get("team_ids")
+            if (
+                team_key is not None
+                and isinstance(selected_teams, list)
+                and team_key in {str(item) for item in selected_teams}
+            ):
                 forms.append(form)
         return forms
 
@@ -889,7 +931,7 @@ class MobileService:
         await self.session.flush()
 
         assignments = await self._assignments(organization_id, officer.id)
-        controlled_forms = await self._forms_for_officer_access(organization_id, officer.id)
+        controlled_forms = await self._forms_for_officer_access(organization_id, officer.id, officer.user_id)
         assignment_keys = {
             (assignment.project_id, assignment.form_id)
             for assignment in assignments

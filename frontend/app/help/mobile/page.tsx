@@ -73,7 +73,7 @@ export default function MobileHelpPage() {
           {sections.map((section) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={section.title}>
               <h2 className="text-lg font-semibold">{section.title}</h2>
-              <ol className="mt-4 space-y-3 text-sm leading-6 text-[#52615d]">
+              <ol className="mt-4 space-y-3 text-sm leading-6 text-[#5b6a65]">
                 {section.items.map((item, index) => (
                   <li key={item}>
                     <span className="mr-2 font-semibold text-[#12332b]">{index + 1}.</span>

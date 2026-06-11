@@ -48,6 +48,7 @@ import {
   type IndicatorRecord,
   type IndicatorReport,
   type IndicatorSection,
+  type IndicatorStatus,
   type IndicatorTarget,
   type LogframeRow,
   type ResultsFrameworkNode,
@@ -174,13 +175,21 @@ function messageFromError(error: unknown): string {
 
 function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
   const progress = row.progress_percent || progressPercent(row.current_value, row.baseline_value, row.target_value);
+  const dataSource = row.survey_id ? "Survey-linked approved submissions" : null;
+  const status: IndicatorStatus = !row.is_active
+    ? "Archived"
+    : row.baseline_value === null
+      ? "Needs Baseline"
+      : !dataSource
+        ? "No Data Source"
+        : progress >= 80 ? "On Track" : "Behind Target";
   return {
     baseline: row.baseline_value,
     calculationMethod: row.formula || "Current approved value compared against configured target.",
     calculationType: row.formula ? "Custom formula" : "Percentage",
     code: row.code,
     current: row.current_value,
-    dataSource: row.survey_id ? "Survey-linked approved submissions" : null,
+    dataSource,
     definition: row.description ?? "Imported monitoring indicator.",
     disaggregation: ["Project", "Location"],
     frequency: (row.reporting_frequency || "Quarterly") as IndicatorRecord["frequency"],
@@ -193,7 +202,7 @@ function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
     project: row.project_id ? "Linked project" : "Organization-wide",
     responsiblePerson: "Data Manager",
     resultArea: row.sdg_code ?? "Monitoring framework",
-    status: row.is_active ? (progress >= 80 ? "On Track" : "Behind Target") : "Archived",
+    status,
     target: row.target_value,
     type: "Outcome",
     unit: row.unit,
@@ -269,6 +278,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       })),
     );
     setActionResult("Indicator export prepared. Production exports should write an immutable Governance audit event.");
+    pushToast({ description: "The indicator library CSV is ready.", title: "Indicators exported", tone: "success" });
   }
 
   function indicatorFromDraft(id: string): IndicatorRecord {
@@ -392,7 +402,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Indicator sections">
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Indicator sections">
           {indicatorSections.map((section) => (
             <button
               className={cn(
@@ -454,11 +464,28 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       {!selectedIndicator && activeSection === "library" ? (
         <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Indicator import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
-      {!selectedIndicator && activeSection === "results-framework" ? <ResultsFramework resultFramework={resultFramework} /> : null}
-      {!selectedIndicator && activeSection === "logframes" ? <Logframes rows={logframeRows} /> : null}
-      {!selectedIndicator && activeSection === "targets" ? <Targets targets={indicatorTargets} /> : null}
-      {!selectedIndicator && activeSection === "baselines" ? <Baselines baselines={indicatorBaselines} /> : null}
-      {!selectedIndicator && activeSection === "reports" ? <IndicatorReports onOpenReports={() => setActiveView("analytics")} reports={preview ? previewReports : []} /> : null}
+      {!selectedIndicator && activeSection === "results-framework" ? (
+        preview ? <ResultsFramework resultFramework={resultFramework} /> : <ComingSoonSection sectionId="results-framework" />
+      ) : null}
+      {!selectedIndicator && activeSection === "logframes" ? (
+        preview ? <Logframes rows={logframeRows} /> : <ComingSoonSection sectionId="logframes" />
+      ) : null}
+      {!selectedIndicator && activeSection === "targets" ? (
+        preview ? <Targets targets={indicatorTargets} /> : <ComingSoonSection sectionId="targets" />
+      ) : null}
+      {!selectedIndicator && activeSection === "baselines" ? (
+        preview ? <Baselines baselines={indicatorBaselines} /> : <ComingSoonSection sectionId="baselines" />
+      ) : null}
+      {!selectedIndicator && activeSection === "reports" ? (
+        preview ? (
+          <IndicatorReports onOpenReports={() => setActiveView("analytics")} reports={previewReports} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveView("analytics")} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>}
+            sectionId="reports"
+          />
+        )
+      ) : null}
       <CreateIndicatorModal
         canSubmit={canManageIndicators && !createIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
         draft={indicatorDraft}
@@ -539,12 +566,16 @@ function IndicatorsDashboard({
           </div>
         </Panel>
         <Panel title="Target Achievement Trends" action={<Button onClick={onOpenReports} size="sm" variant="secondary">Open reports</Button>}>
-          <div className="grid gap-3">
-            <Signal label="Average achievement" value={`${targetSummary.averageAchievement}%`} tone={progressTone(targetSummary.averageAchievement)} />
-            <Signal label="Targets on track" value={targetSummary.onTrack} tone="success" />
-            <Signal label="Targets behind" value={targetSummary.behind} tone={targetSummary.behind ? "warning" : "success"} />
-            <Signal label="Calculation rule" value="Approved submissions only" tone="accent" />
-          </div>
+          {targets.length > 0 ? (
+            <div className="grid gap-3">
+              <Signal label="Average achievement" value={`${targetSummary.averageAchievement}%`} tone={progressTone(targetSummary.averageAchievement)} />
+              <Signal label="Targets on track" value={targetSummary.onTrack} tone="success" />
+              <Signal label="Targets behind" value={targetSummary.behind} tone={targetSummary.behind ? "warning" : "success"} />
+              <Signal label="Calculation rule" value="Approved submissions only" tone="accent" />
+            </div>
+          ) : (
+            <EmptyMini label="No period targets configured yet. Set targets to track achievement here." />
+          )}
         </Panel>
       </div>
 
@@ -656,10 +687,11 @@ function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubm
 }
 
 function ResultsFramework({ resultFramework }: { resultFramework: ResultsFrameworkNode[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   return (
     <section className="space-y-4">
       <SectionHeader
-        action={<Button variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>}
+        action={<Button onClick={() => pushToast({ description: "Connect a results-framework editing service to add goal, impact, outcome, output, or activity levels. This control is a preview for now.", title: "Adding result levels isn't available yet", tone: "warning" })} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>}
         description="Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Indicators without duplicating project setup."
         route="/indicators/results-framework"
         title="Results Framework"
@@ -701,6 +733,7 @@ function ResultsFramework({ resultFramework }: { resultFramework: ResultsFramewo
 }
 
 function Logframes({ rows }: { rows: LogframeRow[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<LogframeRow>[] = [
     { key: "summary", header: "Narrative Summary", value: (row) => row.narrativeSummary, render: (row) => <span className="font-medium">{row.narrativeSummary}</span> },
     { key: "indicators", header: "Indicators", value: (row) => row.indicators.join(" "), render: (row) => row.indicators.join(", ") },
@@ -712,13 +745,14 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage donor-style logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
+      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create donor-style logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage donor-style logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
       <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, indicators" title="Logframe rows" />
     </section>
   );
 }
 
 function Targets({ targets }: { targets: IndicatorTarget[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<IndicatorTarget>[] = [
     { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -730,13 +764,14 @@ function Targets({ targets }: { targets: IndicatorTarget[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
+      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a targets service to set annual, quarterly, monthly, lifetime, or location-specific targets. This control is a preview for now.", title: "Setting targets isn't available yet", tone: "warning" })} variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
       <DataTable columns={columns} emptyLabel="No targets configured yet" rows={targets} searchLabel="Search targets, locations, projects" title="Indicator targets" />
     </section>
   );
 }
 
 function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<IndicatorBaseline>[] = [
     { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -748,7 +783,7 @@ function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button variant="primary"><Database aria-hidden="true" /> Add baseline</Button>} description="Add, import, version, compare, and lock approved baseline values with methodology, source, confidence level, and notes." route="/indicators/baselines" title="Baselines" />
+      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a baselines service to add, import, or version approved baseline values. This control is a preview for now.", title: "Adding baselines isn't available yet", tone: "warning" })} variant="primary"><Database aria-hidden="true" /> Add baseline</Button>} description="Add, import, version, compare, and lock approved baseline values with methodology, source, confidence level, and notes." route="/indicators/baselines" title="Baselines" />
       <DataTable columns={columns} emptyLabel="No baselines configured yet" rows={baselines} searchLabel="Search baselines, projects, locations" title="Baseline values" />
     </section>
   );
@@ -804,7 +839,7 @@ function IndicatorDetailWorkspace({
         </div>
         <Button onClick={onClose} variant="secondary">Back to indicators</Button>
       </div>
-      <div className="flex gap-2 overflow-x-auto product-scrollbar">
+      <div className="flex flex-wrap gap-2">
         {detailTabs.map((item) => (
           <button className={cn("shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium", tab === item ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")} key={item} onClick={() => setTab(item)} type="button">
             {item}
@@ -883,7 +918,10 @@ function DataSourcesTab({ dataSources, indicator }: { dataSources: IndicatorData
 
 function TargetRows({ indicator, targets }: { indicator: IndicatorRecord; targets: IndicatorTarget[] }) {
   const rows = targets.filter((target) => target.indicatorId === indicator.id);
-  return <TimelineRows rows={(rows.length ? rows : [{ period: "No configured target", location: indicator.project, actualValue: 0, targetValue: indicator.target, status: indicator.status }]).map((row) => ({ label: `${row.period} · ${row.location}`, meta: `${row.actualValue} / ${row.targetValue} · ${targetAchievement(row.actualValue, row.targetValue)}%`, tone: progressTone(targetAchievement(row.actualValue, row.targetValue)) }))} />;
+  if (!rows.length) {
+    return <EmptyMini label={`No period targets configured for this indicator yet. Overall target: ${indicator.target} ${indicator.unit}.`} />;
+  }
+  return <TimelineRows rows={rows.map((row) => ({ label: `${row.period} · ${row.location}`, meta: `${row.actualValue} / ${row.targetValue} · ${targetAchievement(row.actualValue, row.targetValue)}%`, tone: progressTone(targetAchievement(row.actualValue, row.targetValue)) }))} />;
 }
 
 function BaselineRows({ baselines, indicator }: { baselines: IndicatorBaseline[]; indicator: IndicatorRecord }) {
@@ -1023,4 +1061,18 @@ function ProgressBar({ value }: { value: number }) {
 
 function EmptyMini({ label }: { label: string }) {
   return <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{label}</div>;
+}
+
+function ComingSoonSection({ action, sectionId }: { action?: ReactNode; sectionId: IndicatorSection }) {
+  const meta = indicatorSections.find((section) => section.id === sectionId);
+  if (!meta) return null;
+  return (
+    <section className="space-y-4">
+      <SectionHeader action={action} description={meta.description} route={meta.route} title={meta.label} />
+      <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Coming soon</p>
+        <p className="mt-2 leading-6">{meta.description} This workspace isn&apos;t connected to a live data source yet — it will populate once that capability ships.</p>
+      </div>
+    </section>
+  );
 }

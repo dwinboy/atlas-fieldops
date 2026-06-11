@@ -40,6 +40,7 @@ from app.schemas.organization_governance import (
     SessionLogRead,
     TeamCreate,
     TeamRead,
+    TeamUpdate,
     WorkforceProfileCreate,
     WorkforceProfileRead,
 )
@@ -112,6 +113,16 @@ class OrganizationGovernanceService:
 
     async def list_teams(self, organization_id: UUID) -> list[TeamRead]:
         return [TeamRead.model_validate(row) for row in await self.repository.list_teams(organization_id)]
+
+    async def update_team(self, organization_id: UUID, actor_user_id: UUID, team_id: UUID, payload: TeamUpdate) -> TeamRead:
+        row = await self.repository.get_team(organization_id, team_id)
+        if row is None:
+            raise OrganizationGovernanceNotFoundError("Team not found")
+        values = payload.model_dump(exclude_unset=True)
+        row = await self.repository.update_team(row, values)
+        await self._audit(organization_id, actor_user_id, "org_governance.team_updated", "operational_team", str(row.id), {"fields": list(values)})
+        await self.session.commit()
+        return TeamRead.model_validate(row)
 
     async def create_workforce_profile(self, organization_id: UUID, actor_user_id: UUID, payload: WorkforceProfileCreate) -> WorkforceProfileRead:
         row = await self.repository.create_workforce_profile(organization_id, payload.model_dump())

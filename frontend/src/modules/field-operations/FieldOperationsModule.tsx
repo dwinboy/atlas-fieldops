@@ -25,11 +25,13 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActionMenu } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { UserProfileLink } from "@/components/ui/user-link";
 import {
   createFieldOfficerAssignment,
   getOperationalActivityReport,
@@ -37,18 +39,17 @@ import {
   getOperationsSummary,
   importFieldOfficers,
   inviteFieldOfficer,
+  listBeneficiaries,
   listForms,
   listActivityMediaEvidence,
   listFieldOfficers,
   listFieldVisitRequests,
-  listRoles,
   listUsers,
   listProjects,
   resetUserPassword,
   reviewOperationalActivityOutcome,
   reviewFieldVisitRequest,
   updateFieldOfficerProfile,
-  updateUser,
   type CurrentPrincipal,
   type FieldOfficerActivityEventRead,
   type FieldOfficerAssignmentDetailRead,
@@ -64,11 +65,16 @@ import {
   type MediaEvidenceRead,
   type OperationsSummary,
   type OperationalActivityReportType,
-  type RoleRead,
   type UserRead,
-  type UserUpdate,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  mapBeneficiaryRead,
+  previewEntities,
+  type BeneficiaryEntity,
+  type EntityStatus,
+} from "@/modules/beneficiaries/data";
+import { formatEntityDate } from "@/modules/beneficiaries/utils";
 import {
   fieldOperationsSections,
   previewActivities,
@@ -89,6 +95,8 @@ import {
 } from "@/modules/field-operations/data";
 import {
   computeFieldOperationsSummary,
+  deriveFieldActivities,
+  deriveSupervisors,
   formatDate,
   formatTime,
   priorityTone,
@@ -246,6 +254,13 @@ function MetricCard({
   );
 }
 
+function caseStatusTone(status: EntityStatus): BadgeProps["tone"] {
+  if (status === "Active") return "success";
+  if (status === "Duplicate") return "danger";
+  if (status === "Moved" || status === "Deceased") return "warning";
+  return "neutral";
+}
+
 function ProgressBar({ value }: { value: number }) {
   return (
     <div>
@@ -268,6 +283,18 @@ function DetailSignal({ label, value }: { label: string; value: ReactNode }) {
     <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-right text-xs font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function SectionHeader({ action, description, title }: { action?: ReactNode; description: string; title: string }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <HelpHint label={`About ${title}`} title={title}>{description}</HelpHint>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -298,34 +325,20 @@ function SectionPanel({
 
 type OfficerProfileTab =
   | "overview"
-  | "assignments"
-  | "projects"
-  | "locations"
-  | "forms"
-  | "beneficiaries"
+  | "work"
   | "submissions"
   | "performance"
-  | "data-quality"
-  | "devices"
-  | "activity"
-  | "permissions"
-  | "security"
+  | "devices-activity"
+  | "permissions-security"
   | "audit";
 
 const officerProfileTabs: { id: OfficerProfileTab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "assignments", label: "Assignments" },
-  { id: "projects", label: "Projects" },
-  { id: "locations", label: "Locations" },
-  { id: "forms", label: "Forms" },
-  { id: "beneficiaries", label: "Beneficiaries" },
-  { id: "submissions", label: "Submissions" },
-  { id: "performance", label: "Performance" },
-  { id: "data-quality", label: "Data Quality" },
-  { id: "devices", label: "Devices" },
-  { id: "activity", label: "Activity" },
-  { id: "permissions", label: "Permissions" },
-  { id: "security", label: "Security" },
+  { id: "work", label: "Work" },
+  { id: "submissions", label: "Submissions & Beneficiaries" },
+  { id: "performance", label: "Performance & Quality" },
+  { id: "devices-activity", label: "Devices & Activity" },
+  { id: "permissions-security", label: "Permissions & Security" },
   { id: "audit", label: "Audit Trail" },
 ];
 
@@ -572,13 +585,10 @@ function OfficerProfileWorkspace({
   onClose,
   onNavigate,
   onUpdateProfile,
-  onUpdateUser,
   onResetPassword,
   profileUpdatePending,
-  roles,
   resetPending,
   temporaryPassword,
-  userUpdatePending,
   users,
 }: {
   canManage: boolean;
@@ -587,13 +597,10 @@ function OfficerProfileWorkspace({
   onClose: () => void;
   onNavigate: (route: string) => void;
   onUpdateProfile: (payload: FieldOfficerProfileUpdate) => void;
-  onUpdateUser: (payload: UserUpdate) => void;
   onResetPassword: () => void;
   profileUpdatePending: boolean;
-  roles: RoleRead[];
   resetPending: boolean;
   temporaryPassword: string | null;
-  userUpdatePending: boolean;
   users: UserRead[];
 }) {
   const [tab, setTab] = useState<OfficerProfileTab>("overview");
@@ -604,12 +611,6 @@ function OfficerProfileWorkspace({
     is_active: true,
     phone_number: "",
     supervisor_user_id: "",
-  });
-  const [accessDraft, setAccessDraft] = useState({
-    role_name: "",
-    scope_type: "",
-    project_id: "",
-    geography_id: "",
   });
 
   useEffect(() => {
@@ -624,12 +625,6 @@ function OfficerProfileWorkspace({
       is_active: detail.officer.is_active,
       phone_number: detail.officer.phone_number ?? "",
       supervisor_user_id: detail.officer.supervisor_user_id ?? "",
-    });
-    setAccessDraft({
-      role_name: detail.security.role ?? "",
-      scope_type: detail.security.scope_type ?? "",
-      project_id: detail.security.project_id ?? "",
-      geography_id: detail.security.geography_id ?? "",
     });
   }, [detail]);
 
@@ -728,11 +723,6 @@ function OfficerProfileWorkspace({
     const roleName = String(user.role_name ?? "").toLowerCase();
     return ["supervisor", "district_supervisor", "regional_manager", "project_manager", "me_manager", "national_admin", "owner", "organization_owner"].includes(roleName);
   });
-  const roleChoices = roles.length
-    ? roles
-    : detail.security.role
-      ? [{ id: detail.security.role, name: detail.security.role, label: detail.security.role, description: "", organization_id: "", permissions: [], scope_type: detail.security.scope_type ?? "organization", is_system: false }]
-      : [];
 
   return (
     <section className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -750,11 +740,19 @@ function OfficerProfileWorkspace({
               {officer.employee_code ?? "No employee ID"} · {officer.email} · {officer.phone_number ?? "No phone"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {detail.organization_name ?? "Organization"} · {detail.team ?? "No team"} · Supervisor: {detail.supervisor ?? "Not assigned"}
+              {detail.organization_name ?? "Organization"} · {detail.team ?? "No team"} · Supervisor:{" "}
+              {detail.supervisor ? (
+                <UserProfileLink userId={officer.supervisor_user_id}>{detail.supervisor}</UserProfileLink>
+              ) : (
+                "Not assigned"
+              )}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button onClick={() => onNavigate(`/users-teams/role-profiles/${officer.user_id}`)} variant="secondary">
+            Manage account &amp; access
+          </Button>
           <Button disabled={!canManage} onClick={onResetPassword} variant="secondary">
             {resetPending ? "Generating..." : "Generate temporary password"}
           </Button>
@@ -864,51 +862,69 @@ Password: ${temporaryPassword}`}
           </div>
         ) : null}
 
-        {tab === "assignments" ? <DataTable columns={assignmentColumns} emptyLabel="No assignments for this officer." rows={detail.assignments} searchLabel="Search assignments" title="Assignments" /> : null}
-        {tab === "projects" ? <DataTable columns={assignmentColumns} emptyLabel="No project access assigned." rows={detail.projects} searchLabel="Search projects" title="Project access" /> : null}
-        {tab === "locations" ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {(detail.locations.length ? detail.locations : ["No assigned locations"]).map((location) => (
-              <ProfileSignal key={location} label="Assigned location" value={location} />
-            ))}
+        {tab === "work" ? (
+          <div className="space-y-4">
+            <DataTable columns={assignmentColumns} emptyLabel="No assignments for this officer." rows={detail.assignments} searchLabel="Search assignments" title="Assignments" />
+            <DataTable columns={assignmentColumns} emptyLabel="No project access assigned." rows={detail.projects} searchLabel="Search projects" title="Project access" />
+            <DataTable columns={assignmentColumns} emptyLabel="No forms assigned." rows={detail.forms} searchLabel="Search forms" title="Available forms" />
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Locations</h3>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {(detail.locations.length ? detail.locations : ["No assigned locations"]).map((location) => (
+                  <ProfileSignal key={location} label="Assigned location" value={location} />
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
-        {tab === "forms" ? <DataTable columns={assignmentColumns} emptyLabel="No forms assigned." rows={detail.forms} searchLabel="Search forms" title="Available forms" /> : null}
-        {tab === "beneficiaries" ? (
-          <DataTable
-            columns={[
-              { key: "code", header: "Code", value: (row) => asText(row.beneficiary_code), render: (row) => <span className="font-mono text-xs">{asText(row.beneficiary_code)}</span> },
-              { key: "name", header: "Name", value: (row) => asText(row.name), render: (row) => asText(row.name) },
-              { key: "type", header: "Type", value: (row) => asText(row.type), render: (row) => asText(row.type) },
-              { key: "location", header: "Location", value: (row) => asText(row.location), render: (row) => asText(row.location) },
-              { key: "status", header: "Status", value: (row) => asText(row.status), render: (row) => <Badge tone={statusTone(asText(row.status))}>{asText(row.status)}</Badge> },
-            ]}
-            emptyLabel="No beneficiary records linked through this officer's submissions yet."
-            rows={detail.beneficiaries}
-            searchLabel="Search beneficiaries"
-            title="Assigned and linked beneficiaries"
-          />
+        {tab === "submissions" ? (
+          <div className="space-y-4">
+            <DataTable columns={submissionColumns} emptyLabel="No submissions from this officer yet." rows={detail.submissions} searchLabel="Search submissions" title="Submissions" />
+            <DataTable
+              columns={[
+                { key: "code", header: "Code", value: (row) => asText(row.beneficiary_code), render: (row) => <span className="font-mono text-xs">{asText(row.beneficiary_code)}</span> },
+                { key: "name", header: "Name", value: (row) => asText(row.name), render: (row) => asText(row.name) },
+                { key: "type", header: "Type", value: (row) => asText(row.type), render: (row) => asText(row.type) },
+                { key: "location", header: "Location", value: (row) => asText(row.location), render: (row) => asText(row.location) },
+                { key: "status", header: "Status", value: (row) => asText(row.status), render: (row) => <Badge tone={statusTone(asText(row.status))}>{asText(row.status)}</Badge> },
+              ]}
+              emptyLabel="No beneficiary records linked through this officer's submissions yet."
+              rows={detail.beneficiaries}
+              searchLabel="Search beneficiaries"
+              title="Assigned and linked beneficiaries"
+            />
+          </div>
         ) : null}
-        {tab === "submissions" ? <DataTable columns={submissionColumns} emptyLabel="No submissions from this officer yet." rows={detail.submissions} searchLabel="Search submissions" title="Submissions" /> : null}
         {tab === "performance" ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {Object.entries(performance).map(([key, value]) => (
-              <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={asText(value)} />
-            ))}
+          <div className="space-y-4">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Performance</h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Object.entries(performance).map(([key, value]) => (
+                  <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={asText(value)} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Data Quality</h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Object.entries(dataQuality).map(([key, value]) => (
+                  <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={typeof value === "object" ? JSON.stringify(value) : asText(value)} />
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
-        {tab === "data-quality" ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {Object.entries(dataQuality).map(([key, value]) => (
-              <ProfileSignal key={key} label={key.replaceAll("_", " ")} value={typeof value === "object" ? JSON.stringify(value) : asText(value)} />
-            ))}
+        {tab === "devices-activity" ? (
+          <div className="space-y-4">
+            <DataTable columns={deviceColumns} emptyLabel="No registered devices for this officer." rows={detail.devices} searchLabel="Search devices" title="Mobile devices" />
+            <DataTable columns={activityColumns} emptyLabel="No activity recorded yet." rows={detail.activity} searchLabel="Search activity" title="Activity timeline" />
           </div>
         ) : null}
-        {tab === "devices" ? <DataTable columns={deviceColumns} emptyLabel="No registered devices for this officer." rows={detail.devices} searchLabel="Search devices" title="Mobile devices" /> : null}
-        {tab === "activity" ? <DataTable columns={activityColumns} emptyLabel="No activity recorded yet." rows={detail.activity} searchLabel="Search activity" title="Activity timeline" /> : null}
-        {tab === "permissions" ? <DataTable columns={permissionColumns} emptyLabel="No effective permissions available." rows={detail.permissions} searchLabel="Search permissions" title="Effective permissions" /> : null}
-        {tab === "security" ? (
-          <div className="space-y-3">
+        {tab === "permissions-security" ? (
+          <div className="space-y-4">
+            <DataTable columns={permissionColumns} emptyLabel="No effective permissions available." rows={detail.permissions} searchLabel="Search permissions" title="Effective permissions" />
+            <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <ProfileSignal label="Username" value={detail.security.username} />
               <ProfileSignal label="Email" value={detail.security.email} />
@@ -978,86 +994,15 @@ Password: ${temporaryPassword}`}
                 </p>
               )}
             </div>
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="text-sm font-semibold">Credential controls</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Administrators can generate a temporary password, force password changes, suspend accounts, and revoke sessions. Password hashes and stored passwords are never visible.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {detail.security.credential_actions.map((action) => (
-                  <Badge key={action} tone={action === "Generate temporary password" ? "success" : "neutral"}>{action}</Badge>
-                ))}
-              </div>
-            </div>
             <div className="rounded-lg border bg-background p-3">
-              <p className="text-sm font-semibold">Role, scope, and permission assignment</p>
+              <p className="text-sm font-semibold">Account, role &amp; access</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Permissions come from the selected role. Create or edit roles in Users & Teams when a field officer needs a different permission set.
+                Role assignment, permission scope, password resets, and account status are managed from this person&apos;s profile in Users &amp; Teams.
               </p>
-              {canManage ? (
-                <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
-                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                    Role
-                    <Select
-                      value={accessDraft.role_name}
-                      onChange={(event) => setAccessDraft((current) => ({ ...current, role_name: event.target.value }))}
-                    >
-                      <option value="">Select role</option>
-                      {roleChoices.map((role) => (
-                        <option key={role.id} value={role.name}>
-                          {role.label || role.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                    Access scope
-                    <Select
-                      value={accessDraft.scope_type}
-                      onChange={(event) => setAccessDraft((current) => ({ ...current, scope_type: event.target.value }))}
-                    >
-                      {["organization", "country", "region", "district", "field_team", "project", "own"].map((scope) => (
-                        <option key={scope} value={scope}>
-                          {scope.replace("_", " ")}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                    Scope ID
-                    <Input
-                      value={accessDraft.scope_type === "project" ? accessDraft.project_id : accessDraft.geography_id}
-                      onChange={(event) =>
-                        setAccessDraft((current) => ({
-                          ...current,
-                          geography_id: current.scope_type === "project" ? "" : event.target.value,
-                          project_id: current.scope_type === "project" ? event.target.value : "",
-                        }))
-                      }
-                      placeholder={accessDraft.scope_type === "project" ? "Project ID" : "Location/team code"}
-                    />
-                  </label>
-                  <Button
-                    disabled={userUpdatePending || !accessDraft.role_name}
-                    onClick={() =>
-                      onUpdateUser({
-                        geography_id: accessDraft.scope_type === "project" ? null : accessDraft.geography_id || null,
-                        project_id: accessDraft.scope_type === "project" ? accessDraft.project_id || null : null,
-                        role_name: accessDraft.role_name,
-                        scope_type: accessDraft.scope_type || undefined,
-                      })
-                    }
-                    type="button"
-                    variant="primary"
-                  >
-                    {userUpdatePending ? "Saving..." : "Save access"}
-                  </Button>
-                </div>
-              ) : (
-                <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning-foreground">
-                  You can review effective permissions here, but role and permission assignment requires user management permission.
-                </p>
-              )}
+              <Button className="mt-3" onClick={() => onNavigate(`/users-teams/role-profiles/${officer.user_id}`)} variant="primary">
+                Manage account &amp; access
+              </Button>
+            </div>
             </div>
           </div>
         ) : null}
@@ -1158,14 +1103,14 @@ export function FieldOperationsModule({
     queryFn: () => listForms(token ?? ""),
     enabled,
   });
+  const entitiesQuery = useQuery({
+    queryKey: ["field-operations", "beneficiaries", token],
+    queryFn: () => listBeneficiaries(token ?? ""),
+    enabled,
+  });
   const usersQuery = useQuery({
     queryKey: ["field-operations", "users", token],
     queryFn: () => listUsers(token ?? ""),
-    enabled: enabled && canManageFieldOperations,
-  });
-  const rolesQuery = useQuery({
-    queryKey: ["field-operations", "roles", token],
-    queryFn: () => listRoles(token ?? ""),
     enabled: enabled && canManageFieldOperations,
   });
   const visitRequestsQuery = useQuery({
@@ -1195,6 +1140,11 @@ export function FieldOperationsModule({
     () => (preview ? officerPreviewRows : (officersQuery.data ?? [])),
     [officerPreviewRows, officersQuery.data, preview],
   );
+  const officersByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const officer of officers) map.set(officer.full_name, officer.user_id);
+    return map;
+  }, [officers]);
   const selectedPreviewOfficer = preview
     ? officerPreviewRows.find((officer) => officer.id === selectedOfficerId)
     : undefined;
@@ -1313,6 +1263,17 @@ export function FieldOperationsModule({
     }
     return Array.from(byId.values());
   }, [availableProjects, formsQuery.data, localForms, preview]);
+  const caseEntities = useMemo<BeneficiaryEntity[]>(
+    () =>
+      preview
+        ? previewEntities
+        : (entitiesQuery.data ?? []).map(mapBeneficiaryRead),
+    [entitiesQuery.data, preview],
+  );
+  const casesByEntityId = useMemo(
+    () => new Map(caseEntities.map((entity) => [entity.entityId, entity])),
+    [caseEntities],
+  );
   const operationsSummary: OperationsSummary =
     preview ? (summaryQuery.data ?? previewOperationsSummary) : (summaryQuery.data ?? {
       active_programs: 0,
@@ -1323,11 +1284,17 @@ export function FieldOperationsModule({
       quality_flags: 0,
       sync_health_percent: 0,
     });
-  const supervisors = preview ? previewSupervisors : [];
-  const activities = preview ? previewActivities : [];
   const visitRequests = useMemo(
     () => (preview ? [] : (visitRequestsQuery.data ?? [])),
     [preview, visitRequestsQuery.data],
+  );
+  const supervisors = useMemo(
+    () => (preview ? previewSupervisors : deriveSupervisors(officers, visitRequests)),
+    [preview, officers, visitRequests],
+  );
+  const activities = useMemo(
+    () => (preview ? previewActivities : deriveFieldActivities(officers, visitRequests)),
+    [preview, officers, visitRequests],
   );
   const selectedActivity = visitRequests.find((activity) => activity.id === selectedActivityId) ?? null;
   const selectedActivityEvidence = activityMediaQuery.data ?? [];
@@ -1417,6 +1384,19 @@ export function FieldOperationsModule({
     },
     [assignmentDraft.project, assignments, availableForms, availableProjects],
   );
+
+  function projectTeamMembers(
+    project: string,
+    excludeAssignmentId?: string | null,
+  ): Set<string> {
+    const names = new Set<string>();
+    for (const assignment of assignments) {
+      if (assignment.project !== project) continue;
+      if (excludeAssignmentId && assignment.id === excludeAssignmentId) continue;
+      for (const officer of assignment.fieldOfficers) names.add(officer);
+    }
+    return names;
+  }
 
   useEffect(() => {
     if (!preview || !localAssignments.length) return;
@@ -1512,30 +1492,6 @@ export function FieldOperationsModule({
       pushToast({
         title: "Could not update field officer",
         description: "Check supervisor role, officer management permission, and try again.",
-        tone: "danger",
-      }),
-  });
-
-  const updateOfficerAccessMutation = useMutation({
-    mutationFn: (payload: UserUpdate) => {
-      const userId = selectedOfficerProfile?.officer.user_id;
-      if (!userId) {
-        throw new Error("No field officer user is selected.");
-      }
-      return updateUser(token ?? "", userId, payload);
-    },
-    onSuccess: async () => {
-      await Promise.all([officerProfileQuery.refetch(), officersQuery.refetch(), usersQuery.refetch()]);
-      pushToast({
-        title: "Field officer access updated",
-        description: "Role, scope, and effective permissions were refreshed.",
-        tone: "success",
-      });
-    },
-    onError: () =>
-      pushToast({
-        title: "Could not update access",
-        description: "This role or scope may be too broad for your account.",
         tone: "danger",
       }),
   });
@@ -1728,17 +1684,9 @@ export function FieldOperationsModule({
             disabled={!canManageFieldOperations}
             onClick={() => openAssignmentModal(assignment)}
             size="sm"
-            variant="ghost"
+            variant="primary"
           >
-            Reassign
-          </Button>
-          <Button
-            disabled={!canManageFieldOperations}
-            onClick={() => openAssignmentModal(assignment)}
-            size="sm"
-            variant="ghost"
-          >
-            Edit
+            Edit assignment
           </Button>
         </div>
       ),
@@ -1753,7 +1701,9 @@ export function FieldOperationsModule({
         `${officer.full_name} ${officer.email} ${officer.employee_code ?? ""}`,
       render: (officer) => (
         <div>
-          <p className="font-medium">{officer.full_name}</p>
+          <p className="font-medium">
+            <UserProfileLink userId={officer.user_id}>{officer.full_name}</UserProfileLink>
+          </p>
           <p className="text-xs text-muted-foreground">{officer.email}</p>
         </div>
       ),
@@ -2062,41 +2012,44 @@ export function FieldOperationsModule({
       header: "Supervisor action",
       align: "right",
       value: (visit) => visit.id,
-      render: (visit) => (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            disabled={!canApproveOperationalActivities || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
-            onClick={() => reviewVisitMutation.mutate({ action: "approve", visitRequestId: visit.id })}
-            size="sm"
-            variant="secondary"
-          >
-            Approve
-          </Button>
-          <Button
-            disabled={!canApproveOperationalActivities || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
-            onClick={() => reviewVisitMutation.mutate({ action: "request_changes", visitRequestId: visit.id })}
-            size="sm"
-            variant="ghost"
-          >
-            Request changes
-          </Button>
-          <Button
-            disabled={!canApproveOperationalActivities || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status)}
-            onClick={() => reviewVisitMutation.mutate({ action: "reject", visitRequestId: visit.id })}
-            size="sm"
-            variant="ghost"
-          >
-            Reject
-          </Button>
-          <Button
-            onClick={() => setSelectedActivityId(visit.id)}
-            size="sm"
-            variant="secondary"
-          >
-            View details
-          </Button>
-        </div>
-      ),
+      render: (visit) => {
+        const reviewDisabled = !canApproveOperationalActivities || reviewVisitMutation.isPending || !["pending", "change_requested"].includes(visit.status);
+        return (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              onClick={() => setSelectedActivityId(visit.id)}
+              size="sm"
+              variant="secondary"
+            >
+              View details
+            </Button>
+            <ActionMenu
+              label={`Review actions for ${visit.id}`}
+              items={[
+                {
+                  key: "approve",
+                  label: "Approve",
+                  disabled: reviewDisabled,
+                  onSelect: () => reviewVisitMutation.mutate({ action: "approve", visitRequestId: visit.id }),
+                },
+                {
+                  key: "request-changes",
+                  label: "Request changes",
+                  disabled: reviewDisabled,
+                  onSelect: () => reviewVisitMutation.mutate({ action: "request_changes", visitRequestId: visit.id }),
+                },
+                {
+                  key: "reject",
+                  label: "Reject",
+                  tone: "danger",
+                  disabled: reviewDisabled,
+                  onSelect: () => reviewVisitMutation.mutate({ action: "reject", visitRequestId: visit.id }),
+                },
+              ]}
+            />
+          </div>
+        );
+      },
     },
   ];
 
@@ -2346,84 +2299,101 @@ export function FieldOperationsModule({
 
       {activeSection === "dashboard" ? (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-            <MetricCard
-              icon={<ClipboardList aria-hidden="true" />}
-              label="Active Assignments"
-              onClick={() => setActiveSection("assignments")}
-              tone="success"
-              value={summary.activeAssignments}
-            />
-            <MetricCard
-              icon={<CalendarDays aria-hidden="true" />}
-              label="Operational Activities"
-              onClick={() => setActiveSection("visit-requests")}
-              tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
-              value={visitRequests.length}
-            />
-            <MetricCard
-              icon={<UsersRound aria-hidden="true" />}
-              label="Assigned Field Officers"
-              onClick={() => setActiveSection("field-officers")}
-              tone="success"
-              value={summary.assignedFieldOfficers}
-            />
-            <MetricCard
-              icon={<ShieldCheck aria-hidden="true" />}
-              label="Active Supervisors"
-              onClick={() => setActiveSection("supervisors")}
-              tone="success"
-              value={summary.activeSupervisors}
-            />
-            <MetricCard
-              icon={<MapPinned aria-hidden="true" />}
-              label="Coverage Progress"
-              onClick={() => setActiveSection("field-monitoring")}
-              tone={summary.coverageProgress >= 70 ? "success" : "warning"}
-              value={`${summary.coverageProgress}%`}
-            />
-            <MetricCard
-              icon={<AlertTriangle aria-hidden="true" />}
-              label="Overdue Assignments"
-              onClick={() => setActiveSection("assignments")}
-              tone={summary.overdueAssignments ? "danger" : "success"}
-              value={summary.overdueAssignments}
-            />
-            <MetricCard
-              icon={<RadioTower aria-hidden="true" />}
-              label="Daily Collection Progress"
-              onClick={() => setActiveSection("field-monitoring")}
-              tone="success"
-              value={`${summary.dailyCollectionProgress}%`}
-            />
-            <MetricCard
-              icon={<Target aria-hidden="true" />}
-              label="Assignment Completion"
-              onClick={() => setActiveSection("assignments")}
-              tone="warning"
-              value={`${summary.assignmentCompletionRate}%`}
-            />
-            <MetricCard
-              icon={<Route aria-hidden="true" />}
-              label="Team Productivity"
-              onClick={() => setActiveSection("field-officers")}
-              tone="success"
-              value={`${summary.teamProductivity}%`}
-            />
-            <MetricCard
-              icon={<CalendarDays aria-hidden="true" />}
-              label="Upcoming Deadlines"
-              onClick={() => setActiveSection("work-plans")}
-              tone={summary.upcomingDeadlines ? "warning" : "success"}
-              value={summary.upcomingDeadlines}
-            />
-            <MetricCard
-              icon={<AlertTriangle aria-hidden="true" />}
-              label="Quality Alerts"
-              onClick={() => router.push("/data-quality")}
-              tone={operationsSummary.quality_flags ? "warning" : "success"}
-              value={operationsSummary.quality_flags}
-            />
+          <div className="space-y-4">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Field Force</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <MetricCard
+                  icon={<UsersRound aria-hidden="true" />}
+                  label="Assigned Field Officers"
+                  onClick={() => setActiveSection("field-officers")}
+                  tone="success"
+                  value={summary.assignedFieldOfficers}
+                />
+                <MetricCard
+                  icon={<ShieldCheck aria-hidden="true" />}
+                  label="Active Supervisors"
+                  onClick={() => setActiveSection("supervisors")}
+                  tone="success"
+                  value={summary.activeSupervisors}
+                />
+                <MetricCard
+                  icon={<Route aria-hidden="true" />}
+                  label="Team Productivity"
+                  onClick={() => setActiveSection("field-officers")}
+                  tone="success"
+                  value={`${summary.teamProductivity}%`}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assignments &amp; Targets</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  icon={<ClipboardList aria-hidden="true" />}
+                  label="Active Assignments"
+                  onClick={() => setActiveSection("assignments")}
+                  tone="success"
+                  value={summary.activeAssignments}
+                />
+                <MetricCard
+                  icon={<Target aria-hidden="true" />}
+                  label="Assignment Completion"
+                  onClick={() => setActiveSection("assignments")}
+                  tone="warning"
+                  value={`${summary.assignmentCompletionRate}%`}
+                />
+                <MetricCard
+                  icon={<AlertTriangle aria-hidden="true" />}
+                  label="Overdue Assignments"
+                  onClick={() => setActiveSection("assignments")}
+                  tone={summary.overdueAssignments ? "danger" : "success"}
+                  value={summary.overdueAssignments}
+                />
+                <MetricCard
+                  icon={<CalendarDays aria-hidden="true" />}
+                  label="Upcoming Deadlines"
+                  onClick={() => setActiveSection("work-plans")}
+                  tone={summary.upcomingDeadlines ? "warning" : "success"}
+                  value={summary.upcomingDeadlines}
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coverage &amp; Activity</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  icon={<CalendarDays aria-hidden="true" />}
+                  label="Operational Activities"
+                  onClick={() => setActiveSection("visit-requests")}
+                  tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
+                  value={visitRequests.length}
+                />
+                <MetricCard
+                  icon={<MapPinned aria-hidden="true" />}
+                  label="Coverage Progress"
+                  onClick={() => setActiveSection("field-monitoring")}
+                  tone={summary.coverageProgress >= 70 ? "success" : "warning"}
+                  value={`${summary.coverageProgress}%`}
+                />
+                <MetricCard
+                  icon={<RadioTower aria-hidden="true" />}
+                  label="Daily Collection Progress"
+                  onClick={() => setActiveSection("field-monitoring")}
+                  tone="success"
+                  value={`${summary.dailyCollectionProgress}%`}
+                />
+                <MetricCard
+                  icon={<AlertTriangle aria-hidden="true" />}
+                  label="Quality Alerts"
+                  onClick={() => router.push("/data-quality")}
+                  tone={operationsSummary.quality_flags ? "warning" : "success"}
+                  value={operationsSummary.quality_flags}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -2514,17 +2484,67 @@ export function FieldOperationsModule({
       ) : null}
 
       {activeSection === "assignments" ? (
-        <DataTable
-          columns={assignmentColumns}
-          emptyLabel="No assignments yet. Create one to start coordinating field work."
-          rows={assignments}
-          searchLabel="Search assignments"
-          title="Assignments management"
-        />
+        <div className="space-y-4">
+          <SectionHeader
+            description={fieldOperationsSections.find((section) => section.id === "assignments")?.description ?? ""}
+            title="Assignments management"
+          />
+          <DataTable
+            columns={assignmentColumns}
+            emptyLabel="No assignments yet. Create one to start coordinating field work."
+            rows={assignments}
+            searchLabel="Search assignments"
+            title="Assignments management"
+          />
+        </div>
       ) : null}
 
       {activeSection === "field-officers" ? (
         <div className="space-y-4">
+          <SectionHeader
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={!canManageFieldOperations}
+                  onClick={() => setModalMode("invite")}
+                  variant="primary"
+                >
+                  <UserPlus aria-hidden="true" />
+                  Invite officer
+                </Button>
+                <Button
+                  disabled={!token || preview || importMutation.isPending}
+                  onClick={() => fileInputRef.current?.click()}
+                  variant="secondary"
+                >
+                  <UploadCloud aria-hidden="true" />
+                  {importMutation.isPending ? "Importing" : "Import CSV"}
+                </Button>
+                <Button
+                  disabled={officersQuery.isFetching}
+                  onClick={() => officersQuery.refetch()}
+                  variant="secondary"
+                >
+                  <RefreshCw aria-hidden="true" />
+                  Refresh status
+                </Button>
+                <input
+                  accept=".csv"
+                  className="sr-only"
+                  disabled={!token || preview || importMutation.isPending}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) importMutation.mutate(file);
+                    event.currentTarget.value = "";
+                  }}
+                  ref={fileInputRef}
+                  type="file"
+                />
+              </div>
+            }
+            description={fieldOperationsSections.find((section) => section.id === "field-officers")?.description ?? ""}
+            title="Field officer roster"
+          />
           <div ref={officerProfileRef}>
             {selectedOfficerId ? (
               officerProfileQuery.isError && !preview ? (
@@ -2576,17 +2596,6 @@ export function FieldOperationsModule({
                     }
                     updateOfficerProfileMutation.mutate(payload);
                   }}
-                  onUpdateUser={(payload) => {
-                    if (preview) {
-                      pushToast({
-                        title: "Preview access updated",
-                        description: "Connect to the backend to save role and permission changes.",
-                        tone: "success",
-                      });
-                      return;
-                    }
-                    updateOfficerAccessMutation.mutate(payload);
-                  }}
                   onResetPassword={() => {
                     if (preview && selectedPreviewOfficer) {
                       const password = generateTemporaryPassword();
@@ -2603,52 +2612,12 @@ export function FieldOperationsModule({
                     }
                   }}
                   profileUpdatePending={updateOfficerProfileMutation.isPending}
-                  roles={rolesQuery.data ?? []}
                   resetPending={resetProfilePasswordMutation.isPending}
                   temporaryPassword={profileTemporaryPassword}
-                  userUpdatePending={updateOfficerAccessMutation.isPending}
                   users={usersQuery.data ?? []}
                 />
               )
             ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={!canManageFieldOperations}
-              onClick={() => setModalMode("invite")}
-              variant="primary"
-            >
-              <UserPlus aria-hidden="true" />
-              Invite officer
-            </Button>
-            <Button
-              disabled={!token || preview || importMutation.isPending}
-              onClick={() => fileInputRef.current?.click()}
-              variant="secondary"
-            >
-              <UploadCloud aria-hidden="true" />
-              {importMutation.isPending ? "Importing" : "Import CSV"}
-            </Button>
-            <Button
-              disabled={officersQuery.isFetching}
-              onClick={() => officersQuery.refetch()}
-              variant="secondary"
-            >
-              <RefreshCw aria-hidden="true" />
-              Refresh status
-            </Button>
-            <input
-              accept=".csv"
-              className="sr-only"
-              disabled={!token || preview || importMutation.isPending}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) importMutation.mutate(file);
-                event.currentTarget.value = "";
-              }}
-              ref={fileInputRef}
-              type="file"
-            />
           </div>
           {lastInviteCredentials ? (
             <div className="rounded-lg border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -2681,13 +2650,19 @@ Password:          ${lastInviteCredentials.password}`}
       ) : null}
 
       {activeSection === "supervisors" ? (
-        <DataTable
-          columns={supervisorColumns}
-          emptyLabel="No supervisors configured."
-          rows={supervisors}
-          searchLabel="Search supervisors"
-          title="Supervisor management"
-        />
+        <div className="space-y-4">
+          <SectionHeader
+            description={fieldOperationsSections.find((section) => section.id === "supervisors")?.description ?? ""}
+            title="Supervisor management"
+          />
+          <DataTable
+            columns={supervisorColumns}
+            emptyLabel="No supervisors configured."
+            rows={supervisors}
+            searchLabel="Search supervisors"
+            title="Supervisor management"
+          />
+        </div>
       ) : null}
 
       {activeSection === "visit-requests" ? (
@@ -2883,14 +2858,20 @@ Password:          ${lastInviteCredentials.password}`}
 
       {activeSection === "work-plans" ? (
         <div className="space-y-4">
-          <Button
-            disabled={!canManageFieldOperations}
-            onClick={() => setModalMode("work-plan")}
-            variant="primary"
-          >
-            <Plus aria-hidden="true" />
-            Create work plan
-          </Button>
+          <SectionHeader
+            action={
+              <Button
+                disabled={!canManageFieldOperations}
+                onClick={() => setModalMode("work-plan")}
+                variant="primary"
+              >
+                <Plus aria-hidden="true" />
+                Create work plan
+              </Button>
+            }
+            description={fieldOperationsSections.find((section) => section.id === "work-plans")?.description ?? ""}
+            title="Work plans"
+          />
           <DataTable
             columns={workPlanColumns}
             emptyLabel="No work plans yet."
@@ -2903,14 +2884,20 @@ Password:          ${lastInviteCredentials.password}`}
 
       {activeSection === "targets" ? (
         <div className="space-y-4">
-          <Button
-            disabled={!canManageFieldOperations}
-            onClick={() => setModalMode("target")}
-            variant="primary"
-          >
-            <Target aria-hidden="true" />
-            Create target
-          </Button>
+          <SectionHeader
+            action={
+              <Button
+                disabled={!canManageFieldOperations}
+                onClick={() => setModalMode("target")}
+                variant="primary"
+              >
+                <Target aria-hidden="true" />
+                Create target
+              </Button>
+            }
+            description={fieldOperationsSections.find((section) => section.id === "targets")?.description ?? ""}
+            title="Operational targets"
+          />
           <DataTable
             columns={targetColumns}
             emptyLabel="No operational targets yet."
@@ -3085,10 +3072,15 @@ Password:          ${lastInviteCredentials.password}`}
             </label>
             <div className="text-sm font-medium">
               Field officers
-              <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border bg-background p-2 product-scrollbar">
-                {officers
-                  .filter((officer) => officer.is_active)
-                  .map((officer) => {
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border bg-background p-2 product-scrollbar">
+                {(() => {
+                  const activeOfficers = officers.filter(
+                    (officer) => officer.is_active,
+                  );
+                  const renderOfficer = (
+                    officer: FieldOfficerRead,
+                    crossProject: boolean,
+                  ) => {
                     const checked = assignmentDraft.fieldOfficers.includes(
                       officer.full_name,
                     );
@@ -3115,7 +3107,7 @@ Password:          ${lastInviteCredentials.password}`}
                           }
                           type="checkbox"
                         />
-                        <span className="min-w-0">
+                        <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">
                             {officer.full_name}
                           </span>
@@ -3123,9 +3115,59 @@ Password:          ${lastInviteCredentials.password}`}
                             {officer.email}
                           </span>
                         </span>
+                        {crossProject ? (
+                          <Badge tone="accent">Cross-project</Badge>
+                        ) : null}
                       </label>
                     );
-                  })}
+                  };
+
+                  if (!assignmentDraft.project) {
+                    return activeOfficers.map((officer) =>
+                      renderOfficer(officer, false),
+                    );
+                  }
+
+                  const projectTeam = projectTeamMembers(
+                    assignmentDraft.project,
+                    assignmentEditingId,
+                  );
+                  const teamOfficers = activeOfficers.filter((officer) =>
+                    projectTeam.has(officer.full_name),
+                  );
+                  const otherOfficers = activeOfficers.filter(
+                    (officer) => !projectTeam.has(officer.full_name),
+                  );
+
+                  return (
+                    <>
+                      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        On {assignmentDraft.project}
+                      </p>
+                      {teamOfficers.length ? (
+                        teamOfficers.map((officer) =>
+                          renderOfficer(officer, false),
+                        )
+                      ) : (
+                        <p className="px-2 pb-2 text-xs text-muted-foreground">
+                          No officers assigned to this project yet.
+                        </p>
+                      )}
+                      <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Other organization staff
+                      </p>
+                      {otherOfficers.length ? (
+                        otherOfficers.map((officer) =>
+                          renderOfficer(officer, true),
+                        )
+                      ) : (
+                        <p className="px-2 pb-2 text-xs text-muted-foreground">
+                          No other active officers available.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
                 {!officers.filter((officer) => officer.is_active).length ? (
                   <p className="p-2 text-xs text-muted-foreground">
                     Invite a field officer before creating assignments.
@@ -3268,10 +3310,84 @@ Password:          ${lastInviteCredentials.password}`}
               <DetailSignal label="Form" value={viewAssignment.form} />
               <DetailSignal
                 label="Field officers"
-                value={viewAssignment.fieldOfficers.join(", ") || "Unassigned"}
+                value={
+                  viewAssignment.fieldOfficers.length ? (
+                    <span className="flex flex-wrap justify-end gap-1.5">
+                      {(() => {
+                        const projectTeam = projectTeamMembers(
+                          viewAssignment.project,
+                          viewAssignment.id,
+                        );
+                        return viewAssignment.fieldOfficers.map((name) => (
+                          <span className="flex items-center gap-1" key={name}>
+                            <UserProfileLink userId={officersByName.get(name)}>{name}</UserProfileLink>
+                            {!projectTeam.has(name) ? (
+                              <Badge tone="accent">Cross-project</Badge>
+                            ) : null}
+                          </span>
+                        ));
+                      })()}
+                    </span>
+                  ) : (
+                    "Unassigned"
+                  )
+                }
               />
               <DetailSignal label="Location" value={viewAssignment.location} />
               <DetailSignal label="Status" value={viewAssignment.status} />
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Assigned cases ({viewAssignment.assignedEntityIds?.length ?? 0})
+                </p>
+                {viewAssignment.assignedEntityIds?.length ? (
+                  <div className="space-y-2">
+                    {viewAssignment.assignedEntityIds.map((entityId) => {
+                      const entity = casesByEntityId.get(entityId);
+                      if (!entity) {
+                        return (
+                          <div
+                            className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+                            key={entityId}
+                          >
+                            {entityId} · Not found in beneficiary registry
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="rounded-lg border bg-background p-3" key={entityId}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold">
+                              {entity.fullName || entity.entityId}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              <Badge tone="neutral">{entity.entityType}</Badge>
+                              <Badge tone={caseStatusTone(entity.status)}>
+                                {entity.status}
+                              </Badge>
+                            </div>
+                          </div>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            Last visit {formatEntityDate(entity.lastVisit)} ·{" "}
+                            {entity.formsCompleted} form
+                            {entity.formsCompleted === 1 ? "" : "s"} completed
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    No cases assigned to this assignment yet.
+                  </p>
+                )}
+                <Button
+                  onClick={() => router.push("/beneficiaries")}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Open Beneficiaries registry
+                </Button>
+              </div>
             </>
           ) : null}
         </div>

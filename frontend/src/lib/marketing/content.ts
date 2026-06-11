@@ -27,16 +27,6 @@ export const site = {
     "Enterprise monitoring and evaluation software for offline data collection, survey management, GIS mapping, indicator tracking, program management, data quality, and donor reporting.",
 };
 
-export const navItems = [
-  { label: "Features", href: "/features" },
-  { label: "Solutions", href: "/solutions" },
-  { label: "Demo", href: "/demo" },
-  { label: "Use Cases", href: "/use-cases" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Resources", href: "/resources" },
-  { label: "Blog", href: "/blog" },
-];
-
 export const platformModules = [
   ["Projects", "Program setup, locations, teams, indicators, reports, and project health."],
   ["Forms", "Enterprise form builder, survey governance, versioning, templates, validation, and publishing."],

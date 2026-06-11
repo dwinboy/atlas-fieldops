@@ -88,6 +88,7 @@ const config: Config = {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         danger: "hsl(var(--danger))",
+        info: "hsl(var(--info))",
         section: {
           daily: "hsl(var(--section-daily))",
           collect: "hsl(var(--section-collect))",
@@ -110,8 +111,16 @@ const config: Config = {
         elevated: "0 18px 50px -30px rgba(15, 23, 42, 0.35)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"],
+      },
+      fontSize: {
+        micro: ["11px", { lineHeight: "1.4" }],
+        small: ["13px", { lineHeight: "1.5" }],
+        body: ["14px", { lineHeight: "1.6" }],
+        "heading-sm": ["16px", { lineHeight: "1.4", fontWeight: "600", letterSpacing: "-0.01em" }],
+        "heading-lg": ["20px", { lineHeight: "1.3", fontWeight: "600", letterSpacing: "-0.01em" }],
+        display: ["28px", { lineHeight: "1.2", fontWeight: "600", letterSpacing: "-0.01em" }],
       },
       transitionTimingFunction: {
         product: "cubic-bezier(0.2, 0.8, 0.2, 1)",

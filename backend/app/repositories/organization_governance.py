@@ -63,6 +63,22 @@ class OrganizationGovernanceRepository:
         )
         return list(result.scalars())
 
+    async def get_team(self, organization_id: UUID, team_id: UUID) -> OperationalTeam | None:
+        result = await self.session.execute(
+            select(OperationalTeam).where(
+                OperationalTeam.organization_id == organization_id,
+                OperationalTeam.id == team_id,
+                OperationalTeam.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_team(self, team: OperationalTeam, values: dict[str, object]) -> OperationalTeam:
+        for key, value in values.items():
+            setattr(team, key, value)
+        await self.session.flush()
+        return team
+
     async def create_workforce_profile(self, organization_id: UUID, values: dict[str, object]) -> WorkforceProfile:
         row = WorkforceProfile(organization_id=organization_id, **values)
         self.session.add(row)

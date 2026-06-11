@@ -12,6 +12,7 @@ import {
   Link2,
   MapPin,
   Smartphone,
+  UserPlus,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -25,20 +26,37 @@ import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createBeneficiary,
   getProjectEntities,
+  governExport,
   listBeneficiaries,
+  listFieldOfficers,
+  listProjects,
   listSubmissions,
   mergeBeneficiaries,
+  type BeneficiaryCreate,
   type CurrentPrincipal,
+  type FieldOfficerRead,
+  type ProjectListItemRead,
   type SubmissionRead,
 } from "@/lib/api";
 import {
+  entityTypes,
   mapBeneficiaryRead,
   previewEntities,
   type BeneficiaryEntity,
+  type DuplicateCandidate,
+  type EntityRegistrationDraft,
   type EntityStatus,
+  type EntityType,
 } from "@/modules/beneficiaries/data";
-import { formatEntityDate } from "@/modules/beneficiaries/utils";
+import {
+  enrichEntity,
+  findDuplicateCandidates,
+  formatEntityDate,
+  generateEntityId,
+  toCsv,
+} from "@/modules/beneficiaries/utils";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import { getPreviewSubmissions } from "@/modules/submissions/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
@@ -62,6 +80,40 @@ function canManage(principal?: CurrentPrincipal | null): boolean {
   );
 }
 
+const emptyRegistrationDraft: EntityRegistrationDraft = {
+  consentStatus: "Missing",
+  continuationReason: "",
+  country: "",
+  community: "",
+  dateOfBirth: "",
+  district: "",
+  entityType: "Farmer",
+  firstName: "",
+  gender: "",
+  householdId: "",
+  lastName: "",
+  latitude: "",
+  longitude: "",
+  nationalId: "",
+  phoneNumber: "",
+  projectId: "",
+  projectName: "",
+  region: "",
+  village: "",
+};
+
+function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
+  const csv = toCsv(rows);
+  if (!csv) return;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function BeneficiariesModule({
   principal,
   token,
@@ -77,10 +129,13 @@ export function BeneficiariesModule({
     masterId: "",
     reason: "",
   });
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerDraft, setRegisterDraft] = useState<EntityRegistrationDraft>(emptyRegistrationDraft);
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const isImportRoute =
     (pathname ?? "").replace(/\/+$/, "") === "/beneficiaries/import";
@@ -94,12 +149,17 @@ export function BeneficiariesModule({
     queryFn: () => listSubmissions(token ?? ""),
     queryKey: ["beneficiaries", "linked-submissions", token],
   });
+  const projectsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listProjects(token ?? ""),
+    queryKey: ["beneficiaries", "projects", token],
+  });
+  const officersQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listFieldOfficers(token ?? ""),
+    queryKey: ["beneficiaries", "field-officers", token],
+  });
 
-  const backendEntities = (entitiesQuery.data ?? []).map(mapBeneficiaryRead);
-  const entities = useMemo(
-    () => (preview ? [...localEntities, ...previewEntities] : backendEntities),
-    [backendEntities, localEntities, preview],
-  );
   const linkedSubmissionRows = useMemo<SubmissionRead[]>(
     () => (preview ? getPreviewSubmissions() : submissionsQuery.data ?? []),
     [preview, submissionsQuery.data],
@@ -114,11 +174,41 @@ export function BeneficiariesModule({
     }
     return map;
   }, [linkedSubmissionRows]);
+  const projectMap = useMemo(
+    () => new Map<string, ProjectListItemRead>((projectsQuery.data ?? []).map((project) => [project.id, project])),
+    [projectsQuery.data],
+  );
+  const officerMap = useMemo(
+    () => new Map<string, FieldOfficerRead>((officersQuery.data ?? []).map((officer) => [officer.id, officer])),
+    [officersQuery.data],
+  );
+  const backendEntities = useMemo(
+    () =>
+      (entitiesQuery.data ?? []).map((row) => {
+        const entity = mapBeneficiaryRead(row);
+        return enrichEntity(entity, submissionsByEntity.get(entity.id) ?? [], projectMap, officerMap);
+      }),
+    [entitiesQuery.data, officerMap, projectMap, submissionsByEntity],
+  );
+  const entities = useMemo(
+    () => (preview ? [...localEntities, ...previewEntities] : backendEntities),
+    [backendEntities, localEntities, preview],
+  );
   const duplicates = entities.filter(
     (entity) => entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0,
   );
   const activeEntities = entities.filter((entity) => entity.status === "Active");
   const managerAccess = canManage(principal);
+  const projectOptions = useMemo(() => {
+    if (preview) {
+      const seen = new Map<string, string>();
+      for (const entity of previewEntities) {
+        if (!seen.has(entity.projectId)) seen.set(entity.projectId, entity.projectName);
+      }
+      return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+    }
+    return (projectsQuery.data ?? []).map((project) => ({ id: project.id, name: project.name }));
+  }, [preview, projectsQuery.data]);
   const mergeMutation = useMutation({
     mutationFn: () => mergeBeneficiaries(token ?? "", {
       duplicate_beneficiary_id: mergeDraft.duplicateId,
@@ -144,6 +234,26 @@ export function BeneficiariesModule({
       });
     },
   });
+  const createMutation = useMutation({
+    mutationFn: (payload: BeneficiaryCreate) => createBeneficiary(token ?? "", payload),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["beneficiaries", token] });
+      setRegisterOpen(false);
+      setRegisterDraft(emptyRegistrationDraft);
+      pushToast({
+        title: "Entity registered",
+        description: `${result.display_name} (${result.beneficiary_uid}) was added to the registry.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "The entity could not be registered.",
+        tone: "danger",
+      });
+    },
+  });
   const summaryCards: {
     icon: LucideIcon;
     label: string;
@@ -152,7 +262,11 @@ export function BeneficiariesModule({
     { icon: UsersRound, label: "Total Entities", value: entities.length },
     { icon: CheckCircle2, label: "Active Entities", value: activeEntities.length },
     { icon: AlertTriangle, label: "Duplicates Flagged", value: duplicates.length },
-    { icon: Smartphone, label: "Mobile Sync Ready", value: "8 APIs" },
+    {
+      icon: Smartphone,
+      label: "Pending Profile Updates",
+      value: entities.reduce((total, entity) => total + profileUpdateProposals(entity).length, 0),
+    },
   ];
 
   function openWorkspace(view: WorkspaceView, path?: string): void {
@@ -194,6 +308,102 @@ export function BeneficiariesModule({
       return;
     }
     mergeMutation.mutate();
+  }
+
+  function openRegisterModal(): void {
+    const firstProject = projectOptions[0];
+    setRegisterDraft({
+      ...emptyRegistrationDraft,
+      projectId: firstProject?.id ?? "",
+      projectName: firstProject?.name ?? "",
+    });
+    setRegisterOpen(true);
+  }
+
+  function submitRegistration(): void {
+    if (preview || !token || !managerAccess) {
+      pushToast({ title: "Registration unavailable", description: "Sign in with beneficiary management permission to register new entities.", tone: "warning" });
+      return;
+    }
+    if (!registerDraft.projectId) {
+      pushToast({ title: "Project required", description: "Select a project to enroll this entity in.", tone: "warning" });
+      return;
+    }
+    const isInstitution = registerDraft.entityType === "Facility" || registerDraft.entityType === "School";
+    const displayName = isInstitution
+      ? registerDraft.firstName.trim()
+      : `${registerDraft.firstName} ${registerDraft.lastName}`.trim();
+    if (!displayName) {
+      pushToast({ title: "Name required", description: "Enter a name for this entity.", tone: "warning" });
+      return;
+    }
+    if (registerDraft.continuationReason.trim().length < 8) {
+      pushToast({ title: "Reason required", description: "Add a short reason for registering this entity manually.", tone: "warning" });
+      return;
+    }
+    const birthYear = registerDraft.dateOfBirth ? Number.parseInt(registerDraft.dateOfBirth.slice(0, 4), 10) : NaN;
+    const latitude = Number.parseFloat(registerDraft.latitude);
+    const longitude = Number.parseFloat(registerDraft.longitude);
+    createMutation.mutate({
+      beneficiary_uid: generateEntityId(
+        registerDraft.entityType,
+        entities.filter((entity) => entity.entityType === registerDraft.entityType).length,
+      ),
+      beneficiary_type: registerDraft.entityType.toLowerCase().replace(/\s+/g, "_"),
+      birth_year: Number.isFinite(birthYear) ? birthYear : null,
+      community: registerDraft.community || registerDraft.village || null,
+      display_name: displayName,
+      district: registerDraft.district || null,
+      latitude: Number.isFinite(latitude) ? latitude : null,
+      longitude: Number.isFinite(longitude) ? longitude : null,
+      phone_number: registerDraft.phoneNumber || null,
+      profile_json: {
+        consentStatus: registerDraft.consentStatus,
+        country: registerDraft.country,
+        householdId: registerDraft.householdId,
+        nationalId: registerDraft.nationalId,
+        projectName: registerDraft.projectName,
+        registrationDate: new Date().toISOString(),
+        registrationReason: registerDraft.continuationReason.trim(),
+        registrationSource: "Web",
+        village: registerDraft.village,
+      },
+      project_id: registerDraft.projectId,
+      region: registerDraft.region || null,
+      sex: registerDraft.gender || null,
+    });
+  }
+
+  async function exportEntities(): Promise<void> {
+    if (token && !preview) {
+      await governExport(token, {
+        dataset_type: "beneficiaries",
+        export_format: "csv",
+        anonymized: false,
+        record_count: entities.length,
+        filters_json: {},
+      }).catch(() => undefined);
+    }
+    downloadCsv(
+      "atlas-beneficiaries.csv",
+      entities.map((entity) => ({
+        entity_id: entity.entityId,
+        full_name: entity.fullName,
+        entity_type: entity.entityType,
+        project: entity.projectName,
+        village: entity.village,
+        community: entity.community,
+        district: entity.district,
+        region: entity.region,
+        status: entity.status,
+        assigned_officer: entity.assignedOfficer,
+        forms_completed: entity.formsCompleted,
+        duplicate_status: entity.duplicateStatus,
+        phone_number: entity.phoneNumber ?? "",
+        household_id: entity.householdId ?? "",
+        registration_date: entity.registrationDate,
+      })),
+    );
   }
 
   if (isImportRoute) {
@@ -286,6 +496,25 @@ export function BeneficiariesModule({
       ),
       value: (entity) => entity.duplicateStatus,
     },
+    {
+      header: "",
+      key: "map",
+      align: "right",
+      render: (entity) =>
+        entity.latitude && entity.longitude ? (
+          <Button
+            onClick={() => {
+              setPendingMapFeatureId(`beneficiary-${entity.id}`);
+              setActiveView("map");
+            }}
+            size="sm"
+            variant="ghost"
+          >
+            <MapPin aria-hidden="true" />
+            Map
+          </Button>
+        ) : null,
+    },
   ];
 
   return (
@@ -322,6 +551,14 @@ export function BeneficiariesModule({
               Import beneficiaries
             </Button>
             <Button
+              disabled={!managerAccess}
+              onClick={() => openRegisterModal()}
+              variant="secondary"
+            >
+              <UserPlus aria-hidden="true" />
+              Register entity
+            </Button>
+            <Button
               disabled={!managerAccess || !duplicates.length}
               onClick={() => openMergeReview()}
               variant="secondary"
@@ -337,7 +574,7 @@ export function BeneficiariesModule({
               <Smartphone aria-hidden="true" />
               Create mobile registration form
             </Button>
-            <Button variant="secondary">
+            <Button disabled={!entities.length} onClick={() => void exportEntities()} variant="secondary">
               <Download aria-hidden="true" />
               Export
             </Button>
@@ -384,6 +621,18 @@ export function BeneficiariesModule({
         open={mergeOpen}
         preview={preview}
         saving={mergeMutation.isPending}
+      />
+      <RegisterEntityModal
+        canSubmit={managerAccess && !preview && !createMutation.isPending}
+        draft={registerDraft}
+        entities={entities}
+        onChange={setRegisterDraft}
+        onOpenChange={setRegisterOpen}
+        onSubmit={submitRegistration}
+        open={registerOpen}
+        preview={preview}
+        projectOptions={projectOptions}
+        saving={createMutation.isPending}
       />
     </section>
   );
@@ -863,6 +1112,237 @@ function MergeRecordCard({ entity, label, tone }: { entity: BeneficiaryEntity | 
         <p className="mt-3 text-sm text-muted-foreground">Select a record to compare details.</p>
       )}
     </div>
+  );
+}
+
+function duplicateLevelTone(level: DuplicateCandidate["level"]) {
+  if (level === "Likely duplicate") return "danger";
+  if (level === "Possible duplicate") return "warning";
+  return "neutral";
+}
+
+function RegisterEntityModal({
+  canSubmit,
+  draft,
+  entities,
+  onChange,
+  onOpenChange,
+  onSubmit,
+  open,
+  preview,
+  projectOptions,
+  saving,
+}: {
+  canSubmit: boolean;
+  draft: EntityRegistrationDraft;
+  entities: BeneficiaryEntity[];
+  onChange: (draft: EntityRegistrationDraft) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  open: boolean;
+  preview: boolean;
+  projectOptions: { id: string; name: string }[];
+  saving: boolean;
+}) {
+  const isInstitution = draft.entityType === "Facility" || draft.entityType === "School";
+  const duplicates = useMemo(
+    () =>
+      draft.firstName || draft.lastName || draft.nationalId || draft.phoneNumber || draft.householdId
+        ? findDuplicateCandidates(draft, entities)
+        : [],
+    [draft, entities],
+  );
+
+  function update<K extends keyof EntityRegistrationDraft>(key: K, value: EntityRegistrationDraft[K]): void {
+    onChange({ ...draft, [key]: value });
+  }
+
+  return (
+    <Modal
+      contentClassName="max-w-4xl"
+      description="Register a new farmer, household, beneficiary, facility, school, or other entity in this registry, with a live duplicate check before saving."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Register entity"
+    >
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto product-scrollbar pr-1">
+        {preview ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            Preview data can show the workflow, but registering a new entity requires a signed-in tenant account with beneficiary management permission.
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium">
+            Entity type
+            <Select
+              className="mt-2"
+              onChange={(event) => update("entityType", event.target.value as EntityType)}
+              value={draft.entityType}
+            >
+              {entityTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Project
+            <Select
+              className="mt-2"
+              onChange={(event) => {
+                const project = projectOptions.find((option) => option.id === event.target.value);
+                onChange({ ...draft, projectId: event.target.value, projectName: project?.name ?? "" });
+              }}
+              value={draft.projectId}
+            >
+              <option value="">Select project</option>
+              {projectOptions.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+        {isInstitution ? (
+          <label className="block text-sm font-medium">
+            Name
+            <Input
+              className="mt-2"
+              onChange={(event) => update("firstName", event.target.value)}
+              placeholder="Example: Bonaberi Health Post"
+              value={draft.firstName}
+            />
+          </label>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm font-medium">
+              First name
+              <Input className="mt-2" onChange={(event) => update("firstName", event.target.value)} value={draft.firstName} />
+            </label>
+            <label className="text-sm font-medium">
+              Last name
+              <Input className="mt-2" onChange={(event) => update("lastName", event.target.value)} value={draft.lastName} />
+            </label>
+          </div>
+        )}
+        {!isInstitution ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-sm font-medium">
+              Gender
+              <Select className="mt-2" onChange={(event) => update("gender", event.target.value)} value={draft.gender}>
+                <option value="">Not recorded</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </Select>
+            </label>
+            <label className="text-sm font-medium">
+              Date of birth
+              <Input className="mt-2" onChange={(event) => update("dateOfBirth", event.target.value)} type="date" value={draft.dateOfBirth} />
+            </label>
+            <label className="text-sm font-medium">
+              Phone number
+              <Input className="mt-2" onChange={(event) => update("phoneNumber", event.target.value)} value={draft.phoneNumber} />
+            </label>
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="text-sm font-medium">
+            National ID
+            <Input className="mt-2" onChange={(event) => update("nationalId", event.target.value)} value={draft.nationalId} />
+          </label>
+          <label className="text-sm font-medium">
+            Household ID
+            <Input className="mt-2" onChange={(event) => update("householdId", event.target.value)} value={draft.householdId} />
+          </label>
+          <label className="text-sm font-medium">
+            Consent status
+            <Select
+              className="mt-2"
+              onChange={(event) => update("consentStatus", event.target.value as EntityRegistrationDraft["consentStatus"])}
+              value={draft.consentStatus}
+            >
+              <option value="Granted">Granted</option>
+              <option value="Missing">Missing</option>
+              <option value="Expired">Expired</option>
+              <option value="Not Required">Not Required</option>
+            </Select>
+          </label>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="text-sm font-medium">
+            Village
+            <Input className="mt-2" onChange={(event) => update("village", event.target.value)} value={draft.village} />
+          </label>
+          <label className="text-sm font-medium">
+            Community
+            <Input className="mt-2" onChange={(event) => update("community", event.target.value)} value={draft.community} />
+          </label>
+          <label className="text-sm font-medium">
+            District
+            <Input className="mt-2" onChange={(event) => update("district", event.target.value)} value={draft.district} />
+          </label>
+          <label className="text-sm font-medium">
+            Region
+            <Input className="mt-2" onChange={(event) => update("region", event.target.value)} value={draft.region} />
+          </label>
+          <label className="text-sm font-medium">
+            Country
+            <Input className="mt-2" onChange={(event) => update("country", event.target.value)} value={draft.country} />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-sm font-medium">
+              Latitude
+              <Input className="mt-2" onChange={(event) => update("latitude", event.target.value)} placeholder="5.9631" value={draft.latitude} />
+            </label>
+            <label className="text-sm font-medium">
+              Longitude
+              <Input className="mt-2" onChange={(event) => update("longitude", event.target.value)} placeholder="10.1591" value={draft.longitude} />
+            </label>
+          </div>
+        </div>
+        <label className="block text-sm font-medium">
+          Reason for manual registration
+          <Input
+            className="mt-2"
+            onChange={(event) => update("continuationReason", event.target.value)}
+            placeholder="Example: Household enrolled during in-person intake, no mobile device available."
+            value={draft.continuationReason}
+          />
+        </label>
+        {duplicates.length ? (
+          <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
+            <p className="text-sm font-semibold">Possible existing records</p>
+            <div className="mt-2 space-y-2">
+              {duplicates.slice(0, 3).map((candidate) => (
+                <div className="flex items-start justify-between gap-3 rounded-lg border bg-background p-3" key={candidate.entity.id}>
+                  <div>
+                    <p className="text-sm font-medium">{candidate.entity.fullName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {candidate.entity.entityId} · matched on {candidate.matchedFields.join(", ")}
+                    </p>
+                  </div>
+                  <Badge tone={duplicateLevelTone(candidate.level)}>{candidate.level}</Badge>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Review these records before saving to avoid creating a duplicate entity. This warning does not block registration.
+            </p>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
+            Cancel
+          </Button>
+          <Button disabled={!canSubmit} onClick={onSubmit} type="button" variant="primary">
+            {saving ? "Registering..." : "Register entity"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

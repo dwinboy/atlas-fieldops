@@ -18,20 +18,20 @@ export default function SignupPage() {
       <main>
         <section className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:px-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0f766e]">Start trial</p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#10201c] md:text-5xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Start trial</p>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-5xl">
               Create a startup-ready M&E workspace.
             </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-[#52615d]">
+            <p className="mt-5 max-w-2xl text-base leading-7 text-[#5b6a65]">
               Share your organization details and we will prepare a secure onboarding path for projects, imports, forms, beneficiaries, teams, reports, and integrations.
             </p>
-            <div className="mt-8 grid gap-3 text-sm text-[#52615d]">
+            <div className="mt-8 grid gap-3 text-sm text-[#5b6a65]">
               {["Organization workspace setup", "First admin and team invitation readiness", "Migration assistant for historical data", "Templates for projects, forms, dashboards, and indicators"].map((item) => (
                 <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm" key={item}>{item}</div>
               ))}
             </div>
-            <p className="mt-6 text-sm text-[#52615d]">
-              Already have an account? <Link className="font-semibold text-[#0f766e]" href="/login">Sign in</Link>.
+            <p className="mt-6 text-sm text-[#5b6a65]">
+              Already have an account? <Link className="font-semibold text-[#0d9488]" href="/login">Sign in</Link>.
             </p>
           </div>
           <ContactRequestForm source="signup" title="Request a trial workspace" />

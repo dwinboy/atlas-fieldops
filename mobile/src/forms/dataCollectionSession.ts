@@ -1,7 +1,9 @@
-import type { MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileSubmission } from "@/models/contracts";
+import type { DuplicateCheckInput, FrequencyRule, MobileAssignment, MobileEntity, MobileForm, MobileFormVersion, MobileSubmission } from "@/models/contracts";
 import { MobilePermissionService } from "@/permissions/mobilePermissionService";
 import { AuditEventService } from "@/services/auditEventService";
+import { DuplicateCheckService } from "@/services/duplicateCheckService";
 import { FieldIntegrityService } from "@/services/fieldIntegrityService";
+import { FrequencyRuleService } from "@/services/frequencyRuleService";
 import { PrefillService } from "@/services/prefillService";
 import { FormValidationIssue, FormValidationService } from "@/forms/formValidationService";
 import { LocalDatabase } from "@/storage/localDatabase";
@@ -29,6 +31,8 @@ export class DataCollectionSessionService {
   private readonly prefill = new PrefillService();
   private readonly validation = new FormValidationService();
   private readonly integrity = new FieldIntegrityService();
+  private readonly frequencyRules = new FrequencyRuleService();
+  private readonly duplicateCheck = new DuplicateCheckService();
   private readonly permissions: MobilePermissionService;
   private readonly audit: AuditEventService;
 
@@ -74,6 +78,7 @@ export class DataCollectionSessionService {
       entityId: entity?.id ?? null,
       entityType: entity?.entityType ?? formVersion.entitySettings.entityType,
       prefilledResponses: prefilled,
+      frequencyPeriod: this.computeFrequencyPeriod(formVersion.entitySettings.frequencyRule, new Date()),
     });
     this.audit.queue("mobile.form_opened", { formId: form.id, assignmentId: assignment.id, entityId: entity?.id ?? null });
     return { assignment, form, formVersion, entity, draft };
@@ -111,7 +116,7 @@ export class DataCollectionSessionService {
         throw new Error(permission.message ?? "This draft cannot be submitted under the current mobile rules.");
       }
     }
-    const issues = this.validation.validate(formVersion, draft);
+    const issues = [...this.validation.validate(formVersion, draft), ...this.evaluateRiskIssues(draft, formVersion)];
     if (issues.some((issue) => issue.severity === "Error")) {
       return { draft, issues, queued: false };
     }
@@ -127,5 +132,79 @@ export class DataCollectionSessionService {
       signalCount: integritySignals.signals.length,
     });
     return { draft: queuedDraft, issues, queued: true };
+  }
+
+  evaluateRiskIssues(draft: MobileSubmission, formVersion: MobileFormVersion): FormValidationIssue[] {
+    const issues: FormValidationIssue[] = [];
+    const entitySettings = formVersion.entitySettings;
+    if (draft.entityId) {
+      const decision = this.frequencyRules.validate(
+        entitySettings.frequencyRule,
+        draft,
+        this.database.draftSubmissions.list(),
+        new Date(),
+      );
+      if (!decision.allowed) {
+        issues.push({
+          questionId: "_frequency_check",
+          label: "Submission frequency",
+          message: decision.reason,
+          fixHint: "This entity does not qualify for another submission on this form right now. Confirm with your supervisor if you believe this is incorrect.",
+          severity: decision.severity === "Warn" ? "Warning" : "Error",
+        });
+      }
+    }
+    if (entitySettings.createsNewEntity && !draft.entityId) {
+      const input = this.buildDuplicateCheckInput(draft);
+      if (input.phone || input.nationalId || input.householdId || (input.name && input.village)) {
+        const matches = this.duplicateCheck.check(input, this.database.entities.list(), entitySettings.duplicateThreshold);
+        const topMatch = matches[0];
+        if (topMatch) {
+          issues.push({
+            questionId: "_duplicate_check",
+            label: "Possible duplicate beneficiary",
+            message: `This record looks similar to an existing entry for ${topMatch.entity?.name ?? "a known beneficiary"} (matched on ${topMatch.matchedFields.join(", ")}).`,
+            fixHint: "Double-check whether this person is already registered before submitting. The server will review this during sync either way.",
+            severity: "Warning",
+          });
+        }
+      }
+    }
+    return issues;
+  }
+
+  private buildDuplicateCheckInput(draft: MobileSubmission): DuplicateCheckInput {
+    const values = new Map(draft.responses.map((response) => [response.variableName.toLowerCase(), response.value]));
+    const stringValue = (...keys: string[]): string | undefined => {
+      for (const key of keys) {
+        const value = values.get(key);
+        if (typeof value === "string" && value.trim().length > 0) {
+          return value.trim();
+        }
+      }
+      return undefined;
+    };
+    const firstName = stringValue("first_name", "firstname");
+    const lastName = stringValue("last_name", "lastname", "surname");
+    const name = stringValue("full_name", "farmer_name", "beneficiary_name", "respondent", "name")
+      ?? (firstName && lastName ? `${firstName} ${lastName}` : undefined);
+    return {
+      phone: stringValue("phone_number", "phone", "mobile", "farmer_phone"),
+      nationalId: stringValue("national_id", "nationalid", "id_number"),
+      householdId: stringValue("household_id", "householdid", "household"),
+      village: stringValue("village", "community"),
+      name,
+    };
+  }
+
+  private computeFrequencyPeriod(rule: FrequencyRule, now: Date): string | null {
+    if (rule === "OncePerYearPerEntity") {
+      return `${now.getUTCFullYear()}`;
+    }
+    if (rule === "OncePerQuarterPerEntity") {
+      const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+      return `${now.getUTCFullYear()}-Q${quarter}`;
+    }
+    return null;
   }
 }

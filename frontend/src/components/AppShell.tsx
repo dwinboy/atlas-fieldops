@@ -1,8 +1,9 @@
 "use client";
 
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   ArrowRight,
-  CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ChevronLeft,
   Command,
@@ -28,7 +29,6 @@ import {
   viewGuidance,
   type ViewTone,
 } from "@/config/navigation";
-import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 import type { CurrentPrincipal } from "@/lib/api";
@@ -157,6 +157,81 @@ function OrganizationMark({
   );
 }
 
+function UserMenu({
+  accountName,
+  accountRole,
+  accountScope,
+  isSupportMode,
+  onSignOut,
+  theme,
+  toggleTheme,
+}: {
+  accountName: string;
+  accountRole: string;
+  accountScope: string;
+  isSupportMode: boolean;
+  onSignOut: () => void;
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+}) {
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <button
+          aria-label="Account menu"
+          className="flex h-9 items-center gap-1.5 rounded-lg border bg-background/80 px-1.5 shadow-line transition hover:bg-muted/60"
+          type="button"
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
+            {organizationInitials(accountName)}
+          </span>
+          <ChevronDown aria-hidden="true" className="hidden text-muted-foreground sm:block" size={14} />
+        </button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="end"
+          className="z-50 w-64 overflow-hidden rounded-xl border bg-panel p-1.5 shadow-elevated data-[state=open]:animate-in data-[state=closed]:animate-out"
+          sideOffset={8}
+        >
+          <div className="px-2.5 py-2">
+            <p className="truncate text-sm font-semibold">{accountName}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{accountScope}</p>
+            <div className="mt-2">
+              <Badge className="gap-1.5" tone={isSupportMode ? "warning" : "success"}>
+                <RadioTower aria-hidden="true" size={13} />
+                {isSupportMode ? "Support mode" : accountRole}
+              </Badge>
+            </div>
+          </div>
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+          <DropdownMenuPrimitive.Item
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-foreground outline-none transition hover:bg-muted/65 [&_svg]:size-3.5 [&_svg]:shrink-0"
+            onSelect={(event) => {
+              event.preventDefault();
+              toggleTheme();
+            }}
+          >
+            {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+          <DropdownMenuPrimitive.Item
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-danger outline-none transition hover:bg-danger/10 [&_svg]:size-3.5 [&_svg]:shrink-0"
+            onSelect={(event) => {
+              event.preventDefault();
+              onSignOut();
+            }}
+          >
+            <LogOut aria-hidden="true" />
+            Sign out
+          </DropdownMenuPrimitive.Item>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
+  );
+}
+
 export function AppShell({
   children,
   onSignOut,
@@ -259,17 +334,12 @@ export function AppShell({
                     <Icon aria-hidden="true" size={15} />
                   </span>
                   <span
-                    className={cn("min-w-0", collapsedSidebar && "sr-only")}
+                    className={cn(
+                      "min-w-0 truncate",
+                      collapsedSidebar && "sr-only",
+                    )}
                   >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="block truncate">{item.label}</span>
-                      <HelpHint
-                        label={`About ${item.label}`}
-                        title={item.label}
-                      >
-                        {item.hint}
-                      </HelpHint>
-                    </span>
+                    {item.label}
                   </span>
                 </button>
               );
@@ -313,55 +383,6 @@ export function AppShell({
               <p className="truncate text-[11px] text-muted-foreground">
                 {organizationSlug ?? "Atlas FieldOps"}
               </p>
-            </div>
-          </div>
-          <button
-            className={cn(
-              "mb-3 flex h-8 w-full items-center gap-2 rounded-lg border bg-background/80 px-2 text-left text-[11px] text-muted-foreground shadow-line transition hover:bg-muted/35 hover:text-foreground",
-              collapsedSidebar && "justify-center px-0",
-            )}
-            onClick={() => setCommandOpen(true)}
-            type="button"
-          >
-            <Command aria-hidden="true" size={15} />
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate",
-                collapsedSidebar && "sr-only",
-              )}
-            >
-              Search
-            </span>
-            <kbd
-              className={cn(
-                "rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]",
-                collapsedSidebar && "sr-only",
-              )}
-            >
-              ⌘K
-            </kbd>
-          </button>
-          <div
-            className={cn(
-              "mb-3 rounded-lg border bg-background/80 p-2.5 shadow-sm",
-              collapsedSidebar && "hidden",
-            )}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Today
-              </span>
-              <StatusDot tone="online" />
-            </div>
-            <p className="mt-1.5 text-[13px] font-semibold">Workspace ready</p>
-            <div className="mt-1">
-              <HelpHint
-                label="About workspace navigation"
-                title="Workspace ready"
-              >
-                Navigation follows the M&E architecture: projects, forms,
-                fieldwork, quality, reports, governance, and system controls.
-              </HelpHint>
             </div>
           </div>
         </div>
@@ -411,9 +432,6 @@ export function AppShell({
                 <p className="truncate text-[13px] font-semibold tracking-normal">
                   {organizationLabel}
                 </p>
-                <p className="truncate text-xs text-muted-foreground md:hidden">
-                  Signed in as {accountName}
-                </p>
                 <div className="hidden items-center gap-1.5 md:flex">
                   {organizationSlug ? (
                     <span className="truncate text-xs text-muted-foreground">
@@ -433,29 +451,6 @@ export function AppShell({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-            <Badge
-              tone={isSupportMode ? "warning" : "success"}
-              className="hidden gap-1.5 sm:inline-flex"
-            >
-              <RadioTower aria-hidden="true" size={13} />
-              {isSupportMode ? "Support mode" : accountRole}
-            </Badge>
-            <div className="hidden min-w-0 max-w-[260px] items-center gap-2 rounded-lg border bg-background/80 px-2 py-1 shadow-line md:flex">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
-                {organizationInitials(accountName)}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Signed in as
-                </p>
-                <p className="truncate text-[13px] font-semibold text-foreground">
-                  {accountName}
-                </p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {accountScope}
-                </p>
-              </div>
-            </div>
             <Button
               aria-label="Open command palette"
               className="sm:hidden"
@@ -478,28 +473,15 @@ export function AppShell({
                 ⌘K
               </kbd>
             </Button>
-            <Button
-              aria-label="Toggle theme"
-              className="hidden sm:inline-flex"
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-            >
-              {theme === "dark" ? (
-                <Sun aria-hidden="true" />
-              ) : (
-                <Moon aria-hidden="true" />
-              )}
-            </Button>
-            <Button
-              aria-label="Sign out"
-              onClick={onSignOut}
-              type="button"
-              variant="ghost"
-            >
-              <LogOut aria-hidden="true" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
+            <UserMenu
+              accountName={accountName}
+              accountRole={accountRole}
+              accountScope={accountScope}
+              isSupportMode={isSupportMode}
+              onSignOut={onSignOut}
+              theme={theme}
+              toggleTheme={toggleTheme}
+            />
           </div>
         </header>
 
@@ -555,22 +537,6 @@ export function AppShell({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                  <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-line">
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="text-success"
-                      size={13}
-                    />
-                    Workspace healthy
-                  </span>
-                  <Button
-                    onClick={() => setCommandOpen(true)}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Command aria-hidden="true" />
-                    Search actions
-                  </Button>
                   {nextActionItem ? (
                     <Button
                       onClick={() => {

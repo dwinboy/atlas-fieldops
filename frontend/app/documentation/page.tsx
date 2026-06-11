@@ -20,7 +20,7 @@ export default function DocumentationPage() {
           {documentationCategories.map((category) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={category}>
               <h2 className="text-lg font-semibold">{category}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">
                 Setup guidance, workflows, permissions, examples, common mistakes, and next actions.
               </p>
             </article>

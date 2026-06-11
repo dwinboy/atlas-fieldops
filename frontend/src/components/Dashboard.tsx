@@ -1203,7 +1203,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                           {metric.label}
                         </p>
-                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                        <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">
                           {metric.value}
                         </p>
                       </div>
@@ -1305,7 +1305,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                             <Icon aria-hidden="true" size={16} />
                           </span>
                         </div>
-                        <p className="mt-3 text-2xl font-semibold tracking-tight">
+                        <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">
                           {card.value}
                         </p>
                         <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
@@ -1397,7 +1397,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   type="button"
                 >
                   <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-lg font-semibold">
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
                     {Number(value).toLocaleString()}
                   </p>
                 </button>
@@ -1467,7 +1467,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 type="button"
               >
                 <p className="text-xs text-muted-foreground">Mapped records</p>
-                <p className="mt-1 text-lg font-semibold">
+                <p className="mt-1 text-lg font-semibold tabular-nums">
                   {coverageOverview.locatedSubmissions.toLocaleString()}
                 </p>
               </button>
@@ -1483,7 +1483,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 type="button"
               >
                 <p className="text-xs text-muted-foreground">Locations</p>
-                <p className="mt-1 text-lg font-semibold">
+                <p className="mt-1 text-lg font-semibold tabular-nums">
                   {coverageOverview.uniqueLocations.toLocaleString()}
                 </p>
               </button>
@@ -1572,7 +1572,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {label}
                 </p>
-                <p className="mt-2 text-lg font-semibold">{value}</p>
+                <p className="mt-2 text-lg font-semibold tabular-nums">{value}</p>
               </button>
             ))}
           </div>
@@ -1669,7 +1669,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                           <p className="text-xs text-muted-foreground">
                             {label}
                           </p>
-                          <p className="mt-1 text-lg font-semibold">{value}</p>
+                          <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
                         </div>
                       ))}
                     </div>
@@ -1786,7 +1786,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                       key={label}
                     >
                       <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="mt-1 text-lg font-semibold">{value}</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -2333,7 +2333,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   size={17}
                 />
               </div>
-              <p className="mt-3 text-2xl font-semibold tracking-tight">
+              <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">
                 {metric.value}
               </p>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -2526,12 +2526,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Waiting to sync</dt>
-              <dd className="mt-2 text-xl font-semibold">0</dd>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">0</dd>
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Retry queue</dt>
-              <dd className="mt-2 text-xl font-semibold">0</dd>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">0</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>
           </dl>

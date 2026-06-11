@@ -196,8 +196,8 @@ export const previewVersions: DataVersionRead[] = [
 ];
 
 export const previewMasterData: MasterDataEntryRead[] = [
-  { id: "master-1", category: "classification", code: "restricted", label: "Restricted", status: "active", version: 1, created_at: nowIso },
-  { id: "master-2", category: "classification", code: "highly-sensitive", label: "Highly Sensitive", status: "active", version: 1, created_at: nowIso },
+  { id: "master-1", category: "classification", code: "restricted", label: "Restricted", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso },
+  { id: "master-2", category: "classification", code: "highly-sensitive", label: "Highly Sensitive", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso },
 ];
 
 export const previewApprovals: ApprovalRequest[] = [

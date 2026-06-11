@@ -16,6 +16,7 @@ import {
   MapPinned,
   Plus,
   ShieldCheck,
+  SlidersHorizontal,
   Target,
   UploadCloud,
   UsersRound,
@@ -34,6 +35,7 @@ import {
   createProject,
   getProjectDetail,
   getProjectsSummary,
+  importOrganizationUnits,
   installProjectSectorForms,
   installProjectSectorIndicators,
   installProjectSectorReports,
@@ -479,6 +481,16 @@ function settingStringList(
     : [];
 }
 
+function topLevelStringList(
+  settingsJson: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  const value = settingsJson?.[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 function mergeProjectSettings(
   draft: ProjectCreate,
   section: string,
@@ -828,6 +840,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     "projects.manage",
     "projects.edit",
   ]);
+  const canManageOrganization = hasAnyPermission(principal, [
+    "organization.manage",
+  ]);
 
   const projectsQuery = useQuery({
     queryKey: ["projects", token],
@@ -876,13 +891,52 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     () => filterProjects(projects, activeSection),
     [activeSection, projects],
   );
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterCountry, setFilterCountry] = useState("");
+  const [filterRegion, setFilterRegion] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const projectFilters = {
+    country: filterCountry,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+    owner: filterOwner,
+    region: filterRegion,
+    status: filterStatus,
+  };
+  function setProjectFilters(patch: Partial<typeof projectFilters>): void {
+    if (patch.status !== undefined) setFilterStatus(patch.status);
+    if (patch.country !== undefined) setFilterCountry(patch.country);
+    if (patch.region !== undefined) setFilterRegion(patch.region);
+    if (patch.owner !== undefined) setFilterOwner(patch.owner);
+    if (patch.dateFrom !== undefined) setFilterDateFrom(patch.dateFrom);
+    if (patch.dateTo !== undefined) setFilterDateTo(patch.dateTo);
+  }
+  const filteredProjects = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const toTime = filterDateTo ? new Date(filterDateTo).getTime() : null;
+    return visibleProjects.filter((project) => {
+      if (filterStatus && project.status !== filterStatus) return false;
+      if (filterCountry && project.country !== filterCountry) return false;
+      if (filterRegion && project.region !== filterRegion) return false;
+      if (filterOwner && project.owner !== filterOwner) return false;
+      if (fromTime !== null || toTime !== null) {
+        if (!project.start_date) return false;
+        const startTime = new Date(project.start_date).getTime();
+        if (fromTime !== null && startTime < fromTime) return false;
+        if (toTime !== null && startTime > toTime) return false;
+      }
+      return true;
+    });
+  }, [filterCountry, filterDateFrom, filterDateTo, filterOwner, filterRegion, filterStatus, visibleProjects]);
 
   useEffect(() => {
     const match = pathname?.match(/^\/projects\/([^/]+)\/data-import\/?$/);
     if (!match?.[1]) return;
     setSelectedProjectId(match[1]);
     setActiveSection("all");
-    setActiveTab("Data Import");
+    setActiveTab("Settings");
   }, [pathname]);
 
   const createProjectMutation = useMutation({
@@ -946,6 +1000,24 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         tone: "danger",
       });
     },
+  });
+
+  const importUnitsMutation = useMutation({
+    mutationFn: (file: File) => importOrganizationUnits(token ?? "", file),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["users-teams", "units", token] });
+      pushToast({
+        title: "Locations imported",
+        description: `${result.created_count} created, ${result.skipped_count} skipped, ${result.error_count} issue(s).`,
+        tone: result.error_count ? "warning" : "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Location import failed",
+        description: "Use a CSV with name, code, unit_type columns (optional parent_code, region).",
+        tone: "danger",
+      }),
   });
 
   const updateProjectSettingsMutation = useMutation({
@@ -1378,6 +1450,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
             setActiveView("indicators");
             router.push("/indicators");
           }}
+          onOpenMapping={() => {
+            setActiveView("map");
+            router.push("/mapping");
+          }}
           onOpenReports={() => {
             setActiveView("analytics");
             router.push("/reports");
@@ -1410,26 +1486,21 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       ["all", "active", "draft", "closed"].includes(activeSection) ? (
         <section className="space-y-4">
           <SectionHeader
-            action={
-              <Button
-                disabled={!canManageProjects}
-                onClick={() => openProjectWizard()}
-                variant="primary"
-              >
-                <Plus aria-hidden="true" /> Create project
-              </Button>
-            }
             description="Search, filter, sort, export, and open project workspaces. Detailed forms, submissions, mapping, reports, and governance remain in their modules."
             title={
               projectSections.find((section) => section.id === activeSection)
                 ?.label ?? "Projects"
             }
           />
-          <ProjectFilters />
+          <ProjectFilters
+            filters={projectFilters}
+            onChange={setProjectFilters}
+            projects={visibleProjects}
+          />
           <DataTable
             columns={projectColumns}
             emptyLabel="No projects match this view yet"
-            rows={visibleProjects}
+            rows={filteredProjects}
             searchLabel="Search projects, donors, owners, countries"
             title="Project list"
           />
@@ -1463,11 +1534,14 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           !createProjectMutation.isPending &&
           !updateProjectMutation.isPending
         }
+        canImportLocations={canManageOrganization && enabled}
         draft={projectDraft}
         error={projectWizardError}
+        importingLocations={importUnitsMutation.isPending}
         isEditing={Boolean(editingProjectId)}
         isSubmitting={createProjectMutation.isPending || updateProjectMutation.isPending}
         onChange={setProjectDraft}
+        onImportLocations={(file) => importUnitsMutation.mutate(file)}
         onOpenChange={(open) => {
           setWizardOpen(open);
           if (!open) setProjectWizardError("");
@@ -1643,6 +1717,7 @@ function ProjectDetailWorkspace({
   onOpenForms,
   onOpenBeneficiaries,
   onOpenIndicators,
+  onOpenMapping,
   onOpenReports,
   onOpenSubmissions,
   onOpenTeams,
@@ -1665,6 +1740,7 @@ function ProjectDetailWorkspace({
   onOpenForms: () => void;
   onOpenBeneficiaries: () => void;
   onOpenIndicators: () => void;
+  onOpenMapping: () => void;
   onOpenReports: () => void;
   onOpenSubmissions: () => void;
   onOpenTeams: () => void;
@@ -1732,80 +1808,95 @@ function ProjectDetailWorkspace({
           token={token}
         />
       ) : null}
-      {tab === "Data Import" ? (
-        <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+      {tab === "Forms & Indicators" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Forms"
+            description="Forms are managed in the Forms module. This tab shows the project relationship only."
+            onAction={onOpenForms}
+            records={detail.forms}
+            title="Project Forms"
+          />
+          <RelatedTab
+            actionLabel="Open Indicators"
+            description="Indicators stay reusable and are tracked in the Indicators module."
+            onAction={onOpenIndicators}
+            records={detail.indicators}
+            title="Project Indicators"
+          />
+        </div>
       ) : null}
-      {tab === "Forms" ? (
-        <RelatedTab
-          actionLabel="Open Forms"
-          description="Forms are managed in the Forms module. This tab shows the project relationship only."
-          onAction={onOpenForms}
-          records={detail.forms}
-          title="Project Forms"
-        />
+      {tab === "Locations & Teams" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Mapping"
+            description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
+            onAction={onOpenMapping}
+            records={detail.locations}
+            title="Project Locations"
+          />
+          <RelatedTab
+            actionLabel="Open Users & Teams"
+            description="Project teams reference Users & Teams without duplicating identity management."
+            onAction={onOpenTeams}
+            records={detail.teams}
+            title="Project Teams"
+          />
+          <RelatedTab
+            description="Assignments are operational activities owned by Field Operations."
+            records={detail.assignments}
+            title="Project Assignments"
+          />
+        </div>
       ) : null}
-      {tab === "Indicators" ? (
-        <RelatedTab
-          actionLabel="Open Indicators"
-          description="Indicators stay reusable and are tracked in the Indicators module."
-          onAction={onOpenIndicators}
-          records={detail.indicators}
-          title="Project Indicators"
-        />
+      {tab === "Submissions & Reports" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Submissions"
+            description="Collected records are reviewed in Submissions; this tab shows project-level counts and recent records."
+            onAction={onOpenSubmissions}
+            records={detail.submissions}
+            title="Project Submissions"
+          />
+          <RelatedTab
+            actionLabel="Open Reports"
+            description="Project reports, indicator reports, and coverage reports are produced in Reports."
+            onAction={onOpenReports}
+            records={detail.reports}
+            title="Project Reports"
+          />
+        </div>
       ) : null}
-      {tab === "Locations" ? (
-        <RelatedTab
-          actionLabel="Open Mapping"
-          description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
-          records={detail.locations}
-          title="Project Locations"
-        />
+      {tab === "Data Quality & Governance" ? (
+        <div className="space-y-4">
+          <ProjectDataQuality detail={detail} />
+          <SectionHeader
+            description="Default approval workflow, consent, retention, and beneficiary rules applied to this project."
+            title="Governance"
+          />
+          <ProjectGovernance detail={detail} />
+          <SectionHeader
+            description="Immutable record of changes made to this project."
+            title="Audit Trail"
+          />
+          <AuditTrail detail={detail} />
+        </div>
       ) : null}
-      {tab === "Teams" ? (
-        <RelatedTab
-          actionLabel="Open Users & Teams"
-          description="Project teams reference Users & Teams without duplicating identity management."
-          onAction={onOpenTeams}
-          records={detail.teams}
-          title="Project Teams"
-        />
-      ) : null}
-      {tab === "Assignments" ? (
-        <RelatedTab
-          description="Assignments are operational activities owned by Field Operations."
-          records={detail.assignments}
-          title="Project Assignments"
-        />
-      ) : null}
-      {tab === "Submissions" ? (
-        <RelatedTab
-          actionLabel="Open Submissions"
-          description="Collected records are reviewed in Submissions; this tab shows project-level counts and recent records."
-          onAction={onOpenSubmissions}
-          records={detail.submissions}
-          title="Project Submissions"
-        />
-      ) : null}
-      {tab === "Reports" ? (
-        <RelatedTab
-          actionLabel="Open Reports"
-          description="Project reports, indicator reports, and coverage reports are produced in Reports."
-          onAction={onOpenReports}
-          records={detail.reports}
-          title="Project Reports"
-        />
-      ) : null}
-      {tab === "Data Quality" ? <ProjectDataQuality detail={detail} /> : null}
-      {tab === "Governance" ? <ProjectGovernance detail={detail} /> : null}
       {tab === "Settings" ? (
-        <ProjectSettings
-          canManageProjects={canManageProjects}
-          detail={detail}
-          isSaving={isSavingSettings}
-          onUpdateSettings={onUpdateSettings}
-        />
+        <div className="space-y-4">
+          <ProjectSettings
+            canManageProjects={canManageProjects}
+            detail={detail}
+            isSaving={isSavingSettings}
+            onUpdateSettings={onUpdateSettings}
+          />
+          <SectionHeader
+            description="Bring external data into this project or migrate records between systems."
+            title="Data Import & Migration"
+          />
+          <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+        </div>
       ) : null}
-      {tab === "Audit Trail" ? <AuditTrail detail={detail} /> : null}
     </section>
   );
 }
@@ -1872,6 +1963,7 @@ function ProjectOverview({
   const approvalWorkflow =
     settingText(settingsDraft, "governance", "approvalWorkflow") ||
     "Not configured";
+  const formJourney = topLevelStringList(detail.settings_json, "formJourney");
   const overviewCards: {
     label: string;
     value: string;
@@ -1883,36 +1975,36 @@ function ProjectOverview({
       tab: "Beneficiaries",
       value: `${detail.beneficiary_count}`,
     },
-    { label: "Forms", tab: "Forms", value: `${detail.active_forms}` },
+    { label: "Forms", tab: "Forms & Indicators", value: `${detail.active_forms}` },
     {
       label: "Assignments",
-      tab: "Assignments",
+      tab: "Locations & Teams",
       value: `${detail.active_assignments}`,
     },
     {
       label: "Submissions",
-      tab: "Submissions",
+      tab: "Submissions & Reports",
       value: `${detail.total_submissions}`,
     },
     {
       label: "Indicators",
-      tab: "Indicators",
+      tab: "Forms & Indicators",
       value: `${detail.indicator_count}`,
     },
     {
       label: "Data Quality",
-      tab: "Data Quality",
+      tab: "Data Quality & Governance",
       tone: health.qualityTone,
       value: health.qualityLabel,
     },
     {
       label: "Coverage",
-      tab: "Locations",
+      tab: "Locations & Teams",
       value: detail.region ?? detail.country ?? "All areas",
     },
     {
       label: "Field Officers",
-      tab: "Teams",
+      tab: "Locations & Teams",
       value: `${detail.teams.length || detail.active_assignments}`,
     },
   ];
@@ -1978,12 +2070,12 @@ function ProjectOverview({
         <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
           {[
             ["Sector", detail.sector_id ? "Ready" : "Select pack", Boolean(detail.sector_id), "Overview"],
-            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms"],
-            ["Indicators", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Indicators"],
-            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Reports"],
-            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Teams"],
-            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Governance"],
-            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Assignments"],
+            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms & Indicators"],
+            ["Indicators", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Forms & Indicators"],
+            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Submissions & Reports"],
+            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Locations & Teams"],
+            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Data Quality & Governance"],
+            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Locations & Teams"],
           ].map(([label, value, ready, target]) => (
             <button
               className="rounded-xl border bg-panel p-3 text-left transition hover:border-primary hover:bg-primary/5"
@@ -2059,7 +2151,7 @@ function ProjectOverview({
           <h3 className="font-semibold">Coverage Map Preview</h3>
           <button
             className="mt-4 grid min-h-64 w-full place-items-center rounded-2xl border bg-[radial-gradient(circle_at_25%_25%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(135deg,rgba(34,197,94,0.15),rgba(15,23,42,0.04))] p-5 text-center transition hover:border-primary"
-            onClick={() => onSelectTab("Locations")}
+            onClick={() => onSelectTab("Locations & Teams")}
             type="button"
           >
             <div>
@@ -2091,16 +2183,20 @@ function ProjectOverview({
               ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} indicators`
               : "Custom indicators",
           ]}
-          onClick={() => onSelectTab("Forms")}
+          onClick={() => onSelectTab("Forms & Indicators")}
         />
         <InfoPanel
           title="Beneficiary Journey"
-          lines={[
-            "Registration before baseline",
-            "Baseline before monitoring",
-            "Monitoring before endline",
-          ]}
-          onClick={() => onSelectTab("Governance")}
+          lines={
+            formJourney.length
+              ? formJourney
+              : [
+                  "Registration before baseline",
+                  "Baseline before monitoring",
+                  "Monitoring before endline",
+                ]
+          }
+          onClick={() => onSelectTab("Data Quality & Governance")}
         />
         <InfoPanel
           title="Project Health Inputs"
@@ -2109,12 +2205,12 @@ function ProjectOverview({
             "Data quality and approvals",
             "Indicator and assignment progress",
           ]}
-          onClick={() => onSelectTab("Data Quality")}
+          onClick={() => onSelectTab("Data Quality & Governance")}
         />
         <InfoPanel
           title="Source Tracking"
           lines={submissionSourceOptions}
-          onClick={() => onSelectTab("Submissions")}
+          onClick={() => onSelectTab("Submissions & Reports")}
         />
       </div>
     </div>
@@ -2197,7 +2293,7 @@ function InfoPanel({
 function ProjectDataQuality({ detail }: { detail: ProjectDetailRead }) {
   const health = projectHealthSummary(detail);
   const items = [
-    ["Duplicate candidates", `${Math.max(0, Math.round(detail.beneficiary_count * 0.015))}`],
+    ["Duplicate Review", detail.beneficiary_count > 0 ? "Tracked in Beneficiaries" : "No beneficiaries yet"],
     ["Missing data checks", detail.total_submissions ? "Active" : "Waiting for data"],
     ["GPS issues", detail.total_submissions ? "Tracked in Data Quality" : "No submissions yet"],
     ["Validation failures", detail.total_submissions ? "Review queue enabled" : "No issues yet"],
@@ -2668,12 +2764,15 @@ function TemplatesSection({
 }
 
 function ProjectWizard({
+  canImportLocations,
   canSubmit,
   draft,
   error,
+  importingLocations,
   isEditing,
   isSubmitting,
   onChange,
+  onImportLocations,
   onOpenChange,
   onSubmit,
   open,
@@ -2681,12 +2780,15 @@ function ProjectWizard({
   setStep,
   step,
 }: {
+  canImportLocations: boolean;
   canSubmit: boolean;
   draft: ProjectCreate;
   error: string;
+  importingLocations: boolean;
   isEditing: boolean;
   isSubmitting: boolean;
   onChange: (draft: ProjectCreate) => void;
+  onImportLocations: (file: File) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
@@ -2770,9 +2872,12 @@ function ProjectWizard({
             </div>
           </div>
           <ProjectWizardStepContent
+            canImportLocations={canImportLocations}
             draft={draft}
             duplicateFields={duplicateFields}
+            importingLocations={importingLocations}
             onChange={onChange}
+            onImportLocations={onImportLocations}
             readiness={readiness}
             sectorPacks={sectorPacks}
             setDuplicateField={setDuplicateField}
@@ -2831,9 +2936,12 @@ function ProjectWizard({
 }
 
 function ProjectWizardStepContent({
+  canImportLocations,
   draft,
   duplicateFields,
+  importingLocations,
   onChange,
+  onImportLocations,
   readiness,
   sectorPacks,
   setDuplicateField,
@@ -2841,9 +2949,12 @@ function ProjectWizardStepContent({
   step,
   updateSettings,
 }: {
+  canImportLocations: boolean;
   draft: ProjectCreate;
   duplicateFields: string[];
+  importingLocations: boolean;
   onChange: (draft: ProjectCreate) => void;
+  onImportLocations: (file: File) => void;
   readiness: ReturnType<typeof projectReadiness>;
   sectorPacks: ProjectSectorPackRead[];
   setDuplicateField: (field: string, enabled: boolean) => void;
@@ -3131,24 +3242,28 @@ function ProjectWizardStepContent({
             }
           />
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <InfoPanel
-            title="Select Existing Locations"
-            lines={["Use the organization hierarchy", "Drives assignments and reports"]}
-            onClick={() => undefined}
-          />
+        <div className="grid gap-3 md:grid-cols-2">
           <ProjectSetupFileCard
-            accept=".csv,.xlsx,.xls,.json"
+            accept=".csv"
+            disabled={!canImportLocations || importingLocations}
             fileName={settingText(draft, "geography", "locationImportFileName")}
             inputId="project-location-import-file"
             title="Import Locations"
-            lines={["CSV and Excel-ready", "Use Data Import for large lists"]}
-            onFileSelected={(file) =>
+            lines={["CSV columns: name, code, unit_type", "Optional: parent_code, region"]}
+            onFileSelected={(file) => {
               updateSettings("geography", {
                 locationImportFileName: file.name,
                 locationImportFileSize: file.size,
                 locationImportFileType: file.type || "unknown",
-              })
+              });
+              onImportLocations(file);
+            }}
+            statusLine={
+              importingLocations
+                ? "Importing..."
+                : !canImportLocations
+                  ? "Requires organization management permission"
+                  : undefined
             }
           />
           <ProjectSetupFileCard
@@ -3156,7 +3271,7 @@ function ProjectWizardStepContent({
             fileName={settingText(draft, "geography", "boundaryFileName")}
             inputId="project-boundary-upload-file"
             title="Upload Boundaries"
-            lines={["GeoJSON/KML/Shapefile-ready", "Used for GPS checks"]}
+            lines={["GeoJSON/KML/Shapefile", "Stored as a project reference only"]}
             onFileSelected={(file) =>
               updateSettings("geography", {
                 boundaryFileName: file.name,
@@ -3559,22 +3674,31 @@ function ProjectWizardStepContent({
 
 function ProjectSetupFileCard({
   accept,
+  disabled,
   fileName,
   inputId,
   lines,
   onFileSelected,
+  statusLine,
   title,
 }: {
   accept: string;
+  disabled?: boolean;
   fileName: string;
   inputId: string;
   lines: string[];
   onFileSelected: (file: File) => void;
+  statusLine?: string;
   title: string;
 }) {
   return (
     <label
-      className="cursor-pointer rounded-2xl border bg-background/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+      className={cn(
+        "rounded-2xl border bg-background/50 p-4 text-left transition",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer hover:border-primary hover:bg-primary/5",
+      )}
       htmlFor={inputId}
     >
       <span className="flex items-center gap-2 font-semibold">
@@ -3591,13 +3715,20 @@ function ProjectSetupFileCard({
       <span className="mt-3 block rounded-lg border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
         {fileName ? `Selected: ${fileName}` : "Choose file"}
       </span>
+      {statusLine ? (
+        <span className="mt-1.5 block text-xs font-medium text-accent-foreground">
+          {statusLine}
+        </span>
+      ) : null}
       <input
         accept={accept}
         className="sr-only"
+        disabled={disabled}
         id={inputId}
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) onFileSelected(file);
+          event.target.value = "";
         }}
         type="file"
       />
@@ -3646,14 +3777,113 @@ function ReadinessChecklist({
   );
 }
 
-function ProjectFilters() {
+type ProjectFiltersState = {
+  country: string;
+  dateFrom: string;
+  dateTo: string;
+  owner: string;
+  region: string;
+  status: string;
+};
+
+function ProjectFilters({
+  filters,
+  onChange,
+  projects,
+}: {
+  filters: ProjectFiltersState;
+  onChange: (patch: Partial<ProjectFiltersState>) => void;
+  projects: ProjectListItemRead[];
+}) {
+  const statuses = Array.from(
+    new Set(projects.map((project) => project.status).filter(Boolean)),
+  );
+  const countries = Array.from(
+    new Set(projects.map((project) => project.country).filter((value): value is string => Boolean(value))),
+  );
+  const regions = Array.from(
+    new Set(projects.map((project) => project.region).filter((value): value is string => Boolean(value))),
+  );
+  const owners = Array.from(
+    new Set(projects.map((project) => project.owner).filter((value): value is string => Boolean(value))),
+  );
+  const hasActiveFilters =
+    Boolean(filters.status) ||
+    Boolean(filters.country) ||
+    Boolean(filters.region) ||
+    Boolean(filters.owner) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-5">
-      <Input placeholder="Status" />
-      <Input placeholder="Country" />
-      <Input placeholder="Region" />
-      <Input placeholder="Owner" />
-      <Input placeholder="Date range" />
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <Select
+        onChange={(event) => onChange({ status: event.target.value })}
+        value={filters.status}
+      >
+        <option value="">All statuses</option>
+        {statuses.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ country: event.target.value })}
+        value={filters.country}
+      >
+        <option value="">All countries</option>
+        {countries.map((country) => (
+          <option key={country} value={country}>
+            {country}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ region: event.target.value })}
+        value={filters.region}
+      >
+        <option value="">All regions</option>
+        {regions.map((region) => (
+          <option key={region} value={region}>
+            {region}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ owner: event.target.value })}
+        value={filters.owner}
+      >
+        <option value="">All owners</option>
+        {owners.map((owner) => (
+          <option key={owner} value={owner}>
+            {owner}
+          </option>
+        ))}
+      </Select>
+      <div className="col-span-2 flex gap-2 md:col-span-1">
+        <Input
+          aria-label="Start date from"
+          onChange={(event) => onChange({ dateFrom: event.target.value })}
+          type="date"
+          value={filters.dateFrom}
+        />
+        <Input
+          aria-label="Start date to"
+          onChange={(event) => onChange({ dateTo: event.target.value })}
+          type="date"
+          value={filters.dateTo}
+        />
+      </div>
+      <Button
+        disabled={!hasActiveFilters}
+        onClick={() =>
+          onChange({ country: "", dateFrom: "", dateTo: "", owner: "", region: "", status: "" })
+        }
+        variant="ghost"
+      >
+        <SlidersHorizontal aria-hidden="true" />
+        Clear filters
+      </Button>
     </div>
   );
 }

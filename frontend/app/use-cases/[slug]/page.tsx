@@ -46,11 +46,11 @@ export default function UseCaseDetailPage({ params }: { params: { slug: string }
           <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold">Workflow</h2>
-              <ol className="mt-4 space-y-3 text-sm leading-6 text-[#52615d]">
+              <ol className="mt-4 space-y-3 text-sm leading-6 text-[#5b6a65]">
                 {steps.map((step, index) => <li key={step}>{index + 1}. {step}</li>)}
               </ol>
             </article>
-            <article className="rounded-xl border border-black/10 bg-[#10201c] p-6 text-white shadow-sm">
+            <article className="rounded-xl border border-black/10 bg-[#0c1f1b] p-6 text-white shadow-sm">
               <h2 className="text-xl font-semibold">Why teams use Atlas FieldOps</h2>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {["Survey management", "Offline collection", "Data quality", "GIS mapping", "Indicator tracking", "Donor reporting"].map((item) => (
@@ -65,7 +65,7 @@ export default function UseCaseDetailPage({ params }: { params: { slug: string }
         <section className="bg-white py-20">
           <SectionIntro eyebrow="Implementation" title="Make complex field workflows easier to run" text="The same platform supports form design, assignments, quality review, maps, indicators, reports, and auditability." />
           <div className="mt-8 flex justify-center">
-            <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/book-demo">
+            <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#0b7a70]" href="/book-demo">
               Book a demo
             </Link>
           </div>

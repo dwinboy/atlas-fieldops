@@ -25,7 +25,7 @@ export default function UseCasesPage() {
           {useCasePages.map((useCase) => (
             <Link className="rounded-xl border border-black/10 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg" href={`/use-cases/${useCase.slug}`} key={useCase.slug}>
               <h2 className="text-xl font-semibold">{useCase.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">{useCase.description}</p>
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{useCase.description}</p>
             </Link>
           ))}
         </section>

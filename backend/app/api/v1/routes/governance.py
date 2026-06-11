@@ -184,3 +184,16 @@ async def create_master_data_entry(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MasterDataEntryRead:
     return await GovernanceService(session).create_master_data_entry(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get(
+    "/master-data/{category}",
+    response_model=list[MasterDataEntryRead],
+    summary="List active choice-list entries for a master data category",
+)
+async def list_choice_list(
+    category: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.AUDIT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[MasterDataEntryRead]:
+    return await GovernanceService(session).list_choice_list(organization_uuid(principal), category)

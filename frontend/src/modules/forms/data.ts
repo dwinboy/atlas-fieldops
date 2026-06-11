@@ -14,22 +14,11 @@ export type FormsSection =
 export type FormDetailTab =
   | "Overview"
   | "Analytics"
-  | "Builder"
-  | "Questions"
-  | "Reference Data"
-  | "Permissions"
-  | "Workflow"
-  | "Data Quality"
-  | "Governance"
-  | "Mapping Settings"
-  | "Preview"
-  | "Review"
+  | "Configuration"
   | "Relationships"
   | "Translations"
   | "Offline Readiness"
-  | "Comparison"
-  | "Version History"
-  | "Audit Trail";
+  | "Comparison";
 
 export type FormListItem = {
   id: string;
@@ -94,22 +83,11 @@ export const formsSections: {
 export const formDetailTabs: FormDetailTab[] = [
   "Overview",
   "Analytics",
-  "Builder",
-  "Questions",
-  "Reference Data",
-  "Permissions",
-  "Workflow",
-  "Data Quality",
-  "Governance",
-  "Mapping Settings",
-  "Preview",
-  "Review",
+  "Configuration",
   "Relationships",
   "Translations",
   "Offline Readiness",
   "Comparison",
-  "Version History",
-  "Audit Trail",
 ];
 
 export const previewForms: FormListItem[] = [

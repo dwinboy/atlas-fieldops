@@ -73,10 +73,13 @@ import {
   averageResolutionImpact,
   buildQualityInvestigationSummary,
   calculateQualityScore,
+  computeQualityScoreFromIssues,
   computeQualitySummary,
   filterIssuesBySection,
   nextInvestigationStatus,
   qualityCategory,
+  rankByField,
+  rankByIssueType,
   scoreTone,
   severityTone,
   statusTone,
@@ -92,6 +95,13 @@ type DataQualityModuleProps = {
 type IssueDetailTab = "Overview" | "Related Submission" | "Investigation" | "Resolution" | "History" | "Audit Trail";
 
 const issueTabs: IssueDetailTab[] = ["Overview", "Related Submission", "Investigation", "Resolution", "History", "Audit Trail"];
+
+const sectionGroups: { label: string; ids: DataQualitySection[] }[] = [
+  { label: "Overview", ids: ["dashboard", "quality-dashboard"] },
+  { label: "Issue Queues", ids: ["duplicates", "outliers", "gps-issues", "missing-data", "validation-failures", "risk-alerts"] },
+  { label: "Workflows", ids: ["import-cleaning", "reconciliation"] },
+  { label: "Rules", ids: ["rules"] },
+];
 
 function titleCase(value: string): string {
   return value
@@ -213,18 +223,10 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const gpsIssues = useMemo(() => (preview ? sampleGpsIssues : []), [preview]);
   const riskAlerts = useMemo(() => (preview ? sampleRiskAlerts : []), [preview]);
   const qualityRules = useMemo(() => (preview ? sampleQualityRules : []), [preview]);
-  const qualityScores = useMemo(() => (preview ? sampleQualityScores : {
-    Organization: {
-      accuracy: 100,
-      completeness: 100,
-      consistency: 100,
-      consentCompliance: 100,
-      duplicateDetection: 100,
-      gpsCompliance: 100,
-      timeliness: 100,
-      validationSuccess: 100,
-    },
-  }), [preview]);
+  const qualityScores = useMemo(
+    () => (preview ? sampleQualityScores : { Organization: computeQualityScoreFromIssues(qualityIssues) }),
+    [preview, qualityIssues],
+  );
   const duplicateGroups = useMemo(() => (preview ? sampleDuplicateGroups : []), [preview]);
   const outliers = useMemo(() => (preview ? sampleOutliers : []), [preview]);
   const validationFailures = useMemo(() => (preview ? sampleValidationFailures : []), [preview]);
@@ -291,23 +293,34 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
-          {dataQualitySections.map((section) => (
-            <button
-              className={cn(
-                "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
-              )}
-              key={section.id}
-              onClick={() => {
-                setActiveSection(section.id);
-                setSelectedIssueId(null);
-              }}
-              type="button"
-            >
-              <span className="text-xs font-semibold">{section.label}</span>
-              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
-            </button>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+          {sectionGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.ids.map((id) => {
+                  const section = dataQualitySections.find((candidate) => candidate.id === id);
+                  if (!section) return null;
+                  return (
+                    <button
+                      className={cn(
+                        "min-w-36 rounded-lg border px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                        activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
+                      )}
+                      key={section.id}
+                      onClick={() => {
+                        setActiveSection(section.id);
+                        setSelectedIssueId(null);
+                      }}
+                      type="button"
+                    >
+                      <span className="text-xs font-semibold">{section.label}</span>
+                      <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -369,10 +382,12 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       {selectedIssue ? (
         <IssueDetail
           auditEvents={qualityAuditEvents.filter((event) => event.issueId === selectedIssue.id)}
+          isUpdating={updateSignalMutation.isPending}
           issue={selectedIssue}
           onBack={() => setSelectedIssueId(null)}
           onOpenGovernance={() => setActiveView("governance")}
           onOpenMapping={() => setActiveView("map")}
+          onUpdateStatus={(status, comment) => updateSignalMutation.mutate({ comment, signalId: selectedIssue.id, status })}
           selectedTab={activeIssueTab}
           setSelectedTab={setActiveIssueTab}
         />
@@ -526,9 +541,9 @@ function QualityLanding({
         </Panel>
       </div>
       <div className="grid gap-5 xl:grid-cols-3">
-        <RankingPanel title="Quality by Project" rows={[["Health Facility Readiness", 91], ["Agricultural Resilience Program", 84], ["Social Protection Response", 78], ["School Attendance Recovery", 74]]} />
-        <RankingPanel title="Quality by Form" rows={[["Facility Assessment", 92], ["Farmer Registration Survey", 83], ["Household Verification Form", 76], ["Market Access Survey", 69]]} />
-        <RankingPanel title="Quality by Enumerator" rows={[["Helen P.", 92], ["Amina D.", 84], ["Jean F.", 75], ["Peter O.", 61]]} />
+        <RankingPanel title="Quality by Project" rows={rankByField(issues, "project")} />
+        <RankingPanel title="Quality by Form" rows={rankByField(issues, "form")} />
+        <RankingPanel title="Quality by Issue Type" rows={rankByIssueType(issues)} />
       </div>
       <Panel title="Top Quality Issues">
         <IssueCards issues={issues.slice(0, 4)} onOpenIssue={onOpenIssue} />
@@ -538,10 +553,29 @@ function QualityLanding({
 }
 
 function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; scores: Partial<Record<QualityScope, QualityScore>> }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+
+  function exportDashboard(): void {
+    const severityRows = (["Critical", "High", "Medium", "Low"] as const).map((severity) => ({
+      metric: `${severity} issues`,
+      value: issues.filter((issue) => issue.severity === severity).length,
+    }));
+    const scoreRows = Object.entries(scores).map(([scope, score]) => {
+      const value = calculateQualityScore(score);
+      return { metric: `${scope} quality score`, value: `${value} (${qualityCategory(value)})` };
+    });
+    downloadCsv("atlas-data-quality-dashboard.csv", [
+      ...severityRows,
+      { metric: "Average score impact", value: averageResolutionImpact(issues) },
+      ...scoreRows,
+    ]);
+    pushToast({ description: "The data quality dashboard summary CSV is ready.", title: "Dashboard exported", tone: "success" });
+  }
+
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button type="button"><Download aria-hidden="true" /> Export dashboard</Button>}
+        action={<Button onClick={exportDashboard} type="button"><Download aria-hidden="true" /> Export dashboard</Button>}
         description="Executive quality overview with KPI cards, trend charts, severity breakdowns, heatmaps, ranking tables, and resolution progress."
         route="/data-quality/dashboard"
         title="Quality Dashboard"
@@ -601,7 +635,7 @@ function DuplicatesSection({ groups, issues, onOpenIssue }: { groups: DuplicateG
   return (
     <div className="space-y-3">
       <SectionHeader description="Detect and manage exact, fuzzy, and rule-based duplicate records across beneficiary IDs, household IDs, phone numbers, national IDs, GPS, and custom fields." route="/data-quality/duplicates" title="Duplicates" />
-      <DataTable columns={columns} emptyLabel="No duplicate groups yet" rows={groups} searchLabel="Search duplicate groups, fields, records" title="Duplicate groups" />
+      {groups.length ? <DataTable columns={columns} emptyLabel="No duplicate groups yet" rows={groups} searchLabel="Search duplicate groups, fields, records" title="Duplicate groups" /> : null}
       <IssueTable description="Duplicate issue workflow for compare, merge, mark valid, or flag for investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/duplicates" title="Duplicate Investigations" />
     </div>
   );
@@ -618,7 +652,7 @@ function OutliersSection({ issues, onOpenIssue, outliers }: { issues: QualityIss
   return (
     <div className="space-y-3">
       <SectionHeader description="Identify statistical, business-rule, location, and behavioral outliers such as impossible ages, extreme income, and unusually fast surveys." route="/data-quality/outliers" title="Outliers" />
-      <DataTable columns={columns} emptyLabel="No outliers yet" rows={outliers} searchLabel="Search outliers, fields, submissions" title="Outlier records" />
+      {outliers.length ? <DataTable columns={columns} emptyLabel="No outliers yet" rows={outliers} searchLabel="Search outliers, fields, submissions" title="Outlier records" /> : null}
       <IssueTable description="Review outliers, mark valid, flag for correction, or assign investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/outliers" title="Outlier Investigations" />
     </div>
   );
@@ -635,7 +669,7 @@ function GPSIssuesSection({ gpsIssues, issues, onOpenIssue, onOpenMapping }: { g
   return (
     <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenMapping} variant="secondary"><MapPinned aria-hidden="true" /> Open Mapping</Button>} description="Monitor missing GPS, outside-boundary points, duplicate coordinates, low accuracy, suspicious locations, and invalid coordinates. GIS visualization remains in Mapping." route="/data-quality/gps-issues" title="GPS Issues" />
-      <DataTable columns={columns} emptyLabel="No GPS issues yet" rows={gpsIssues} searchLabel="Search GPS issues, submission, boundary" title="GPS issue records" />
+      {gpsIssues.length ? <DataTable columns={columns} emptyLabel="No GPS issues yet" rows={gpsIssues} searchLabel="Search GPS issues, submission, boundary" title="GPS issue records" /> : null}
       <IssueTable description="Assign investigation, open map, resolve issue, or return affected submission for correction." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/gps-issues" title="GPS Investigations" />
     </div>
   );
@@ -652,7 +686,7 @@ function ValidationFailuresSection({ failures, issues, onOpenIssue }: { failures
   return (
     <div className="space-y-3">
       <SectionHeader description="Track range, logic, cross-field, conditional logic, and reference data rule failures generated by forms and workflows." route="/data-quality/validation-failures" title="Validation Failures" />
-      <DataTable columns={columns} emptyLabel="No validation failures yet" rows={failures} searchLabel="Search validation failures, rules, fields" title="Validation failure records" />
+      {failures.length ? <DataTable columns={columns} emptyLabel="No validation failures yet" rows={failures} searchLabel="Search validation failures, rules, fields" title="Validation failure records" /> : null}
       <IssueTable description="Review failed rule, inspect submission, override with reason, or resolve the issue." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/validation-failures" title="Validation Investigations" />
     </div>
   );
@@ -669,13 +703,14 @@ function RiskAlertsSection({ alerts, issues, onOpenGovernance, onOpenIssue }: { 
   return (
     <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenGovernance} variant="secondary"><ShieldCheck aria-hidden="true" /> Governance review</Button>} description="Investigate data fraud, enumerator fraud, submission manipulation, location fraud, mass duplicates, and abnormal activity." route="/data-quality/risk-alerts" title="Risk Alerts" />
-      <DataTable columns={columns} emptyLabel="No risk alerts yet" rows={alerts} searchLabel="Search risk alerts, owners, patterns" title="Risk alert center" />
+      {alerts.length ? <DataTable columns={columns} emptyLabel="No risk alerts yet" rows={alerts} searchLabel="Search risk alerts, owners, patterns" title="Risk alert center" /> : null}
       <IssueTable description="Escalate, assign reviewer, resolve, or send suspicious high-risk records to Governance Review." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/risk-alerts" title="High-Risk Investigations" />
     </div>
   );
 }
 
 function QualityRulesSection({ rules }: { rules: QualityRuleRecord[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<QualityRuleRecord>[] = [
     { header: "Rule", key: "name", render: (rule) => <div><p className="font-medium">{rule.name}</p><p className="text-xs text-muted-foreground">{rule.description}</p></div>, value: (rule) => `${rule.name} ${rule.description}` },
     { header: "Type", key: "type", render: (rule) => rule.type, value: (rule) => rule.type },
@@ -685,15 +720,8 @@ function QualityRulesSection({ rules }: { rules: QualityRuleRecord[] }) {
   ];
   return (
     <div className="space-y-3">
-      <SectionHeader action={<Button type="button"><Plus aria-hidden="true" /> Create Rule</Button>} description="Manage platform-wide completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules with project, form, indicator, or organization scope." route="/data-quality/rules" title="Quality Rules" />
+      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a quality-rules service to author new completeness, consistency, GPS, duplicate, outlier, or timeliness rules. This control is a preview for now.", title: "Creating rules isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> Create Rule</Button>} description="Manage platform-wide completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules with project, form, indicator, or organization scope." route="/data-quality/rules" title="Quality Rules" />
       <DataTable columns={columns} emptyLabel="No quality rules yet" rows={rules} searchLabel="Search rules, type, scope, project" title="Quality rules management" />
-      <Panel title="Rule testing and background processing">
-        <div className="grid gap-3 md:grid-cols-3">
-          {["Test rule against sample submissions", "Run long checks asynchronously", "Write rule changes to Governance audit trail"].map((item) => (
-            <div className="rounded-xl border bg-background p-4 text-sm" key={item}>{item}</div>
-          ))}
-        </div>
-      </Panel>
     </div>
   );
 }
@@ -1108,18 +1136,22 @@ function IssueTable({ description, issues, onOpenIssue, route, title }: { descri
 
 function IssueDetail({
   auditEvents,
+  isUpdating,
   issue,
   onBack,
   onOpenGovernance,
   onOpenMapping,
+  onUpdateStatus,
   selectedTab,
   setSelectedTab,
 }: {
   auditEvents: QualityAuditEvent[];
+  isUpdating: boolean;
   issue: QualityIssue;
   onBack: () => void;
   onOpenGovernance: () => void;
   onOpenMapping: () => void;
+  onUpdateStatus: (status: "assigned" | "under_investigation" | "resolved" | "closed", comment: string) => void;
   selectedTab: IssueDetailTab;
   setSelectedTab: (tab: IssueDetailTab) => void;
 }) {
@@ -1157,7 +1189,14 @@ function IssueDetail({
       </div>
       {selectedTab === "Overview" ? <IssueOverview issue={issue} /> : null}
       {selectedTab === "Related Submission" ? <KeyValuePanel rows={[["Submission ID", issue.submissionId], ["Project", issue.project], ["Form", issue.form], ["Enumerator", issue.enumerator], ["Supervisor", issue.supervisor], ["Location", issue.location]]} title="Related Submission" /> : null}
-      {selectedTab === "Investigation" ? <InvestigationPanel issue={issue} /> : null}
+      {selectedTab === "Investigation" ? (
+        <InvestigationPanel
+          isUpdating={isUpdating}
+          issue={issue}
+          onEscalate={issue.type === "GPS Issue" ? onOpenMapping : onOpenGovernance}
+          onUpdateStatus={onUpdateStatus}
+        />
+      ) : null}
       {selectedTab === "Resolution" ? <KeyValuePanel rows={[["Recommended action", issue.recommendedAction], ["Next status", nextInvestigationStatus(issue.status)], ["Score impact", `${issue.scoreImpact} points`], ["Assigned to", issue.assignedTo]]} title="Resolution" /> : null}
       {selectedTab === "History" ? <Timeline records={[{ badge: "Detected", label: issue.title, meta: `${new Date(issue.detectedAt).toLocaleString()} · ${issue.assignedTo}`, tone: statusTone("Detected") }, { badge: issue.status, label: "Current workflow status", meta: `Next step: ${nextInvestigationStatus(issue.status)}`, tone: statusTone(issue.status) }]} /> : null}
       {selectedTab === "Audit Trail" ? <Timeline records={auditEvents.map((event) => ({ badge: event.action, label: event.actor, meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} /> : null}
@@ -1180,7 +1219,26 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
   );
 }
 
-function InvestigationPanel({ issue }: { issue: QualityIssue }) {
+function InvestigationPanel({
+  isUpdating,
+  issue,
+  onEscalate,
+  onUpdateStatus,
+}: {
+  isUpdating: boolean;
+  issue: QualityIssue;
+  onEscalate: () => void;
+  onUpdateStatus: (status: "assigned" | "under_investigation" | "resolved" | "closed", comment: string) => void;
+}) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const actions: { label: string; onClick: () => void }[] = [
+    { label: "Assign investigator", onClick: () => onUpdateStatus("assigned", `Assigned ${issue.title} for investigation.`) },
+    { label: "Add notes", onClick: () => pushToast({ description: "Investigation notes will be available in a future update.", title: "Notes aren't available yet", tone: "warning" }) },
+    { label: "Add evidence", onClick: () => pushToast({ description: "Attaching evidence files will be available in a future update.", title: "Evidence uploads aren't available yet", tone: "warning" }) },
+    { label: "Escalate", onClick: onEscalate },
+    { label: "Resolve", onClick: () => onUpdateStatus("resolved", `Resolved ${issue.title}.`) },
+    { label: "Close", onClick: () => onUpdateStatus("closed", `Closed ${issue.title}.`) },
+  ];
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <Panel title="Investigation Workflow">
@@ -1194,9 +1252,15 @@ function InvestigationPanel({ issue }: { issue: QualityIssue }) {
       </Panel>
       <Panel title="Investigation Actions">
         <div className="space-y-2">
-          {["Assign investigator", "Add notes", "Add evidence", "Escalate", "Resolve", "Close"].map((action) => (
-            <button className="flex w-full items-center justify-between rounded-xl border bg-background p-3 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5" key={action} type="button">
-              {action}
+          {actions.map((action) => (
+            <button
+              className="flex w-full items-center justify-between rounded-xl border bg-background p-3 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isUpdating}
+              key={action.label}
+              onClick={action.onClick}
+              type="button"
+            >
+              {action.label}
               <ArrowRight aria-hidden="true" size={15} />
             </button>
           ))}
@@ -1300,6 +1364,13 @@ function Timeline({ records }: { records: { badge: string; label: string; meta: 
 }
 
 function RankingPanel({ rows, title }: { rows: [string, number][]; title: string }) {
+  if (!rows.length) {
+    return (
+      <Panel title={title}>
+        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>
+      </Panel>
+    );
+  }
   return (
     <Panel title={title}>
       <div className="space-y-3">

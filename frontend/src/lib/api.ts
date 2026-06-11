@@ -702,6 +702,8 @@ export type MasterDataEntryRead = {
   label: string;
   status: string;
   version: number;
+  order_index: number;
+  language: string;
   created_at: string;
 };
 
@@ -1139,6 +1141,15 @@ export type SubmissionRead = {
   import_batch_id?: string | null;
   imported_at?: string | null;
   imported_by_user_id?: string | null;
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
+  review_comments?: string | null;
+  approved_by_user_id?: string | null;
+  approved_at?: string | null;
+  beneficiary_code?: string | null;
+  submitted_by_name?: string | null;
+  review_quality?: number | null;
+  redacted_fields?: string[];
 };
 
 export type ImportCleaningRowRead = {
@@ -1869,12 +1880,24 @@ export type OperationalActivityReportRead = {
   rows: Array<Record<string, unknown>>;
 };
 
+export const FORM_TYPES = [
+  "registration",
+  "monitoring",
+  "follow_up",
+  "verification",
+  "assessment",
+  "custom",
+] as const;
+
+export type FormType = (typeof FORM_TYPES)[number];
+
 export type DataFormCreate = {
   project_id: string;
   survey_id: string;
   name: string;
   slug: string;
   description?: string | null;
+  form_type?: FormType | null;
   schema: Record<string, unknown>;
   publish?: boolean;
 };
@@ -1999,6 +2022,7 @@ export type FormGovernancePolicy = {
 export type FormCollectionAccessSettings = {
   selection_mode: "assigned_only" | "project_team" | "open_link";
   field_officer_ids: string[];
+  team_ids: string[];
   assigned_at?: string | null;
   assigned_by_user_id?: string | null;
   notes?: string | null;
@@ -2098,6 +2122,7 @@ export type DataFormRead = {
   name: string;
   slug: string;
   description: string | null;
+  form_type?: FormType | null;
   status: string;
   current_version: number;
   controls_json?: FormControlsSettings | Record<string, unknown>;
@@ -2107,6 +2132,7 @@ export type DataFormRead = {
 export type DataFormUpdate = {
   name: string;
   description?: string | null;
+  form_type?: FormType | null;
   schema: Record<string, unknown>;
   publish?: boolean;
 };
@@ -2115,6 +2141,8 @@ export type DataFormSchemaRead = {
   form_id: string;
   version: number;
   schema: Record<string, unknown>;
+  published_at?: string | null;
+  published_by_user_id?: string | null;
 };
 
 export type FormDataImportIssue = {
@@ -2713,6 +2741,10 @@ export async function listMasterDataEntries(token: string): Promise<MasterDataEn
   return request<MasterDataEntryRead[]>("/governance/master-data", { token });
 }
 
+export async function listChoiceList(token: string, category: string): Promise<MasterDataEntryRead[]> {
+  return request<MasterDataEntryRead[]>(`/governance/master-data/${encodeURIComponent(category)}`, { token });
+}
+
 export async function getOrganizationGovernanceSummary(token: string): Promise<OrganizationGovernanceSummary> {
   return request<OrganizationGovernanceSummary>("/organization-governance/summary", { token });
 }
@@ -2753,6 +2785,20 @@ export async function createTeam(token: string, payload: {
   project_id?: string | null;
 }): Promise<TeamRead> {
   return request<TeamRead>("/organization-governance/teams", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateTeam(token: string, teamId: string, payload: {
+  name?: string;
+  code?: string;
+  team_type?: string;
+  department_id?: string | null;
+  organization_unit_id?: string | null;
+  manager_user_id?: string | null;
+  region?: string | null;
+  project_id?: string | null;
+  is_active?: boolean;
+}): Promise<TeamRead> {
+  return request<TeamRead>(`/organization-governance/teams/${teamId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function listWorkforceProfiles(token: string): Promise<WorkforceProfileRead[]> {
@@ -2985,6 +3031,40 @@ export async function listSubmissions(token: string, status?: string): Promise<S
   return request<SubmissionRead[]>(`/submissions${query}`, { token });
 }
 
+export type CorrectionLogEntryRead = {
+  submission_id: string;
+  submission_key: string;
+  corrected_field: string;
+  old_value: unknown;
+  new_value: unknown;
+  corrected_by: string | null;
+  corrected_at: string;
+  reason: string | null;
+  change_type: string;
+  review_comment: string | null;
+};
+
+export async function listSubmissionCorrections(token: string, submissionId: string): Promise<CorrectionLogEntryRead[]> {
+  return request<CorrectionLogEntryRead[]>(`/submissions/${submissionId}/corrections`, { token });
+}
+
+export type SubmissionRepeatRowRead = {
+  id: string;
+  submission_id: string;
+  parent_submission_key: string;
+  field_id: string;
+  row_index: number;
+  row_json: Record<string, unknown>;
+};
+
+export async function listSubmissionRepeatRows(token: string, submissionId: string): Promise<SubmissionRepeatRowRead[]> {
+  return request<SubmissionRepeatRowRead[]>(`/submissions/${submissionId}/repeat-groups`, { token });
+}
+
+export async function listFormRepeatRows(token: string, formId: string): Promise<SubmissionRepeatRowRead[]> {
+  return request<SubmissionRepeatRowRead[]>(`/submissions/by-form/${formId}/repeat-groups`, { token });
+}
+
 export async function listImportCleaningRows(token: string): Promise<ImportCleaningRowRead[]> {
   return request<ImportCleaningRowRead[]>("/submissions/import-cleaning", { token });
 }
@@ -3003,7 +3083,7 @@ export async function bulkUpdateImportCleaningRows(
 export async function reviewSubmission(
   token: string,
   submissionId: string,
-  payload: { action: "approve" | "reject" | "request_correction" | "start_review"; comment: string }
+  payload: { action: "approve" | "reject" | "request_correction" | "start_review" | "archive"; comment: string }
 ): Promise<SubmissionRead> {
   return request<SubmissionRead>(`/submissions/${submissionId}/review`, {
     method: "POST",
@@ -3356,6 +3436,14 @@ export async function updateForm(token: string, formId: string, payload: DataFor
   return request<DataFormRead>(`/forms/${formId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export async function archiveForm(token: string, formId: string): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}/archive`, { method: "POST", token });
+}
+
+export async function restoreForm(token: string, formId: string): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}/restore`, { method: "POST", token });
+}
+
 export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {
   return request<FormControlsSettings>(`/forms/${formId}/controls`, { token });
 }
@@ -3496,6 +3584,7 @@ export const api = {
   listPublicCollectionLinks,
   listFieldOfficers,
   listFieldVisitRequests,
+  listFormRepeatRows,
   listForms,
   listFormTemplates,
   listGovernancePolicies,
@@ -3504,6 +3593,7 @@ export const api = {
   listImportJobs,
   listImportRows,
   listImportSupportedSources,
+  listChoiceList,
   listLineageEvents,
   listMasterDataEntries,
   listOperationalZones,
@@ -3529,6 +3619,8 @@ export const api = {
   listRetentionPolicies,
   listRoles,
   listSessionLogs,
+  listSubmissionCorrections,
+  listSubmissionRepeatRows,
   listSubmissions,
   listTeams,
   listUsersTeamsActivityLogs,
@@ -3559,6 +3651,7 @@ export const api = {
   updateFormControls,
   updateSubmissionResponses,
   updateSurveyGovernance,
+  updateTeam,
   upsertAdministrationFeatureFlag,
   upsertAdministrationSystemSetting,
   updateUser,

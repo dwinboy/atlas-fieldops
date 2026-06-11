@@ -1,5 +1,5 @@
 import type { BadgeProps } from "@/components/ui/badge";
-import type { SubmissionRead } from "@/lib/api";
+import type { SubmissionRead, UserRead } from "@/lib/api";
 import {
   previewSubmissions,
   type SubmissionRecord,
@@ -237,6 +237,18 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       { reviewer: "Unassigned reviewer", sla_status: slaStatus(dueAt), stage: reviewStage },
     ],
   };
+}
+
+export function resolveSubmissionAssignments(
+  submission: SubmissionRead,
+  users: Map<string, UserRead>,
+): { reviewer: string; supervisor: string } {
+  const reviewerId = submission.reviewed_by_user_id ?? submission.approved_by_user_id ?? null;
+  const reviewer = reviewerId ? users.get(reviewerId)?.full_name ?? "Unassigned reviewer" : "Unassigned reviewer";
+  const supervisor = submission.supervisor_id
+    ? users.get(submission.supervisor_id)?.full_name ?? "Unassigned supervisor"
+    : "Unassigned supervisor";
+  return { reviewer, supervisor };
 }
 
 export function computeSubmissionsSummary(submissions: SubmissionRecord[]): SubmissionsSummary {

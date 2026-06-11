@@ -12,6 +12,8 @@ export type DraftSubmissionInput = {
   deviceId?: string | null;
   appVersion?: string | null;
   prefilledResponses?: MobileSubmissionResponse[];
+  frequencyPeriod?: string | null;
+  eventId?: string | null;
 };
 
 export class DraftSubmissionService {
@@ -30,8 +32,8 @@ export class DraftSubmissionService {
       entityId: input.entityId,
       entityType: input.entityType ?? null,
       status: "Draft",
-      frequencyPeriod: null,
-      eventId: null,
+      frequencyPeriod: input.frequencyPeriod ?? null,
+      eventId: input.eventId ?? null,
       responses: input.prefilledResponses ?? [],
       attachments: [],
       location: null,

@@ -25,7 +25,7 @@ export default function StatusPage() {
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               {services.map((service) => (
-                <div className="flex items-center justify-between rounded-lg border border-black/10 bg-[#f7faf8] p-4" key={service}>
+                <div className="flex items-center justify-between rounded-lg border border-black/10 bg-[#fafaf8] p-4" key={service}>
                   <span className="font-medium">{service}</span>
                   <span className="text-sm font-semibold text-emerald-700">Healthy</span>
                 </div>

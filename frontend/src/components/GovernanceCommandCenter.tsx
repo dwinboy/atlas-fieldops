@@ -101,8 +101,8 @@ const previewVersions: DataVersionRead[] = [
 ];
 
 const previewMasterData: MasterDataEntryRead[] = [
-  { id: "preview-master-1", category: "district", code: "district-default", label: "Default District", status: "active", version: 1, created_at: nowIso },
-  { id: "preview-master-2", category: "program", code: "nutrition-project", label: "Nutrition Project", status: "active", version: 1, created_at: nowIso }
+  { id: "preview-master-1", category: "district", code: "district-default", label: "Default District", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso },
+  { id: "preview-master-2", category: "program", code: "nutrition-project", label: "Nutrition Project", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso }
 ];
 
 export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps) {

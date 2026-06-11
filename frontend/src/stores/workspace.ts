@@ -73,6 +73,7 @@ type WorkspaceState = {
   localForms: LocalWorkspaceForm[];
   localProjects: ProjectListItemRead[];
   localSubmissions: SubmissionRecord[];
+  pendingMapFeatureId: string | null;
   pendingTemplateId: string | null;
   theme: ThemeMode;
   toasts: Toast[];
@@ -83,6 +84,7 @@ type WorkspaceState = {
   setActiveView: (view: WorkspaceView) => void;
   setCommandOpen: (open: boolean) => void;
   setLastActionResult: (result: string) => void;
+  setPendingMapFeatureId: (featureId: string | null) => void;
   setPendingTemplateId: (templateId: string | null) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
@@ -102,6 +104,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       localForms: [],
       localProjects: [],
       localSubmissions: [],
+      pendingMapFeatureId: null,
       pendingTemplateId: null,
       theme: "light",
       toasts: [],
@@ -142,6 +145,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setActiveView: (activeView) => set({ activeView }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setLastActionResult: (lastActionResult) => set({ lastActionResult }),
+      setPendingMapFeatureId: (pendingMapFeatureId) => set({ pendingMapFeatureId }),
       setPendingTemplateId: (pendingTemplateId) => set({ pendingTemplateId }),
       setSidebarCollapsed: (collapsedSidebar) => set({ collapsedSidebar }),
       toggleSidebar: () =>

@@ -3,6 +3,7 @@ import type { SubmissionRead } from "@/lib/api";
 export type SubmissionSection =
   | "dashboard"
   | "all"
+  | "data"
   | "pending-review"
   | "approved"
   | "rejected"
@@ -104,6 +105,7 @@ export const submissionSections: {
 }[] = [
   { id: "dashboard", label: "Overview", route: "/submissions", description: "Operational submission status, review workload, quality, SLA, and bottlenecks." },
   { id: "all", label: "All Submissions", route: "/submissions/all", description: "Search, filter, review, export, and manage collected records." },
+  { id: "data", label: "Data Explorer", route: "/submissions/data", description: "Spreadsheet view of collected field values for a single form, with CSV export." },
   { id: "pending-review", label: "Pending Review", route: "/submissions/pending-review", description: "Reviewer queue for submitted records waiting for a decision." },
   { id: "approved", label: "Approved", route: "/submissions/approved", description: "Approved and report-ready records." },
   { id: "rejected", label: "Rejected", route: "/submissions/rejected", description: "Rejected records and rejection reasons." },

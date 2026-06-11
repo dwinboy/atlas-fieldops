@@ -171,6 +171,7 @@ class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    form_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -183,6 +184,7 @@ class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
     offline_compatible: Mapped[bool] = mapped_column(Boolean, default=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
@@ -231,6 +233,11 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SubmissionVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -268,3 +275,14 @@ class MobileSyncBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), default="processed")
     processed_count: Mapped[int] = mapped_column(Integer, default=0)
     conflict_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SubmissionRepeatRow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_repeat_rows"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    parent_submission_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    field_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)

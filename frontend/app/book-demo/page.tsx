@@ -22,7 +22,7 @@ export default function BookDemoPage() {
         />
         <section className="mx-auto grid max-w-6xl gap-8 px-4 pb-20 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:px-8">
           <ContactRequestForm source="book-demo" title="Book your product demo" />
-          <aside className="rounded-2xl border border-black/10 bg-[#10201c] p-6 text-white">
+          <aside className="rounded-2xl border border-black/10 bg-[#0c1f1b] p-6 text-white">
             <h2 className="text-xl font-semibold">What we cover</h2>
             <ul className="mt-5 space-y-3 text-sm leading-6 text-white/72">
               <li>• Project, survey, and form creation flow</li>

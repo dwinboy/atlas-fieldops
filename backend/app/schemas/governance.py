@@ -161,6 +161,8 @@ class MasterDataEntryCreate(BaseModel):
     code: str = Field(min_length=1, max_length=120)
     label: str = Field(min_length=2, max_length=220)
     status: Literal["draft", "active", "archived"] = "active"
+    order_index: int = 0
+    language: str = Field(default="en", min_length=2, max_length=10)
     metadata_json: dict[str, object] = Field(default_factory=dict)
 
 
@@ -171,6 +173,8 @@ class MasterDataEntryRead(BaseModel):
     label: str
     status: str
     version: int
+    order_index: int
+    language: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

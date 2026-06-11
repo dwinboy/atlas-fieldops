@@ -1,6 +1,7 @@
 import type { BadgeProps } from "@/components/ui/badge";
-import type { FieldOfficerRead, OperationsSummary } from "@/lib/api";
+import type { FieldOfficerRead, FieldVisitRequestRead, OperationsSummary } from "@/lib/api";
 import type {
+  FieldActivity,
   FieldAssignment,
   FieldOperationsSection,
   FieldOperationsSummary,
@@ -63,6 +64,88 @@ export function computeFieldOperationsSummary({
     teamProductivity: officers.length ? Math.round((activeOfficers / officers.length) * 100) : 0,
     upcomingDeadlines: assignments.filter((assignment) => new Date(assignment.endDate).getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000).length,
   };
+}
+
+function percent(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0;
+  return Math.round((numerator / denominator) * 100);
+}
+
+export function deriveSupervisors(
+  officers: FieldOfficerRead[],
+  visitRequests: FieldVisitRequestRead[],
+): SupervisorProfile[] {
+  const groups = new Map<string, { name: string; officers: FieldOfficerRead[] }>();
+  for (const officer of officers) {
+    if (!officer.supervisor_user_id) continue;
+    const existing = groups.get(officer.supervisor_user_id);
+    if (existing) {
+      existing.officers.push(officer);
+    } else {
+      groups.set(officer.supervisor_user_id, {
+        name: officer.supervisor_name ?? "Unnamed supervisor",
+        officers: [officer],
+      });
+    }
+  }
+
+  return Array.from(groups.entries()).map(([supervisorId, group]) => {
+    const assignedLocations = Array.from(
+      new Set(group.officers.map((officer) => officer.home_region).filter((region): region is string => Boolean(region))),
+    );
+    const teamVisits = visitRequests.filter((visit) => visit.supervisor_user_id === supervisorId);
+    const reviewedVisits = teamVisits.filter((visit) => visit.reviewed_at);
+    const reviewSlaHours = reviewedVisits.length
+      ? Math.round(
+          reviewedVisits.reduce((sum, visit) => {
+            const start = new Date(visit.check_in_at ?? visit.requested_start_at).getTime();
+            const reviewed = new Date(visit.reviewed_at as string).getTime();
+            return sum + Math.max(0, reviewed - start) / (1000 * 60 * 60);
+          }, 0) / reviewedVisits.length,
+        )
+      : 0;
+
+    return {
+      id: supervisorId,
+      name: group.name,
+      team: assignedLocations.length
+        ? `${assignedLocations[0]} field team${assignedLocations.length > 1 ? ` +${assignedLocations.length - 1}` : ""}`
+        : "Unassigned team",
+      assignedLocations,
+      assignedProjects: [],
+      managedOfficers: group.officers.length,
+      status: group.officers.some((officer) => officer.is_active) ? "Active" : "Inactive",
+      teamCompletionRate: percent(teamVisits.filter((visit) => visit.status === "completed").length, teamVisits.length),
+      teamDataQualityScore:
+        100 - percent(teamVisits.filter((visit) => ["flagged", "missed"].includes(visit.status)).length, teamVisits.length),
+      teamCoverageRate: percent(
+        group.officers.filter((officer) => officer.last_latitude !== null && officer.last_longitude !== null).length,
+        group.officers.length,
+      ),
+      reviewSlaHours,
+      approvalRate: percent(
+        reviewedVisits.filter((visit) => ["approved", "completed"].includes(visit.status)).length,
+        reviewedVisits.length,
+      ),
+    };
+  });
+}
+
+export function deriveFieldActivities(
+  officers: FieldOfficerRead[],
+  visitRequests: FieldVisitRequestRead[],
+): FieldActivity[] {
+  return visitRequests
+    .map((visit) => ({
+      id: visit.id,
+      actor: officers.find((officer) => officer.id === visit.field_officer_id)?.full_name ?? "Unassigned officer",
+      assignment: visit.title,
+      activityType: visit.activity_type,
+      status: visit.status,
+      location: visit.location_name,
+      timestamp: visit.check_in_at ?? visit.requested_start_at,
+    }))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 export function filterAssignments(assignments: FieldAssignment[], section: FieldOperationsSection): FieldAssignment[] {

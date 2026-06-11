@@ -662,6 +662,7 @@ export function AdministrationModule({
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [environmentFilter, setEnvironmentFilter] = useState("all");
   const [locationDraft, setLocationDraft] = useState(defaultLocationDraft);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [referenceListDraft, setReferenceListDraft] = useState(
     defaultReferenceListDraft,
   );
@@ -932,6 +933,10 @@ export function AdministrationModule({
       );
       return;
     }
+    if (activeSection === "location-hierarchy") {
+      setEditingLocationId(null);
+      setLocationDraft(defaultLocationDraft);
+    }
     setModalMode(modalBySection[activeSection]);
   }
 
@@ -971,6 +976,56 @@ export function AdministrationModule({
     const [latitude, longitude] = locationDraft.coordinates
       .split(",")
       .map((value) => Number(value.trim()));
+
+    if (editingLocationId) {
+      const trimmedName = locationDraft.name.trim();
+      let updatedLocation: LocationRecord | null = null;
+      if (administrationDataEnabled && token) {
+        try {
+          updatedLocation = mapLocation(
+            await updateAdministrationLocation(token, editingLocationId, {
+              boundary_reference: locationDraft.boundaryReference || null,
+              latitude: Number.isFinite(latitude) ? latitude : null,
+              location_type: locationDraft.type,
+              longitude: Number.isFinite(longitude) ? longitude : null,
+              name: trimmedName,
+              parent_location_id: locationDraft.parentId || null,
+              status: locationDraft.status,
+            }),
+          );
+        } catch {
+          pushToast({
+            title: "Location not updated",
+            description: "The backend rejected the location update. Check required fields and try again.",
+            tone: "danger",
+          });
+          return;
+        }
+      }
+      setLocations((current) =>
+        current.map((location) =>
+          location.id === editingLocationId
+            ? updatedLocation ?? {
+                ...location,
+                ...locationDraft,
+                name: trimmedName,
+                parentId: locationDraft.parentId || null,
+                updatedAt: formatTimestamp(),
+              }
+            : location,
+        ),
+      );
+      setEditingLocationId(null);
+      setLocationDraft(defaultLocationDraft);
+      setModalMode(null);
+      recordChange(
+        "Location updated",
+        "Location Hierarchy",
+        `${trimmedName} was updated.`,
+      );
+      return;
+    }
+
     let nextLocation: LocationRecord = {
       ...locationDraft,
       code: locationDraft.code.trim().toUpperCase(),
@@ -1684,7 +1739,25 @@ export function AdministrationModule({
         key: "actions",
         render: (location) => (
           <div className="flex flex-wrap gap-2">
-            <Button disabled={!canManage} size="sm" type="button" variant="ghost">
+            <Button
+              disabled={!canManage}
+              onClick={() => {
+                setEditingLocationId(location.id);
+                setLocationDraft({
+                  boundaryReference: location.boundaryReference,
+                  code: location.code,
+                  coordinates: location.coordinates,
+                  name: location.name,
+                  parentId: location.parentId,
+                  status: location.status,
+                  type: location.type,
+                });
+                setModalMode("location");
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
               <Edit3 aria-hidden="true" />
               Edit
             </Button>
@@ -2061,7 +2134,6 @@ export function AdministrationModule({
           canManage={canManage}
           locations={locations}
           locationRows={locationRows}
-          onCreate={() => setModalMode("location")}
           onExport={() =>
             exportRecords(
               "locations",
@@ -2084,7 +2156,6 @@ export function AdministrationModule({
         <ReferenceDataView
           canManage={canManage}
           onAddValue={() => setModalMode("reference-value")}
-          onCreate={() => setModalMode("reference-list")}
           onExport={() =>
             exportRecords(
               "reference-data",
@@ -2106,9 +2177,7 @@ export function AdministrationModule({
 
       {activeSection === "notification-settings" ? (
         <NotificationSettingsView
-          canManage={canManage}
           notificationRows={notificationRows}
-          onCreate={() => setModalMode("notification")}
           onExport={() =>
             exportRecords(
               "notification-rules",
@@ -2128,17 +2197,13 @@ export function AdministrationModule({
       {activeSection === "api-settings" ? (
         <ApiSettingsView
           apiKeyRows={apiKeyRows}
-          canManage={canManage}
-          onCreate={() => setModalMode("api-key")}
           tableColumns={apiKeyColumns}
         />
       ) : null}
 
       {activeSection === "integrations" ? (
         <IntegrationsView
-          canManage={canManage}
           integrationRows={integrationRows}
-          onCreate={() => setModalMode("integration")}
           tableColumns={integrationColumns}
         />
       ) : null}
@@ -2147,7 +2212,6 @@ export function AdministrationModule({
         <SystemSettingsView
           canManage={canManage}
           featureFlags={featureFlags}
-          onSave={saveSystemSettings}
           onToggleFeatureFlag={toggleFeatureFlag}
           setFeatureFlags={setFeatureFlags}
           setSystemSettings={setSystemSettings}
@@ -2158,8 +2222,6 @@ export function AdministrationModule({
       {activeSection === "backup-recovery" ? (
         <BackupRecoveryView
           backupRows={backupRows}
-          canManage={canManage}
-          onCreate={() => setModalMode("backup")}
           tableColumns={backupColumns}
         />
       ) : null}
@@ -2176,6 +2238,7 @@ export function AdministrationModule({
         apiKeyDraft={apiKeyDraft}
         backupCreate={createBackup}
         canManage={canManage}
+        editingLocationId={editingLocationId}
         importFormat={importFormat}
         importText={importText}
         integrationDraft={integrationDraft}
@@ -2183,7 +2246,11 @@ export function AdministrationModule({
         locations={locations}
         modalMode={modalMode}
         notificationDraft={notificationDraft}
-        onClose={() => setModalMode(null)}
+        onClose={() => {
+          setModalMode(null);
+          setEditingLocationId(null);
+          setLocationDraft(defaultLocationDraft);
+        }}
         onCreateApiKey={createApiKey}
         onCreateIntegration={createIntegration}
         onCreateNotification={createNotificationRule}
@@ -2579,7 +2646,6 @@ function LocationHierarchyView({
   canManage,
   locationRows,
   locations,
-  onCreate,
   onExport,
   onImport,
   tableColumns,
@@ -2587,7 +2653,6 @@ function LocationHierarchyView({
   canManage: boolean;
   locationRows: LocationRecord[];
   locations: LocationRecord[];
-  onCreate: () => void;
   onExport: () => void;
   onImport: () => void;
   tableColumns: TableColumn<LocationRecord>[];
@@ -2635,15 +2700,6 @@ function LocationHierarchyView({
       </ConfigPanel>
 
       <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-            <Plus aria-hidden="true" />
-            Create location
-          </Button>
-          <Button disabled={!canManage} onClick={onImport} type="button" variant="secondary">
-            Import CSV, Excel, GeoJSON
-          </Button>
-        </div>
         <DataTable
           columns={tableColumns}
           emptyLabel="No locations configured"
@@ -2659,7 +2715,6 @@ function LocationHierarchyView({
 function ReferenceDataView({
   canManage,
   onAddValue,
-  onCreate,
   onExport,
   onToggleValue,
   referenceRows,
@@ -2668,7 +2723,6 @@ function ReferenceDataView({
 }: {
   canManage: boolean;
   onAddValue: () => void;
-  onCreate: () => void;
   onExport: () => void;
   onToggleValue: (valueId: string) => void;
   referenceRows: ReferenceList[];
@@ -2679,10 +2733,6 @@ function ReferenceDataView({
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-            <Plus aria-hidden="true" />
-            Create reference list
-          </Button>
           <Button onClick={onExport} type="button" variant="secondary">
             <ArrowDownToLine aria-hidden="true" />
             Export values
@@ -2740,15 +2790,11 @@ function ReferenceDataView({
 }
 
 function NotificationSettingsView({
-  canManage,
   notificationRows,
-  onCreate,
   onExport,
   tableColumns,
 }: {
-  canManage: boolean;
   notificationRows: NotificationRule[];
-  onCreate: () => void;
   onExport: () => void;
   tableColumns: TableColumn<NotificationRule>[];
 }) {
@@ -2766,9 +2812,6 @@ function NotificationSettingsView({
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-          Create notification rule
-        </Button>
         <Button onClick={onExport} type="button" variant="secondary">
           Export rules
         </Button>
@@ -2786,13 +2829,9 @@ function NotificationSettingsView({
 
 function ApiSettingsView({
   apiKeyRows,
-  canManage,
-  onCreate,
   tableColumns,
 }: {
   apiKeyRows: ApiKeyRecord[];
-  canManage: boolean;
-  onCreate: () => void;
   tableColumns: TableColumn<ApiKeyRecord>[];
 }) {
   return (
@@ -2813,10 +2852,6 @@ function ApiSettingsView({
           </p>
         </ConfigPanel>
       </div>
-      <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-        <Plus aria-hidden="true" />
-        Create API key
-      </Button>
       <DataTable
         columns={tableColumns}
         emptyLabel="No API keys configured"
@@ -2829,14 +2864,10 @@ function ApiSettingsView({
 }
 
 function IntegrationsView({
-  canManage,
   integrationRows,
-  onCreate,
   tableColumns,
 }: {
-  canManage: boolean;
   integrationRows: IntegrationRecord[];
-  onCreate: () => void;
   tableColumns: TableColumn<IntegrationRecord>[];
 }) {
   return (
@@ -2850,9 +2881,6 @@ function IntegrationsView({
           </ConfigPanel>
         ))}
       </div>
-      <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-        Connect integration
-      </Button>
       <DataTable
         columns={tableColumns}
         emptyLabel="No integrations configured"
@@ -2867,7 +2895,6 @@ function IntegrationsView({
 function SystemSettingsView({
   canManage,
   featureFlags,
-  onSave,
   onToggleFeatureFlag,
   setFeatureFlags,
   setSystemSettings,
@@ -2875,7 +2902,6 @@ function SystemSettingsView({
 }: {
   canManage: boolean;
   featureFlags: FeatureFlag[];
-  onSave: () => void;
   onToggleFeatureFlag: (flagId: string) => void;
   setFeatureFlags: Dispatch<SetStateAction<FeatureFlag[]>>;
   setSystemSettings: Dispatch<SetStateAction<SystemSettings>>;
@@ -3067,23 +3093,15 @@ function SystemSettingsView({
           ))}
         </div>
       </ConfigPanel>
-
-      <Button disabled={!canManage} onClick={onSave} type="button" variant="primary">
-        Save system settings
-      </Button>
     </div>
   );
 }
 
 function BackupRecoveryView({
   backupRows,
-  canManage,
-  onCreate,
   tableColumns,
 }: {
   backupRows: BackupJob[];
-  canManage: boolean;
-  onCreate: () => void;
   tableColumns: TableColumn<BackupJob>[];
 }) {
   return (
@@ -3097,9 +3115,6 @@ function BackupRecoveryView({
           </ConfigPanel>
         ))}
       </div>
-      <Button disabled={!canManage} onClick={onCreate} type="button" variant="primary">
-        Create backup
-      </Button>
       <DataTable
         columns={tableColumns}
         emptyLabel="No backup jobs configured"
@@ -3115,6 +3130,7 @@ function AdministrationModal(props: {
   apiKeyDraft: Omit<ApiKeyRecord, "id" | "lastUsed" | "status">;
   backupCreate: (type?: BackupJob["type"]) => void;
   canManage: boolean;
+  editingLocationId: string | null;
   importFormat: string;
   importText: string;
   integrationDraft: Omit<IntegrationRecord, "id" | "lastSync" | "status">;
@@ -3157,7 +3173,9 @@ function AdministrationModal(props: {
       open={Boolean(modalMode)}
       title={
         modalMode === "location"
-          ? "Create location"
+          ? props.editingLocationId
+            ? "Edit location"
+            : "Create location"
           : modalMode === "location-import"
             ? "Import locations"
             : modalMode === "reference-list"
@@ -3198,8 +3216,11 @@ function AdministrationModal(props: {
               />
             </label>
             <label className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Code</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Code{props.editingLocationId ? " (cannot be changed)" : ""}
+              </span>
               <Input
+                disabled={Boolean(props.editingLocationId)}
                 required
                 value={props.locationDraft.code}
                 onChange={(event) =>
@@ -3275,7 +3296,7 @@ function AdministrationModal(props: {
             </label>
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <Button disabled={!props.canManage} type="submit" variant="primary">
-                Save location
+                {props.editingLocationId ? "Save changes" : "Save location"}
               </Button>
               <Button onClick={onClose} type="button" variant="ghost">
                 Cancel

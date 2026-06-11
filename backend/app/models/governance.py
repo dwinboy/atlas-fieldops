@@ -129,5 +129,7 @@ class MasterDataEntry(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base
     label: Mapped[str] = mapped_column(String(220), nullable=False)
     status: Mapped[str] = mapped_column(String(40), default="active", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    language: Mapped[str] = mapped_column(String(10), default="en")
     approved_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)

@@ -23,7 +23,7 @@ export type ReportsSummary = {
   exportJobs: number;
   failedReportJobs: number;
   mostViewedReports: number;
-  reportsGeneratedToday: number;
+  reportsReady: number;
   reportsPendingDelivery: number;
   scheduledReports: number;
   totalReports: number;

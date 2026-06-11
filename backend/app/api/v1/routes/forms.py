@@ -25,7 +25,7 @@ from app.schemas.collection import (
     TemplateDuplicateRequest,
     XlsFormWorkbook,
 )
-from app.services.collection import CollectionNotFoundError, FormService, SubmissionService
+from app.services.collection import CollectionNotFoundError, FormService, InvalidWorkflowTransitionError, SubmissionService
 from app.services.template_library import TemplateLibraryService
 
 router = APIRouter()
@@ -144,6 +144,56 @@ async def update_form(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post("/{form_id}/archive", response_model=DataFormRead, summary="Archive a published form")
+async def archive_form(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> object:
+    try:
+        form = await FormService(session).archive_form(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
+        )
+        await session.commit()
+        return form
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidWorkflowTransitionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post("/{form_id}/restore", response_model=DataFormRead, summary="Restore an archived form")
+async def restore_form(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.FORM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> object:
+    try:
+        form = await FormService(session).restore_form(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            form_id=form_id,
+        )
+        await session.commit()
+        return form
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidWorkflowTransitionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

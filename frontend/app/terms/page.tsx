@@ -26,7 +26,7 @@ export default function TermsPage() {
           {sections.map(([title, text]) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={title}>
               <h2 className="text-xl font-semibold">{title}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">{text}</p>
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{text}</p>
             </article>
           ))}
         </section>
