@@ -63,6 +63,14 @@ class Permission(StrEnum):
     WORKFLOW_APPROVE_DISTRICT = "workflows.approve.district"
     WORKFLOW_APPROVE_REGIONAL = "workflows.approve.regional"
     WORKFLOW_APPROVE_NATIONAL = "workflows.approve.national"
+    OPERATIONS_ACTIVITIES_VIEW = "operations.activities.view"
+    OPERATIONS_ACTIVITIES_MANAGE = "operations.activities.manage"
+    OPERATIONS_ACTIVITIES_APPROVE = "operations.activities.approve"
+    OPERATIONS_ACTIVITIES_REVIEW_OUTCOME = "operations.activities.review_outcome"
+    OPERATIONS_EVIDENCE_VIEW = "operations.evidence.view"
+    OPERATIONS_EVIDENCE_ATTACH = "operations.evidence.attach"
+    OPERATIONS_REPORTS_VIEW = "operations.reports.view"
+    OPERATIONS_REPORTS_EXPORT = "operations.reports.export"
 
 
 PERMISSION_ALIASES: dict[str, Permission] = {
@@ -100,6 +108,14 @@ PERMISSION_ALIASES: dict[str, Permission] = {
     "data:import": Permission.DATA_IMPORT,
     "data:export": Permission.DATA_EXPORT,
     "data:bulk_edit": Permission.DATA_BULK_EDIT,
+    "operations:activities:view": Permission.OPERATIONS_ACTIVITIES_VIEW,
+    "operations:activities:manage": Permission.OPERATIONS_ACTIVITIES_MANAGE,
+    "operations:activities:approve": Permission.OPERATIONS_ACTIVITIES_APPROVE,
+    "operations:activities:review_outcome": Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+    "operations:evidence:view": Permission.OPERATIONS_EVIDENCE_VIEW,
+    "operations:evidence:attach": Permission.OPERATIONS_EVIDENCE_ATTACH,
+    "operations:reports:view": Permission.OPERATIONS_REPORTS_VIEW,
+    "operations:reports:export": Permission.OPERATIONS_REPORTS_EXPORT,
 }
 
 
@@ -220,6 +236,15 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         frozenset(WorkflowAction),
         OPERATIONS_MENU,
     ),
+    "system_admin": RoleDefinition(
+        "system_admin",
+        "System Admin",
+        "Manages organization settings, users, roles, integrations, imports, and operational configuration.",
+        ScopeType.ORGANIZATION,
+        FULL_PLATFORM_PERMISSIONS - _p(Permission.USER_DELETE),
+        frozenset(WorkflowAction),
+        OPERATIONS_MENU,
+    ),
     "national_admin": RoleDefinition(
         "national_admin",
         "National Admin",
@@ -262,6 +287,12 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.DATA_EXPORT,
             Permission.GPS_VIEW,
             Permission.WORKFLOW_APPROVE_REGIONAL,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_REGIONAL, WorkflowAction.REQUEST_CORRECTION, WorkflowAction.EXPORT),
         OPERATIONS_MENU - {"enterprise"},
@@ -294,6 +325,11 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.ANALYTICS_VIEW,
             Permission.GPS_VIEW,
             Permission.WORKFLOW_APPROVE_DISTRICT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.APPROVE_DISTRICT, WorkflowAction.REQUEST_CORRECTION),
         frozenset({"dashboard", "programs", "beneficiaries", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
@@ -316,6 +352,8 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.CASE_READ,
             Permission.SYNC_MOBILE,
             Permission.GPS_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_EVIDENCE_ATTACH,
         ),
         _w(WorkflowAction.SUBMIT),
         frozenset({"dashboard", "surveys", "forms", "beneficiaries", "cases", "connectivity"}),
@@ -329,6 +367,35 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         _w(WorkflowAction.EXPORT),
         frozenset({"dashboard", "data", "surveys", "beneficiaries", "indicators", "map", "analytics", "connectivity"}),
     ),
+    "data_manager": RoleDefinition(
+        "data_manager",
+        "Data Manager",
+        "Manages data quality, imports, exports, reconciliation, review queues, and approved datasets.",
+        ScopeType.PROJECT,
+        READ_ONLY_PERMISSIONS
+        | _p(
+            Permission.USER_READ,
+            Permission.ROLE_READ,
+            Permission.OFFICER_READ,
+            Permission.SUBMISSION_REVIEW,
+            Permission.SUBMISSION_APPROVE,
+            Permission.SUBMISSION_REJECT,
+            Permission.SURVEY_REVIEW_DATA,
+            Permission.SURVEY_APPROVE_DATA,
+            Permission.BENEFICIARY_EDIT,
+            Permission.DATA_IMPORT,
+            Permission.DATA_EXPORT,
+            Permission.DATA_BULK_EDIT,
+            Permission.ANALYTICS_EXPORT,
+            Permission.REPORT_EXPORT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
+        ),
+        _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION, WorkflowAction.EXPORT),
+        frozenset({"dashboard", "data", "surveys", "beneficiaries", "submissions", "map", "analytics", "connectivity"}),
+    ),
     "me_manager": RoleDefinition(
         "me_manager",
         "M&E Manager",
@@ -338,16 +405,27 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
         | _p(
             Permission.USER_READ,
             Permission.USER_CREATE,
+            Permission.USER_MANAGE,
             Permission.ROLE_READ,
+            Permission.OFFICER_MANAGE,
             Permission.SURVEY_CREATE,
             Permission.SURVEY_MANAGE,
+            Permission.SURVEY_ASSIGN_ENUMERATORS,
             Permission.SURVEY_REVIEW_DATA,
             Permission.SURVEY_APPROVE_DATA,
             Permission.INDICATOR_MANAGE,
             Permission.REPORT_GENERATE,
             Permission.REPORT_EXPORT,
             Permission.ANALYTICS_EXPORT,
+            Permission.DATA_IMPORT,
             Permission.DATA_EXPORT,
+            Permission.DATA_BULK_EDIT,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_MANAGE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
+            Permission.OPERATIONS_REPORTS_EXPORT,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.EXPORT),
         frozenset({"dashboard", "data", "programs", "surveys", "beneficiaries", "indicators", "submissions", "map", "analytics", "organizations", "connectivity"}),
@@ -373,6 +451,11 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
             Permission.OFFICER_READ,
             Permission.SUBMISSION_REVIEW,
             Permission.CASE_MANAGE,
+            Permission.OPERATIONS_ACTIVITIES_VIEW,
+            Permission.OPERATIONS_ACTIVITIES_APPROVE,
+            Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME,
+            Permission.OPERATIONS_EVIDENCE_VIEW,
+            Permission.OPERATIONS_REPORTS_VIEW,
         ),
         _w(WorkflowAction.REVIEW, WorkflowAction.REQUEST_CORRECTION),
         frozenset({"dashboard", "programs", "surveys", "beneficiaries", "forms", "templates", "submissions", "officers", "cases", "map", "analytics", "organizations", "connectivity"}),
@@ -408,9 +491,20 @@ ROLE_DEFINITIONS: dict[str, RoleDefinition] = {
 
 ROLE_ALIASES = {
     "admin": "national_admin",
+    "system admin": "system_admin",
+    "system-admin": "system_admin",
+    "system_admin": "system_admin",
     "organization_admin": "organization_owner",
+    "organization owner": "organization_owner",
+    "org_owner": "organization_owner",
     "manager": "project_manager",
+    "m&e manager": "me_manager",
+    "m_e_manager": "me_manager",
+    "monitoring and evaluation manager": "me_manager",
+    "data manager": "data_manager",
+    "data-manager": "data_manager",
     "supervisor": "district_supervisor",
+    "field supervisor": "district_supervisor",
     "collector": "field_officer",
     "enumerator": "field_officer",
     "field officer": "field_officer",
@@ -447,12 +541,14 @@ ROLE_CREATION_RULES: dict[str, frozenset[str]] = {
     "super_admin": frozenset(ROLE_DEFINITIONS),
     "owner": frozenset(ROLE_DEFINITIONS) - PLATFORM_ONLY_ROLES - frozenset({"owner", "organization_owner"}),
     "organization_owner": frozenset(ROLE_DEFINITIONS) - PLATFORM_ONLY_ROLES - frozenset({"owner", "organization_owner"}),
+    "system_admin": frozenset(ROLE_DEFINITIONS) - PLATFORM_ONLY_ROLES - frozenset({"owner", "organization_owner", "system_admin"}),
     "national_admin": frozenset(
         {
             "regional_manager",
             "district_supervisor",
             "field_officer",
             "data_analyst",
+            "data_manager",
             "me_manager",
             "project_manager",
             "finance_officer",
@@ -463,8 +559,53 @@ ROLE_CREATION_RULES: dict[str, frozenset[str]] = {
     "regional_manager": frozenset({"district_supervisor", "field_officer", "data_analyst", "project_manager"}),
     "district_supervisor": frozenset({"field_officer"}),
     "project_manager": frozenset({"district_supervisor", "field_officer", "data_analyst"}),
-    "me_manager": frozenset({"data_analyst", "donor_viewer"}),
+    "data_manager": frozenset({"data_analyst", "field_officer"}),
+    "me_manager": frozenset({"district_supervisor", "field_officer", "data_manager", "data_analyst", "donor_viewer"}),
 }
+
+ROLE_ARCHITECTURE_GROUPS: dict[str, str] = {
+    "super_admin": "Platform",
+    "owner": "Organization",
+    "organization_owner": "Organization",
+    "system_admin": "Organization",
+    "national_admin": "Organization",
+    "regional_manager": "Organization",
+    "me_manager": "Project",
+    "project_manager": "Project",
+    "data_manager": "Project",
+    "data_analyst": "Project",
+    "district_supervisor": "Field Operations",
+    "field_officer": "Field Operations",
+    "finance_officer": "Support",
+    "compliance_auditor": "Governance",
+    "donor_viewer": "Viewer",
+}
+
+ROLE_COMMON_USAGE: dict[str, str] = {
+    "super_admin": "Atlas platform operations only.",
+    "owner": "First account for an organization; controls tenant ownership.",
+    "organization_owner": "First account for an organization; controls tenant ownership.",
+    "system_admin": "Day-to-day tenant administration, users, roles, settings, and integrations.",
+    "national_admin": "Country-level program administration and verification.",
+    "regional_manager": "Regional teams, coverage, and escalation.",
+    "me_manager": "Forms, indicators, approvals, reporting, and field data quality.",
+    "project_manager": "Project setup, teams, assignments, and operational follow-up.",
+    "data_manager": "Data review, cleaning, imports, exports, and approved datasets.",
+    "data_analyst": "Analysis, dashboards, and controlled imports/exports.",
+    "district_supervisor": "Supervises field officers and reviews their submissions.",
+    "field_officer": "Mobile/offline data collection for assigned work only.",
+    "finance_officer": "Budget-linked progress and report viewing.",
+    "compliance_auditor": "Audit, governance, and compliance review.",
+    "donor_viewer": "Read-only approved project information.",
+}
+
+
+def role_architecture_group(role_name: str) -> str:
+    return ROLE_ARCHITECTURE_GROUPS.get(canonical_role(role_name), "Custom")
+
+
+def role_common_usage(role_name: str) -> str:
+    return ROLE_COMMON_USAGE.get(canonical_role(role_name), "Custom organization role.")
 
 
 def can_manage_platform_roles(roles: list[str]) -> bool:

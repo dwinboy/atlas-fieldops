@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -38,26 +39,27 @@ export default function HomePage() {
             sizes="100vw"
             src="/marketing/field-operations-hero.png"
           />
-          <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#f7faf8]/70 via-[#f7faf8]/94 to-[#f7faf8]" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#fafaf8]/70 via-[#fafaf8]/94 to-[#fafaf8]" />
           <div className="mx-auto max-w-5xl text-center">
-            <p className="inline-flex rounded-full border border-[#0f766e]/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">
+            <p className="inline-flex rounded-full border border-[#0d9488]/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488]">
               Offline-ready operational intelligence
             </p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#10201c] md:text-6xl md:leading-[0.98]">
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-6xl md:leading-[0.98]">
               Field data, M&E, and operations in one connected platform.
             </h1>
-            <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#52615d] md:text-lg md:leading-8">
-              Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage beneficiaries, monitor indicators, approve submissions, map coverage, and report impact.
+            <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#5b6a65] md:text-lg md:leading-8">
+              Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage entities, monitor indicators, approve submissions, map coverage, and report impact.
             </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Link className="inline-flex h-11 items-center rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#115e59]" href="/book-demo">
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+              <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#0b7a70]" href="/book-demo">
                 Book demo
               </Link>
-              <Link className="inline-flex h-11 items-center rounded-md border border-[#0f766e]/25 bg-[#0f766e]/10 px-5 text-sm font-semibold text-[#0f766e] transition hover:bg-[#0f766e]/15" href="/signup">
+              <Link className="inline-flex h-11 items-center rounded-md border-2 border-[#0c1f1b]/15 bg-white px-5 text-sm font-semibold text-[#0c1f1b] transition hover:border-[#0d9488]/40 hover:text-[#0d9488]" href="/signup">
                 Start free trial
               </Link>
-              <Link className="inline-flex h-11 items-center rounded-md border border-black/10 bg-white px-5 text-sm font-semibold text-[#10201c] transition hover:bg-black/[0.03]" href="/features">
+              <Link className="group inline-flex h-11 items-center gap-1.5 px-2 text-sm font-semibold text-[#0d9488] transition hover:text-[#0b7a70]" href="/features">
                 Explore platform
+                <ArrowRight className="transition group-hover:translate-x-0.5" size={16} />
               </Link>
             </div>
           </div>
@@ -80,9 +82,9 @@ export default function HomePage() {
           />
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-5 lg:px-8">
             {platformModules.map(([title, text]) => (
-              <article className="rounded-xl border border-black/10 bg-[#f7faf8] p-5 shadow-sm" key={title}>
+              <article className="rounded-xl border border-black/10 bg-[#fafaf8] p-5 shadow-sm" key={title}>
                 <h3 className="text-base font-semibold">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#52615d]">{text}</p>
+                <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{text}</p>
               </article>
             ))}
           </div>

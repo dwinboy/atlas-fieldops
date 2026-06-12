@@ -1,10 +1,13 @@
 import { useMemo } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Bell, CheckCheck, CircleCheck, ClipboardList, RefreshCw, Undo2, XCircle, type LucideIcon } from "lucide-react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Card, EmptyState } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileNotification } from "@/models/contracts";
+import { colors, fontFamily, radii, spacing, tone, type Tone, typography } from "@/theme";
 
 export default function NotificationsScreen() {
   const { refreshKey, refresh } = useAppContext();
@@ -40,56 +43,45 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={{ gap: 10, padding: 16, paddingBottom: 32 }}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.content}>
         {unreadCount > 0 && (
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: "#49635a", fontSize: 13 }}>{unreadCount} unread</Text>
-            <Pressable onPress={markAllRead}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Mark all read</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.unreadText}>{unreadCount} unread</Text>
+            <Pressable onPress={markAllRead} style={styles.markAllRow} hitSlop={8}>
+              <CheckCheck size={14} color={colors.primary} />
+              <Text style={styles.markAllText}>Mark all read</Text>
             </Pressable>
           </View>
         )}
 
         {notifications.length === 0 ? (
-          <View style={{ alignItems: "center", paddingVertical: 60, gap: 10 }}>
-            <Text style={{ fontSize: 40 }}>🔔</Text>
-            <Text style={{ color: "#49635a", fontWeight: "700" }}>No notifications</Text>
-            <Text style={{ color: "#8aa79b", fontSize: 13 }}>
-              Sync your assigned work to receive updates from your supervisor.
-            </Text>
-          </View>
+          <EmptyState
+            icon={Bell}
+            title="No notifications"
+            description="Sync your assigned work to receive updates from your supervisor."
+          />
         ) : (
           notifications.map((n) => {
-            const payload = n.payload as Record<string, unknown>;
-            const title = String(payload?.title ?? "Notification");
-            const body = String(payload?.body ?? payload?.message ?? "");
-            const ntype = String(payload?.type ?? "info");
+            const { icon: Icon, tone: iconTone } = typeInfo(n.title);
+            const tones = tone(iconTone);
             const isUnread = !n.readAt;
 
             return (
-              <Pressable
-                key={n.localId}
-                onPress={() => markRead(n)}
-                style={{
-                  backgroundColor: isUnread ? "#f0fdf4" : "white",
-                  borderColor: isUnread ? "#bbf7d0" : "#dbe7e2",
-                  borderRadius: 14,
-                  borderWidth: isUnread ? 2 : 1,
-                  padding: 14,
-                  gap: 4,
-                }}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 14, flex: 1, marginRight: 8 }}>
-                    {typeIcon(ntype)} {title}
-                  </Text>
-                  {isUnread && (
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#0f766e", marginTop: 4 }} />
-                  )}
-                </View>
-                {body ? <Text style={{ color: "#49635a", fontSize: 13 }}>{body}</Text> : null}
-                <Text style={{ color: "#8aa79b", fontSize: 12 }}>{formatDate(n.createdAt)}</Text>
+              <Pressable key={n.localId} onPress={() => markRead(n)}>
+                <Card padding="md" style={styles.card}>
+                  <View style={[styles.iconCircle, { backgroundColor: tones.bg }]}>
+                    <Icon size={18} color={tones.fg} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.title} numberOfLines={2}>{n.title}</Text>
+                      {isUnread && <View style={styles.unreadDot} />}
+                    </View>
+                    {n.body ? <Text style={styles.body}>{n.body}</Text> : null}
+                    <Text style={styles.date}>{formatDate(n.createdAt)}</Text>
+                  </View>
+                </Card>
               </Pressable>
             );
           })
@@ -99,11 +91,84 @@ export default function NotificationsScreen() {
   );
 }
 
-function typeIcon(type: string): string {
-  if (type.includes("return")) return "↩";
-  if (type.includes("assign")) return "📋";
-  if (type.includes("approve")) return "✅";
-  if (type.includes("reject")) return "❌";
-  if (type.includes("sync")) return "🔄";
-  return "🔔";
+function typeInfo(title: string): { icon: LucideIcon; tone: Tone } {
+  const value = title.toLowerCase();
+  if (value.includes("return")) return { icon: Undo2, tone: "warning" };
+  if (value.includes("assign")) return { icon: ClipboardList, tone: "info" };
+  if (value.includes("approve")) return { icon: CircleCheck, tone: "success" };
+  if (value.includes("reject")) return { icon: XCircle, tone: "danger" };
+  if (value.includes("sync")) return { icon: RefreshCw, tone: "info" };
+  return { icon: Bell, tone: "neutral" };
 }
+
+const styles = StyleSheet.create({
+  body: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  card: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  content: {
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  date: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+  },
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.xs,
+  },
+  iconCircle: {
+    alignItems: "center",
+    borderRadius: radii.full,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  markAllRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  markAllText: {
+    ...typography.small,
+    color: colors.primary,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  title: {
+    ...typography.body,
+    color: colors.foreground,
+    flex: 1,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+    marginRight: spacing.sm,
+  },
+  titleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  unreadDot: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.full,
+    height: 8,
+    marginTop: 4,
+    width: 8,
+  },
+  unreadText: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+});

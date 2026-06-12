@@ -23,6 +23,7 @@ export type FieldType =
   | "geolocation"
   | "map"
   | "geofence"
+  | "polygon"
   | "photo"
   | "image"
   | "signature"
@@ -110,6 +111,10 @@ export type FormField = {
     max?: number;
     allowNested?: boolean;
   };
+  beneficiary?: {
+    profileField?: string;
+    profileImpact?: "no_impact" | "creates_profile" | "updates_profile";
+  };
   media?: {
     compression?: "standard" | "high";
     metadata?: boolean;
@@ -121,6 +126,13 @@ export type FormField = {
     accuracy?: boolean;
     timestamp?: boolean;
     geofenceRadius?: number;
+  };
+  polygon?: {
+    minVertices?: number;
+    maxVertices?: number;
+    requireClosed?: boolean;
+    overlapCheck?: boolean;
+    overlapScope?: "form" | "project" | "organization";
   };
   variableName?: string;
   children?: FormField[];
@@ -282,13 +294,14 @@ export const fieldCatalog: {
       { type: "gps", label: "GPS coordinates", description: "Automatic coordinate capture" },
       { type: "geolocation", label: "Geolocation", description: "Lat, long, accuracy, timestamp" },
       { type: "map", label: "Map selection", description: "Pick a point from a map" },
-      { type: "geofence", label: "Geofence", description: "Validate collection area" }
+      { type: "geofence", label: "Geofence", description: "Validate collection area" },
+      { type: "polygon", label: "Polygon / Boundary", description: "Draw a farm or project boundary on the map" }
     ]
   }
 ];
 
 const choiceFieldTypes: FieldType[] = ["select", "dropdown", "multiselect", "radio", "checkbox", "ranking", "likert"];
-const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence"];
+const locationFieldTypes: FieldType[] = ["gps", "geolocation", "map", "geofence", "polygon"];
 const mediaFieldTypes: FieldType[] = ["photo", "image", "signature", "audio", "video", "file"];
 
 export function defaultPages(form: DynamicForm): FormPage[] {
@@ -354,8 +367,11 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
       : undefined,
     repeat: type === "repeat_group" ? { min: 0, max: 10, allowNested: false } : undefined,
     media: mediaFieldTypes.includes(type) ? { compression: "standard", metadata: true } : undefined,
-    gps: locationFieldTypes.includes(type)
+    gps: locationFieldTypes.includes(type) && type !== "polygon"
       ? { latitude: true, longitude: true, altitude: true, accuracy: true, timestamp: true, geofenceRadius: type === "geofence" ? 250 : undefined }
+      : undefined,
+    polygon: type === "polygon"
+      ? { minVertices: 3, requireClosed: true, overlapCheck: true, overlapScope: "form" }
       : undefined,
     calculation: type === "calculated" ? { expression: "sum(${field_a}, ${field_b})", preview: "Waiting for source fields" } : undefined,
     variableName: slugifyName(id),
@@ -691,6 +707,7 @@ function toXlsType(field: FormField): string {
     geolocation: "geopoint",
     map: "geopoint",
     geofence: "geopoint",
+    polygon: "geoshape",
     photo: "image",
     image: "image",
     signature: "image",

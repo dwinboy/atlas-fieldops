@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -70,6 +70,52 @@ class BeneficiaryCreate(BaseModel):
         return self
 
 
+BENEFICIARY_ENROLLMENT_STATUSES = (
+    "active",
+    "inactive",
+    "moved",
+    "exited",
+    "deceased",
+    "duplicate",
+)
+
+
+class BeneficiaryUpdate(BaseModel):
+    """Correct an entity profile after registration. The UID stays immutable
+    because submissions, assignments, and reports reference it. A reason is
+    required so every registry correction is explainable in the audit trail."""
+
+    reason: str = Field(min_length=3, max_length=500)
+    display_name: str | None = Field(default=None, min_length=2, max_length=220)
+    sex: str | None = Field(default=None, max_length=30)
+    birth_year: int | None = Field(default=None, ge=1900, le=2100)
+    phone_number: str | None = Field(default=None, max_length=40)
+    region: str | None = Field(default=None, max_length=160)
+    district: str | None = Field(default=None, max_length=160)
+    community: str | None = Field(default=None, max_length=180)
+    enrollment_status: str | None = None
+    vulnerability_score: int | None = Field(default=None, ge=0, le=100)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def validate_enrollment_status(self) -> "BeneficiaryUpdate":
+        if (
+            self.enrollment_status is not None
+            and self.enrollment_status not in BENEFICIARY_ENROLLMENT_STATUSES
+        ):
+            raise ValueError(
+                f"Enrollment status must be one of {', '.join(BENEFICIARY_ENROLLMENT_STATUSES)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def require_complete_coordinates(self) -> "BeneficiaryUpdate":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
+
+
 class BeneficiaryRead(BaseModel):
     id: UUID
     project_id: UUID | None
@@ -106,6 +152,121 @@ class BeneficiaryMergeRead(BaseModel):
     moved_submissions: int
     moved_quality_signals: int
     reason: str
+
+
+SUPPORTED_ENTITY_FIELD_TYPES = {
+    "text",
+    "long_text",
+    "number",
+    "currency",
+    "percentage",
+    "date",
+    "time",
+    "datetime",
+    "boolean",
+    "dropdown",
+    "multi_select",
+    "radio",
+    "checkbox",
+    "gps",
+    "image",
+    "file",
+    "signature",
+    "email",
+    "phone",
+    "url",
+    "barcode",
+    "qr_code",
+    "calculated",
+}
+
+
+class EntityAttributeCreate(BaseModel):
+    label: str = Field(min_length=2, max_length=160)
+    field_key: str = Field(min_length=2, max_length=120, pattern=r"^[a-z][a-z0-9_]*$")
+    field_type: str = Field(max_length=40)
+    description: str | None = Field(default=None, max_length=1000)
+    required: bool = False
+    order_index: int = Field(default=0, ge=0)
+    options_json: list[str] = Field(default_factory=list)
+    validation_json: dict[str, object] = Field(default_factory=dict)
+    default_value: str | None = None
+    status: str = Field(default="active", pattern=r"^(active|archived)$")
+
+    @model_validator(mode="after")
+    def validate_field_type(self) -> "EntityAttributeCreate":
+        if self.field_type not in SUPPORTED_ENTITY_FIELD_TYPES:
+            raise ValueError("Unsupported entity attribute field type")
+        return self
+
+
+class EntityAttributeRead(EntityAttributeCreate):
+    id: UUID
+    category_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EntityCategoryCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    slug: str | None = Field(default=None, max_length=120, pattern=r"^[a-z0-9-]+$")
+    project_id: UUID | None = None
+    sector: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    icon: str = Field(default="users", max_length=80)
+    color: str = Field(default="#0f8a4b", max_length=20)
+    status: str = Field(default="active", pattern=r"^(active|inactive|archived)$")
+    is_predefined: bool = False
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    statuses_json: list[str] = Field(default_factory=lambda: ["active", "inactive", "archived"])
+    workflow_json: dict[str, object] = Field(default_factory=dict)
+    attributes: list[EntityAttributeCreate] = Field(default_factory=list)
+
+
+class EntityCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    sector: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    icon: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, max_length=20)
+    status: str | None = Field(default=None, pattern=r"^(active|inactive|archived)$")
+    metadata_json: dict[str, object] | None = None
+    statuses_json: list[str] | None = None
+    workflow_json: dict[str, object] | None = None
+    attributes: list[EntityAttributeCreate] | None = None
+
+
+class EntityCategoryRead(BaseModel):
+    id: UUID
+    project_id: UUID | None
+    name: str
+    slug: str
+    sector: str | None
+    description: str | None
+    icon: str
+    color: str
+    status: str
+    is_predefined: bool
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    statuses_json: list[str] = Field(default_factory=list)
+    workflow_json: dict[str, object] = Field(default_factory=dict)
+    attributes: list[EntityAttributeRead] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PredefinedEntityCategoryRead(BaseModel):
+    sector: str
+    name: str
+    slug: str
+    description: str
+    icon: str
+    color: str
+    attributes: list[EntityAttributeCreate] = Field(default_factory=list)
 
 
 class EntityDuplicateCheckRequest(BaseModel):
@@ -146,6 +307,11 @@ class DataQualitySignalRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DataQualitySignalUpdate(BaseModel):
+    status: str = Field(pattern=r"^(open|assigned|under_investigation|resolved|closed)$")
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class EntityPrefillRead(BaseModel):
     entity_id: UUID
     values: dict[str, object]
@@ -177,6 +343,26 @@ class IndicatorCreate(BaseModel):
     current_value: float = 0
     sdg_code: str | None = Field(default=None, max_length=40)
     formula: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, max_length=60)
+    disaggregation_fields: list[str] = Field(default_factory=list, max_length=6)
+
+
+class IndicatorUpdate(BaseModel):
+    """Revise an indicator after creation. The code stays immutable because
+    submissions, targets, and reports reference it."""
+
+    name: str | None = Field(default=None, min_length=2, max_length=240)
+    description: str | None = Field(default=None, max_length=2000)
+    unit: str | None = Field(default=None, max_length=60)
+    reporting_frequency: str | None = Field(default=None, pattern=r"^(monthly|quarterly|annual)$")
+    baseline_value: float | None = None
+    target_value: float | None = None
+    current_value: float | None = None
+    sdg_code: str | None = Field(default=None, max_length=40)
+    formula: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, max_length=60)
+    disaggregation_fields: list[str] | None = Field(default=None, max_length=6)
+    is_active: bool | None = None
 
 
 class IndicatorRead(BaseModel):
@@ -193,8 +379,151 @@ class IndicatorRead(BaseModel):
     current_value: float
     sdg_code: str | None
     formula: str | None
+    category: str | None
+    disaggregation_fields: list[str]
     is_active: bool
     progress_percent: float
+    calculated_at: datetime | None = None
+
+
+class IndicatorLinkedSubmissionRead(BaseModel):
+    submission_id: UUID
+    client_submission_id: str | None
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    field_value: Any | None
+    project_id: UUID | None
+
+
+class IndicatorLinkedSubmissionsRead(BaseModel):
+    field_name: str | None
+    operation: str | None
+    total_count: int
+    items: list[IndicatorLinkedSubmissionRead]
+
+
+class IndicatorDisaggregationRead(BaseModel):
+    field_name: str
+    operation: str | None
+    breakdown: dict[str, float]
+
+
+class IndicatorDisaggregationsRead(BaseModel):
+    items: list[IndicatorDisaggregationRead]
+
+
+class FieldVisitRequestCreate(BaseModel):
+    project_id: UUID | None = None
+    beneficiary_id: UUID | None = None
+    title: str = Field(min_length=2, max_length=200)
+    activity_type: Literal[
+        "field_visit",
+        "office_visit",
+        "stakeholder_meeting",
+        "training_support",
+        "incident_report",
+        "equipment_delivery",
+        "partner_coordination",
+        "general_observation",
+    ] = "field_visit"
+    activity_scope: Literal["organization", "project", "beneficiary"] = "organization"
+    requires_approval: bool = True
+    purpose: str | None = Field(default=None, max_length=3000)
+    location_name: str = Field(min_length=2, max_length=220)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    requested_start_at: datetime
+    requested_end_at: datetime
+    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    required_form_ids: list[UUID] = Field(default_factory=list)
+    planned_activities: list[str] = Field(default_factory=list, max_length=20)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_visit_window(self) -> "FieldVisitRequestCreate":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        if self.requested_end_at <= self.requested_start_at:
+            raise ValueError("requested end time must be after requested start time")
+        return self
+
+
+class FieldVisitRequestReview(BaseModel):
+    action: Literal["approve", "reject", "request_changes"]
+    comment: str | None = Field(default=None, max_length=3000)
+    approved_start_at: datetime | None = None
+    approved_end_at: datetime | None = None
+    supervisor_instructions: str | None = Field(default=None, max_length=3000)
+
+    @model_validator(mode="after")
+    def validate_approved_window(self) -> "FieldVisitRequestReview":
+        if self.action == "approve" and self.approved_start_at and self.approved_end_at and self.approved_end_at <= self.approved_start_at:
+            raise ValueError("approved end time must be after approved start time")
+        return self
+
+
+class FieldVisitOutcomeReview(BaseModel):
+    action: Literal["verify", "accept_with_exception", "flag", "request_correction"]
+    comment: str = Field(min_length=2, max_length=3000)
+    supervisor_instructions: str | None = Field(default=None, max_length=3000)
+    quality_score: int | None = Field(default=None, ge=0, le=100)
+
+
+class FieldVisitCheckIn(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: float | None = Field(default=None, ge=0)
+    timestamp: datetime
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class FieldVisitCheckOut(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: float | None = Field(default=None, ge=0)
+    timestamp: datetime
+    summary: str | None = Field(default=None, max_length=3000)
+
+
+class FieldVisitRequestRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    project_id: UUID | None
+    beneficiary_id: UUID | None
+    field_officer_id: UUID
+    supervisor_user_id: UUID | None
+    title: str
+    activity_type: str
+    activity_scope: str
+    requires_approval: bool
+    purpose: str | None
+    location_name: str
+    latitude: float | None
+    longitude: float | None
+    requested_start_at: datetime
+    requested_end_at: datetime
+    priority: str
+    status: str
+    required_form_ids: list[UUID] = Field(default_factory=list)
+    planned_activities: list[str] = Field(default_factory=list)
+    supervisor_instructions: str | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
+    check_in_at: datetime | None
+    check_in_latitude: float | None
+    check_in_longitude: float | None
+    check_in_accuracy: float | None
+    check_in_note: str | None
+    check_out_at: datetime | None
+    check_out_latitude: float | None
+    check_out_longitude: float | None
+    check_out_accuracy: float | None
+    check_out_summary: str | None
+    verification_status: str
+    distance_from_planned_meters: float | None
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
 
 
 class CaseCreate(BaseModel):
@@ -239,6 +568,27 @@ class DonorReportCreate(BaseModel):
     export_formats: list[str] = Field(default_factory=lambda: ["pdf", "xlsx"])
 
 
+class DonorReportIndicatorMetric(BaseModel):
+    code: str
+    name: str
+    unit: str
+    baseline_value: float
+    target_value: float
+    current_value: float
+    progress_percent: float
+
+
+class DonorReportMetrics(BaseModel):
+    projects: int
+    submissions_total: int
+    submissions_approved: int
+    beneficiaries: int
+    indicators: list[DonorReportIndicatorMetric] = Field(default_factory=list)
+    period_start: date | None = None
+    period_end: date | None = None
+    generated_at: datetime
+
+
 class DonorReportRead(BaseModel):
     id: UUID
     project_id: UUID | None
@@ -251,6 +601,8 @@ class DonorReportRead(BaseModel):
     status: str
     summary: str | None
     export_formats: list[str]
+    metrics_json: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -818,6 +1170,7 @@ class MediaEvidenceCreate(BaseModel):
     submission_id: UUID | None = None
     beneficiary_id: UUID | None = None
     form_id: UUID | None = None
+    activity_id: UUID | None = None
     checksum: str | None = Field(default=None, max_length=160)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -838,6 +1191,7 @@ class MediaEvidenceRead(BaseModel):
     submission_id: UUID | None
     beneficiary_id: UUID | None
     form_id: UUID | None
+    activity_id: UUID | None
     media_type: str
     file_name: str
     storage_url: str
@@ -852,6 +1206,39 @@ class MediaEvidenceRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class OperationalActivityReportRead(BaseModel):
+    report_type: Literal[
+        "monthly_operations",
+        "field_officer_movement",
+        "incident_report",
+        "supervisor_approval",
+        "gps_exception",
+    ]
+    title: str
+    period_start: date | None
+    period_end: date | None
+    generated_at: datetime
+    total_activities: int
+    pending: int
+    approved: int
+    completed: int
+    rejected: int
+    flagged: int
+    gps_verified: int
+    organization_scope: int
+    project_scope: int
+    incident_count: int
+    attachment_count: int
+    approval_rate: float
+    completion_rate: float
+    gps_exception_rate: float
+    by_activity_type: dict[str, int]
+    by_officer_id: dict[str, int]
+    by_scope: dict[str, int]
+    recommendations: list[str]
+    rows: list[dict[str, object]]
 
 
 class BulkEditRequest(BaseModel):
@@ -871,3 +1258,116 @@ class BulkEditRead(BaseModel):
     undo_available: bool
 
     model_config = {"from_attributes": True}
+
+
+WORK_PLAN_VIEWS = ("Calendar", "Timeline", "Gantt", "Table")
+OPERATIONAL_TARGET_TYPES = ("Daily", "Weekly", "Monthly", "Project")
+
+
+class FieldWorkPlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=220)
+    project: str | None = Field(default=None, max_length=200)
+    objectives: str | None = None
+    locations: list[str] = Field(default_factory=list)
+    assigned_teams: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    view: str = "Timeline"
+
+    @model_validator(mode="after")
+    def validate_view(self) -> "FieldWorkPlanCreate":
+        if self.view not in WORK_PLAN_VIEWS:
+            raise ValueError(f"View must be one of {', '.join(WORK_PLAN_VIEWS)}")
+        return self
+
+
+class FieldWorkPlanUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    project: str | None = Field(default=None, max_length=200)
+    objectives: str | None = None
+    locations: list[str] | None = None
+    assigned_teams: list[str] | None = None
+    deliverables: list[str] | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)
+    view: str | None = None
+
+    @model_validator(mode="after")
+    def validate_view(self) -> "FieldWorkPlanUpdate":
+        if self.view is not None and self.view not in WORK_PLAN_VIEWS:
+            raise ValueError(f"View must be one of {', '.join(WORK_PLAN_VIEWS)}")
+        return self
+
+
+class FieldWorkPlanRead(BaseModel):
+    id: UUID
+    created_by_user_id: UUID
+    name: str
+    project: str | None = None
+    objectives: str | None = None
+    locations: list[str] = Field(default_factory=list)
+    assigned_teams: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    progress: int
+    view: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OperationalTargetCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=220)
+    target_type: str = "Project"
+    project: str | None = Field(default=None, max_length=200)
+    indicator: str | None = Field(default=None, max_length=220)
+    indicator_id: UUID | None = None
+    team: str | None = Field(default=None, max_length=160)
+    assigned_staff: list[str] = Field(default_factory=list)
+    target_value: int = Field(default=0, ge=0)
+    deadline: date | None = None
+
+    @model_validator(mode="after")
+    def validate_target_type(self) -> "OperationalTargetCreate":
+        if self.target_type not in OPERATIONAL_TARGET_TYPES:
+            raise ValueError(f"Target type must be one of {', '.join(OPERATIONAL_TARGET_TYPES)}")
+        return self
+
+
+class OperationalTargetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    target_type: str | None = None
+    project: str | None = Field(default=None, max_length=200)
+    indicator: str | None = Field(default=None, max_length=220)
+    indicator_id: UUID | None = None
+    team: str | None = Field(default=None, max_length=160)
+    assigned_staff: list[str] | None = None
+    target_value: int | None = Field(default=None, ge=0)
+    achieved_value: int | None = Field(default=None, ge=0)
+    deadline: date | None = None
+
+    @model_validator(mode="after")
+    def validate_target_type(self) -> "OperationalTargetUpdate":
+        if self.target_type is not None and self.target_type not in OPERATIONAL_TARGET_TYPES:
+            raise ValueError(f"Target type must be one of {', '.join(OPERATIONAL_TARGET_TYPES)}")
+        return self
+
+
+class OperationalTargetRead(BaseModel):
+    id: UUID
+    created_by_user_id: UUID
+    name: str
+    target_type: str
+    project: str | None = None
+    indicator: str | None = None
+    indicator_id: UUID | None = None
+    team: str | None = None
+    assigned_staff: list[str] = Field(default_factory=list)
+    target_value: int
+    achieved_value: int
+    achieved_source: str = "manual"
+    deadline: date | None = None
+    created_at: datetime
+    updated_at: datetime

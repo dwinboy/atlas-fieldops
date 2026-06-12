@@ -23,7 +23,7 @@ describe("Forms module helpers", () => {
 
   it("maps status and quality to interface tones", () => {
     expect(statusTone("published")).toBe("success");
-    expect(statusTone("draft")).toBe("accent");
+    expect(statusTone("draft")).toBe("warning");
     expect(statusTone("archived")).toBe("neutral");
     expect(qualityTone(91)).toBe("success");
     expect(qualityTone(55)).toBe("warning");

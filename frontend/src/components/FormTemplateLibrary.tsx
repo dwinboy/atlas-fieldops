@@ -175,7 +175,7 @@ function TemplateCard({
 
 function PreviewPanel({ template }: { template: FormTemplateCard }) {
   const sampleFields = [
-    "Respondent or beneficiary name",
+    "Respondent or entity name",
     "Unique ID or program code",
     "Community or village",
     "Automatic GPS location",

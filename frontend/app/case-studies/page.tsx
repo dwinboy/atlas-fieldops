@@ -7,7 +7,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Case Studies",
-  description: "Case studies showing how organizations use Atlas FieldOps for monitoring, evaluation, offline data collection, GIS mapping, beneficiary tracking, and donor reporting.",
+  description: "Case studies showing how organizations use Atlas FieldOps for monitoring, evaluation, offline data collection, GIS mapping, entity tracking, and donor reporting.",
   path: "/case-studies",
 });
 
@@ -23,10 +23,10 @@ export default function CaseStudiesPage() {
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 md:grid-cols-3 lg:px-8">
           {caseStudies.map((study) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={study.title}>
-              <p className="text-3xl font-semibold text-[#0f766e]">{study.result}</p>
+              <p className="text-3xl font-semibold text-[#0d9488]">{study.result}</p>
               <h2 className="mt-5 text-xl font-semibold">{study.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">{study.text}</p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#52615d]">
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{study.text}</p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#5b6a65]">
                 <span>{study.sector}</span>
                 <span>·</span>
                 <span>{study.country}</span>

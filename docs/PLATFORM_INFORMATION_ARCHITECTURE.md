@@ -134,6 +134,66 @@ Startup feature ownership:
 | Task management | Complete only when lightweight tasks have owner, due date, status, priority, beneficiary/project context, and auditability. | Field Operations / operational tasks, not a new top-level module. |
 | Communication foundation | Complete only when notification templates, rules, channels, recipients, and integration-ready providers exist. | Administration `/administration/notification-settings` and `/administration/integrations`. |
 
+## Sector Pack Architecture
+
+Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, editable form instruments, question metadata, indicator definitions, dashboard widgets, report packages, validation rules, data quality rules, governance defaults, and mobile guidance.
+
+Canonical owner:
+
+- Project setup owns sector selection and stores the selected sector in project settings.
+- Forms owns the form templates and question-level controls suggested by the sector.
+- Indicators owns indicator templates, baselines, targets, formulas, and disaggregation.
+- Reports owns sector-specific report packages and donor outputs.
+- Data Quality owns sector-specific duplicate, GPS, validation, outlier, and consistency rules.
+- Field Operations and Mobile own sector-specific field guidance, assignment behavior, offline expectations, and evidence capture.
+
+Project setup may install sector starter forms, indicator templates, and report packages. Installed assets must be editable drafts until the responsible M&E manager reviews project-specific wording, mappings, validation rules, approval workflow, and donor reporting requirements.
+
+Sector packs include:
+
+- Form definitions with sections, question labels, variable names, definitions, sensitivity levels, validation rules, beneficiary profile mappings, indicator hints, GPS/consent controls, and mobile guidance.
+- Indicator definitions with units, reporting frequency, baseline/target expectations, disaggregation, source-of-truth rules, and approved-data requirements.
+- Report definitions with standard sections for executive summary, indicator progress, beneficiary/entity coverage, GPS evidence, data quality, risks, corrective actions, annexes, and export formats.
+- Manager controls that identify which pack elements can be customized inside the project workspace.
+
+Sector Pack Manager:
+
+- Lives in Project Settings, because customization is project-specific.
+- Allows authorized managers to customize terminology, entity types, form template names, indicators, validation rules, data quality checks, dashboard widgets, report templates, and mobile field guidance.
+- Saves changes to `project.settings_json` so project setup, form installation, mobile sync, reports, and dashboards read one shared configuration.
+- Does not create industry-specific modules or duplicate form, indicator, beneficiary, assignment, submission, report, governance, or mobile systems.
+- Installed forms and reports remain draft/editable until project governance approves them.
+
+Initial supported packs:
+
+- Agriculture and Farmer Programs
+- Health and Community Systems
+- Education and School Monitoring
+- WASH and Infrastructure Monitoring
+- Humanitarian Response and Protection
+- Custom Sector
+
+## Dynamic Entity Category Architecture
+
+Projects must track any sector record type through configuration, not through hardcoded tables. Entity categories represent the type of record a project manages, such as Farmer, Household, School, Health Facility, Water Point, Business, Asset, Case Record, Road, Partner, or a custom organization-defined type.
+
+Core rules:
+
+- Use `EntityCategory`, `EntityAttribute`, `EntityAttributeValue`, and the existing entity/beneficiary registry for flexible records.
+- Do not add sector-specific tables such as `schools`, `farmers`, `clinics`, or `water_points`.
+- Project Settings owns category activation, custom category creation, category attributes, category status/workflow metadata, colors, icons, and code examples.
+- Forms may link to a project entity category and may create, update, or require existing records according to form controls.
+- Mobile sync must download assigned entity categories and use them when displaying forms, assignments, entity selection, duplicate warnings, and submission context.
+- Approved submissions create or update official entity records only through the governed entity processing flow.
+- Generated entity codes should use the project code format when configured; otherwise derive a readable prefix from the entity category name.
+
+Rules:
+
+- Do not create separate top-level modules for each industry.
+- Sector packs must remain editable by M&E managers because donor requirements, local terminology, project designs, locations, and reporting rules differ.
+- Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed indicators, beneficiary/entity linkage, data quality review, and audit history.
+- Custom sectors must use the same project, form, entity registry, assignment, submission, indicator, report, governance, and mobile sync architecture.
+
 Implementation guidance:
 
 - Public startup pages explain and capture demand. Secure operational work stays in authenticated modules.
@@ -281,7 +341,7 @@ Form publishing rule:
 
 - A form may be saved as draft while incomplete, but it must pass Field Readiness / Publish Controls before it can be published or assigned to field officers.
 - The form lifecycle is Draft -> Testing -> Review -> Approved -> Published, with Suspended and Archived for operational control. Direct Draft -> Published should be blocked unless an explicit bypass permission is implemented and audited.
-- Publish readiness must verify form information, project linkage, entity rules, beneficiary profile mappings, frequency rules, duplicate prevention, question validation, logic, structure, reference data, GPS, media, consent, data quality, workflow, reviewer roles, permissions, assignment rules, offline settings, risk classification, version number, and change summary.
+- Publish readiness must verify form information, project linkage, entity rules, entity profile mappings, frequency rules, duplicate prevention, question validation, logic, structure, reference data, GPS, media, consent, data quality, workflow, reviewer roles, permissions, assignment rules, offline settings, risk classification, version number, and change summary.
 - Advanced M&E instrument metadata belongs in Forms controls, not in a duplicate module. This includes form objective, business purpose, result area, linked outcome/output, indicator mappings, form-level data dictionary, question dependencies, profile impact rules, tracking series, survey waves, seasonal rules, sampling metadata, event settings, related forms, trigger rules, localization, accessibility, and AI-ready metadata.
 - Indicator mappings stored on a form must remain traceable from question -> variable -> indicator component -> approved submission -> beneficiary/project -> report.
 - Publishing creates or updates an immutable published version; editing a published form must create a new draft/version and must not silently overwrite historical form versions or submissions.
@@ -677,7 +737,7 @@ Required mobile API namespace:
 Mobile pilot administration:
 
 - Organization-level mobile deployment controls belong in Administration, not Platform Console, because they manage an organization field rollout.
-- Approved routes are `/administration/mobile-devices`, `/administration/mobile-versions`, `/administration/mobile-pilots`, `/administration/mobile-monitoring`, `/administration/mobile-monitoring/crashes`, `/administration/mobile-feedback`, and `/administration/mobile-testing`.
+- The canonical route is the `/administration/mobile` hub with Devices, Versions, Pilots, Monitoring, Feedback, and Testing tabs. Legacy routes `/administration/mobile-devices`, `/administration/mobile-devices/:deviceId`, `/administration/mobile-versions`, `/administration/mobile-pilots`, `/administration/mobile-monitoring`, `/administration/mobile-monitoring/crashes`, `/administration/mobile-feedback`, and `/administration/mobile-testing` remain valid and resolve to the matching hub tab.
 - Mobile device records track device ID, device name, user, organization, Android version, app version, registration date, last sync, last login, status, remote logout readiness, and future remote wipe readiness.
 - Version management must define current production version, staging version, minimum supported version, optional update state, mandatory update state, and release notes.
 - Pilot records must track pilot name, project, dates, devices, field officers, supervisors, status, submissions, sync failures, crashes, issues, and feedback.

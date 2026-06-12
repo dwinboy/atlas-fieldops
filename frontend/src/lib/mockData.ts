@@ -191,7 +191,7 @@ export const donorReports = [
 ];
 
 export const importJobs = [
-  { id: "IMP-1042", file: "farmer-registry-may.xlsx", type: "Beneficiaries", rows: 18420, valid: 17984, issues: 436, status: "Needs fixes" },
+  { id: "IMP-1042", file: "farmer-registry-may.xlsx", type: "Entities", rows: 18420, valid: 17984, issues: 436, status: "Needs fixes" },
   { id: "IMP-1041", file: "q2-indicators.csv", type: "Indicators", rows: 84, valid: 84, issues: 0, status: "Ready to import" },
   { id: "IMP-1040", file: "farm-boundaries.geojson", type: "Map data", rows: 1290, valid: 1282, issues: 8, status: "Importing" }
 ];
@@ -208,7 +208,7 @@ export const importValidationIssues = [
   { row: 14, field: "Phone", issue: "Phone number looks too short", fix: "Add country code or correct the number", severity: "Warning" },
   { row: 28, field: "GPS Lat", issue: "Latitude is outside valid range", fix: "Use decimal coordinates between -90 and 90", severity: "Error" },
   { row: 31, field: "Household ID", issue: "Duplicate ID in uploaded file", fix: "Merge duplicate or use a unique ID", severity: "Warning" },
-  { row: 47, field: "Farmer Name", issue: "Required value is missing", fix: "Add the beneficiary name", severity: "Error" }
+  { row: 47, field: "Farmer Name", issue: "Required value is missing", fix: "Add the entity name", severity: "Error" }
 ];
 
 export const editableRows = [
@@ -218,7 +218,7 @@ export const editableRows = [
 ];
 
 export const exportJobs = [
-  { id: "EXP-882", name: "Beneficiary registry", format: "XLSX", filter: "Active beneficiaries", status: "Ready", schedule: "Manual" },
+  { id: "EXP-882", name: "Entity registry", format: "XLSX", filter: "Active entities", status: "Ready", schedule: "Manual" },
   { id: "EXP-881", name: "Farm boundary map", format: "GeoJSON", filter: "Northwest program", status: "Ready", schedule: "Weekly" },
   { id: "EXP-880", name: "Donor indicator report", format: "PDF", filter: "Q2 approved data", status: "Queued", schedule: "Monthly" },
   { id: "EXP-879", name: "Kobo migration package", format: "ZIP", filter: "Survey, media, and submissions", status: "Ready", schedule: "Manual" },
@@ -229,7 +229,7 @@ export const migrationSources = [
   "KoboToolbox exports",
   "ODK Central CSV archives",
   "DHIS2 indicator exports",
-  "Excel beneficiary lists",
+  "Excel entity lists",
   "GeoJSON farm boundaries",
   "Access database migrations"
 ];
@@ -252,7 +252,7 @@ export const exportFormatCatalog = [
 
 export const mediaEvidenceItems = [
   { id: "MED-2048", type: "Photo", record: "Farmer registration", status: "Reviewed", size: "1.8 MB", location: "Bamenda II" },
-  { id: "MED-2047", type: "Signature", record: "Beneficiary consent", status: "Required", size: "220 KB", location: "Dibombari" },
+  { id: "MED-2047", type: "Signature", record: "Entity consent", status: "Required", size: "220 KB", location: "Dibombari" },
   { id: "MED-2046", type: "Audio", record: "Case follow-up", status: "Transcription queued", size: "4.1 MB", location: "Bafoussam" },
   { id: "MED-2045", type: "Video", record: "Infrastructure inspection", status: "Needs review", size: "12.4 MB", location: "Maroua" }
 ];
@@ -471,7 +471,7 @@ export const formTemplates: FormTemplateCard[] = [
   },
   {
     id: "beneficiary-intake-registration",
-    name: "Beneficiary Intake Registration",
+    name: "Entity Intake Registration",
     category: "Registration Workflows",
     description: "Register people, households, consent, program eligibility, identity notes, and enrollment status.",
     fields: 16,
@@ -519,7 +519,7 @@ export const operationalFlow = [
   { id: "projects", label: "Programs & Projects", detail: "Donors, geography, workflows", count: "3", status: "Active" },
   { id: "indicators", label: "Indicators & Targets", detail: "Baseline, target, progress", count: "4", status: "Active" },
   { id: "field-team", label: "Field Team", detail: "Officers, supervisors, regions", count: "1,204", status: "Active" },
-  { id: "beneficiaries", label: "Beneficiaries", detail: "Living operational profiles", count: "98.2k", status: "Core" },
+  { id: "beneficiaries", label: "Entities", detail: "Living operational profiles", count: "98.2k", status: "Core" },
   { id: "forms", label: "Forms & Surveys", detail: "Offline operational transactions", count: "42", status: "Ready" },
   { id: "submissions", label: "Submissions", detail: "GPS, media, evidence", count: "128.4k", status: "Live" },
   { id: "quality", label: "Validation & Approval", detail: "Fraud, quality, review queues", count: "214", status: "Needs review" },
@@ -536,7 +536,7 @@ export const operationalEvents = [
     age: "2 min ago"
   },
   {
-    event: "Duplicate beneficiary risk",
+    event: "Duplicate entity risk",
     source: "Data quality",
     effects: ["Supervisor queue opened", "Registry merge review created", "Dashboard flag updated"],
     priority: "High",
@@ -545,7 +545,7 @@ export const operationalEvents = [
   {
     event: "Farmer registration synced",
     source: "Mobile sync",
-    effects: ["Beneficiary profile updated", "Farm map layer refreshed", "Project coverage updated"],
+    effects: ["Entity profile updated", "Farm map layer refreshed", "Project coverage updated"],
     priority: "Normal",
     age: "14 min ago"
   },
@@ -575,7 +575,7 @@ export const enterpriseOperations = {
   ],
   workflows: [
     { name: "Submission approval chain", steps: "Supervisor -> Regional -> National", sla: "72h", status: "Live" },
-    { name: "Duplicate beneficiary review", steps: "Data quality -> Registry manager", sla: "48h", status: "Live" },
+    { name: "Duplicate entity review", steps: "Data quality -> Registry manager", sla: "48h", status: "Live" },
     { name: "Correction cycle", steps: "Supervisor -> Field officer -> Re-review", sla: "24h", status: "Live" }
   ],
   resources: [
@@ -585,12 +585,12 @@ export const enterpriseOperations = {
   ],
   finance: [
     { category: "Field logistics", allocated: "$420k", spent: "$288k", utilization: 69 },
-    { category: "Beneficiary inputs", allocated: "$760k", spent: "$501k", utilization: 66 },
+    { category: "Entity inputs", allocated: "$760k", spent: "$501k", utilization: 66 },
     { category: "Training and supervision", allocated: "$180k", spent: "$92k", utilization: 51 }
   ],
   documents: [
     { title: "Enumerator SOP", type: "Training guide", link: "Field team onboarding", status: "Current" },
     { title: "FAO grant agreement", type: "Contract", link: "Climate-smart agriculture", status: "Approved" },
-    { title: "Beneficiary consent template", type: "Compliance", link: "All registration forms", status: "Required" }
+    { title: "Entity consent template", type: "Compliance", link: "All registration forms", status: "Required" }
   ]
 };

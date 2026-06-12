@@ -25,10 +25,25 @@ export type CurrentPrincipal = {
   platform_organization_id?: string | null;
   platform_organization_slug?: string | null;
   roles: string[];
+  role_assignments?: PrincipalRoleAssignment[];
   permissions?: string[];
   scope_type?: string;
+  geography_ids?: string[];
+  project_ids?: string[];
+  organization_unit_ids?: string[];
   menu_views?: string[];
   workflow_actions?: string[];
+};
+
+export type PrincipalRoleAssignment = {
+  id: string;
+  role_name: string;
+  scope_type: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  is_active: boolean;
 };
 
 export type OrganizationCreate = {
@@ -111,6 +126,19 @@ export type PlatformOrganizationUsageRead = {
   audit_event_count: number;
 };
 
+export type PlatformDataIsolationIssueRead = {
+  id: string;
+  severity: string;
+  issue_type: string;
+  organization_id?: string | null;
+  organization_name?: string | null;
+  organization_slug?: string | null;
+  resource_type: string;
+  affected_records: number;
+  detail: string;
+  recommendation: string;
+};
+
 export type PlatformSettingsRead = {
   app_name: string;
   app_env: string;
@@ -168,6 +196,22 @@ export type PlatformSecurityEventRead = {
   status: string;
 };
 
+export type PlatformSecurityPolicyRead = {
+  mfa_required_for_admins: boolean;
+  mfa_required_for_all_users: boolean;
+  password_min_length: number;
+  password_rotation_days: number;
+  session_timeout_minutes: number;
+  failed_login_lock_threshold: number;
+  support_session_timeout_minutes: number;
+  ip_allowlist_enabled: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformSecurityPolicyUpdate = PlatformSecurityPolicyRead & {
+  reason: string;
+};
+
 export type PlatformIntegrationRead = {
   key: string;
   name: string;
@@ -178,6 +222,55 @@ export type PlatformIntegrationRead = {
   secrets_visible: boolean;
 };
 
+export type PlatformIntegrationUpdate = {
+  status: string;
+  health: string;
+  owner: string;
+  notes: string;
+  reason: string;
+};
+
+export type PlatformMobileFleetDeviceRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  field_officer_id: string;
+  officer_name?: string | null;
+  device_id: string;
+  app_version: string;
+  last_sync_at?: string | null;
+  last_seen_at?: string | null;
+  submission_count: number;
+  status: string;
+};
+
+export type PlatformMobileFleetSummaryRead = {
+  active_devices: number;
+  offline_devices: number;
+  active_users: number;
+  submission_throughput: number;
+  current_production_version: string;
+  minimum_supported_version: string;
+  app_versions: Record<string, number>;
+  devices: PlatformMobileFleetDeviceRead[];
+};
+
+export type PlatformSectorPackRead = {
+  id: string;
+  name: string;
+  sector: string;
+  description: string;
+  entity_types: string[];
+  form_templates: string[];
+  indicator_templates: string[];
+  report_templates: string[];
+  validation_rules: string[];
+  data_quality_rules: string[];
+  workflows: string[];
+  mobile_guidance: string[];
+  dashboard_widgets: string[];
+};
+
 export type PlatformBackupJobRead = {
   id: string;
   backup_type: string;
@@ -186,6 +279,65 @@ export type PlatformBackupJobRead = {
   created_at: string;
   retention: string;
   restore_requires_elevation: boolean;
+};
+
+export type PlatformBackupPolicyRead = {
+  backup_frequency: string;
+  retention_days: number;
+  configuration_retention_days: number;
+  tenant_export_enabled: boolean;
+  restore_requires_approval: boolean;
+  restore_approver_role: string;
+  anonymize_archived_data: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformBackupPolicyUpdate = PlatformBackupPolicyRead & {
+  reason: string;
+};
+
+export type PlatformReleaseRead = {
+  environment: string;
+  backend_version: string;
+  frontend_version: string;
+  mobile_version: string;
+  release_status: string;
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  maintenance_starts_at?: string | null;
+  maintenance_ends_at?: string | null;
+  affected_services: string[];
+  announcement_enabled: boolean;
+  announcement_title: string;
+  announcement_body: string;
+  announcement_tone: string;
+  database_ready: boolean;
+  jwt_ready: boolean;
+  redis_ready: boolean;
+  kafka_ready: boolean;
+  release_notes: string;
+  checklist: string[];
+  updated_at?: string | null;
+};
+
+export type PlatformReleaseUpdate = Pick<
+  PlatformReleaseRead,
+  | "backend_version"
+  | "frontend_version"
+  | "mobile_version"
+  | "release_status"
+  | "maintenance_mode"
+  | "maintenance_message"
+  | "maintenance_starts_at"
+  | "maintenance_ends_at"
+  | "affected_services"
+  | "announcement_enabled"
+  | "announcement_title"
+  | "announcement_body"
+  | "announcement_tone"
+  | "release_notes"
+> & {
+  reason: string;
 };
 
 export type PlatformLeadRead = {
@@ -216,6 +368,16 @@ export type PlatformOrganizationPlanRead = {
   usage_percent: number;
 };
 
+export type PlatformOrganizationPlanUpdate = {
+  plan: string;
+  status: string;
+  user_limit: number;
+  submission_limit: number;
+  storage_limit_gb: number;
+  enabled_modules: string[];
+  reason: string;
+};
+
 export type PlatformActionResult = {
   status: string;
   message: string;
@@ -231,6 +393,20 @@ export type PlatformSupportSessionRead = {
   reason: string;
   started_at: string;
   expires_at?: string | null;
+};
+
+export type PlatformTenantSupportQueueItemRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  priority: string;
+  status: string;
+  issue_count: number;
+  user_count: number;
+  submission_count: number;
+  last_support_at?: string | null;
+  reasons: string[];
+  recommended_action: string;
 };
 
 export type PlatformFeatureFlagUpdate = {
@@ -425,6 +601,56 @@ export type UserRead = {
   organization_unit_id?: string | null;
   login_slug?: string | null;
   temporary_password?: string | null;
+  role_assignments?: UserRoleAssignmentRead[];
+  operational_profiles?: UserOperationalProfileRead[];
+};
+
+export type UserOperationalProfileRead = {
+  id: string;
+  profile_type: string;
+  display_name: string;
+  status: string;
+  supervisor_user_id?: string | null;
+  primary_project_id?: string | null;
+  primary_geography_id?: string | null;
+  primary_team_id?: string | null;
+  responsibilities_json: string[];
+  metrics_json: Record<string, unknown>;
+  metadata_json: Record<string, unknown>;
+  last_activity_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserRoleAssignmentRead = {
+  id: string;
+  role_id: string;
+  role_name: string;
+  role_label: string;
+  scope_type: string;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  assigned_by_user_id?: string | null;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  is_active: boolean;
+  reason?: string | null;
+};
+
+export type UserRoleAssignmentCreate = {
+  role_name: string;
+  scope_type?: string | null;
+  geography_id?: string | null;
+  project_id?: string | null;
+  organization_unit_id?: string | null;
+  team_id?: string | null;
+  reason?: string | null;
+};
+
+export type UserRoleAssignmentUpdate = Partial<UserRoleAssignmentCreate> & {
+  is_active?: boolean;
 };
 
 export type UserImportIssue = {
@@ -481,6 +707,8 @@ export type AccessCatalog = {
     label: string;
     description: string;
     scope_type: string;
+    architecture_group?: string;
+    common_usage?: string;
     permissions: string[];
     workflow_actions: string[];
     menu_views: string[];
@@ -635,6 +863,8 @@ export type MasterDataEntryRead = {
   label: string;
   status: string;
   version: number;
+  order_index: number;
+  language: string;
   created_at: string;
 };
 
@@ -832,12 +1062,125 @@ export type FieldOfficerRead = {
   phone_number: string | null;
   employee_code: string | null;
   home_region: string | null;
+  supervisor_user_id: string | null;
+  supervisor_name: string | null;
   last_sync_at: string | null;
   last_seen_at: string | null;
   last_latitude: number | null;
   last_longitude: number | null;
   device_id: string | null;
   is_active: boolean;
+};
+
+export type FieldOfficerSummaryMetric = {
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "warning" | "danger";
+  route?: string | null;
+};
+
+export type FieldOfficerAssignmentDetailRead = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  form_id: string | null;
+  form_name: string | null;
+  region: string | null;
+  target: number;
+  completed: number;
+  status: string;
+  is_active: boolean;
+  updated_at: string;
+};
+
+export type FieldOfficerSubmissionDetailRead = {
+  id: string;
+  client_submission_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  form_id: string;
+  form_name: string | null;
+  entity_id: string | null;
+  status: string;
+  source: string;
+  submitted_at: string;
+  sync_received_at: string;
+  quality_score: number;
+};
+
+export type FieldOfficerDeviceDetailRead = {
+  device_id: string;
+  device_name: string;
+  platform: string;
+  app_version: string | null;
+  os_version: string | null;
+  status: string;
+  last_seen_at: string | null;
+  last_sync_at: string | null;
+};
+
+export type FieldOfficerActivityEventRead = {
+  id: string;
+  action: string;
+  detail: string;
+  device_id: string | null;
+  project_id: string | null;
+  created_at: string;
+  status: string;
+};
+
+export type FieldOfficerSecurityRead = {
+  username: string;
+  email: string;
+  account_status: string;
+  role: string | null;
+  scope_type: string | null;
+  project_id: string | null;
+  geography_id: string | null;
+  temporary_password_issued: boolean;
+  password_last_changed_at: string | null;
+  last_login_at: string | null;
+  failed_login_attempts: number;
+  mobile_qr_login_enabled: boolean;
+  mobile_qr_login_payload: string | null;
+  credential_actions: string[];
+};
+
+export type FieldOfficerPermissionRead = {
+  key: string;
+  label: string;
+  enabled: boolean;
+  source: string;
+};
+
+export type FieldOfficerProfileDetailRead = {
+  officer: FieldOfficerRead;
+  organization_name: string | null;
+  team: string | null;
+  supervisor: string | null;
+  status: string;
+  metrics: FieldOfficerSummaryMetric[];
+  assignments: FieldOfficerAssignmentDetailRead[];
+  projects: FieldOfficerAssignmentDetailRead[];
+  locations: string[];
+  forms: FieldOfficerAssignmentDetailRead[];
+  beneficiaries: Record<string, unknown>[];
+  submissions: FieldOfficerSubmissionDetailRead[];
+  performance: Record<string, unknown>;
+  data_quality: Record<string, unknown>;
+  devices: FieldOfficerDeviceDetailRead[];
+  activity: FieldOfficerActivityEventRead[];
+  permissions: FieldOfficerPermissionRead[];
+  security: FieldOfficerSecurityRead;
+  audit_trail: FieldOfficerActivityEventRead[];
+};
+
+export type FieldOfficerProfileUpdate = {
+  employee_code?: string | null;
+  phone_number?: string | null;
+  home_region?: string | null;
+  supervisor_user_id?: string | null;
+  is_active?: boolean | null;
 };
 
 export type FieldOfficerAssignmentCreate = {
@@ -871,6 +1214,62 @@ export type FieldOfficerImportResponse = {
   issues: FieldOfficerImportIssue[];
 };
 
+export type FieldVisitRequestRead = {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  beneficiary_id: string | null;
+  field_officer_id: string | null;
+  supervisor_user_id: string | null;
+  title: string;
+  activity_type: string;
+  activity_scope: "organization" | "project" | "beneficiary" | string;
+  requires_approval: boolean;
+  purpose: string | null;
+  location_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  requested_start_at: string;
+  requested_end_at: string;
+  priority: "low" | "normal" | "high" | "urgent" | string;
+  status: "pending" | "approved" | "rejected" | "change_requested" | "scheduled" | "checked_in" | "completed" | "missed" | "flagged" | string;
+  required_form_ids: string[];
+  planned_activities: string[];
+  supervisor_instructions: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+  check_in_at: string | null;
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_in_accuracy: number | null;
+  check_in_note: string | null;
+  check_out_at: string | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  check_out_accuracy: number | null;
+  check_out_summary: string | null;
+  verification_status: string;
+  distance_from_planned_meters: number | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldVisitRequestReview = {
+  action: "approve" | "reject" | "request_changes";
+  comment?: string | null;
+  approved_start_at?: string | null;
+  approved_end_at?: string | null;
+  supervisor_instructions?: string | null;
+};
+
+export type FieldVisitOutcomeReview = {
+  action: "verify" | "accept_with_exception" | "flag" | "request_correction";
+  comment: string;
+  supervisor_instructions?: string | null;
+  quality_score?: number | null;
+};
+
 export type SubmissionRead = {
   id: string;
   client_submission_id: string;
@@ -883,13 +1282,14 @@ export type SubmissionRead = {
   supervisor_id?: string | null;
   frequency_period?: string | null;
   event_id?: string | null;
-  field_officer_id: string;
+  field_officer_id: string | null;
   status: string;
   server_sequence: number;
   captured_at: string;
   submitted_at: string;
   sync_received_at: string;
   offline_created: boolean;
+  device_id: string;
   latitude: number;
   longitude: number;
   accuracy: number | null;
@@ -903,6 +1303,58 @@ export type SubmissionRead = {
   import_batch_id?: string | null;
   imported_at?: string | null;
   imported_by_user_id?: string | null;
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
+  review_comments?: string | null;
+  approved_by_user_id?: string | null;
+  approved_at?: string | null;
+  beneficiary_code?: string | null;
+  submitted_by_name?: string | null;
+  approved_by_name?: string | null;
+  linked_beneficiaries?: {
+    id: string;
+    beneficiary_id: string;
+    beneficiary_uid: string;
+    display_name: string;
+    beneficiary_type: string;
+    link_type: string;
+    source: string;
+    source_field?: string | null;
+    created_at: string;
+  }[];
+  review_quality?: number | null;
+  redacted_fields?: string[];
+};
+
+export type ImportCleaningRowRead = {
+  id: string;
+  client_submission_id: string;
+  form_id: string;
+  form_name: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  status: string;
+  imported_at?: string | null;
+  imported_by_user_id?: string | null;
+  uploaded_by_name?: string | null;
+  source_system?: string | null;
+  source_record_id?: string | null;
+  missing_fields: string[];
+  missing_field_keys: string[];
+  validation_issues: string[];
+  response_values: Record<string, unknown>;
+  issue_count: number;
+  missing_field_count: number;
+  ready_to_confirm: boolean;
+  quality_status?: string | null;
+  updated_at: string;
+};
+
+export type ImportCleaningBulkUpdateResponse = {
+  updated_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  rows: ImportCleaningRowRead[];
 };
 
 export type SubmissionResponsesUpdate = {
@@ -1011,6 +1463,59 @@ export type BeneficiaryMergeRead = {
   reason: string;
 };
 
+export type EntityAttributeCreate = {
+  label: string;
+  field_key: string;
+  field_type: string;
+  description?: string | null;
+  required?: boolean;
+  order_index?: number;
+  options_json?: string[];
+  validation_json?: Record<string, unknown>;
+  default_value?: string | null;
+  status?: string;
+};
+
+export type EntityCategoryCreate = {
+  name: string;
+  slug?: string | null;
+  project_id?: string | null;
+  sector?: string | null;
+  description?: string | null;
+  icon?: string;
+  color?: string;
+  status?: string;
+  is_predefined?: boolean;
+  metadata_json?: Record<string, unknown>;
+  statuses_json?: string[];
+  workflow_json?: Record<string, unknown>;
+  attributes?: EntityAttributeCreate[];
+};
+
+export type EntityCategoryRead = Required<Omit<EntityCategoryCreate, "attributes" | "slug">> & {
+  id: string;
+  slug: string;
+  project_id: string | null;
+  attributes: (EntityAttributeCreate & {
+    id: string;
+    category_id: string;
+    created_at: string;
+    updated_at: string;
+  })[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PredefinedEntityCategoryRead = {
+  sector: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  attributes: EntityAttributeCreate[];
+};
+
 export type DuplicateCheckRequest = {
   entity_id?: string;
   entity_type?: string;
@@ -1092,6 +1597,7 @@ export type ProgramRead = {
 export type ProjectCreate = {
   name: string;
   project_code: string;
+  sector_id?: string | null;
   description?: string | null;
   program_type?: string | null;
   category?: string | null;
@@ -1129,6 +1635,8 @@ export type ProjectListItemRead = {
   id: string;
   name: string;
   project_code: string;
+  sector_id?: string | null;
+  sector_name?: string | null;
   status: string;
   donor?: string | null;
   country?: string | null;
@@ -1195,6 +1703,41 @@ export type ProjectTemplateRead = {
   status: string;
 };
 
+export type ProjectSectorPackRead = {
+  id: string;
+  name: string;
+  sector: string;
+  description: string;
+  terminology: Record<string, string>;
+  entity_types: string[];
+  form_templates: string[];
+  form_definitions: Record<string, unknown>[];
+  indicator_templates: string[];
+  indicator_definitions: Record<string, unknown>[];
+  dashboard_widgets: string[];
+  report_templates: string[];
+  report_definitions: Record<string, unknown>[];
+  validation_rules: string[];
+  data_quality_rules: string[];
+  workflows: string[];
+  mobile_guidance: string[];
+  governance_defaults: Record<string, unknown>;
+  recommended_settings: Record<string, unknown>;
+  manager_controls: Record<string, unknown>;
+};
+
+export type ProjectSectorInstallRead = {
+  project_id: string;
+  sector_id?: string | null;
+  installed_forms: number;
+  installed_indicators: number;
+  installed_reports: number;
+  skipped_forms: number;
+  skipped_indicators: number;
+  skipped_reports: number;
+  message: string;
+};
+
 export type IndicatorRead = {
   id: string;
   project_id: string | null;
@@ -1209,8 +1752,11 @@ export type IndicatorRead = {
   current_value: number;
   sdg_code: string | null;
   formula: string | null;
+  category: string | null;
+  disaggregation_fields: string[];
   is_active: boolean;
   progress_percent: number;
+  calculated_at: string | null;
 };
 
 export type IndicatorCreate = {
@@ -1226,6 +1772,34 @@ export type IndicatorCreate = {
   current_value?: number;
   sdg_code?: string | null;
   formula?: string | null;
+  category?: string | null;
+  disaggregation_fields?: string[];
+};
+
+export type IndicatorLinkedSubmissionRead = {
+  submission_id: string;
+  client_submission_id: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  field_value: unknown;
+  project_id: string | null;
+};
+
+export type IndicatorLinkedSubmissionsRead = {
+  field_name: string | null;
+  operation: string | null;
+  total_count: number;
+  items: IndicatorLinkedSubmissionRead[];
+};
+
+export type IndicatorDisaggregationRead = {
+  field_name: string;
+  operation: string | null;
+  breakdown: Record<string, number>;
+};
+
+export type IndicatorDisaggregationsRead = {
+  items: IndicatorDisaggregationRead[];
 };
 
 export type CaseRead = {
@@ -1243,6 +1817,27 @@ export type CaseRead = {
   notes: string | null;
 };
 
+export type DonorReportIndicatorMetric = {
+  code: string;
+  name: string;
+  unit: string;
+  baseline_value: number;
+  target_value: number;
+  current_value: number;
+  progress_percent: number;
+};
+
+export type DonorReportMetrics = {
+  projects: number;
+  submissions_total: number;
+  submissions_approved: number;
+  beneficiaries: number;
+  indicators: DonorReportIndicatorMetric[];
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+};
+
 export type DonorReportRead = {
   id: string;
   project_id: string | null;
@@ -1255,6 +1850,8 @@ export type DonorReportRead = {
   status: string;
   summary: string | null;
   export_formats: string[];
+  metrics_json: Partial<DonorReportMetrics>;
+  generated_at: string | null;
 };
 
 export type ImportPreviewRequest = {
@@ -1502,6 +2099,7 @@ export type MediaEvidenceCreate = {
   submission_id?: string | null;
   beneficiary_id?: string | null;
   form_id?: string | null;
+  activity_id?: string | null;
   checksum?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -1514,6 +2112,7 @@ export type MediaEvidenceRead = {
   submission_id: string | null;
   beneficiary_id: string | null;
   form_id: string | null;
+  activity_id: string | null;
   media_type: string;
   file_name: string;
   storage_url: string;
@@ -1528,12 +2127,58 @@ export type MediaEvidenceRead = {
   created_at: string;
 };
 
+export type OperationalActivityReportType =
+  | "monthly_operations"
+  | "field_officer_movement"
+  | "incident_report"
+  | "supervisor_approval"
+  | "gps_exception";
+
+export type OperationalActivityReportRead = {
+  report_type: OperationalActivityReportType;
+  title: string;
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+  total_activities: number;
+  pending: number;
+  approved: number;
+  completed: number;
+  rejected: number;
+  flagged: number;
+  gps_verified: number;
+  organization_scope: number;
+  project_scope: number;
+  incident_count: number;
+  attachment_count: number;
+  approval_rate: number;
+  completion_rate: number;
+  gps_exception_rate: number;
+  by_activity_type: Record<string, number>;
+  by_officer_id: Record<string, number>;
+  by_scope: Record<string, number>;
+  recommendations: string[];
+  rows: Array<Record<string, unknown>>;
+};
+
+export const FORM_TYPES = [
+  "registration",
+  "monitoring",
+  "follow_up",
+  "verification",
+  "assessment",
+  "custom",
+] as const;
+
+export type FormType = (typeof FORM_TYPES)[number];
+
 export type DataFormCreate = {
   project_id: string;
   survey_id: string;
   name: string;
   slug: string;
   description?: string | null;
+  form_type?: FormType | null;
   schema: Record<string, unknown>;
   publish?: boolean;
 };
@@ -1647,11 +2292,18 @@ export type FormGovernancePolicy = {
   review_sla_hours: number;
   auto_lock_after_approval: boolean;
   auto_archive_after_project_closure: boolean;
+  export_approval_required?: boolean;
+  export_approval_role?: string | null;
+  approved_data_freeze_required?: boolean;
+  decision_use?: string;
+  reporting_period?: string;
+  source_of_truth_rule?: string;
 };
 
 export type FormCollectionAccessSettings = {
   selection_mode: "assigned_only" | "project_team" | "open_link";
   field_officer_ids: string[];
+  team_ids: string[];
   assigned_at?: string | null;
   assigned_by_user_id?: string | null;
   notes?: string | null;
@@ -1674,6 +2326,7 @@ export type FormVersioningSettings = {
 
 export type FormEntityControlSettings = {
   linked_to_entity: boolean;
+  entity_category_id?: string | null;
   entity_type: string;
   creates_new_entity: boolean;
   updates_existing_entity: boolean;
@@ -1698,9 +2351,13 @@ export type FormInstrumentSettings = {
   dependency_map?: Record<string, unknown>[];
   profile_impact_rules?: Record<string, unknown>[];
   profile_history_policy?: Record<string, unknown>;
+  respondent_identity?: Record<string, unknown>;
+  submission_policy?: Record<string, unknown>;
+  privacy?: Record<string, unknown>;
   attachment_governance?: Record<string, unknown>;
   interview_duration?: Record<string, unknown>;
   enumerator_quality?: Record<string, unknown>;
+  repeat_group_policy?: Record<string, unknown>;
   event_settings?: Record<string, unknown>;
   tracking?: Record<string, unknown>;
   seasonal_rules?: Record<string, unknown>;
@@ -1714,8 +2371,16 @@ export type FormInstrumentSettings = {
   certification?: Record<string, unknown>;
   sampling?: Record<string, unknown>;
   performance_analytics?: Record<string, unknown>;
+  validation_standards?: Record<string, unknown>;
+  field_guidance?: Record<string, unknown>;
+  data_import?: Record<string, unknown>;
   localization?: Record<string, unknown>;
+  mobile_package?: Record<string, unknown>;
+  testing?: Record<string, unknown>;
   accessibility?: Record<string, unknown>;
+  field_integrity?: Record<string, unknown>;
+  partner_data_sharing?: Record<string, unknown>;
+  case_escalation?: Record<string, unknown>;
   ai_readiness?: Record<string, unknown>;
 };
 
@@ -1739,6 +2404,7 @@ export type DataFormRead = {
   name: string;
   slug: string;
   description: string | null;
+  form_type?: FormType | null;
   status: string;
   current_version: number;
   controls_json?: FormControlsSettings | Record<string, unknown>;
@@ -1748,6 +2414,7 @@ export type DataFormRead = {
 export type DataFormUpdate = {
   name: string;
   description?: string | null;
+  form_type?: FormType | null;
   schema: Record<string, unknown>;
   publish?: boolean;
 };
@@ -1756,6 +2423,33 @@ export type DataFormSchemaRead = {
   form_id: string;
   version: number;
   schema: Record<string, unknown>;
+  published_at?: string | null;
+  published_by_user_id?: string | null;
+};
+
+export type FormDataImportIssue = {
+  row_number: number;
+  field_name?: string | null;
+  question_label?: string | null;
+  issue_type: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  suggested_fix?: string | null;
+};
+
+export type FormDataImportResponse = {
+  imported_rows: number;
+  warning_count: number;
+  error_count: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
+};
+
+export type FormDataImportConfirmResponse = {
+  confirmed_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
 };
 
 export type TemplateFieldSummary = {
@@ -1981,6 +2675,10 @@ export async function listPlatformUsage(token: string): Promise<PlatformOrganiza
   return request<PlatformOrganizationUsageRead[]>("/platform/usage", { token });
 }
 
+export async function listPlatformDataIsolationIssues(token: string): Promise<PlatformDataIsolationIssueRead[]> {
+  return request<PlatformDataIsolationIssueRead[]>("/platform/data-isolation", { token });
+}
+
 export async function listPlatformLeads(token: string): Promise<PlatformLeadRead[]> {
   return request<PlatformLeadRead[]>("/platform/leads", { token });
 }
@@ -1989,8 +2687,20 @@ export async function listPlatformOrganizationPlans(token: string): Promise<Plat
   return request<PlatformOrganizationPlanRead[]>("/platform/organization-plans", { token });
 }
 
+export async function updatePlatformOrganizationPlan(
+  token: string,
+  organizationId: string,
+  payload: PlatformOrganizationPlanUpdate,
+): Promise<PlatformOrganizationPlanRead> {
+  return request<PlatformOrganizationPlanRead>(`/platform/organization-plans/${organizationId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function listPlatformSupportSessions(token: string): Promise<PlatformSupportSessionRead[]> {
   return request<PlatformSupportSessionRead[]>("/platform/support-sessions", { token });
+}
+
+export async function listPlatformSupportQueue(token: string): Promise<PlatformTenantSupportQueueItemRead[]> {
+  return request<PlatformTenantSupportQueueItemRead[]>("/platform/support-queue", { token });
 }
 
 export async function getPlatformSettings(token: string): Promise<PlatformSettingsRead> {
@@ -2017,12 +2727,52 @@ export async function listPlatformSecurityEvents(token: string): Promise<Platfor
   return request<PlatformSecurityEventRead[]>("/platform/security", { token });
 }
 
+export async function getPlatformSecurityPolicy(token: string): Promise<PlatformSecurityPolicyRead> {
+  return request<PlatformSecurityPolicyRead>("/platform/security-policy", { token });
+}
+
+export async function updatePlatformSecurityPolicy(token: string, payload: PlatformSecurityPolicyUpdate): Promise<PlatformSecurityPolicyRead> {
+  return request<PlatformSecurityPolicyRead>("/platform/security-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function listPlatformIntegrations(token: string): Promise<PlatformIntegrationRead[]> {
   return request<PlatformIntegrationRead[]>("/platform/integrations", { token });
 }
 
+export async function updatePlatformIntegration(token: string, integrationKey: string, payload: PlatformIntegrationUpdate): Promise<PlatformIntegrationRead> {
+  return request<PlatformIntegrationRead>(`/platform/integrations/${integrationKey}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformMobileFleet(token: string): Promise<PlatformMobileFleetSummaryRead> {
+  return request<PlatformMobileFleetSummaryRead>("/platform/mobile-fleet", { token });
+}
+
+export async function listPlatformSectorPacks(token: string): Promise<PlatformSectorPackRead[]> {
+  return request<PlatformSectorPackRead[]>("/platform/sector-packs", { token });
+}
+
 export async function listPlatformBackups(token: string): Promise<PlatformBackupJobRead[]> {
   return request<PlatformBackupJobRead[]>("/platform/backups", { token });
+}
+
+export async function getPlatformBackupPolicy(token: string): Promise<PlatformBackupPolicyRead> {
+  return request<PlatformBackupPolicyRead>("/platform/backup-policy", { token });
+}
+
+export async function updatePlatformBackupPolicy(token: string, payload: PlatformBackupPolicyUpdate): Promise<PlatformBackupPolicyRead> {
+  return request<PlatformBackupPolicyRead>("/platform/backup-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformRelease(token: string): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/release", { token });
+}
+
+export async function getPlatformAnnouncement(): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/announcement");
+}
+
+export async function updatePlatformRelease(token: string, payload: PlatformReleaseUpdate): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/release", { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function createPublicLead(payload: PublicLeadCreate): Promise<PublicLeadRead> {
@@ -2201,6 +2951,18 @@ export async function updateUser(token: string, userId: string, payload: UserUpd
   return request<UserRead>(`/users/${userId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export async function addUserRoleAssignment(token: string, userId: string, payload: UserRoleAssignmentCreate): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments`, { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateUserRoleAssignment(token: string, userId: string, assignmentId: string, payload: UserRoleAssignmentUpdate): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments/${assignmentId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function deactivateUserRoleAssignment(token: string, userId: string, assignmentId: string): Promise<UserRead> {
+  return request<UserRead>(`/users/${userId}/role-assignments/${assignmentId}`, { method: "DELETE", token });
+}
+
 export async function resetUserPassword(token: string, userId: string): Promise<PasswordResetRead> {
   return request<PasswordResetRead>(`/users/${userId}/reset-password`, { method: "POST", token });
 }
@@ -2317,6 +3079,10 @@ export async function listMasterDataEntries(token: string): Promise<MasterDataEn
   return request<MasterDataEntryRead[]>("/governance/master-data", { token });
 }
 
+export async function listChoiceList(token: string, category: string): Promise<MasterDataEntryRead[]> {
+  return request<MasterDataEntryRead[]>(`/governance/master-data/${encodeURIComponent(category)}`, { token });
+}
+
 export async function getOrganizationGovernanceSummary(token: string): Promise<OrganizationGovernanceSummary> {
   return request<OrganizationGovernanceSummary>("/organization-governance/summary", { token });
 }
@@ -2357,6 +3123,20 @@ export async function createTeam(token: string, payload: {
   project_id?: string | null;
 }): Promise<TeamRead> {
   return request<TeamRead>("/organization-governance/teams", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateTeam(token: string, teamId: string, payload: {
+  name?: string;
+  code?: string;
+  team_type?: string;
+  department_id?: string | null;
+  organization_unit_id?: string | null;
+  manager_user_id?: string | null;
+  region?: string | null;
+  project_id?: string | null;
+  is_active?: boolean;
+}): Promise<TeamRead> {
+  return request<TeamRead>(`/organization-governance/teams/${teamId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function listWorkforceProfiles(token: string): Promise<WorkforceProfileRead[]> {
@@ -2497,6 +3277,22 @@ export async function listFieldOfficers(token: string): Promise<FieldOfficerRead
   return request<FieldOfficerRead[]>("/field-officers", { token });
 }
 
+export async function getFieldOfficerProfile(token: string, fieldOfficerId: string): Promise<FieldOfficerProfileDetailRead> {
+  return request<FieldOfficerProfileDetailRead>(`/field-officers/${fieldOfficerId}`, { token });
+}
+
+export async function updateFieldOfficerProfile(
+  token: string,
+  fieldOfficerId: string,
+  payload: FieldOfficerProfileUpdate,
+): Promise<FieldOfficerProfileDetailRead> {
+  return request<FieldOfficerProfileDetailRead>(`/field-officers/${fieldOfficerId}/profile`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function inviteFieldOfficer(token: string, payload: FieldOfficerInvite): Promise<FieldOfficerRead> {
   return request<FieldOfficerRead>("/field-officers", { method: "POST", token, bodyJson: payload });
 }
@@ -2506,6 +3302,222 @@ export async function createFieldOfficerAssignment(
   payload: FieldOfficerAssignmentCreate,
 ): Promise<FieldOfficerAssignmentRead> {
   return request<FieldOfficerAssignmentRead>("/field-officers/assignments", { method: "POST", token, bodyJson: payload });
+}
+
+export type FieldWorkAssignmentRead = {
+  id: string;
+  project_id: string;
+  form_id: string | null;
+  created_by_user_id: string;
+  supervisor_user_id: string | null;
+  name: string;
+  description: string | null;
+  assignment_type: string;
+  officer_ids: string[];
+  assigned_entity_ids: string[];
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  target_count: number;
+  completed_count: number;
+  priority: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldWorkAssignmentCreate = {
+  project_id: string;
+  form_id?: string | null;
+  supervisor_user_id?: string | null;
+  name: string;
+  description?: string | null;
+  assignment_type?: string;
+  officer_ids?: string[];
+  assigned_entity_ids?: string[];
+  location?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  target_count?: number;
+  priority?: string;
+};
+
+export type FieldWorkAssignmentUpdate = Partial<Omit<FieldWorkAssignmentCreate, "project_id">> & {
+  completed_count?: number;
+};
+
+export async function listFieldWorkAssignments(token: string): Promise<FieldWorkAssignmentRead[]> {
+  return request<FieldWorkAssignmentRead[]>("/field-officers/work-assignments/all", { token });
+}
+
+export async function createFieldWorkAssignment(
+  token: string,
+  payload: FieldWorkAssignmentCreate,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>("/field-officers/work-assignments", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateFieldWorkAssignment(
+  token: string,
+  assignmentId: string,
+  payload: FieldWorkAssignmentUpdate,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>(`/field-officers/work-assignments/${assignmentId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function setFieldWorkAssignmentStatus(
+  token: string,
+  assignmentId: string,
+  status: string,
+  reason?: string,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>(`/field-officers/work-assignments/${assignmentId}/status`, {
+    method: "POST",
+    token,
+    bodyJson: { status, reason: reason ?? null },
+  });
+}
+
+export type FieldWorkPlanRead = {
+  id: string;
+  created_by_user_id: string;
+  name: string;
+  project: string | null;
+  objectives: string | null;
+  locations: string[];
+  assigned_teams: string[];
+  deliverables: string[];
+  start_date: string | null;
+  end_date: string | null;
+  progress: number;
+  view: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldWorkPlanCreate = {
+  name: string;
+  project?: string | null;
+  objectives?: string | null;
+  locations?: string[];
+  assigned_teams?: string[];
+  deliverables?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  view?: string;
+};
+
+export type OperationalTargetRecordRead = {
+  id: string;
+  created_by_user_id: string;
+  name: string;
+  target_type: string;
+  project: string | null;
+  indicator: string | null;
+  indicator_id: string | null;
+  team: string | null;
+  assigned_staff: string[];
+  target_value: number;
+  achieved_value: number;
+  achieved_source: string;
+  deadline: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationalTargetRecordCreate = {
+  name: string;
+  target_type?: string;
+  project?: string | null;
+  indicator?: string | null;
+  indicator_id?: string | null;
+  team?: string | null;
+  assigned_staff?: string[];
+  target_value?: number;
+  deadline?: string | null;
+};
+
+export async function listFieldWorkPlans(token: string): Promise<FieldWorkPlanRead[]> {
+  return request<FieldWorkPlanRead[]>("/operations/work-plans", { token });
+}
+
+export async function createFieldWorkPlan(
+  token: string,
+  payload: FieldWorkPlanCreate,
+): Promise<FieldWorkPlanRead> {
+  return request<FieldWorkPlanRead>("/operations/work-plans", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listOperationalTargets(token: string): Promise<OperationalTargetRecordRead[]> {
+  return request<OperationalTargetRecordRead[]>("/operations/targets", { token });
+}
+
+export async function createOperationalTarget(
+  token: string,
+  payload: OperationalTargetRecordCreate,
+): Promise<OperationalTargetRecordRead> {
+  return request<OperationalTargetRecordRead>("/operations/targets", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateOperationalTarget(
+  token: string,
+  targetId: string,
+  payload: Partial<OperationalTargetRecordCreate> & { achieved_value?: number },
+): Promise<OperationalTargetRecordRead> {
+  return request<OperationalTargetRecordRead>(`/operations/targets/${targetId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function listFieldVisitRequests(token: string, status?: string): Promise<FieldVisitRequestRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<FieldVisitRequestRead[]>(`/operations/operational-activities${query}`, { token });
+}
+
+export async function getOperationalActivityReport(
+  token: string,
+  reportType: OperationalActivityReportType,
+  periodStart?: string | null,
+  periodEnd?: string | null,
+): Promise<OperationalActivityReportRead> {
+  const params = new URLSearchParams();
+  if (periodStart) params.set("period_start", periodStart);
+  if (periodEnd) params.set("period_end", periodEnd);
+  const query = params.toString();
+  return request<OperationalActivityReportRead>(
+    `/operations/operational-activities/reports/${reportType}${query ? `?${query}` : ""}`,
+    { token },
+  );
+}
+
+export async function reviewFieldVisitRequest(
+  token: string,
+  visitRequestId: string,
+  payload: FieldVisitRequestReview,
+): Promise<FieldVisitRequestRead> {
+  return request<FieldVisitRequestRead>(`/operations/operational-activities/${visitRequestId}/review`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function reviewOperationalActivityOutcome(
+  token: string,
+  visitRequestId: string,
+  payload: FieldVisitOutcomeReview,
+): Promise<FieldVisitRequestRead> {
+  return request<FieldVisitRequestRead>(`/operations/operational-activities/${visitRequestId}/outcome-review`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
 }
 
 export async function importFieldOfficers(token: string, file: File): Promise<FieldOfficerImportResponse> {
@@ -2528,10 +3540,59 @@ export async function listSubmissions(token: string, status?: string): Promise<S
   return request<SubmissionRead[]>(`/submissions${query}`, { token });
 }
 
+export type CorrectionLogEntryRead = {
+  submission_id: string;
+  submission_key: string;
+  corrected_field: string;
+  old_value: unknown;
+  new_value: unknown;
+  corrected_by: string | null;
+  corrected_at: string;
+  reason: string | null;
+  change_type: string;
+  review_comment: string | null;
+};
+
+export async function listSubmissionCorrections(token: string, submissionId: string): Promise<CorrectionLogEntryRead[]> {
+  return request<CorrectionLogEntryRead[]>(`/submissions/${submissionId}/corrections`, { token });
+}
+
+export type SubmissionRepeatRowRead = {
+  id: string;
+  submission_id: string;
+  parent_submission_key: string;
+  field_id: string;
+  row_index: number;
+  row_json: Record<string, unknown>;
+};
+
+export async function listSubmissionRepeatRows(token: string, submissionId: string): Promise<SubmissionRepeatRowRead[]> {
+  return request<SubmissionRepeatRowRead[]>(`/submissions/${submissionId}/repeat-groups`, { token });
+}
+
+export async function listFormRepeatRows(token: string, formId: string): Promise<SubmissionRepeatRowRead[]> {
+  return request<SubmissionRepeatRowRead[]>(`/submissions/by-form/${formId}/repeat-groups`, { token });
+}
+
+export async function listImportCleaningRows(token: string): Promise<ImportCleaningRowRead[]> {
+  return request<ImportCleaningRowRead[]>("/submissions/import-cleaning", { token });
+}
+
+export async function bulkUpdateImportCleaningRows(
+  token: string,
+  payload: { rows: { submission_id: string; responses: Record<string, unknown> }[]; reason: string },
+): Promise<ImportCleaningBulkUpdateResponse> {
+  return request<ImportCleaningBulkUpdateResponse>("/submissions/import-cleaning/bulk-responses", {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function reviewSubmission(
   token: string,
   submissionId: string,
-  payload: { action: "approve" | "reject" | "request_correction" | "start_review"; comment: string }
+  payload: { action: "approve" | "reject" | "request_correction" | "start_review" | "archive"; comment: string }
 ): Promise<SubmissionRead> {
   return request<SubmissionRead>(`/submissions/${submissionId}/review`, {
     method: "POST",
@@ -2564,6 +3625,72 @@ export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
 
+export async function listPredefinedEntityCategories(token: string, sector?: string): Promise<PredefinedEntityCategoryRead[]> {
+  const query = sector ? `?sector=${encodeURIComponent(sector)}` : "";
+  return request<PredefinedEntityCategoryRead[]>(`/operations/entity-categories/library${query}`, { token });
+}
+
+export async function listEntityCategories(
+  token: string,
+  filters: { project_id?: string; include_archived?: boolean } = {},
+): Promise<EntityCategoryRead[]> {
+  const params = new URLSearchParams();
+  if (filters.project_id) params.set("project_id", filters.project_id);
+  if (filters.include_archived) params.set("include_archived", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<EntityCategoryRead[]>(`/operations/entity-categories${query}`, { token });
+}
+
+export async function createEntityCategory(token: string, payload: EntityCategoryCreate): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>("/operations/entity-categories", { method: "POST", token, bodyJson: payload });
+}
+
+export async function activatePredefinedEntityCategory(
+  token: string,
+  projectId: string,
+  slug: string,
+): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>(
+    `/operations/entity-categories/activate-predefined?project_id=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`,
+    { method: "POST", token },
+  );
+}
+
+export async function updateEntityCategory(
+  token: string,
+  categoryId: string,
+  payload: Partial<EntityCategoryCreate>,
+): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>(`/operations/entity-categories/${categoryId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export type BeneficiaryUpdate = {
+  reason: string;
+  display_name?: string;
+  sex?: string | null;
+  birth_year?: number | null;
+  phone_number?: string | null;
+  region?: string | null;
+  district?: string | null;
+  community?: string | null;
+  enrollment_status?: string;
+  vulnerability_score?: number;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export async function updateBeneficiary(
+  token: string,
+  beneficiaryId: string,
+  payload: BeneficiaryUpdate,
+): Promise<BeneficiaryRead> {
+  return request<BeneficiaryRead>(`/operations/beneficiaries/${beneficiaryId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createBeneficiary(token: string, payload: BeneficiaryCreate): Promise<BeneficiaryRead> {
   return request<BeneficiaryRead>("/operations/beneficiaries", { method: "POST", token, bodyJson: payload });
 }
@@ -2589,6 +3716,14 @@ export async function listDataQualitySignals(
   if (filters.signal_type) params.set("signal_type", filters.signal_type);
   const query = params.toString() ? `?${params.toString()}` : "";
   return request<DataQualitySignalRead[]>(`/operations/data-quality/signals${query}`, { token });
+}
+
+export async function updateDataQualitySignal(
+  token: string,
+  signalId: string,
+  payload: { status: "open" | "assigned" | "under_investigation" | "resolved" | "closed"; comment?: string | null },
+): Promise<DataQualitySignalRead> {
+  return request<DataQualitySignalRead>(`/operations/data-quality/signals/${signalId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function getProjectEntities(token: string, projectId: string): Promise<BeneficiaryRead[]> {
@@ -2643,6 +3778,22 @@ export async function listProjectTemplates(token: string): Promise<ProjectTempla
   return request<ProjectTemplateRead[]>("/projects/templates", { token });
 }
 
+export async function listProjectSectorPacks(token: string): Promise<ProjectSectorPackRead[]> {
+  return request<ProjectSectorPackRead[]>("/projects/sector-packs", { token });
+}
+
+export async function installProjectSectorForms(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-forms`, { method: "POST", token });
+}
+
+export async function installProjectSectorIndicators(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-indicators`, { method: "POST", token });
+}
+
+export async function installProjectSectorReports(token: string, projectId: string): Promise<ProjectSectorInstallRead> {
+  return request<ProjectSectorInstallRead>(`/projects/${projectId}/sector-pack/install-reports`, { method: "POST", token });
+}
+
 export async function listSurveys(token: string, projectId?: string): Promise<SurveyRead[]> {
   const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   return request<SurveyRead[]>(`/surveys${query}`, { token });
@@ -2676,8 +3827,43 @@ export async function listIndicators(token: string): Promise<IndicatorRead[]> {
   return request<IndicatorRead[]>("/operations/indicators", { token });
 }
 
+export type IndicatorUpdate = {
+  name?: string;
+  description?: string | null;
+  unit?: string;
+  reporting_frequency?: string;
+  baseline_value?: number;
+  target_value?: number;
+  current_value?: number;
+  sdg_code?: string | null;
+  formula?: string | null;
+  category?: string | null;
+  disaggregation_fields?: string[];
+  is_active?: boolean;
+};
+
+export async function updateIndicator(
+  token: string,
+  indicatorId: string,
+  payload: IndicatorUpdate,
+): Promise<IndicatorRead> {
+  return request<IndicatorRead>(`/operations/indicators/${indicatorId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createIndicator(token: string, payload: IndicatorCreate): Promise<IndicatorRead> {
   return request<IndicatorRead>("/operations/indicators", { method: "POST", token, bodyJson: payload });
+}
+
+export async function getIndicatorDisaggregation(token: string, indicatorId: string): Promise<IndicatorDisaggregationsRead> {
+  return request<IndicatorDisaggregationsRead>(`/operations/indicators/${indicatorId}/disaggregation`, { token });
+}
+
+export async function getIndicatorLinkedSubmissions(token: string, indicatorId: string): Promise<IndicatorLinkedSubmissionsRead> {
+  return request<IndicatorLinkedSubmissionsRead>(`/operations/indicators/${indicatorId}/linked-submissions`, { token });
 }
 
 export async function listCases(token: string): Promise<CaseRead[]> {
@@ -2686,6 +3872,21 @@ export async function listCases(token: string): Promise<CaseRead[]> {
 
 export async function listReports(token: string): Promise<DonorReportRead[]> {
   return request<DonorReportRead[]>("/operations/reports", { token });
+}
+
+export async function generateReport(token: string, reportId: string): Promise<DonorReportRead> {
+  return request<DonorReportRead>(`/operations/reports/${reportId}/generate`, { method: "POST", token });
+}
+
+export async function exportReportCsv(token: string, reportId: string): Promise<string> {
+  const response = await fetch(`${getApiBaseUrl()}/operations/reports/${reportId}/export.csv`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.text();
 }
 
 export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
@@ -2799,6 +4000,22 @@ export async function createMediaEvidence(token: string, payload: MediaEvidenceC
   return request<MediaEvidenceRead>("/operations/data/media-evidence", { method: "POST", token, bodyJson: payload });
 }
 
+export async function listActivityMediaEvidence(token: string, activityId: string): Promise<MediaEvidenceRead[]> {
+  return request<MediaEvidenceRead[]>(`/operations/operational-activities/${activityId}/media-evidence`, { token });
+}
+
+export async function createActivityMediaEvidence(
+  token: string,
+  activityId: string,
+  payload: MediaEvidenceCreate,
+): Promise<MediaEvidenceRead> {
+  return request<MediaEvidenceRead>(`/operations/operational-activities/${activityId}/media-evidence`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function listForms(token: string): Promise<DataFormRead[]> {
   return request<DataFormRead[]>("/forms", { token });
 }
@@ -2807,12 +4024,49 @@ export async function getFormSchema(token: string, formId: string): Promise<Data
   return request<DataFormSchemaRead>(`/forms/${formId}/schema`, { token });
 }
 
+export async function importFormDataRows(
+  token: string,
+  formId: string,
+  payload: {
+    rows: Record<string, unknown>[];
+    source_name?: string;
+    source_system?: string;
+    import_reason?: string | null;
+  },
+): Promise<FormDataImportResponse> {
+  return request<FormDataImportResponse>(`/forms/${formId}/data-import`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function confirmImportedFormDataRows(
+  token: string,
+  formId: string,
+  payload: { submission_ids: string[]; comment: string },
+): Promise<FormDataImportConfirmResponse> {
+  return request<FormDataImportConfirmResponse>(`/forms/${formId}/data-import/confirm`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
 
 export async function updateForm(token: string, formId: string, payload: DataFormUpdate): Promise<DataFormRead> {
   return request<DataFormRead>(`/forms/${formId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function archiveForm(token: string, formId: string): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}/archive`, { method: "POST", token });
+}
+
+export async function restoreForm(token: string, formId: string): Promise<DataFormRead> {
+  return request<DataFormRead>(`/forms/${formId}/restore`, { method: "POST", token });
 }
 
 export async function getFormControls(token: string, formId: string): Promise<FormControlsSettings> {
@@ -2864,7 +4118,9 @@ export async function duplicateFormTemplate(
 export const api = {
   analyzeImport,
   applyImportJob,
+  bulkUpdateImportCleaningRows,
   confirmImportJob,
+  confirmImportedFormDataRows,
   createAdministrationApiKey,
   createAdministrationBackup,
   createAdministrationIntegration,
@@ -2883,6 +4139,7 @@ export const api = {
   createExportJob,
   createProject,
   createRole,
+  createActivityMediaEvidence,
   createMediaEvidence,
   createPublicCollectionLink,
   createOperationalZone,
@@ -2893,6 +4150,11 @@ export const api = {
   getFormControls,
   getImportErrorReport,
   getImportMigrationOverview,
+  getPlatformBackupPolicy,
+  getPlatformAnnouncement,
+  getPlatformRelease,
+  getPlatformMobileFleet,
+  getPlatformSecurityPolicy,
   createGovernancePolicy,
   createImportJob,
   createSurvey,
@@ -2917,8 +4179,13 @@ export const api = {
   getUsersTeamsSummary,
   getOrganizationContext,
   getOperationalEcosystem,
+  getOperationalActivityReport,
   governExport,
+  installProjectSectorForms,
+  installProjectSectorIndicators,
+  installProjectSectorReports,
   importFieldOfficers,
+  importFormDataRows,
   importOrganizationUnits,
   importUsers,
   inviteFieldOfficer,
@@ -2943,30 +4210,39 @@ export const api = {
   listDataVersions,
   listExportLogs,
   listMediaEvidence,
+  listActivityMediaEvidence,
   listPublicCollectionLinks,
   listFieldOfficers,
+  listFieldVisitRequests,
+  listFormRepeatRows,
   listForms,
   listFormTemplates,
   listGovernancePolicies,
   listIndicators,
+  listImportCleaningRows,
   listImportJobs,
   listImportRows,
   listImportSupportedSources,
+  listChoiceList,
   listLineageEvents,
   listMasterDataEntries,
   listOperationalZones,
   listPlatformAuditLogs,
   listPlatformBackups,
+  listPlatformDataIsolationIssues,
   listPlatformFeatureFlags,
   listPlatformIntegrations,
   listPlatformLeads,
   listPlatformOrganizationPlans,
   listPlatformRoles,
   listPlatformSecurityEvents,
+  listPlatformSectorPacks,
   listPlatformSupportSessions,
+  listPlatformSupportQueue,
   listPrograms,
   listProjectImportJobs,
   listProjects,
+  listProjectSectorPacks,
   listProjectTemplates,
   listSurveyTeam,
   listSurveys,
@@ -2976,6 +4252,8 @@ export const api = {
   listRetentionPolicies,
   listRoles,
   listSessionLogs,
+  listSubmissionCorrections,
+  listSubmissionRepeatRows,
   listSubmissions,
   listTeams,
   listUsersTeamsActivityLogs,
@@ -2994,16 +4272,24 @@ export const api = {
   resetUserPassword,
   routeData,
   reviewAccessRequest,
+  reviewFieldVisitRequest,
+  reviewOperationalActivityOutcome,
   simulateAccess,
   updateAdministrationLocation,
   updateAdministrationNotificationRule,
   updateAdministrationReferenceValue,
   updatePlatformFeatureFlag,
+  updatePlatformIntegration,
+  updatePlatformOrganizationPlan,
+  updatePlatformRelease,
+  updatePlatformSecurityPolicy,
+  updatePlatformBackupPolicy,
   updateImportRow,
   updateForm,
   updateFormControls,
   updateSubmissionResponses,
   updateSurveyGovernance,
+  updateTeam,
   upsertAdministrationFeatureFlag,
   upsertAdministrationSystemSetting,
   updateUser,

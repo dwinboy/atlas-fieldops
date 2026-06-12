@@ -10,10 +10,12 @@ watchPatterns = [
   "Dockerfile",
   "pyproject.toml",
   "runtime.txt",
+  "railway.json",
   "railway.toml"
 ]
 
 [deploy]
+preDeployCommand = "python -m alembic upgrade head"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

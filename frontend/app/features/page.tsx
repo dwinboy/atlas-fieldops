@@ -18,7 +18,7 @@ export default function FeaturesPage() {
         <SimplePageHero
           eyebrow="Features"
           title="A complete operating system for field data and M&E teams"
-          text="Atlas FieldOps connects every feature to the operational workflow: forms, beneficiaries, field teams, approvals, maps, indicators, analytics, and reports."
+          text="Atlas FieldOps connects every feature to the operational workflow: forms, entities, field teams, approvals, maps, indicators, analytics, and reports."
         />
         <FeatureGrid />
         <section className="bg-white py-20">
@@ -27,10 +27,10 @@ export default function FeaturesPage() {
             {["Advanced form builder", "Offline mobile sync", "Approval automation", "Geospatial intelligence", "AI data quality", "Donor reporting"].map((item, index) => {
               const Icon = pageFeatureIcons[index];
               return (
-                <article className="rounded-xl border border-black/10 bg-[#f7faf8] p-6" key={item}>
-                  <Icon className="text-[#0f766e]" size={22} />
+                <article className="rounded-xl border border-black/10 bg-[#fafaf8] p-6" key={item}>
+                  <Icon className="text-[#0d9488]" size={22} />
                   <h2 className="mt-4 text-lg font-semibold">{item}</h2>
-                  <p className="mt-2 text-sm leading-6 text-[#52615d]">{platformFeatures[index % platformFeatures.length].text}</p>
+                  <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{platformFeatures[index % platformFeatures.length].text}</p>
                 </article>
               );
             })}

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FAQAccordion, SimplePageHero } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { faqSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
@@ -23,13 +23,8 @@ export default function HelpPage() {
       <JsonLd data={faqSchema(faqs.map(([question, answer]) => ({ question, answer })))} />
       <main>
         <SimplePageHero eyebrow="Help center" title="Answers for teams evaluating Atlas FieldOps" text="Find quick answers about monitoring and evaluation workflows, offline data collection, survey management, GIS mapping, data quality, and reporting." />
-        <section className="mx-auto max-w-4xl space-y-4 px-4 pb-20 sm:px-6 lg:px-8">
-          {faqs.map(([question, answer]) => (
-            <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={question}>
-              <h2 className="text-lg font-semibold">{question}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">{answer}</p>
-            </article>
-          ))}
+        <section className="mx-auto max-w-4xl px-4 pb-20 sm:px-6 lg:px-8">
+          <FAQAccordion items={faqs.map(([question, answer]) => ({ question, answer }))} />
         </section>
       </main>
     </MarketingShell>

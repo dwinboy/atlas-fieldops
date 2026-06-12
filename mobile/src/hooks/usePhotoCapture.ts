@@ -8,6 +8,7 @@ export type PhotoResult = {
   mimeType: string;
   fileName: string;
   fileSize: number | null;
+  mediaType?: "photo" | "video";
 };
 
 export type PhotoCaptureState = {
@@ -25,7 +26,7 @@ export function usePhotoCapture() {
     isCapturing: false,
   });
 
-  const takePhoto = useCallback(async (): Promise<PhotoResult | null> => {
+  const takePhoto = useCallback(async (mediaType: "photo" | "video" = "photo"): Promise<PhotoResult | null> => {
     setState((s) => ({ ...s, status: "capturing", isCapturing: true, error: null }));
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -40,7 +41,7 @@ export function usePhotoCapture() {
       }
 
       const picked = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: mediaType === "video" ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
         quality: 0.82,
         allowsEditing: false,
       });
@@ -56,8 +57,9 @@ export function usePhotoCapture() {
         width: asset.width,
         height: asset.height,
         mimeType: asset.mimeType ?? "image/jpeg",
-        fileName: asset.fileName ?? `photo_${Date.now()}.jpg`,
+        fileName: asset.fileName ?? `${mediaType}_${Date.now()}${mediaType === "video" ? ".mp4" : ".jpg"}`,
         fileSize: asset.fileSize ?? null,
+        mediaType,
       };
 
       setState({ status: "done", result, error: null, isCapturing: false });
@@ -69,7 +71,7 @@ export function usePhotoCapture() {
     }
   }, []);
 
-  const pickFromGallery = useCallback(async (): Promise<PhotoResult | null> => {
+  const pickFromGallery = useCallback(async (mediaType: "photo" | "video" = "photo"): Promise<PhotoResult | null> => {
     setState((s) => ({ ...s, status: "capturing", isCapturing: true, error: null }));
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -84,7 +86,7 @@ export function usePhotoCapture() {
       }
 
       const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: mediaType === "video" ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
         quality: 0.82,
       });
 
@@ -98,9 +100,10 @@ export function usePhotoCapture() {
         uri: asset.uri,
         width: asset.width,
         height: asset.height,
-        mimeType: asset.mimeType ?? "image/jpeg",
-        fileName: asset.fileName ?? `photo_${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+        fileName: asset.fileName ?? `${mediaType}_${Date.now()}${mediaType === "video" ? ".mp4" : ".jpg"}`,
         fileSize: asset.fileSize ?? null,
+        mediaType,
       };
 
       setState({ status: "done", result, error: null, isCapturing: false });

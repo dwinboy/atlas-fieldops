@@ -12,10 +12,6 @@ import type {
   ScheduledReportRecord,
 } from "@/modules/reports/data";
 
-function isToday(isoDate: string): boolean {
-  return new Date(isoDate).toDateString() === new Date().toDateString();
-}
-
 export function computeReportsSummary({
   dashboards,
   exports,
@@ -32,7 +28,7 @@ export function computeReportsSummary({
     exportJobs: exports.length,
     failedReportJobs: exports.filter((job) => job.status === "Failed").length + schedules.filter((schedule) => schedule.status === "Failed").length,
     mostViewedReports: reports.filter((report) => report.views >= 100).length,
-    reportsGeneratedToday: reports.filter((report) => isToday(report.lastGenerated)).length,
+    reportsReady: reports.filter((report) => report.status === "Ready").length,
     reportsPendingDelivery: schedules.filter((schedule) => schedule.status !== "Active" || schedule.failureLog).length,
     scheduledReports: schedules.length,
     totalReports: reports.length,

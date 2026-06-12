@@ -1,5 +1,6 @@
 import type { BadgeProps } from "@/components/ui/badge";
-import type { SubmissionRead } from "@/lib/api";
+import type { SubmissionRead, UserRead } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import {
   previewSubmissions,
   type SubmissionRecord,
@@ -13,16 +14,12 @@ export function formatSubmissionStatus(status: string): string {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .replace("Correction Requested", "Returned for Correction")
+    .replace("Import Staged", "Import Staged")
     .replace("Under Review", "Pending Review");
 }
 
 export function statusTone(status: string): BadgeProps["tone"] {
-  if (["approved"].includes(status)) return "success";
-  if (["rejected"].includes(status)) return "danger";
-  if (["under_review", "submitted", "pending_review", "resubmitted"].includes(status)) return "warning";
-  if (["correction_requested", "needs_correction", "returned"].includes(status)) return "warning";
-  if (["archived"].includes(status)) return "neutral";
-  return "accent";
+  return canonicalStatusTone(status);
 }
 
 export function qualityTone(score: number): BadgeProps["tone"] {
@@ -52,20 +49,22 @@ export function reviewStageFromStatus(status: string): SubmissionWorkflowStage {
   if (status === "archived") return "Archived";
   if (["correction_requested", "needs_correction", "returned"].includes(status)) return "Returned for Correction";
   if (status === "resubmitted") return "Resubmitted";
+  if (status === "import_staged") return "Import Staged";
   if (["under_review", "submitted", "pending_review"].includes(status)) return "Pending Review";
   return "Draft";
 }
 
 export function calculateQualityScore(submission: SubmissionRead): number {
   const payload = submission.payload_json ?? {};
-  const values = Object.entries(payload)
-    .filter(([key]) => !key.startsWith("_"))
-    .map(([, value]) => value);
+  const mobileIntegrity = mobileIntegrityPayload(payload);
+  const mobileScore = typeof mobileIntegrity?.score === "number" ? mobileIntegrity.score : null;
+  const values = Object.values(normalizedSubmissionAnswers(payload));
   const completeness = values.length ? Math.round((values.filter((value) => value !== null && value !== undefined && value !== "").length / values.length) * 100) : 60;
   const gpsPenalty = !submission.latitude || !submission.longitude ? 25 : submission.accuracy && submission.accuracy > 20 ? 15 : 0;
   const statusPenalty = submission.status === "rejected" ? 35 : ["correction_requested", "needs_correction"].includes(submission.status) ? 20 : 0;
-  const duplicatePenalty = Object.keys(payload).some((key) => key.includes("phone") || key.includes("household") || key.includes("beneficiary")) ? 0 : 5;
-  return Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
+  const duplicatePenalty = Object.keys(normalizedSubmissionAnswers(payload)).some((key) => key.includes("phone") || key.includes("household") || key.includes("beneficiary")) ? 0 : 5;
+  const calculatedScore = Math.max(0, Math.min(100, completeness - gpsPenalty - statusPenalty - duplicatePenalty));
+  return mobileScore === null ? calculatedScore : Math.min(calculatedScore, mobileScore);
 }
 
 function submissionValidationIssues(submission: SubmissionRead): string[] {
@@ -75,13 +74,73 @@ function submissionValidationIssues(submission: SubmissionRead): string[] {
   return rawIssues.filter((issue): issue is string => typeof issue === "string" && issue.trim().length > 0);
 }
 
+function mobileIntegrityPayload(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const rawIntegrity = payload._mobile_integrity;
+  if (!rawIntegrity || typeof rawIntegrity !== "object" || Array.isArray(rawIntegrity)) return null;
+  return rawIntegrity as Record<string, unknown>;
+}
+
+function normalizedSubmissionAnswers(payload: Record<string, unknown>): Record<string, unknown> {
+  const answers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") && key !== "responses") answers[key] = value;
+  }
+  const responseRows = Array.isArray(payload.responses)
+    ? payload.responses
+    : Array.isArray(payload._mobile_responses)
+      ? payload._mobile_responses
+      : [];
+  for (const row of responseRows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const response = row as Record<string, unknown>;
+    const key = String(response.variableName ?? response.variable_name ?? response.questionId ?? response.question_id ?? "").trim();
+    if (key) answers[key] = response.value;
+  }
+  return answers;
+}
+
+function mobileIntegritySignals(payload: Record<string, unknown>): {
+  code: string;
+  message: string;
+  severity: "Low" | "Medium" | "High" | "Critical";
+}[] {
+  const integrity = mobileIntegrityPayload(payload);
+  const rawSignals = Array.isArray(integrity?.signals) ? integrity.signals : [];
+  return rawSignals
+    .map((rawSignal) => {
+      if (!rawSignal || typeof rawSignal !== "object" || Array.isArray(rawSignal)) return null;
+      const signal = rawSignal as Record<string, unknown>;
+      const severity = typeof signal.severity === "string" ? signal.severity.toLowerCase() : "";
+      return {
+        code: typeof signal.code === "string" ? signal.code : "FIELD_INTEGRITY_SIGNAL",
+        message: typeof signal.message === "string" ? signal.message : "Mobile field integrity signal needs reviewer attention.",
+        severity:
+          severity === "critical"
+            ? "Critical"
+            : severity === "warning" || severity === "high"
+              ? "High"
+              : severity === "info" || severity === "low"
+                ? "Low"
+                : "Medium",
+      };
+    })
+    .filter((signal): signal is { code: string; message: string; severity: "Low" | "Medium" | "High" | "Critical" } => Boolean(signal));
+}
+
 export function normalizeSubmission(submission: SubmissionRead): SubmissionRecord {
   const qualityScore = calculateQualityScore(submission);
   const dueAt = new Date(new Date(submission.submitted_at || submission.sync_received_at).getTime() + 48 * 60 * 60 * 1000).toISOString();
   const reviewStage = reviewStageFromStatus(submission.status);
-  const gpsStatus = !submission.latitude || !submission.longitude ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
+  const locationStatus = submission.payload_json?._mobile_location_status;
+  const hasUsableGps =
+    locationStatus !== "not_required_or_missing" &&
+    Number.isFinite(submission.latitude) &&
+    Number.isFinite(submission.longitude) &&
+    !(submission.latitude === 0 && submission.longitude === 0);
+  const gpsStatus = !hasUsableGps ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
   const validationIssues = submissionValidationIssues(submission);
   const qualityFlags: SubmissionRecord["quality_flags"] = [];
+  const controlMetadata = submission.payload_json?._question_control_metadata;
   validationIssues.forEach((message, index) => {
     qualityFlags.push({
       check: "Form Validation",
@@ -91,6 +150,46 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       status: "open",
     });
   });
+  mobileIntegritySignals(submission.payload_json ?? {}).forEach((signal, index) => {
+    qualityFlags.push({
+      check: `Mobile Integrity: ${signal.code.replaceAll("_", " ")}`,
+      id: `${submission.id}-mobile-integrity-${index}`,
+      message: signal.message,
+      severity: signal.severity,
+      status: "open",
+    });
+  });
+  if (controlMetadata && typeof controlMetadata === "object" && !Array.isArray(controlMetadata)) {
+    Object.entries(controlMetadata as Record<string, unknown>).forEach(([key, raw], index) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+      const entry = raw as Record<string, unknown>;
+      const privacy = entry.privacy && typeof entry.privacy === "object" && !Array.isArray(entry.privacy)
+        ? entry.privacy as Record<string, unknown>
+        : null;
+      const governance = entry.governance && typeof entry.governance === "object" && !Array.isArray(entry.governance)
+        ? entry.governance as Record<string, unknown>
+        : null;
+      const label = typeof entry.label === "string" ? entry.label : key;
+      if (privacy?.sensitivity === "pii" || privacy?.sensitivity === "restricted") {
+        qualityFlags.push({
+          check: "Sensitive Data Control",
+          id: `${submission.id}-privacy-control-${index}`,
+          message: `${label} is marked as sensitive. Reviewer should verify consent, masking, and export restrictions before approval.`,
+          severity: "Medium",
+          status: "open",
+        });
+      }
+      if (governance?.approvedDataLock || governance?.changeReasonRequired) {
+        qualityFlags.push({
+          check: "Governance Control",
+          id: `${submission.id}-governance-control-${index}`,
+          message: `${label} has governance controls. Approved edits should create a change request and require a reason.`,
+          severity: "Low",
+          status: "open",
+        });
+      }
+    });
+  }
   if (gpsStatus !== "valid") {
     qualityFlags.push({
       check: "GPS Validation",
@@ -110,22 +209,24 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
     });
   }
 
+  const actor = submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file";
+
   return {
     ...submission,
     attachments: [],
     audit_events: [
-      { action: "Submission Created", actor: submission.field_officer_id, created_at: submission.captured_at, new_value: "draft" },
-      { action: "Submission Submitted", actor: submission.field_officer_id, created_at: submission.submitted_at, new_value: submission.status },
+      { action: "Submission Created", actor, created_at: submission.captured_at, new_value: "draft" },
+      { action: "Submission Submitted", actor, created_at: submission.submitted_at, new_value: submission.status },
     ],
     duplicate_risk: qualityScore < 55 ? "possible" : "none",
     form_name: submission.form_id.replaceAll("-", " "),
     form_version: submission.server_sequence,
     gps_status: gpsStatus,
     history: [
-      { action: "Created", actor: submission.field_officer_id, created_at: submission.captured_at },
-      { action: "Submitted", actor: submission.field_officer_id, created_at: submission.submitted_at },
+      { action: "Created", actor, created_at: submission.captured_at },
+      { action: "Submitted", actor, created_at: submission.submitted_at },
     ],
-    location_name: submission.latitude && submission.longitude ? "Captured GPS location" : "No location captured",
+    location_name: hasUsableGps ? "GPS evidence captured" : "No GPS captured",
     project_name: submission.project_id?.replaceAll("-", " ") ?? "Unassigned project",
     quality_flags: qualityFlags,
     quality_score: qualityScore,
@@ -138,6 +239,18 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       { reviewer: "Unassigned reviewer", sla_status: slaStatus(dueAt), stage: reviewStage },
     ],
   };
+}
+
+export function resolveSubmissionAssignments(
+  submission: SubmissionRead,
+  users: Map<string, UserRead>,
+): { reviewer: string; supervisor: string } {
+  const reviewerId = submission.reviewed_by_user_id ?? submission.approved_by_user_id ?? null;
+  const reviewer = reviewerId ? users.get(reviewerId)?.full_name ?? "Unassigned reviewer" : "Unassigned reviewer";
+  const supervisor = submission.supervisor_id
+    ? users.get(submission.supervisor_id)?.full_name ?? "Unassigned supervisor"
+    : "Unassigned supervisor";
+  return { reviewer, supervisor };
 }
 
 export function computeSubmissionsSummary(submissions: SubmissionRecord[]): SubmissionsSummary {
@@ -167,7 +280,7 @@ export function computeSubmissionsSummary(submissions: SubmissionRecord[]): Subm
 
 export function filterSubmissions(submissions: SubmissionRecord[], section: SubmissionSection): SubmissionRecord[] {
   if (section === "all" || section === "dashboard") return submissions;
-  if (section === "pending-review") return submissions.filter((submission) => ["under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status));
+  if (section === "pending-review") return submissions.filter((submission) => ["import_staged", "under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status));
   if (section === "approved") return submissions.filter((submission) => submission.status === "approved");
   if (section === "rejected") return submissions.filter((submission) => submission.status === "rejected");
   if (section === "returned") return submissions.filter((submission) => ["correction_requested", "needs_correction", "returned"].includes(submission.status));

@@ -1,16 +1,11 @@
 import {
-  Activity,
   Bell,
-  Bug,
   Cloud,
-  ClipboardCheck,
   Database,
   Flag,
   Globe2,
   KeyRound,
   Layers3,
-  MessageSquare,
-  Rocket,
   Settings,
   Smartphone,
   UploadCloud,
@@ -113,57 +108,12 @@ export const administrationPages: AdministrationPageConfig[] = [
   },
   {
     description:
-      "Register, monitor, block, retire, and force logout Android devices used by field teams.",
+      "Devices, app versions, pilots, monitoring, feedback, and field testing for the mobile workforce in one place.",
     icon: Smartphone,
-    id: "mobile-devices",
-    primaryAction: "Register device",
-    route: "/administration/mobile-devices",
-    title: "Mobile Devices",
-  },
-  {
-    description:
-      "Control production, staging, and minimum supported mobile app versions for safe rollout.",
-    icon: Rocket,
-    id: "mobile-versions",
-    primaryAction: "Update policy",
-    route: "/administration/mobile-versions",
-    title: "Mobile Versions",
-  },
-  {
-    description:
-      "Plan and track mobile field pilots by project, devices, field officers, supervisors, feedback, and issues.",
-    icon: ClipboardCheck,
-    id: "mobile-pilots",
-    primaryAction: "Create pilot",
-    route: "/administration/mobile-pilots",
-    title: "Mobile Pilots",
-  },
-  {
-    description:
-      "Monitor active devices, sync health, crash trends, offline devices, app versions, and submission throughput.",
-    icon: Activity,
-    id: "mobile-monitoring",
-    primaryAction: "Review health",
-    route: "/administration/mobile-monitoring",
-    title: "Mobile Monitoring",
-  },
-  {
-    description:
-      "Review field feedback from mobile users, including diagnostics for sync, performance, and usability issues.",
-    icon: MessageSquare,
-    id: "mobile-feedback",
-    primaryAction: "Review feedback",
-    route: "/administration/mobile-feedback",
-    title: "Mobile Feedback",
-  },
-  {
-    description:
-      "Record offline, GPS, attachment, sync, and large-form test results before rollout.",
-    icon: Bug,
-    id: "mobile-testing",
-    primaryAction: "Record test",
-    route: "/administration/mobile-testing",
-    title: "Mobile Testing",
+    id: "mobile",
+    primaryAction: "Review readiness",
+    route: "/administration/mobile",
+    title: "Mobile Management",
   },
 ];
 

@@ -22,6 +22,7 @@ class SubmissionStatus(StrEnum):
     REJECTED = "rejected"
     CORRECTION_REQUESTED = "correction_requested"
     RESUBMITTED = "resubmitted"
+    ARCHIVED = "archived"
 
 
 class SurveyStatus(StrEnum):
@@ -39,6 +40,16 @@ class SurveyRole(StrEnum):
     DATA_QUALITY_OFFICER = "data_quality_officer"
     ENUMERATOR = "enumerator"
     ANALYST = "analyst"
+
+
+FORM_TYPES = {
+    "registration",
+    "monitoring",
+    "follow_up",
+    "verification",
+    "assessment",
+    "custom",
+}
 
 
 SURVEY_TYPES = {
@@ -209,6 +220,7 @@ class FormField(BaseModel):
     required: bool = False
     validation: dict[str, Any] = Field(default_factory=dict)
     visibility: dict[str, Any] = Field(default_factory=dict)
+    appearance: dict[str, Any] = Field(default_factory=dict)
     options: list[dict[str, Any]] = Field(default_factory=list)
     calculation: str | None = None
 
@@ -251,6 +263,7 @@ class FormSchema(BaseModel):
             "geolocation",
             "map",
             "geofence",
+            "polygon",
             "photo",
             "image",
             "signature",
@@ -421,6 +434,7 @@ class FormVersioningSettings(BaseModel):
 class FormCollectionAccessSettings(BaseModel):
     selection_mode: str = Field(default="assigned_only", pattern=r"^(assigned_only|project_team|open_link)$")
     field_officer_ids: list[UUID] = Field(default_factory=list, max_length=200)
+    team_ids: list[UUID] = Field(default_factory=list, max_length=100)
     assigned_at: datetime | None = None
     assigned_by_user_id: UUID | None = None
     notes: str | None = Field(default=None, max_length=500)
@@ -428,6 +442,7 @@ class FormCollectionAccessSettings(BaseModel):
 
 class FormEntityControlSettings(BaseModel):
     linked_to_entity: bool = False
+    entity_category_id: UUID | None = None
     entity_type: str = Field(default="Farmer", max_length=80)
     creates_new_entity: bool = False
     updates_existing_entity: bool = False
@@ -515,19 +530,33 @@ class DataFormCreate(BaseModel):
     project_id: UUID
     survey_id: UUID
     description: str | None = Field(default=None, max_length=2000)
+    form_type: str | None = Field(default=None, max_length=40)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def validate_form_type(self) -> "DataFormCreate":
+        if self.form_type is not None and self.form_type not in FORM_TYPES:
+            raise ValueError("form_type must be a supported type or custom")
+        return self
 
 
 class DataFormUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
+    form_type: str | None = Field(default=None, max_length=40)
     form_schema: FormSchema = Field(alias="schema")
     publish: bool = False
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def validate_form_type(self) -> "DataFormUpdate":
+        if self.form_type is not None and self.form_type not in FORM_TYPES:
+            raise ValueError("form_type must be a supported type or custom")
+        return self
 
 
 class DataFormRead(BaseModel):
@@ -537,6 +566,7 @@ class DataFormRead(BaseModel):
     name: str
     slug: str
     description: str | None
+    form_type: str | None = None
     status: str
     current_version: int
     controls_json: dict[str, Any] = Field(default_factory=dict)
@@ -549,8 +579,27 @@ class DataFormSchemaRead(BaseModel):
     form_id: UUID
     version: int
     form_schema: dict[str, Any] = Field(alias="schema")
+    published_at: datetime | None = None
+    published_by_user_id: UUID | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class FormDataImportIssue(BaseModel):
+    row_number: int = Field(ge=1)
+    field_name: str | None = None
+    question_label: str | None = None
+    issue_type: str
+    severity: str = Field(default="warning", pattern=r"^(info|warning|error)$")
+    message: str
+    suggested_fix: str | None = None
+
+
+class FormDataImportRequest(BaseModel):
+    rows: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+    source_name: str = Field(default="Form spreadsheet upload", min_length=2, max_length=240)
+    source_system: str = Field(default="Form spreadsheet upload", min_length=2, max_length=120)
+    import_reason: str | None = Field(default=None, max_length=500)
 
 
 class XlsFormSurveyRow(BaseModel):
@@ -655,12 +704,125 @@ class FieldOfficerRead(BaseModel):
     phone_number: str | None
     employee_code: str | None
     home_region: str | None
+    supervisor_user_id: UUID | None = None
+    supervisor_name: str | None = None
     last_sync_at: datetime | None
     last_seen_at: datetime | None
     last_latitude: float | None
     last_longitude: float | None
     device_id: str | None
     is_active: bool
+
+
+class FieldOfficerSummaryMetric(BaseModel):
+    label: str
+    value: str
+    tone: str = "neutral"
+    route: str | None = None
+
+
+class FieldOfficerAssignmentDetailRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    project_name: str
+    form_id: UUID | None = None
+    form_name: str | None = None
+    region: str | None = None
+    target: int = 0
+    completed: int = 0
+    status: str = "Assigned"
+    is_active: bool = True
+    updated_at: datetime
+
+
+class FieldOfficerSubmissionDetailRead(BaseModel):
+    id: UUID
+    client_submission_id: str
+    project_id: UUID | None = None
+    project_name: str | None = None
+    form_id: UUID
+    form_name: str | None = None
+    entity_id: UUID | None = None
+    status: str
+    source: str
+    submitted_at: datetime
+    sync_received_at: datetime
+    quality_score: int
+
+
+class FieldOfficerDeviceDetailRead(BaseModel):
+    device_id: str
+    device_name: str
+    platform: str
+    app_version: str | None = None
+    os_version: str | None = None
+    status: str
+    last_seen_at: datetime | None = None
+    last_sync_at: datetime | None = None
+
+
+class FieldOfficerActivityEventRead(BaseModel):
+    id: str
+    action: str
+    detail: str
+    device_id: str | None = None
+    project_id: UUID | None = None
+    created_at: datetime
+    status: str = "Recorded"
+
+
+class FieldOfficerSecurityRead(BaseModel):
+    username: str
+    email: str
+    account_status: str
+    role: str | None = None
+    scope_type: str | None = None
+    project_id: str | None = None
+    geography_id: str | None = None
+    temporary_password_issued: bool = False
+    password_last_changed_at: datetime | None = None
+    last_login_at: datetime | None = None
+    failed_login_attempts: int = 0
+    mobile_qr_login_enabled: bool = False
+    mobile_qr_login_payload: str | None = None
+    credential_actions: list[str] = Field(default_factory=list)
+
+
+class FieldOfficerPermissionRead(BaseModel):
+    key: str
+    label: str
+    enabled: bool
+    source: str
+
+
+class FieldOfficerProfileUpdate(BaseModel):
+    employee_code: str | None = Field(default=None, max_length=80)
+    phone_number: str | None = Field(default=None, max_length=40)
+    home_region: str | None = Field(default=None, max_length=160)
+    supervisor_user_id: UUID | None = None
+    is_active: bool | None = None
+
+
+class FieldOfficerProfileDetailRead(BaseModel):
+    officer: FieldOfficerRead
+    organization_name: str | None = None
+    team: str | None = None
+    supervisor: str | None = None
+    status: str
+    metrics: list[FieldOfficerSummaryMetric] = Field(default_factory=list)
+    assignments: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    projects: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    forms: list[FieldOfficerAssignmentDetailRead] = Field(default_factory=list)
+    beneficiaries: list[dict[str, Any]] = Field(default_factory=list)
+    submissions: list[FieldOfficerSubmissionDetailRead] = Field(default_factory=list)
+    performance: dict[str, Any] = Field(default_factory=dict)
+    data_quality: dict[str, Any] = Field(default_factory=dict)
+    devices: list[FieldOfficerDeviceDetailRead] = Field(default_factory=list)
+    activity: list[FieldOfficerActivityEventRead] = Field(default_factory=list)
+    permissions: list[FieldOfficerPermissionRead] = Field(default_factory=list)
+    security: FieldOfficerSecurityRead
+    audit_trail: list[FieldOfficerActivityEventRead] = Field(default_factory=list)
 
 
 class OfficerAssignmentCreate(BaseModel):
@@ -680,6 +842,101 @@ class OfficerAssignmentRead(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+FIELD_WORK_ASSIGNMENT_STATUSES = (
+    "Draft",
+    "Assigned",
+    "In Progress",
+    "Completed",
+    "Overdue",
+    "Cancelled",
+)
+
+FIELD_WORK_ASSIGNMENT_PRIORITIES = ("Low", "Normal", "High", "Urgent")
+
+
+class FieldWorkAssignmentCreate(BaseModel):
+    project_id: UUID
+    form_id: UUID | None = None
+    supervisor_user_id: UUID | None = None
+    name: str = Field(min_length=1, max_length=220)
+    description: str | None = None
+    assignment_type: str = Field(default="Form only", max_length=80)
+    officer_ids: list[UUID] = Field(default_factory=list)
+    assigned_entity_ids: list[str] = Field(default_factory=list)
+    location: str | None = Field(default=None, max_length=240)
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int = Field(default=0, ge=0)
+    priority: str = "Normal"
+
+    @model_validator(mode="after")
+    def validate_priority(self) -> "FieldWorkAssignmentCreate":
+        if self.priority not in FIELD_WORK_ASSIGNMENT_PRIORITIES:
+            raise ValueError(
+                f"Priority must be one of {', '.join(FIELD_WORK_ASSIGNMENT_PRIORITIES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentUpdate(BaseModel):
+    form_id: UUID | None = None
+    supervisor_user_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    description: str | None = None
+    assignment_type: str | None = Field(default=None, max_length=80)
+    officer_ids: list[UUID] | None = None
+    assigned_entity_ids: list[str] | None = None
+    location: str | None = Field(default=None, max_length=240)
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int | None = Field(default=None, ge=0)
+    completed_count: int | None = Field(default=None, ge=0)
+    priority: str | None = None
+
+    @model_validator(mode="after")
+    def validate_priority(self) -> "FieldWorkAssignmentUpdate":
+        if self.priority is not None and self.priority not in FIELD_WORK_ASSIGNMENT_PRIORITIES:
+            raise ValueError(
+                f"Priority must be one of {', '.join(FIELD_WORK_ASSIGNMENT_PRIORITIES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentStatusUpdate(BaseModel):
+    status: str
+    reason: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_status(self) -> "FieldWorkAssignmentStatusUpdate":
+        if self.status not in FIELD_WORK_ASSIGNMENT_STATUSES:
+            raise ValueError(
+                f"Status must be one of {', '.join(FIELD_WORK_ASSIGNMENT_STATUSES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    form_id: UUID | None = None
+    created_by_user_id: UUID
+    supervisor_user_id: UUID | None = None
+    name: str
+    description: str | None = None
+    assignment_type: str
+    officer_ids: list[UUID] = Field(default_factory=list)
+    assigned_entity_ids: list[str] = Field(default_factory=list)
+    location: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int
+    completed_count: int
+    priority: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class FieldOfficerImportIssue(BaseModel):
@@ -722,6 +979,18 @@ class SubmissionCreate(BaseModel):
         return self
 
 
+class SubmissionBeneficiaryLinkRead(BaseModel):
+    id: str
+    beneficiary_id: str
+    beneficiary_uid: str
+    display_name: str
+    beneficiary_type: str
+    link_type: str
+    source: str
+    source_field: str | None = None
+    created_at: datetime
+
+
 class SubmissionRead(BaseModel):
     id: UUID
     client_submission_id: str
@@ -734,13 +1003,14 @@ class SubmissionRead(BaseModel):
     supervisor_id: UUID | None = None
     frequency_period: str | None = None
     event_id: str | None = None
-    field_officer_id: UUID
+    field_officer_id: UUID | None = None
     status: str
     server_sequence: int
     captured_at: datetime
     submitted_at: datetime
     sync_received_at: datetime
     offline_created: bool
+    device_id: str
     latitude: float
     longitude: float
     accuracy: float | None
@@ -754,8 +1024,129 @@ class SubmissionRead(BaseModel):
     import_batch_id: UUID | None = None
     imported_at: datetime | None = None
     imported_by_user_id: UUID | None = None
+    reviewed_by_user_id: UUID | None = None
+    reviewed_at: datetime | None = None
+    review_comments: str | None = None
+    approved_by_user_id: UUID | None = None
+    approved_at: datetime | None = None
+    beneficiary_code: str | None = None
+    submitted_by_name: str | None = None
+    approved_by_name: str | None = None
+    linked_beneficiaries: list[SubmissionBeneficiaryLinkRead] = Field(default_factory=list)
+    review_quality: int | None = None
+    redacted_fields: list[str] = Field(default_factory=list)
+    spatial_flags: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _populate_spatial_flags(self) -> "SubmissionRead":
+        if self.spatial_flags is None:
+            flags = self.payload_json.get("_spatial_flags")
+            if isinstance(flags, dict):
+                self.spatial_flags = flags
+        return self
+
+
+class SpatialQualityIssueRead(BaseModel):
+    id: str
+    issue_type: str = Field(alias="issueType")
+    submission_id: str = Field(alias="submissionId")
+    enumerator: str
+    project: str
+    location: str
+    severity: str
+    recommended_action: str = Field(alias="recommendedAction")
+    validation_state: str = Field(alias="validationState")
+
+    model_config = {"populate_by_name": True}
+
+
+class CorrectionLogEntryRead(BaseModel):
+    submission_id: UUID
+    submission_key: str
+    corrected_field: str
+    old_value: Any = None
+    new_value: Any = None
+    corrected_by: UUID | None = None
+    corrected_at: datetime
+    reason: str | None = None
+    change_type: str
+    review_comment: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SubmissionRepeatRowRead(BaseModel):
+    id: UUID
+    submission_id: UUID
+    parent_submission_key: str
+    field_id: str
+    row_index: int
+    row_json: dict[str, Any]
+
+    model_config = {"from_attributes": True}
+
+
+class ImportCleaningRowRead(BaseModel):
+    id: UUID
+    client_submission_id: str
+    form_id: UUID
+    form_name: str
+    project_id: UUID | None = None
+    project_name: str | None = None
+    status: str
+    imported_at: datetime | None = None
+    imported_by_user_id: UUID | None = None
+    uploaded_by_name: str | None = None
+    source_system: str | None = None
+    source_record_id: str | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    missing_field_keys: list[str] = Field(default_factory=list)
+    validation_issues: list[str] = Field(default_factory=list)
+    response_values: dict[str, Any] = Field(default_factory=dict)
+    issue_count: int
+    missing_field_count: int
+    ready_to_confirm: bool
+    quality_status: str | None = None
+    updated_at: datetime
+
+
+class ImportCleaningBulkRowUpdate(BaseModel):
+    submission_id: UUID
+    responses: dict[str, Any]
+
+
+class ImportCleaningBulkUpdateRequest(BaseModel):
+    rows: list[ImportCleaningBulkRowUpdate] = Field(min_length=1, max_length=250)
+    reason: str = Field(default="Bulk cleaned imported form rows.", min_length=4, max_length=1000)
+
+
+class ImportCleaningBulkUpdateResponse(BaseModel):
+    updated_rows: int
+    skipped_rows: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    rows: list[ImportCleaningRowRead] = Field(default_factory=list)
+
+
+class FormDataImportResponse(BaseModel):
+    imported_rows: int
+    warning_count: int
+    error_count: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    submissions: list[SubmissionRead] = Field(default_factory=list)
+
+
+class FormDataImportConfirmRequest(BaseModel):
+    submission_ids: list[UUID] = Field(min_length=1, max_length=500)
+    comment: str = Field(default="Cleaned imported form data confirmed for platform use.", min_length=4, max_length=1000)
+
+
+class FormDataImportConfirmResponse(BaseModel):
+    confirmed_rows: int
+    skipped_rows: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    submissions: list[SubmissionRead] = Field(default_factory=list)
 
 
 class EntityFrequencyValidationRequest(BaseModel):
@@ -775,7 +1166,7 @@ class EntityFrequencyValidationRead(BaseModel):
 
 
 class SubmissionReviewAction(BaseModel):
-    action: str = Field(pattern=r"^(approve|reject|request_correction|start_review)$")
+    action: str = Field(pattern=r"^(approve|reject|request_correction|start_review|archive)$")
     comment: str = Field(min_length=2, max_length=4000)
 
 

@@ -4,8 +4,15 @@ function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function customIdentifierMatches(
+  identifier: { fieldKey: string; value: string },
+  entity: MobileEntity,
+): boolean {
+  return Boolean(normalize(identifier.value)) && normalize(identifier.value) === normalize(String(entity.profile?.[identifier.fieldKey] ?? ""));
+}
+
 export class DuplicateCheckService {
-  check(input: DuplicateCheckInput, candidates: MobileEntity[]): DuplicateCheckResult[] {
+  check(input: DuplicateCheckInput, candidates: MobileEntity[], threshold = 60): DuplicateCheckResult[] {
     return candidates
       .map((entity) => {
         const matchedFields: string[] = [];
@@ -30,6 +37,12 @@ export class DuplicateCheckService {
           score += 60;
           matchedFields.push("Name + Village");
         }
+        for (const identifier of input.customIdentifiers ?? []) {
+          if (customIdentifierMatches(identifier, entity)) {
+            score += 80;
+            matchedFields.push(identifier.label);
+          }
+        }
         return {
           entity,
           matchedFields,
@@ -37,7 +50,7 @@ export class DuplicateCheckService {
           level: score >= 90 ? "LikelyDuplicate" : score >= 60 ? "PossibleDuplicate" : "NoMatch",
         } satisfies DuplicateCheckResult;
       })
-      .filter((result) => result.level !== "NoMatch")
+      .filter((result) => result.score >= threshold)
       .sort((a, b) => b.score - a.score);
   }
 }

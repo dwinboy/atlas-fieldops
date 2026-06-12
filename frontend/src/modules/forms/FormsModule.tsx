@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArrowLeft,
@@ -20,6 +20,7 @@ import {
   MapPinned,
   Plus,
   ShieldCheck,
+  SlidersHorizontal,
   Smartphone,
   Table2,
   UploadCloud,
@@ -37,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { getFormSchema, governExport, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, uploadImportFile } from "@/lib/api";
+import { ApiError, archiveForm, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, updateForm } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -58,7 +59,7 @@ import {
   statusTone,
   toCsv,
 } from "@/modules/forms/utils";
-import { useWorkspaceStore } from "@/stores/workspace";
+import { useWorkspaceStore, type LocalWorkspaceForm } from "@/stores/workspace";
 import { getPreviewSubmissions } from "@/modules/submissions/utils";
 import type { SubmissionRecord } from "@/modules/submissions/data";
 import { previewEntities } from "@/modules/beneficiaries/data";
@@ -97,6 +98,58 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Not recorded";
+  return parsed.toLocaleString();
+}
+
+function displaySubmissionId(submission: Pick<SubmissionRead, "client_submission_id" | "submitted_at" | "imported_at" | "is_imported">): string {
+  const raw = submission.client_submission_id;
+  if (/^(MOB|UPL|IMP|SUB|WEB)-\d{4}-[A-Z0-9-]+$/i.test(raw)) return raw.toUpperCase();
+  const year = new Date(submission.imported_at ?? submission.submitted_at).getFullYear();
+  const suffix = raw.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "000001";
+  const prefix = submission.is_imported ? "IMP" : raw.startsWith("draft_") || raw.startsWith("submission_") ? "MOB" : "SUB";
+  return `${prefix}-${Number.isFinite(year) ? year : new Date().getFullYear()}-${suffix}`;
+}
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function toLocalWorkspaceForm(form: FormListItem, status: string): LocalWorkspaceForm {
+  return {
+    active_assignments: form.active_assignments,
+    created_by: form.created_by,
+    description: form.description,
+    form_type: form.form_type,
+    has_quality_issues: form.has_quality_issues,
+    id: form.id,
+    owner: form.owner,
+    pending_approval: form.pending_approval,
+    project_id: form.project_id,
+    project_name: form.project_name,
+    quality_score: form.quality_score,
+    questions: form.questions,
+    recently_updated: form.recently_updated,
+    sections: form.sections,
+    slug: form.slug,
+    status,
+    survey_name: form.survey_name,
+    total_submissions: form.total_submissions,
+    updated_at: new Date().toISOString(),
+    version: form.version,
+    name: form.name,
+  };
+}
+
 async function readFormUploadRows(file: File): Promise<string[][]> {
   return readSpreadsheetRows(file);
 }
@@ -118,6 +171,8 @@ type FormGridQuestion = {
   indicatorMapping?: string | null;
   key: string;
   label: string;
+  profileField?: string | null;
+  profileImpact?: string | null;
   sensitivityLevel?: string | null;
   sourceOfTruth?: string | null;
   type: string;
@@ -147,7 +202,7 @@ function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): st
   if (isImportedSubmission(submission)) {
     return submission.imported_by_user_id ?? "Uploaded user";
   }
-  return submission.field_officer_id;
+  return submission.field_officer_id ?? "Unassigned collector";
 }
 
 function beneficiaryCodeMap(
@@ -171,13 +226,51 @@ function submissionEntityCode(
   submission: SubmissionRead | SubmissionRecord,
   beneficiaryCodes: Map<string, string>,
 ): string {
-  if (!submission.entity_id) return "Not linked";
-  return beneficiaryCodes.get(submission.entity_id) ?? submission.entity_id;
+  const processing = submission.payload_json?._beneficiary_processing;
+  const processedCode =
+    processing && typeof processing === "object" && !Array.isArray(processing)
+      ? String(
+          (processing as Record<string, unknown>).beneficiary_uid ??
+            (processing as Record<string, unknown>).candidate_beneficiary_uid ??
+            "",
+        )
+      : "";
+  if (!submission.entity_id) return processedCode || "Not linked";
+  return beneficiaryCodes.get(submission.entity_id) ?? (processedCode || submission.entity_id);
+}
+
+function linkedBeneficiaryLabel(submission: SubmissionRead | SubmissionRecord): string {
+  const links = submission.linked_beneficiaries ?? [];
+  const participantLinks = links.filter((link) => link.link_type !== "primary");
+  if (!participantLinks.length) return "None";
+  const shown = participantLinks.slice(0, 3).map((link) => link.beneficiary_uid);
+  const remaining = participantLinks.length - shown.length;
+  return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
+}
+
+function submissionAnswerMap(submission: SubmissionRead | SubmissionRecord): Record<string, unknown> {
+  const payload = submission.payload_json ?? {};
+  const answers: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!key.startsWith("_") && key !== "responses") answers[key] = value;
+  }
+  const responseRows = Array.isArray(payload.responses)
+    ? payload.responses
+    : Array.isArray(payload._mobile_responses)
+      ? payload._mobile_responses
+      : [];
+  for (const row of responseRows) {
+    if (!row || typeof row !== "object") continue;
+    const response = row as { questionId?: unknown; question_id?: unknown; variableName?: unknown; variable_name?: unknown; value?: unknown };
+    const key = String(response.variableName ?? response.variable_name ?? response.questionId ?? response.question_id ?? "").trim();
+    if (key) answers[key] = response.value;
+  }
+  return answers;
 }
 
 function statusBucket(status: string): "approved" | "pending" | "rejectedReturned" | "other" {
   if (status === "approved") return "approved";
-  if (["submitted", "under_review", "pending_review", "resubmitted"].includes(status)) return "pending";
+  if (["import_staged", "submitted", "under_review", "pending_review", "resubmitted"].includes(status)) return "pending";
   if (["rejected", "correction_requested", "needs_correction", "returned"].includes(status)) return "rejectedReturned";
   return "other";
 }
@@ -284,12 +377,10 @@ function averageDuration(submissions: (SubmissionRead | SubmissionRecord)[]): st
 function buildQuestionAnalytics(submissions: (SubmissionRead | SubmissionRecord)[]) {
   const questionKeys = new Set<string>();
   submissions.forEach((submission) => {
-    Object.keys(submission.payload_json ?? {})
-      .filter((key) => !key.startsWith("_"))
-      .forEach((key) => questionKeys.add(key));
+    Object.keys(submissionAnswerMap(submission)).forEach((key) => questionKeys.add(key));
   });
   return Array.from(questionKeys).map((key) => {
-    const values = submissions.map((submission) => submission.payload_json?.[key]);
+    const values = submissions.map((submission) => submissionAnswerMap(submission)[key]);
     const answered = values.filter((value) => value !== null && value !== undefined && value !== "");
     const missing = submissions.length - answered.length;
     const counts = new Map<string, number>();
@@ -357,6 +448,10 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
       definition?: string | null;
       id?: string;
       indicator_mapping?: string | null;
+      beneficiary?: {
+        profileField?: string | null;
+        profileImpact?: string | null;
+      };
       variable_name?: string | null;
       label?: string;
       sensitivity_level?: string | null;
@@ -371,6 +466,8 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
       indicatorMapping: field.indicator_mapping ?? null,
       key: field.variable_name || field.id || "field",
       label: field.label || field.variable_name || field.id || "Field",
+      profileField: field.beneficiary?.profileField ?? null,
+      profileImpact: field.beneficiary?.profileImpact ?? null,
       sensitivityLevel: field.sensitivity_level ?? "standard",
       sourceOfTruth: field.source_of_truth ?? "form_response",
       section: section.title || "Form questions",
@@ -382,8 +479,8 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
 function payloadColumns(submissions: (SubmissionRead | SubmissionRecord)[]): FormGridQuestion[] {
   const keys = new Map<string, FormGridQuestion>();
   for (const submission of submissions) {
-    for (const [key, value] of Object.entries(submission.payload_json ?? {})) {
-      if (key.startsWith("_") || keys.has(key)) continue;
+    for (const [key, value] of Object.entries(submissionAnswerMap(submission))) {
+      if (keys.has(key)) continue;
       keys.set(key, {
         key,
         label: key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
@@ -404,6 +501,7 @@ function questionDictionaryLines(question: FormGridQuestion): string[] {
     `Definition: ${question.definition || "No formal definition recorded yet."}`,
     `Allowed values: ${question.allowedValues || "Defined by the response type or reference list."}`,
     `Indicator mapping: ${question.indicatorMapping || "Not mapped to an indicator yet."}`,
+    `Entity profile field: ${question.profileField || "Not mapped to an entity profile field."}`,
     `Sensitivity: ${question.sensitivityLevel || "standard"}`,
     `Source of truth: ${question.sourceOfTruth || "form_response"}`,
   ];
@@ -412,14 +510,73 @@ function questionDictionaryLines(question: FormGridQuestion): string[] {
 function formatCell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  const gpsValue = formatGpsAnswer(value);
+  if (gpsValue) return gpsValue;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatGpsAnswer(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const latitude = numberFromUnknown(record.latitude);
+  const longitude = numberFromUnknown(record.longitude);
+  if (latitude === null || longitude === null) return null;
+  const accuracy = numberFromUnknown(record.accuracy);
+  const timestamp = typeof record.timestamp === "string" ? record.timestamp : null;
+  return [
+    `GPS captured: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+    accuracy !== null ? `accuracy ${Math.round(accuracy)}m` : null,
+    timestamp ? `at ${formatDate(timestamp)}` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+function submissionHasUsableGps(submission: SubmissionRead | SubmissionRecord): boolean {
+  const locationStatus = submission.payload_json?._mobile_location_status;
+  if (locationStatus === "not_required_or_missing") return false;
+  return Number.isFinite(submission.latitude) && Number.isFinite(submission.longitude) && !(submission.latitude === 0 && submission.longitude === 0);
+}
+
+function formatSubmissionGpsEvidence(submission: SubmissionRead | SubmissionRecord): string {
+  if (!submissionHasUsableGps(submission)) return "No GPS captured";
+  const accuracy = submission.accuracy == null ? "accuracy n/a" : `accuracy ${Math.round(submission.accuracy)}m`;
+  return `${submission.latitude.toFixed(5)}, ${submission.longitude.toFixed(5)} · ${accuracy}`;
+}
+
+function formatSubmissionDeviceEvidence(submission: SubmissionRead | SubmissionRecord): string {
+  if (isImportedSubmission(submission)) return "Uploaded/imported";
+  return submission.device_id || "Unknown device";
+}
+
+function approvalActorLabel(submission: SubmissionRead | SubmissionRecord): string {
+  return submission.approved_by_name || submission.approved_by_user_id || "Not approved yet";
+}
+
+function approvalCellLabel(submission: SubmissionRead | SubmissionRecord): string {
+  if (!submission.approved_at) return approvalActorLabel(submission);
+  return `${approvalActorLabel(submission)} · ${formatDateTime(submission.approved_at)}`;
 }
 
 function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): string[] {
   const warnings = new Set<string>();
   if (submission.status !== "approved") warnings.add("Pending review");
-  if (submission.latitude === null || submission.latitude === undefined || submission.longitude === null || submission.longitude === undefined) warnings.add("Missing GPS");
+  const processing = submission.payload_json?._beneficiary_processing;
+  if (processing && typeof processing === "object" && !Array.isArray(processing)) {
+    const processingRecord = processing as Record<string, unknown>;
+    const status = String(processingRecord.status ?? "");
+    const action = String(processingRecord.action ?? "");
+    const proposals = Number(processingRecord.profile_update_proposals ?? 0);
+    if (status === "reconciliation_required") warnings.add("Reconciliation required");
+    if (status === "processed" && action === "created") warnings.add("Beneficiary created");
+    if (status === "processed" && action === "linked") warnings.add("Beneficiary linked");
+    if (proposals > 0) warnings.add("Profile update review");
+  }
+  if (!submissionHasUsableGps(submission)) warnings.add("Missing GPS");
   if (submission.accuracy && submission.accuracy > 20) warnings.add("Low GPS accuracy");
   if ("duplicate_risk" in submission && submission.duplicate_risk && submission.duplicate_risk !== "none") warnings.add("Duplicate risk");
   if ("quality_flags" in submission) {
@@ -429,7 +586,37 @@ function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): stri
   }
   const validationIssues = submission.payload_json?._validation_issues;
   if (Array.isArray(validationIssues) && validationIssues.length) warnings.add("Validation issue");
+  const importIssues = submission.payload_json?._import_issues;
+  if (Array.isArray(importIssues) && importIssues.length) {
+    const missingFields = importIssues
+      .filter((issue) => {
+        if (!issue || typeof issue !== "object") return false;
+        const issueType = "issue_type" in issue ? issue.issue_type : null;
+        return issueType === "missing_column" || issueType === "missing_value";
+      })
+      .map((issue) => {
+        if (!issue || typeof issue !== "object") return "";
+        const label = "question_label" in issue ? issue.question_label : null;
+        const field = "field_name" in issue ? issue.field_name : null;
+        return String(label || field || "").trim();
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+    warnings.add(missingFields.length ? `Missing: ${missingFields.join(", ")}` : "Import warning");
+  }
   return Array.from(warnings);
+}
+
+function importBlockingIssues(submission: SubmissionRead | SubmissionRecord): string[] {
+  const validationIssues = submission.payload_json?._validation_issues;
+  if (Array.isArray(validationIssues) && validationIssues.length) {
+    return validationIssues.map((issue) => String(issue)).filter(Boolean);
+  }
+  return [];
+}
+
+function isImportStagedSubmission(submission: SubmissionRead | SubmissionRecord): boolean {
+  return isImportedSubmission(submission) && submission.status === "import_staged";
 }
 
 function previewSubmissionFormId(submission: SubmissionRecord): string {
@@ -455,6 +642,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [builderFormId, setBuilderFormId] = useState<string | null>(null);
+  const [duplicateSourceFormId, setDuplicateSourceFormId] = useState<string | null>(null);
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -503,7 +691,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               form_id: previewSubmissionFormId(submission),
             })),
           ]
-        : [...(submissionsQuery.data ?? []), ...localSubmissions],
+        : (submissionsQuery.data ?? []),
     [localSubmissions, preview, submissionsQuery.data],
   );
   const linkedBeneficiaryCodes = useMemo(
@@ -519,9 +707,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     [projectsQuery.data],
   );
   const forms = useMemo<FormListItem[]>(() => {
+    const backendForms = (formsQuery.data ?? []).map(normalizeBackendForm);
     const rawForms = preview
       ? [...previewForms, ...localForms]
-      : (formsQuery.data ?? []).map(normalizeBackendForm);
+      : backendForms;
     const baseForms = Array.from(
       new Map(rawForms.map((form) => [form.id, form])).values(),
     );
@@ -545,6 +734,45 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     () => filterForms(forms, activeSection),
     [activeSection, forms],
   );
+  const [filterProjectName, setFilterProjectName] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [filterFormType, setFilterFormType] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const formFilters = {
+    formType: filterFormType,
+    owner: filterOwner,
+    projectName: filterProjectName,
+    status: filterStatus,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+  };
+  function setFormFilters(patch: Partial<typeof formFilters>): void {
+    if (patch.projectName !== undefined) setFilterProjectName(patch.projectName);
+    if (patch.status !== undefined) setFilterStatus(patch.status);
+    if (patch.owner !== undefined) setFilterOwner(patch.owner);
+    if (patch.formType !== undefined) setFilterFormType(patch.formType);
+    if (patch.dateFrom !== undefined) setFilterDateFrom(patch.dateFrom);
+    if (patch.dateTo !== undefined) setFilterDateTo(patch.dateTo);
+  }
+  const filteredForms = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const toTime = filterDateTo ? new Date(filterDateTo).getTime() : null;
+    return visibleForms.filter((form) => {
+      if (filterProjectName && form.project_name !== filterProjectName) return false;
+      if (filterStatus && form.status !== filterStatus) return false;
+      if (filterOwner && form.owner !== filterOwner) return false;
+      if (filterFormType && form.form_type !== filterFormType) return false;
+      if (fromTime !== null || toTime !== null) {
+        if (!form.updated_at) return false;
+        const updatedTime = new Date(form.updated_at).getTime();
+        if (fromTime !== null && updatedTime < fromTime) return false;
+        if (toTime !== null && updatedTime > toTime) return false;
+      }
+      return true;
+    });
+  }, [filterDateFrom, filterDateTo, filterFormType, filterOwner, filterProjectName, filterStatus, visibleForms]);
   const selectedForm = forms.find((form) => form.id === selectedFormId) ?? null;
   const isCreateRoute =
     (pathname ?? "").replace(/\/+$/, "") === "/forms/create";
@@ -700,6 +928,10 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">
             View data
           </Button>
+          <Button onClick={() => openFormData(form.id, "source=uploaded")} size="sm" variant="secondary">
+            <UploadCloud aria-hidden="true" />
+            Upload
+          </Button>
           <Button
             onClick={() => openFormBuilder(form)}
             size="sm"
@@ -719,6 +951,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     return (
       <FormCreationWorkspace
         existingForms={forms}
+        initialDuplicateFormId={duplicateSourceFormId}
         initialForm={builderForm}
         onBack={() => {
           if (
@@ -729,6 +962,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           }
           setCreationOpen(false);
           setBuilderFormId(null);
+          setDuplicateSourceFormId(null);
         }}
         token={token}
       />
@@ -868,18 +1102,6 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       ["all", "draft", "published", "archived"].includes(activeSection) ? (
         <section className="space-y-4">
           <SectionHeader
-            action={
-              <Button
-                disabled={!canManageForms}
-                onClick={() => {
-                  setBuilderFormId(null);
-                  setCreationOpen(true);
-                }}
-                variant="primary"
-              >
-                <Plus aria-hidden="true" /> Create form
-              </Button>
-            }
             description={
               formsSections.find((section) => section.id === activeSection)
                 ?.description ?? "Manage forms"
@@ -889,28 +1111,47 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
                 ?.label ?? "Forms"
             }
           />
-          <FormFilters />
+          <FormFilters filters={formFilters} forms={visibleForms} onChange={setFormFilters} />
           {activeSection === "all" ? (
             <DataTable
               columns={columns}
+              emptyAction={
+                canManageForms
+                  ? {
+                      label: "Create form",
+                      onClick: () => {
+                        setBuilderFormId(null);
+                        setCreationOpen(true);
+                      },
+                    }
+                  : undefined
+              }
+              emptyDescription="Create a data collection form, publish it, and assign it to field officers to start collecting."
               emptyLabel="No forms match this view yet"
-              rows={visibleForms}
+              rows={filteredForms}
               searchLabel="Search forms, projects, owners, status"
               title="Form list"
             />
           ) : (
             <FormStatusCards
               canManageForms={canManageForms}
-              forms={visibleForms}
+              forms={filteredForms}
               onAssign={(form) => {
                 setActiveView("officers");
                 router.push(`/field-operations?formId=${encodeURIComponent(form.id)}`);
+              }}
+              onDuplicate={(form) => {
+                setBuilderFormId(null);
+                setDuplicateSourceFormId(form.id);
+                setCreationOpen(true);
               }}
               onEdit={(form) => {
                 openFormBuilder(form);
               }}
               onOpenData={(form, query) => openFormData(form.id, query)}
+              preview={preview}
               section={activeSection}
+              token={token}
             />
           )}
         </section>
@@ -922,6 +1163,9 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             setBuilderFormId(null);
             setCreationOpen(true);
           }}
+          projectSectors={(projectsQuery.data ?? [])
+            .map((project) => project.sector_name)
+            .filter((sector): sector is string => Boolean(sector))}
           templates={templates}
         />
       ) : null}
@@ -1214,11 +1458,11 @@ function FormsGovernanceDashboard({
   const outdated = forms.filter((form) => form.version <= 1 && form.status === "published");
   const notUsedRecently = forms.filter((form) => !form.total_submissions);
   const groups = [
-    { forms: missingApproval, label: "Missing approval", tab: "Review" as FormDetailTab },
-    { forms: missingIndicatorMapping, label: "Missing indicator mapping", tab: "Questions" as FormDetailTab },
+    { forms: missingApproval, label: "Missing approval", tab: "Configuration" as FormDetailTab },
+    { forms: missingIndicatorMapping, label: "Missing indicator mapping", tab: "Configuration" as FormDetailTab },
     { forms: missingBeneficiaryMapping, label: "Missing beneficiary mapping", tab: "Relationships" as FormDetailTab },
-    { forms: missingWorkflow, label: "Workflow needs review", tab: "Workflow" as FormDetailTab },
-    { forms: duplicateControls, label: "Quality or duplicate controls", tab: "Data Quality" as FormDetailTab },
+    { forms: missingWorkflow, label: "Workflow needs review", tab: "Configuration" as FormDetailTab },
+    { forms: duplicateControls, label: "Quality or duplicate controls", tab: "Configuration" as FormDetailTab },
     { forms: outdated, label: "Outdated version", tab: "Comparison" as FormDetailTab },
     { forms: notUsedRecently, label: "Not used recently", tab: "Analytics" as FormDetailTab },
   ];
@@ -1279,17 +1523,126 @@ function FormStatusCards({
   canManageForms,
   forms,
   onAssign,
+  onDuplicate,
   onEdit,
   onOpenData,
+  preview,
   section,
+  token,
 }: {
   canManageForms: boolean;
   forms: FormListItem[];
   onAssign: (form: FormListItem) => void;
+  onDuplicate: (form: FormListItem) => void;
   onEdit: (form: FormListItem) => void;
   onOpenData: (form: FormListItem, query?: string) => void;
+  preview: boolean;
   section: FormsSection;
+  token: string | null;
 }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const upsertLocalForm = useWorkspaceStore((state) => state.upsertLocalForm);
+  const queryClient = useQueryClient();
+
+  const publishMutation = useMutation({
+    mutationFn: async (form: FormListItem) => {
+      if (preview || !token) {
+        upsertLocalForm(toLocalWorkspaceForm(form, "published"));
+        return;
+      }
+      const schemaResult = await getFormSchema(token, form.id);
+      await updateForm(token, form.id, {
+        name: form.name,
+        description: form.description ?? null,
+        schema: schemaResult.schema,
+        publish: true,
+      });
+    },
+    onSuccess: async (_data, form) => {
+      pushToast({
+        title: "Form published",
+        description: `"${form.name}" is now available for field collection.`,
+        tone: "success",
+      });
+      if (!preview && token) await queryClient.invalidateQueries({ queryKey: ["forms-module", token] });
+    },
+    onError: (_error, form) => {
+      pushToast({
+        title: "Publish failed",
+        description: `Could not publish "${form.name}". Try again.`,
+        tone: "danger",
+      });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (form: FormListItem) => {
+      if (preview || !token) {
+        upsertLocalForm(toLocalWorkspaceForm(form, "archived"));
+        return;
+      }
+      await archiveForm(token, form.id);
+    },
+    onSuccess: async (_data, form) => {
+      pushToast({
+        title: "Form archived",
+        description: `"${form.name}" was moved to Archived.`,
+        tone: "success",
+      });
+      if (!preview && token) await queryClient.invalidateQueries({ queryKey: ["forms-module", token] });
+    },
+    onError: (_error, form) => {
+      pushToast({
+        title: "Archive failed",
+        description: `Could not archive "${form.name}". Try again.`,
+        tone: "danger",
+      });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (form: FormListItem) => {
+      if (preview || !token) {
+        upsertLocalForm(toLocalWorkspaceForm(form, "published"));
+        return;
+      }
+      await restoreForm(token, form.id);
+    },
+    onSuccess: async (_data, form) => {
+      pushToast({
+        title: "Form restored",
+        description: `"${form.name}" was moved back to Published.`,
+        tone: "success",
+      });
+      if (!preview && token) await queryClient.invalidateQueries({ queryKey: ["forms-module", token] });
+    },
+    onError: (_error, form) => {
+      pushToast({
+        title: "Restore failed",
+        description: `Could not restore "${form.name}". Try again.`,
+        tone: "danger",
+      });
+    },
+  });
+
+  async function handleExport(form: FormListItem): Promise<void> {
+    try {
+      const schema = !preview && token ? await getFormSchema(token, form.id) : null;
+      downloadJson(`${form.slug}-v${form.version}-archive.json`, schema ? { form, schema } : { form });
+      pushToast({
+        title: "Form exported",
+        description: `"${form.name}" was downloaded as JSON.`,
+        tone: "success",
+      });
+    } catch {
+      pushToast({
+        title: "Export failed",
+        description: `Could not export "${form.name}". Try again.`,
+        tone: "danger",
+      });
+    }
+  }
+
   if (!forms.length) {
     return (
       <div className="rounded-xl border border-dashed bg-panel p-8 text-center">
@@ -1400,11 +1753,17 @@ function FormStatusCards({
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="primary">
                     Continue Editing
                   </Button>
-                  <Button onClick={() => onOpenData(form)} size="sm" variant="secondary">
-                    Preview
+                  <Button onClick={() => onOpenData(form, "source=uploaded")} size="sm" variant="secondary">
+                    <UploadCloud aria-hidden="true" />
+                    Upload Data
                   </Button>
-                  <Button disabled={!canManageForms || !form.project_id} onClick={() => onEdit(form)} size="sm" variant="secondary">
-                    Publish
+                  <Button
+                    disabled={!canManageForms || !form.project_id || publishMutation.isPending}
+                    onClick={() => publishMutation.mutate(form)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {publishMutation.isPending && publishMutation.variables?.id === form.id ? "Publishing…" : "Publish"}
                   </Button>
                 </>
               ) : null}
@@ -1414,14 +1773,26 @@ function FormStatusCards({
                     <Table2 aria-hidden="true" />
                     View Data
                   </Button>
+                  <Button onClick={() => onOpenData(form, "source=uploaded")} size="sm" variant="secondary">
+                    <UploadCloud aria-hidden="true" />
+                    Upload Data
+                  </Button>
                   <Button disabled={!canManageForms} onClick={() => onAssign(form)} size="sm" variant="secondary">
                     Assign
                   </Button>
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="secondary">
                     New Version
                   </Button>
-                  <Button disabled={!canManageForms} size="sm" variant="secondary">
-                    Archive
+                  <Button disabled={!canManageForms} onClick={() => onDuplicate(form)} size="sm" variant="secondary">
+                    Duplicate
+                  </Button>
+                  <Button
+                    disabled={!canManageForms || archiveMutation.isPending}
+                    onClick={() => archiveMutation.mutate(form)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {archiveMutation.isPending && archiveMutation.variables?.id === form.id ? "Archiving…" : "Archive"}
                   </Button>
                 </>
               ) : null}
@@ -1430,10 +1801,19 @@ function FormStatusCards({
                   <Button onClick={() => onOpenData(form)} size="sm" variant="primary">
                     View Historical Data
                   </Button>
-                  <Button disabled={!canManageForms} size="sm" variant="secondary">
-                    Restore
+                  <Button
+                    disabled={!canManageForms || restoreMutation.isPending}
+                    onClick={() => restoreMutation.mutate(form)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {restoreMutation.isPending && restoreMutation.variables?.id === form.id ? "Restoring…" : "Restore"}
                   </Button>
-                  <Button size="sm" variant="secondary">
+                  <Button disabled={!canManageForms} onClick={() => onDuplicate(form)} size="sm" variant="secondary">
+                    Duplicate
+                  </Button>
+                  <Button onClick={() => handleExport(form)} size="sm" variant="secondary">
+                    <Download aria-hidden="true" />
                     Export
                   </Button>
                 </>
@@ -1550,7 +1930,10 @@ function FormDataGridWorkspace({
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
   const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
   const [uploading, setUploading] = useState(false);
+  const [confirmingImports, setConfirmingImports] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
+  const router = useRouter();
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const upsertLocalSubmission = useWorkspaceStore((state) => state.upsertLocalSubmission);
   const schemaQuery = useQuery({
@@ -1573,7 +1956,7 @@ function FormDataGridWorkspace({
       if (sourceFilter === "field" && isImportedSubmission(submission)) return false;
       if (statusFilter !== "all") {
         if (statusFilter === "pending_review") {
-          if (!["submitted", "under_review", "pending_review", "resubmitted"].includes(submission.status)) return false;
+          if (!["import_staged", "submitted", "under_review", "pending_review", "resubmitted"].includes(submission.status)) return false;
         } else if (statusFilter === "returned") {
           if (!["rejected", "correction_requested", "needs_correction", "returned"].includes(submission.status)) return false;
         } else if (submission.status !== statusFilter) {
@@ -1582,15 +1965,19 @@ function FormDataGridWorkspace({
       }
       if (!term) return true;
       return [
+        displaySubmissionId(submission),
         submission.client_submission_id,
         source,
         submissionActorLabel(submission),
         submission.status,
         entityCode,
-        ...Object.values(submission.payload_json ?? {}).map(formatCell),
+        linkedBeneficiaryLabel(submission),
+        ...Object.values(submissionAnswerMap(submission)).map(formatCell),
       ].join(" ").toLowerCase().includes(term);
     });
   }, [beneficiaryCodes, search, sourceFilter, statusFilter, submissions]);
+  const stagedImportRows = filteredSubmissions.filter(isImportStagedSubmission);
+  const confirmableImportRows = stagedImportRows.filter((submission) => !importBlockingIssues(submission).length);
   const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
 
   async function exportGrid(): Promise<void> {
@@ -1613,19 +2000,24 @@ function FormDataGridWorkspace({
     downloadCsv(
       `${form?.slug ?? formId}-data.csv`,
       filteredSubmissions.map((submission) => ({
-        submission_id: submission.client_submission_id,
+        submission_id: displaySubmissionId(submission),
         source: submissionSourceLabel(submission),
         quality_flags: rowQualityWarnings(submission).join("; "),
         submitted_or_uploaded_by: submissionActorLabel(submission),
-        date: submission.imported_at ?? submission.submitted_at,
+        submitted_or_uploaded_at: formatDateTime(submission.imported_at ?? submission.submitted_at),
         status: submission.status,
+        approved_by: approvalActorLabel(submission),
+        approved_at: submission.approved_at ? formatDateTime(submission.approved_at) : "",
         entity_code: submissionEntityCode(submission, beneficiaryCodes),
+        linked_participants: linkedBeneficiaryLabel(submission),
         project: form?.project_name ?? submission.project_id ?? "",
         form_version: submission.server_sequence,
+        gps_evidence: formatSubmissionGpsEvidence(submission),
+        device: formatSubmissionDeviceEvidence(submission),
         ...Object.fromEntries(
           questions.map((question) => [
             question.label,
-            formatCell(submission.payload_json?.[question.key]),
+            formatCell(submissionAnswerMap(submission)[question.key]),
           ]),
         ),
       })),
@@ -1640,6 +2032,8 @@ function FormDataGridWorkspace({
         definition: question.definition || "",
         indicator_mapping: question.indicatorMapping || "",
         label: question.label,
+        profile_field: question.profileField || "",
+        profile_impact: question.profileImpact || "",
         section: question.section,
         sensitivity_level: question.sensitivityLevel || "standard",
         source_of_truth: question.sourceOfTruth || "form_response",
@@ -1684,23 +2078,75 @@ function FormDataGridWorkspace({
       if (!headers.length || !dataRows.length) {
         throw new Error("The uploaded file must include headers and at least one data row.");
       }
+      const rowObjects = dataRows.map((row) =>
+        Object.fromEntries(headers.map((header, columnIndex) => [header, row[columnIndex]?.trim() ?? ""])),
+      );
       const questionLookup = new Map<string, FormGridQuestion>();
       for (const question of questions) {
         questionLookup.set(question.key.toLowerCase(), question);
         questionLookup.set(question.label.toLowerCase(), question);
       }
+      if (token && token !== "preview-token") {
+        const response = await importFormDataRows(token, formId, {
+          import_reason: `Form-level upload for ${form?.name ?? formId}`,
+          rows: rowObjects,
+          source_name: file.name,
+          source_system: "Form spreadsheet upload",
+        });
+        await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+        setSourceFilter("uploaded");
+        const missingIssues = response.issues.filter((issue) =>
+          issue.issue_type === "missing_column" || issue.issue_type === "missing_value",
+        );
+        const sampleMissing = missingIssues
+          .slice(0, 3)
+          .map((issue) => `${issue.question_label ?? issue.field_name ?? "Field"} on row ${issue.row_number}`)
+          .join("; ");
+        pushToast({
+          title: "Form data imported",
+          description: sampleMissing
+            ? `${response.imported_rows} row(s) staged for cleaning. Missing data found: ${sampleMissing}${missingIssues.length > 3 ? "..." : ""}`
+            : `${response.imported_rows} row(s) staged for cleaning with no missing form fields detected. Confirm them when ready.`,
+          tone: response.error_count ? "danger" : response.warning_count ? "warning" : "success",
+        });
+        return;
+      }
       const now = new Date().toISOString();
       let importedCount = 0;
       dataRows.forEach((row, rowIndex) => {
         const payload: Record<string, unknown> = {};
+        const importIssues: Record<string, unknown>[] = [];
         headers.forEach((header, columnIndex) => {
           const normalizedHeader = header.toLowerCase();
           const question = questionLookup.get(normalizedHeader);
           const value = row[columnIndex]?.trim() ?? "";
-          if (!question || !value) return;
+          if (!question) return;
+          if (!value) {
+            importIssues.push({
+              field_name: question.key,
+              issue_type: "missing_value",
+              message: `${question.label} (${question.key}) is missing for this imported row.`,
+              question_label: question.label,
+              row_number: rowIndex + 1,
+              severity: "warning",
+              suggested_fix: "Add the value if it exists. The row was still imported for review.",
+            });
+            return;
+          }
           payload[question.key] = value;
         });
-        if (!Object.keys(payload).length) return;
+        for (const question of questions) {
+          if (Object.prototype.hasOwnProperty.call(payload, question.key)) continue;
+          importIssues.push({
+            field_name: question.key,
+            issue_type: "missing_column",
+            message: `${question.label} (${question.key}) is missing for this imported row.`,
+            question_label: question.label,
+            row_number: rowIndex + 1,
+            severity: "info",
+            suggested_fix: "Add a matching column if the data exists. The row was still imported for review.",
+          });
+        }
         importedCount += 1;
         const submittedAt =
           row[headers.findIndex((header) => header.toLowerCase() === "submitted_at")] ||
@@ -1725,6 +2171,7 @@ function FormDataGridWorkspace({
           ],
           captured_at: submittedAt,
           client_submission_id: `UPL-${new Date().getFullYear()}-${String(rowIndex + 1).padStart(4, "0")}`,
+          device_id: "web-form-upload",
           duplicate_risk: "none",
           entity_id: entityCode,
           field_officer_id: "Uploaded file",
@@ -1749,7 +2196,15 @@ function FormDataGridWorkspace({
           location_name: "Not captured",
           longitude: 0,
           offline_created: false,
-          payload_json: payload,
+          payload_json: {
+            ...payload,
+            _import_issues: importIssues,
+            _validation_issues: importIssues
+              .filter((issue) => issue.severity !== "info")
+              .map((issue) => issue.message),
+            _quality_status: importIssues.some((issue) => issue.severity !== "info") ? "needs_review" : "ready_for_review",
+            _review_required: true,
+          },
           project_id: form?.project_id ?? null,
           project_name: form?.project_name ?? "Project not attached",
           quality_flags: [],
@@ -1761,7 +2216,7 @@ function FormDataGridWorkspace({
           source_form_id: formId,
           source_record_id: String(rowIndex + 2),
           source_system: "Form spreadsheet upload",
-          status: "under_review",
+          status: "import_staged",
           submitted_at: submittedAt,
           supervisor: "Data reviewer",
           survey_id: null,
@@ -1785,14 +2240,6 @@ function FormDataGridWorkspace({
       if (!importedCount) {
         throw new Error("No uploaded columns matched this form's variable names.");
       }
-      if (token && token !== "preview-token") {
-        await uploadImportFile(token, "submissions", file, {
-          importReason: `Form-level upload for ${form?.name ?? formId}`,
-          sourceSystem: "Form spreadsheet upload",
-          targetMode: "existing_form",
-          targetProjectId: form?.project_id ?? null,
-        }).catch(() => undefined);
-      }
       setSourceFilter("uploaded");
       pushToast({
         title: "Form data uploaded",
@@ -1800,15 +2247,60 @@ function FormDataGridWorkspace({
         tone: "success",
       });
     } catch (error) {
+      const permissionMessage =
+        error instanceof ApiError && error.status === 403
+          ? "You need the Data Import permission (data.import) to upload data into forms. Ask an organization owner or admin to open Users & Teams > Permissions, select your profile, and assign a role such as Data Manager or M&E Manager with data.import."
+          : null;
       pushToast({
         title: "Upload could not be imported",
-        description:
-          error instanceof Error ? error.message : "Check the file and try again.",
+        description: permissionMessage ?? (error instanceof Error ? error.message : "Check the file and try again."),
         tone: "danger",
       });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function confirmCleanedImportedRows(): Promise<void> {
+    if (!token || token === "preview-token") {
+      pushToast({
+        title: "Preview import confirmed",
+        description: "Preview rows stay local. Sign in to confirm imported form data in the platform.",
+        tone: "warning",
+      });
+      return;
+    }
+    if (!confirmableImportRows.length) {
+      pushToast({
+        title: "No cleaned rows ready",
+        description: "Open staged rows, fill required missing fields, save edits, then confirm again.",
+        tone: "warning",
+      });
+      return;
+    }
+    setConfirmingImports(true);
+    try {
+      const response = await confirmImportedFormDataRows(token, formId, {
+        comment: "Cleaned uploaded form data confirmed for platform use.",
+        submission_ids: confirmableImportRows.map((submission) => submission.id),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      setStatusFilter("approved");
+      setSourceFilter("uploaded");
+      pushToast({
+        title: "Imported data confirmed",
+        description: `${response.confirmed_rows} row(s) are now approved and ready for dashboards, reports, indicators, and beneficiary/entity linkage.${response.skipped_rows ? ` ${response.skipped_rows} row(s) still need cleaning.` : ""}`,
+        tone: response.skipped_rows ? "warning" : "success",
+      });
+    } catch (error) {
+      pushToast({
+        title: "Could not confirm import",
+        description: error instanceof Error ? error.message : "Clean staged rows and try again.",
+        tone: "danger",
+      });
+    } finally {
+      setConfirmingImports(false);
     }
   }
 
@@ -1849,6 +2341,14 @@ function FormDataGridWorkspace({
               <UploadCloud aria-hidden="true" />
               {uploading ? "Uploading" : "Upload data"}
             </Button>
+            <Button
+              disabled={confirmingImports || !confirmableImportRows.length}
+              onClick={() => void confirmCleanedImportedRows()}
+              variant="primary"
+            >
+              <CheckCircle2 aria-hidden="true" />
+              {confirmingImports ? "Confirming" : "Confirm cleaned rows"}
+            </Button>
             <input
               accept=".csv,.tsv,.txt,.xlsx"
               className="hidden"
@@ -1884,6 +2384,7 @@ function FormDataGridWorkspace({
           </label>
           <Select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
             <option value="all">All statuses</option>
+            <option value="import_staged">Import staged</option>
             <option value="pending_review">Pending review</option>
             <option value="approved">Approved</option>
             <option value="returned">Returned/rejected</option>
@@ -1895,6 +2396,28 @@ function FormDataGridWorkspace({
           </Select>
         </div>
       </div>
+
+      {stagedImportRows.length ? (
+        <div className="rounded-xl border border-warning/30 bg-warning/8 p-3 text-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold">{stagedImportRows.length} uploaded row(s) are staged for cleaning.</p>
+              <p className="text-muted-foreground">
+                Clean rows with missing required fields, then confirm cleaned rows before they feed dashboards, reports, indicators, or beneficiary/entity profiles.
+              </p>
+            </div>
+            <Button
+              disabled={confirmingImports || !confirmableImportRows.length}
+              onClick={() => void confirmCleanedImportedRows()}
+              size="sm"
+              variant="primary"
+            >
+              <CheckCircle2 aria-hidden="true" />
+              Confirm {confirmableImportRows.length} cleaned
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {showDictionary ? (
         <DataDictionaryPanel
@@ -1908,7 +2431,7 @@ function FormDataGridWorkspace({
           <table className="min-w-[1180px] border-separate border-spacing-0 text-xs">
             <thead>
               <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version"].map((header, index) => (
+                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Submitted / Uploaded At", "Status", "Approval", "Primary Entity", "Participants", "GPS Evidence", "Device", "Project", "Version", "Actions"].map((header, index) => (
                   <th
                     className={cn(
                       "sticky top-0 z-20 whitespace-nowrap border-b px-2.5 py-2 font-semibold",
@@ -1939,6 +2462,9 @@ function FormDataGridWorkspace({
                         {question.sensitivityLevel}
                       </Badge>
                     ) : null}
+                    {question.profileField ? (
+                      <Badge tone="success">Profile: {question.profileField}</Badge>
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -1946,7 +2472,9 @@ function FormDataGridWorkspace({
             <tbody>
               {filteredSubmissions.map((submission) => (
                 <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
-                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2.5 py-2 font-medium">{submission.client_submission_id}</td>
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2.5 py-2 font-medium">
+                    <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
+                  </td>
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={isImportedSubmission(submission) ? "warning" : "success"}>
                       {submissionSourceLabel(submission)}
@@ -1958,7 +2486,16 @@ function FormDataGridWorkspace({
                   <td className="border-b px-2.5 py-2">
                     <div className="flex max-w-64 flex-wrap gap-1">
                       {rowQualityWarnings(submission).map((warning) => (
-                        <Badge key={warning} tone={warning === "Pending review" ? "warning" : "danger"}>
+                        <Badge
+                          key={warning}
+                          tone={
+                            warning === "Beneficiary created" || warning === "Beneficiary linked"
+                              ? "success"
+                              : warning === "Pending review" || warning === "Profile update review"
+                                ? "warning"
+                                : "danger"
+                          }
+                        >
                           {warning}
                         </Badge>
                       ))}
@@ -1966,17 +2503,59 @@ function FormDataGridWorkspace({
                     </div>
                   </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionActorLabel(submission)}</td>
-                  <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDate(submission.imported_at ?? submission.submitted_at)}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDateTime(submission.imported_at ?? submission.submitted_at)}</td>
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
                   </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <span className={!submission.approved_at ? "text-muted-foreground" : undefined}>
+                      {approvalCellLabel(submission)}
+                    </span>
+                  </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionEntityCode(submission, beneficiaryCodes)}</td>
+                  <td className="max-w-56 whitespace-nowrap border-b px-2.5 py-2">
+                    <span title={(submission.linked_beneficiaries ?? []).map((link) => `${link.beneficiary_uid} ${link.display_name}`).join(", ")}>
+                      {linkedBeneficiaryLabel(submission)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <span className={cn(!submissionHasUsableGps(submission) && "text-muted-foreground")}>
+                      {formatSubmissionGpsEvidence(submission)}
+                    </span>
+                    {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
+                      <p className="mt-1 text-[11px] text-warning">Poor accuracy; review location evidence.</p>
+                    ) : null}
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <p className="max-w-44 truncate font-mono text-[11px]">{formatSubmissionDeviceEvidence(submission)}</p>
+                    {submission.offline_created ? <p className="text-[11px] text-muted-foreground">Mobile offline sync</p> : null}
+                  </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">v{submission.server_sequence}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    {isImportStagedSubmission(submission) ? (
+                      <Button
+                        onClick={() => router.push(`/submissions/all?submissionId=${submission.id}&tab=Responses`)}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <ClipboardPenLine aria-hidden="true" />
+                        Clean row
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => router.push(`/submissions/all?submissionId=${submission.id}`)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        View
+                      </Button>
+                    )}
+                  </td>
                   {questions.map((question) => (
                     <td className="max-w-60 border-b px-2.5 py-2 align-top" key={`${submission.id}-${question.key}`}>
                       <div className="max-h-20 overflow-auto whitespace-pre-wrap break-words rounded bg-background/65 p-1.5 leading-relaxed">
-                        {formatCell(submission.payload_json?.[question.key]) || <span className="text-muted-foreground">Blank</span>}
+                        {formatCell(submissionAnswerMap(submission)[question.key]) || <span className="text-muted-foreground">Blank</span>}
                       </div>
                     </td>
                   ))}
@@ -2063,134 +2642,13 @@ function FormDetailWorkspace({
       {tab === "Analytics" ? (
         <FormAnalyticsPanel form={form} submissions={submissions} />
       ) : null}
-      {tab === "Builder" ? (
-        <FormTabCard
-          actionLabel="Open Builder"
-          icon={ClipboardPenLine}
-          onAction={onOpenBuilder}
-          title="Professional Survey Builder"
-          lines={[
-            "Approved route: /forms/:formId/builder.",
-            "Question library, templates, drag-and-drop ordering, inline editing, validation, logic, calculations, preview, import, and deployment all live in the builder.",
-            `${form.questions} questions across ${form.sections} section(s).`,
-          ]}
-        />
-      ) : null}
-      {tab === "Questions" ? (
-        <FormTabCard
-          actionLabel="Open Builder"
-          icon={ClipboardPenLine}
-          onAction={onOpenBuilder}
-          title="Question Structure"
-          lines={[
-            "Questions are managed through the canonical builder so there is no duplicate form designer.",
-            "Use sections, groups, repeat groups, variable names, validation, option lists, reference bindings, and logic from the builder.",
-            "Published versions remain protected; edits create draft versions before publishing.",
-          ]}
-        />
-      ) : null}
-      {tab === "Reference Data" ? (
-        <FormTabCard
-          actionLabel="Manage in Builder"
-          icon={Database}
-          onAction={onOpenBuilder}
-          title="Reference Data Binding"
-          lines={[
-            "Bind fields to countries, regions, districts, communities, facilities, donors, beneficiaries, and custom lists.",
-            "Support controlled values, hierarchy, active/inactive values, effective dates, and version-aware warnings.",
-            "Prevent invalid free-text values when controlled lists are required.",
-          ]}
-        />
-      ) : null}
-      {tab === "Permissions" ? (
-        <FormTabCard
-          actionLabel="Manage Permissions"
-          icon={ShieldCheck}
-          onAction={onOpenBuilder}
-          title="Form Access Control"
-          lines={[
-            "Configure role, user, team, project, and location-level access.",
-            "Control view, edit, publish, archive, assign, export, review, approve, and manage controls permissions.",
-            "Field officers should only see assigned published forms.",
-          ]}
-        />
-      ) : null}
-      {tab === "Workflow" ? (
-        <FormTabCard
-          actionLabel="Configure Workflow"
-          icon={Workflow}
-          onAction={onOpenBuilder}
-          title="Approval Workflow"
-          lines={[
-            "Simple, standard, and correction workflows are configurable per form.",
-            "Reviewer role, team, location scope, required comments, and SLA rules are form-level settings.",
-            "Submission decisions remain in Submissions, with form workflow determining the path.",
-          ]}
-        />
-      ) : null}
-      {tab === "Data Quality" ? (
-        <FormTabCard
-          actionLabel="Open Data Quality"
-          icon={ClipboardCheck}
-          onAction={onOpenDataQuality}
-          title="Data Quality Rules"
-          lines={[
-            "Required fields, ranges, duplicate detection, outliers, GPS validation, consent checks, duration rules, and severity controls.",
-            "Critical rules can block submission or route records for correction.",
-            "Detailed investigation belongs in Data Quality.",
-          ]}
-        />
-      ) : null}
-      {tab === "Governance" ? (
-        <FormTabCard
-          actionLabel="Manage Governance"
-          icon={ShieldCheck}
-          onAction={onOpenBuilder}
-          title="Form Governance"
-          lines={[
-            "Set status, consent, edits after approval, duplicate prevention, retention, masking, export restrictions, and record locking.",
-            "High-risk changes require reason capture and immutable audit evidence.",
-            "Governance Administration remains outside Forms; this is form-level governance only.",
-          ]}
-        />
-      ) : null}
-      {tab === "Mapping Settings" ? (
-        <FormTabCard
-          actionLabel="Open Mapping"
-          icon={MapPinned}
-          onAction={onOpenMapping}
-          title="Form Mapping Settings"
-          lines={[
-            "Require GPS, set accuracy thresholds, boundary validation, allowed collection areas, coordinate masking, and duplicate GPS detection.",
-            "GIS analysis remains in Mapping; Forms only defines collection behavior.",
-            "Submission GPS evidence stays tied to the form version used in the field.",
-          ]}
-        />
-      ) : null}
-      {tab === "Preview" ? (
-        <FormTabCard
-          actionLabel="Open Preview Flow"
-          icon={Smartphone}
-          onAction={onOpenBuilder}
-          title="Preview & Test"
-          lines={[
-            "Approved route: /forms/:formId/preview.",
-            "Test web, tablet, mobile, enumerator, and respondent modes before publishing.",
-            "Preview runs are test-only and do not count as real submissions.",
-          ]}
-        />
-      ) : null}
-      {tab === "Review" ? (
-        <FormTabCard
-          actionLabel="Open Publish Review"
-          icon={ClipboardCheck}
-          onAction={onOpenBuilder}
-          title="Publish Readiness Review"
-          lines={[
-            "Approved route: /forms/:formId/review.",
-            "Publishing is blocked when critical checks fail: missing project, no questions, duplicate variables, invalid logic, or unreviewed controls.",
-            "Publishing creates an immutable version and makes the form available for field assignments.",
-          ]}
+      {tab === "Configuration" ? (
+        <FormConfigurationGrid
+          form={form}
+          onOpenBuilder={onOpenBuilder}
+          onOpenDataQuality={onOpenDataQuality}
+          onOpenMapping={onOpenMapping}
+          onOpenSubmissions={onOpenSubmissions}
         />
       ) : null}
       {tab === "Relationships" ? (
@@ -2199,33 +2657,158 @@ function FormDetailWorkspace({
       {tab === "Translations" ? <FormTranslationsPanel form={form} /> : null}
       {tab === "Offline Readiness" ? <FormOfflineReadinessPanel form={form} /> : null}
       {tab === "Comparison" ? <FormComparisonPanel form={form} /> : null}
-      {tab === "Version History" ? (
-        <FormTabCard
-          actionLabel="Open Builder"
-          icon={GitBranch}
-          onAction={onOpenBuilder}
-          title="Version History"
-          lines={[
-            `Current version: v${form.version}.`,
-            "Published forms are never overwritten silently.",
-            "Old submissions remain linked to the exact version used during collection.",
-          ]}
-        />
-      ) : null}
-      {tab === "Audit Trail" ? (
-        <FormTabCard
-          actionLabel="Open Submissions"
-          icon={History}
-          onAction={onOpenSubmissions}
-          title="Audit Trail"
-          lines={[
-            "Track form created, question changes, rule changes, permissions, workflow, publish, archive, export, and submission events.",
-            "Audit records are immutable and integrate with Governance Audit Trail.",
-            "Authorized users can filter/export logs for form accountability.",
-          ]}
-        />
-      ) : null}
     </section>
+  );
+}
+
+function FormConfigurationGrid({
+  form,
+  onOpenBuilder,
+  onOpenDataQuality,
+  onOpenMapping,
+  onOpenSubmissions,
+}: {
+  form: FormListItem;
+  onOpenBuilder: () => void;
+  onOpenDataQuality: () => void;
+  onOpenMapping: () => void;
+  onOpenSubmissions: () => void;
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <FormTabCard
+        actionLabel="Open Builder"
+        icon={ClipboardPenLine}
+        onAction={onOpenBuilder}
+        title="Professional Survey Builder"
+        lines={[
+          "Approved route: /forms/:formId/builder.",
+          "Question library, templates, drag-and-drop ordering, inline editing, validation, logic, calculations, preview, import, and deployment all live in the builder.",
+          `${form.questions} questions across ${form.sections} section(s).`,
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Builder"
+        icon={ClipboardPenLine}
+        onAction={onOpenBuilder}
+        title="Question Structure"
+        lines={[
+          "Questions are managed through the canonical builder so there is no duplicate form designer.",
+          "Use sections, groups, repeat groups, variable names, validation, option lists, reference bindings, and logic from the builder.",
+          "Published versions remain protected; edits create draft versions before publishing.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Manage in Builder"
+        icon={Database}
+        onAction={onOpenBuilder}
+        title="Reference Data Binding"
+        lines={[
+          "Bind fields to countries, regions, districts, communities, facilities, donors, beneficiaries, and custom lists.",
+          "Support controlled values, hierarchy, active/inactive values, effective dates, and version-aware warnings.",
+          "Prevent invalid free-text values when controlled lists are required.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Manage Permissions"
+        icon={ShieldCheck}
+        onAction={onOpenBuilder}
+        title="Form Access Control"
+        lines={[
+          "Configure role, user, team, project, and location-level access.",
+          "Control view, edit, publish, archive, assign, export, review, approve, and manage controls permissions.",
+          "Field officers should only see assigned published forms.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Configure Workflow"
+        icon={Workflow}
+        onAction={onOpenBuilder}
+        title="Approval Workflow"
+        lines={[
+          "Simple, standard, and correction workflows are configurable per form.",
+          "Reviewer role, team, location scope, required comments, and SLA rules are form-level settings.",
+          "Submission decisions remain in Submissions, with form workflow determining the path.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Data Quality"
+        icon={ClipboardCheck}
+        onAction={onOpenDataQuality}
+        title="Data Quality Rules"
+        lines={[
+          "Required fields, ranges, duplicate detection, outliers, GPS validation, consent checks, duration rules, and severity controls.",
+          "Critical rules can block submission or route records for correction.",
+          "Detailed investigation belongs in Data Quality.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Manage Governance"
+        icon={ShieldCheck}
+        onAction={onOpenBuilder}
+        title="Form Governance"
+        lines={[
+          "Set status, consent, edits after approval, duplicate prevention, retention, masking, export restrictions, and record locking.",
+          "High-risk changes require reason capture and immutable audit evidence.",
+          "Governance Administration remains outside Forms; this is form-level governance only.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Mapping"
+        icon={MapPinned}
+        onAction={onOpenMapping}
+        title="Form Mapping Settings"
+        lines={[
+          "Require GPS, set accuracy thresholds, boundary validation, allowed collection areas, coordinate masking, and duplicate GPS detection.",
+          "GIS analysis remains in Mapping; Forms only defines collection behavior.",
+          "Submission GPS evidence stays tied to the form version used in the field.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Preview Flow"
+        icon={Smartphone}
+        onAction={onOpenBuilder}
+        title="Preview & Test"
+        lines={[
+          "Approved route: /forms/:formId/preview.",
+          "Test web, tablet, mobile, enumerator, and respondent modes before publishing.",
+          "Preview runs are test-only and do not count as real submissions.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Publish Review"
+        icon={ClipboardCheck}
+        onAction={onOpenBuilder}
+        title="Publish Readiness Review"
+        lines={[
+          "Approved route: /forms/:formId/review.",
+          "Publishing is blocked when critical checks fail: missing project, no questions, duplicate variables, invalid logic, or unreviewed controls.",
+          "Publishing creates an immutable version and makes the form available for field assignments.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Builder"
+        icon={GitBranch}
+        onAction={onOpenBuilder}
+        title="Version History"
+        lines={[
+          `Current version: v${form.version}.`,
+          "Published forms are never overwritten silently.",
+          "Old submissions remain linked to the exact version used during collection.",
+        ]}
+      />
+      <FormTabCard
+        actionLabel="Open Submissions"
+        icon={History}
+        onAction={onOpenSubmissions}
+        title="Audit Trail"
+        lines={[
+          "Track form created, question changes, rule changes, permissions, workflow, publish, archive, export, and submission events.",
+          "Audit records are immutable and integrate with Governance Audit Trail.",
+          "Authorized users can filter/export logs for form accountability.",
+        ]}
+      />
+    </div>
   );
 }
 
@@ -2567,11 +3150,14 @@ function FormComparisonPanel({ form }: { form: FormListItem }) {
 
 function TemplatesSection({
   onOpenBuilder,
+  projectSectors,
   templates,
 }: {
   onOpenBuilder: () => void;
+  projectSectors: string[];
   templates: typeof previewTemplates;
 }) {
+  const uniqueSectors = Array.from(new Set(projectSectors)).slice(0, 6);
   return (
     <section className="space-y-4">
       <SectionHeader
@@ -2583,6 +3169,30 @@ function TemplatesSection({
         description="Reusable baseline, endline, monitoring, assessment, registration, case management, training, and feedback forms."
         title="Form Templates"
       />
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold">Sector-aware form design</p>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Project sector packs suggest the right entities, validation
+              rules, indicator mappings, data quality checks, and mobile
+              guidance. Installed sector starter forms appear as editable draft
+              forms before publishing.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {uniqueSectors.length ? (
+              uniqueSectors.map((sector) => (
+                <Badge key={sector} tone="support">
+                  {sector}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="warning">No project sector selected</Badge>
+            )}
+          </div>
+        </div>
+      </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
           <div
@@ -2721,14 +3331,107 @@ function FormTabCard({
   );
 }
 
-function FormFilters() {
+type FormFiltersState = {
+  dateFrom: string;
+  dateTo: string;
+  formType: string;
+  owner: string;
+  projectName: string;
+  status: string;
+};
+
+function FormFilters({
+  filters,
+  forms,
+  onChange,
+}: {
+  filters: FormFiltersState;
+  forms: FormListItem[];
+  onChange: (patch: Partial<FormFiltersState>) => void;
+}) {
+  const projectNames = Array.from(
+    new Set(forms.map((form) => form.project_name).filter(Boolean)),
+  );
+  const statuses = Array.from(new Set(forms.map((form) => form.status).filter(Boolean)));
+  const owners = Array.from(new Set(forms.map((form) => form.owner).filter(Boolean)));
+  const formTypes = Array.from(new Set(forms.map((form) => form.form_type).filter(Boolean)));
+  const hasActiveFilters =
+    Boolean(filters.projectName) ||
+    Boolean(filters.status) ||
+    Boolean(filters.owner) ||
+    Boolean(filters.formType) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-5">
-      <Input placeholder="Project" />
-      <Input placeholder="Status" />
-      <Input placeholder="Owner" />
-      <Input placeholder="Form type" />
-      <Input placeholder="Date range" />
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <Select
+        onChange={(event) => onChange({ projectName: event.target.value })}
+        value={filters.projectName}
+      >
+        <option value="">All projects</option>
+        {projectNames.map((projectName) => (
+          <option key={projectName} value={projectName}>
+            {projectName}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ status: event.target.value })}
+        value={filters.status}
+      >
+        <option value="">All statuses</option>
+        {statuses.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ owner: event.target.value })}
+        value={filters.owner}
+      >
+        <option value="">All owners</option>
+        {owners.map((owner) => (
+          <option key={owner} value={owner}>
+            {owner}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ formType: event.target.value })}
+        value={filters.formType}
+      >
+        <option value="">All form types</option>
+        {formTypes.map((formType) => (
+          <option key={formType} value={formType}>
+            {formType}
+          </option>
+        ))}
+      </Select>
+      <div className="col-span-2 flex gap-2 md:col-span-1">
+        <Input
+          aria-label="Updated from"
+          onChange={(event) => onChange({ dateFrom: event.target.value })}
+          type="date"
+          value={filters.dateFrom}
+        />
+        <Input
+          aria-label="Updated to"
+          onChange={(event) => onChange({ dateTo: event.target.value })}
+          type="date"
+          value={filters.dateTo}
+        />
+      </div>
+      <Button
+        disabled={!hasActiveFilters}
+        onClick={() =>
+          onChange({ dateFrom: "", dateTo: "", formType: "", owner: "", projectName: "", status: "" })
+        }
+        variant="ghost"
+      >
+        <SlidersHorizontal aria-hidden="true" />
+        Clear filters
+      </Button>
     </div>
   );
 }

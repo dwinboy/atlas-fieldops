@@ -5,6 +5,7 @@ export type FieldOperationsSection =
   | "assignments"
   | "field-officers"
   | "supervisors"
+  | "visit-requests"
   | "work-plans"
   | "targets"
   | "field-monitoring";
@@ -66,10 +67,12 @@ export type OperationalTarget = {
   type: "Daily" | "Weekly" | "Monthly" | "Project";
   project: string;
   indicator: string;
+  indicatorId?: string | null;
   team: string;
   assignedStaff: string[];
   value: number;
   achieved: number;
+  achievedSource?: "manual" | "indicator";
   deadline: string;
 };
 
@@ -109,6 +112,7 @@ export const fieldOperationsSections: {
   { id: "assignments", label: "Assignments", route: "/field-operations/assignments", description: "Create, assign, monitor, reassign, pause, close, and bulk-manage field work." },
   { id: "field-officers", label: "Field Officers", route: "/field-operations/field-officers", description: "Manage enumerator access, status, sync health, performance, and assigned locations." },
   { id: "supervisors", label: "Supervisors", route: "/field-operations/supervisors", description: "Monitor supervisors, managed teams, review SLA, approvals, and coverage performance." },
+  { id: "visit-requests", label: "Operational Activities", route: "/field-operations/operational-activities", description: "Approve organization activities, movement requests, and GPS check-in evidence from mobile." },
   { id: "work-plans", label: "Work Plans", route: "/field-operations/work-plans", description: "Plan daily, weekly, and project field activities with objectives, teams, locations, and deliverables." },
   { id: "targets", label: "Targets", route: "/field-operations/targets", description: "Manage operational targets, deadlines, achievement rates, and trend signals." },
   { id: "field-monitoring", label: "Field Monitoring", route: "/field-operations/field-monitoring", description: "Monitor live activity, assignment progress, GPS status, sync health, quality alerts, and map readiness." },
@@ -128,6 +132,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
     last_sync_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
     phone_number: "+237 600 000 121",
+    supervisor_name: "Regional Supervisor",
+    supervisor_user_id: "supervisor-preview-001",
     user_id: "user-001",
   },
   {
@@ -143,6 +149,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: new Date(Date.now() - 51 * 60 * 1000).toISOString(),
     last_sync_at: new Date(Date.now() - 74 * 60 * 1000).toISOString(),
     phone_number: "+237 600 000 122",
+    supervisor_name: "Regional Supervisor",
+    supervisor_user_id: "supervisor-preview-001",
     user_id: "user-002",
   },
   {
@@ -158,6 +166,8 @@ export const previewOfficers: FieldOfficerRead[] = [
     last_seen_at: null,
     last_sync_at: null,
     phone_number: "+237 600 000 123",
+    supervisor_name: null,
+    supervisor_user_id: null,
     user_id: "user-003",
   },
 ];
@@ -201,7 +211,7 @@ export const previewAssignments: FieldAssignment[] = [
   },
   {
     completedCount: 60,
-    description: "Verify beneficiary household status before transfer release.",
+    description: "Verify entity household status before transfer release.",
     endDate: nextWeekIso,
     assignedEntityIds: ["HH-2026-000001", "BEN-2026-000044"],
     assignmentType: "Form + Entity list",
@@ -232,7 +242,7 @@ export const previewWorkPlans: WorkPlan[] = [
 export const previewTargets: OperationalTarget[] = [
   { achieved: 86, assignedStaff: ["Amina Diallo", "Joseph Mbarga"], deadline: nextWeekIso, id: "target-households", indicator: "Households Registered", name: "120 farmer households", project: "Agricultural Resilience Program", team: "Survey Team A", type: "Weekly", value: 120 },
   { achieved: 42, assignedStaff: ["Nora Talla"], deadline: tomorrowIso, id: "target-schools", indicator: "Schools Assessed", name: "75 school assessments", project: "Education Access Program", team: "Enumerator Team B", type: "Daily", value: 75 },
-  { achieved: 60, assignedStaff: ["Amina Diallo"], deadline: nextWeekIso, id: "target-beneficiaries", indicator: "Beneficiaries Verified", name: "90 household verifications", project: "Social Protection Response", team: "Survey Team A", type: "Project", value: 90 },
+  { achieved: 60, assignedStaff: ["Amina Diallo"], deadline: nextWeekIso, id: "target-beneficiaries", indicator: "Entities Verified", name: "90 household verifications", project: "Social Protection Response", team: "Survey Team A", type: "Project", value: 90 },
 ];
 
 export const previewActivities: FieldActivity[] = [

@@ -2,27 +2,32 @@ from __future__ import annotations
 
 import builtins
 from datetime import UTC, date, datetime
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.collection import (
     DataForm,
     DataFormVersion,
     FieldOfficerProfile,
+    FieldWorkAssignment,
     FormTemplateUsage,
     MobileSyncBatch,
     OfficerAssignment,
     Project,
     Submission,
+    SubmissionEntityLink,
+    SubmissionRepeatRow,
     SubmissionStatusHistory,
     SubmissionVersion,
     Survey,
     SurveyTeamMember,
 )
 from app.models.identity import User
+from app.models.operations import Beneficiary
 
 
 class FieldOfficerRepository:
@@ -140,6 +145,33 @@ class FieldOfficerRepository:
         await self.session.flush()
         return assignment
 
+    async def list_work_assignments(
+        self, organization_id: UUID
+    ) -> "Sequence[FieldWorkAssignment]":
+        result = await self.session.execute(
+            select(FieldWorkAssignment)
+            .where(
+                FieldWorkAssignment.organization_id == organization_id,
+                FieldWorkAssignment.deleted_at.is_(None),
+            )
+            .order_by(FieldWorkAssignment.created_at.desc())
+        )
+        # Annotated as Sequence because this class defines a method named
+        # `list`, which shadows the builtin inside the class body.
+        return result.scalars().all()
+
+    async def get_work_assignment(
+        self, *, organization_id: UUID, assignment_id: UUID
+    ) -> FieldWorkAssignment | None:
+        result = await self.session.execute(
+            select(FieldWorkAssignment).where(
+                FieldWorkAssignment.organization_id == organization_id,
+                FieldWorkAssignment.id == assignment_id,
+                FieldWorkAssignment.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
 
 class FormRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -157,6 +189,7 @@ class FormRepository:
         description: str | None,
         schema_json: dict[str, Any],
         publish: bool,
+        form_type: str | None = None,
     ) -> tuple[DataForm, DataFormVersion]:
         status = "published" if publish else "draft"
         form = DataForm(
@@ -167,6 +200,7 @@ class FormRepository:
             name=name,
             slug=slug,
             description=description,
+            form_type=form_type,
             status=status,
             current_version=1,
         )
@@ -179,6 +213,7 @@ class FormRepository:
             schema_json=schema_json,
             offline_compatible=True,
             published_at=datetime.now(UTC) if publish else None,
+            published_by_user_id=created_by_user_id if publish else None,
         )
         self.session.add(version)
         await self.session.flush()
@@ -218,8 +253,31 @@ class FormRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_unpublished_revision(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        version: int,
+    ) -> DataFormVersion | None:
+        result = await self.session.execute(
+            select(DataFormVersion).where(
+                DataFormVersion.organization_id == organization_id,
+                DataFormVersion.form_id == form_id,
+                DataFormVersion.version == version,
+                DataFormVersion.published_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def update_controls(self, *, form: DataForm, controls_json: dict[str, Any]) -> DataForm:
         form.controls_json = controls_json
+        form.updated_at = datetime.now(UTC)
+        await self.session.flush()
+        return form
+
+    async def update_status(self, *, form: DataForm, status: str) -> DataForm:
+        form.status = status
         form.updated_at = datetime.now(UTC)
         await self.session.flush()
         return form
@@ -228,31 +286,54 @@ class FormRepository:
         self,
         *,
         form: DataForm,
+        actor_user_id: UUID,
         name: str,
         description: str | None,
         schema_json: dict[str, Any],
         publish: bool,
+        form_type: str | None = None,
     ) -> tuple[DataForm, DataFormVersion]:
         now = datetime.now(UTC)
-        form.name = name
-        form.description = description
         form.updated_at = now
 
         if form.status == "published":
             next_version = form.current_version + 1
-            version = DataFormVersion(
+            version = await self.get_unpublished_revision(
                 organization_id=form.organization_id,
                 form_id=form.id,
                 version=next_version,
-                schema_json=schema_json,
-                offline_compatible=True,
-                published_at=now if publish else None,
             )
-            self.session.add(version)
-            form.current_version = next_version
-            form.status = "published" if publish else "draft"
+            if version is None:
+                version = DataFormVersion(
+                    organization_id=form.organization_id,
+                    form_id=form.id,
+                    version=next_version,
+                    schema_json=schema_json,
+                    offline_compatible=True,
+                    published_at=now if publish else None,
+                    published_by_user_id=actor_user_id if publish else None,
+                )
+                self.session.add(version)
+            else:
+                version.schema_json = schema_json
+                version.offline_compatible = True
+                if publish:
+                    version.published_at = now
+                    version.published_by_user_id = actor_user_id
+            if publish:
+                form.name = name
+                form.description = description
+                if form_type is not None:
+                    form.form_type = form_type
+                form.current_version = next_version
+            form.status = "published"
             await self.session.flush()
             return form, version
+
+        form.name = name
+        form.description = description
+        if form_type is not None:
+            form.form_type = form_type
 
         version = await self.get_current_version(
             organization_id=form.organization_id,
@@ -266,6 +347,7 @@ class FormRepository:
                 schema_json=schema_json,
                 offline_compatible=True,
                 published_at=now if publish else None,
+                published_by_user_id=actor_user_id if publish else None,
             )
             self.session.add(version)
         else:
@@ -273,6 +355,7 @@ class FormRepository:
             version.offline_compatible = True
             if publish:
                 version.published_at = now
+                version.published_by_user_id = actor_user_id
         form.status = "published" if publish else "draft"
         await self.session.flush()
         return form, version
@@ -442,15 +525,51 @@ class SubmissionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def find_conflicting_submission_for_frequency(
+        self,
+        *,
+        organization_id: UUID,
+        entity_id: UUID,
+        form_id: UUID,
+        frequency_rule: str,
+        frequency_period: str | None = None,
+        event_id: str | None = None,
+        project_id: UUID | None = None,
+        exclude_submission_id: UUID | None = None,
+    ) -> Submission | None:
+        if frequency_rule == "unlimited":
+            return None
+        if frequency_rule == "once_per_event" and not event_id:
+            return None
+        if frequency_rule in {"once_per_year", "once_per_season", "once_per_quarter", "once_per_month"} and not frequency_period:
+            return None
+        query = select(Submission).where(
+            Submission.organization_id == organization_id,
+            Submission.form_id == form_id,
+            Submission.entity_id == entity_id,
+            Submission.deleted_at.is_(None),
+            Submission.status != "rejected",
+        )
+        if exclude_submission_id is not None:
+            query = query.where(Submission.id != exclude_submission_id)
+        if frequency_rule == "once_per_project":
+            query = query.where(Submission.project_id == project_id)
+        elif frequency_rule == "once_per_event":
+            query = query.where(Submission.event_id == event_id)
+        elif frequency_rule in {"once_per_year", "once_per_season", "once_per_quarter", "once_per_month"}:
+            query = query.where(Submission.frequency_period == frequency_period)
+        result = await self.session.execute(query.order_by(Submission.sync_received_at.desc()).limit(1))
+        return result.scalar_one_or_none()
+
     async def create(
         self,
         *,
         organization_id: UUID,
-        project_id: UUID,
-        survey_id: UUID,
+        project_id: UUID | None,
+        survey_id: UUID | None,
         form_id: UUID,
         form_version_id: UUID,
-        field_officer_id: UUID,
+        field_officer_id: UUID | None,
         actor_user_id: UUID,
         client_submission_id: str,
         payload_json: dict[str, Any],
@@ -470,6 +589,7 @@ class SubmissionRepository:
         frequency_period: str | None = None,
         event_id: str | None = None,
         status: str = "submitted",
+        history_comment: str = "Submission received from mobile sync",
     ) -> Submission:
         now = datetime.now(UTC)
         submission = Submission(
@@ -508,7 +628,7 @@ class SubmissionRepository:
             actor_user_id=actor_user_id,
             from_status=None,
             to_status=status,
-            comment="Submission received from mobile sync",
+            comment=history_comment,
         )
         return submission
 
@@ -525,6 +645,30 @@ class SubmissionRepository:
             query = query.where(Submission.field_officer_id == field_officer_id)
         result = await self.session.execute(query.order_by(Submission.sync_received_at.desc()).limit(200))
         return list(result.scalars())
+
+    async def list_import_cleaning_rows(
+        self,
+        *,
+        organization_id: UUID,
+        limit: int = 500,
+    ) -> list[tuple[Submission, DataForm, Project | None, User | None]]:
+        result = await self.session.execute(
+            select(Submission, DataForm, Project, User)
+            .join(DataForm, DataForm.id == Submission.form_id)
+            .outerjoin(Project, Project.id == Submission.project_id)
+            .outerjoin(User, User.id == Submission.imported_by_user_id)
+            .where(
+                Submission.organization_id == organization_id,
+                DataForm.organization_id == organization_id,
+                (Project.organization_id == organization_id) | (Project.id.is_(None)),
+                Submission.deleted_at.is_(None),
+                Submission.is_imported.is_(True),
+                Submission.status.in_(["import_staged", "under_review"]),
+            )
+            .order_by(Submission.updated_at.desc(), Submission.sync_received_at.desc())
+            .limit(limit)
+        )
+        return [(submission, form, project, user) for submission, form, project, user in result.all()]
 
     async def get(self, *, organization_id: UUID, submission_id: UUID) -> Submission | None:
         result = await self.session.execute(
@@ -548,6 +692,13 @@ class SubmissionRepository:
         submission.status = to_status
         if to_status == "resubmitted":
             submission.server_sequence += 1
+        now = datetime.now(UTC)
+        submission.reviewed_by_user_id = actor_user_id
+        submission.reviewed_at = now
+        submission.review_comments = comment
+        if to_status == "approved":
+            submission.approved_by_user_id = actor_user_id
+            submission.approved_at = now
         await self.add_status_history(
             organization_id=submission.organization_id,
             submission_id=submission.id,
@@ -625,6 +776,180 @@ class SubmissionRepository:
                 SubmissionStatusHistory.submission_id == submission_id,
             )
             .order_by(SubmissionStatusHistory.created_at)
+        )
+        return list(result.scalars())
+
+    async def beneficiary_codes(self, *, organization_id: UUID, entity_ids: set[UUID]) -> dict[UUID, str]:
+        if not entity_ids:
+            return {}
+        result = await self.session.execute(
+            select(Beneficiary.id, Beneficiary.beneficiary_uid).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id.in_(entity_ids),
+            )
+        )
+        return {row.id: row.beneficiary_uid for row in result.all()}
+
+    async def beneficiaries_by_uid(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        beneficiary_uids: set[str],
+    ) -> list[Beneficiary]:
+        cleaned = {uid.strip() for uid in beneficiary_uids if uid.strip()}
+        if not cleaned:
+            return []
+        query = select(Beneficiary).where(
+            Beneficiary.organization_id == organization_id,
+            Beneficiary.beneficiary_uid.in_(cleaned),
+            Beneficiary.deleted_at.is_(None),
+        )
+        if project_id is not None:
+            query = query.where((Beneficiary.project_id == project_id) | (Beneficiary.project_id.is_(None)))
+        result = await self.session.execute(query)
+        return list(result.scalars())
+
+    async def add_entity_link(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        submission_id: UUID,
+        beneficiary_id: UUID,
+        link_type: str,
+        source: str,
+        source_field: str | None = None,
+    ) -> SubmissionEntityLink:
+        result = await self.session.execute(
+            select(SubmissionEntityLink).where(
+                SubmissionEntityLink.submission_id == submission_id,
+                SubmissionEntityLink.beneficiary_id == beneficiary_id,
+                SubmissionEntityLink.link_type == link_type,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            return existing
+        link = SubmissionEntityLink(
+            organization_id=organization_id,
+            project_id=project_id,
+            submission_id=submission_id,
+            beneficiary_id=beneficiary_id,
+            link_type=link_type,
+            source=source,
+            source_field=source_field,
+        )
+        self.session.add(link)
+        await self.session.flush()
+        return link
+
+    async def linked_beneficiary_summaries(
+        self,
+        *,
+        organization_id: UUID,
+        submission_ids: set[UUID],
+    ) -> dict[UUID, list[dict[str, Any]]]:
+        if not submission_ids:
+            return {}
+        result = await self.session.execute(
+            select(SubmissionEntityLink, Beneficiary)
+            .join(Beneficiary, Beneficiary.id == SubmissionEntityLink.beneficiary_id)
+            .where(
+                SubmissionEntityLink.organization_id == organization_id,
+                SubmissionEntityLink.submission_id.in_(submission_ids),
+                Beneficiary.organization_id == organization_id,
+            )
+            .order_by(SubmissionEntityLink.created_at)
+        )
+        grouped: dict[UUID, list[dict[str, Any]]] = {}
+        for link, beneficiary in result.all():
+            grouped.setdefault(link.submission_id, []).append(
+                {
+                    "id": str(link.id),
+                    "beneficiary_id": str(beneficiary.id),
+                    "beneficiary_uid": beneficiary.beneficiary_uid,
+                    "display_name": beneficiary.display_name,
+                    "beneficiary_type": beneficiary.beneficiary_type,
+                    "link_type": link.link_type,
+                    "source": link.source,
+                    "source_field": link.source_field,
+                    "created_at": link.created_at,
+                }
+            )
+        return grouped
+
+    async def field_officer_names(self, *, organization_id: UUID, field_officer_ids: set[UUID]) -> dict[UUID, str]:
+        if not field_officer_ids:
+            return {}
+        result = await self.session.execute(
+            select(FieldOfficerProfile.id, User.full_name)
+            .join(User, User.id == FieldOfficerProfile.user_id)
+            .where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.id.in_(field_officer_ids),
+            )
+        )
+        return {row.id: row.full_name for row in result.all()}
+
+    async def user_names(self, *, user_ids: set[UUID]) -> dict[UUID, str]:
+        if not user_ids:
+            return {}
+        result = await self.session.execute(
+            select(User.id, User.full_name).where(
+                User.id.in_(user_ids),
+                User.deleted_at.is_(None),
+            )
+        )
+        return {row.id: row.full_name for row in result.all()}
+
+    async def replace_repeat_rows(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        field_id: str,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        await self.session.execute(
+            delete(SubmissionRepeatRow).where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                SubmissionRepeatRow.submission_id == submission.id,
+                SubmissionRepeatRow.field_id == field_id,
+            )
+        )
+        for index, row in enumerate(rows):
+            self.session.add(
+                SubmissionRepeatRow(
+                    organization_id=organization_id,
+                    submission_id=submission.id,
+                    parent_submission_key=submission.client_submission_id,
+                    field_id=field_id,
+                    row_index=index,
+                    row_json=row,
+                )
+            )
+
+    async def list_repeat_rows(self, *, organization_id: UUID, submission_id: UUID) -> list[SubmissionRepeatRow]:
+        result = await self.session.execute(
+            select(SubmissionRepeatRow)
+            .where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                SubmissionRepeatRow.submission_id == submission_id,
+            )
+            .order_by(SubmissionRepeatRow.field_id, SubmissionRepeatRow.row_index)
+        )
+        return list(result.scalars())
+
+    async def list_repeat_rows_for_form(self, *, organization_id: UUID, form_id: UUID) -> list[SubmissionRepeatRow]:
+        result = await self.session.execute(
+            select(SubmissionRepeatRow)
+            .join(Submission, Submission.id == SubmissionRepeatRow.submission_id)
+            .where(
+                SubmissionRepeatRow.organization_id == organization_id,
+                Submission.form_id == form_id,
+            )
+            .order_by(SubmissionRepeatRow.field_id, SubmissionRepeatRow.parent_submission_key, SubmissionRepeatRow.row_index)
         )
         return list(result.scalars())
 

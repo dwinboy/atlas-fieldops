@@ -3,6 +3,7 @@ import type {
   DataQualitySection,
   QualityIssue,
   QualityIssueStatus,
+  QualityIssueType,
   QualityScore,
   QualitySeverity,
   QualitySummary,
@@ -64,6 +65,47 @@ export function computeQualitySummary(issues: QualityIssue[], score: QualityScor
     resolvedIssues: issues.filter((issue) => issue.status === "Resolved" || issue.status === "Closed").length,
     validationFailures: issues.filter((issue) => issue.type === "Validation Failure").length,
   };
+}
+
+export function computeQualityScoreFromIssues(issues: QualityIssue[]): QualityScore {
+  const open = issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed");
+  const impactByType = (type: QualityIssueType) =>
+    open.filter((issue) => issue.type === type).reduce((sum, issue) => sum + issue.scoreImpact, 0);
+  const clamp = (value: number) => Math.max(0, Math.min(100, value));
+  const missingDataImpact = impactByType("Missing Data");
+  const duplicateImpact = impactByType("Duplicate");
+  const reconciliationImpact = impactByType("Reconciliation");
+  return {
+    accuracy: clamp(100 - impactByType("Outlier")),
+    completeness: clamp(100 - missingDataImpact),
+    consistency: clamp(100 - reconciliationImpact),
+    consentCompliance: clamp(100 - missingDataImpact),
+    duplicateDetection: clamp(100 - duplicateImpact - reconciliationImpact),
+    gpsCompliance: clamp(100 - impactByType("GPS Issue")),
+    timeliness: clamp(100 - impactByType("Risk Alert")),
+    validationSuccess: clamp(100 - impactByType("Validation Failure")),
+  };
+}
+
+export function rankByField(issues: QualityIssue[], field: "project" | "form"): [string, number][] {
+  const open = issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed");
+  const impact = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const issue of issues) seen.add(issue[field]);
+  for (const issue of open) impact.set(issue[field], (impact.get(issue[field]) ?? 0) + issue.scoreImpact);
+  return Array.from(seen)
+    .map((key) => [key, Math.max(0, 100 - (impact.get(key) ?? 0))] as [string, number])
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 5);
+}
+
+export function rankByIssueType(issues: QualityIssue[]): [string, number][] {
+  const open = issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed");
+  const impact = new Map<string, number>();
+  for (const issue of open) impact.set(issue.type, (impact.get(issue.type) ?? 0) + issue.scoreImpact);
+  return Array.from(new Set(open.map((issue) => issue.type)))
+    .map((type) => [type, Math.max(0, 100 - (impact.get(type) ?? 0))] as [string, number])
+    .sort((left, right) => right[1] - left[1]);
 }
 
 export function filterIssuesBySection(issues: QualityIssue[], section: DataQualitySection): QualityIssue[] {

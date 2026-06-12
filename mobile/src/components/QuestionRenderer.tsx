@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -7,13 +6,35 @@ import {
   View,
 } from "react-native";
 
+import { AudioCapture, type AudioResult } from "@/components/AudioCapture";
 import { BarcodeCapture } from "@/components/BarcodeCapture";
 import { GPSCapture } from "@/components/GPSCapture";
 import { PhotoCapture } from "@/components/PhotoCapture";
+import { PolygonCapture } from "@/components/PolygonCapture";
+import { SignatureCapture, type SignatureResult } from "@/components/SignatureCapture";
+import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
+import { isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
-import type { MobileQuestion } from "@/models/contracts";
+import type {
+  MobileLogicRule,
+  MobilePolygonGeometry,
+  MobileQuestion,
+  MobileQuestionOption,
+  MobileQuestionType,
+  MobileReferenceList,
+  MobileValidationRule,
+} from "@/models/contracts";
+
+export type { SimpleOption };
+
+type EvidenceReference = {
+  kind: "FileUpload";
+  reference: string;
+  notes: string;
+  capturedAt: string | null;
+};
 
 type QuestionRendererProps = {
   question: MobileQuestion;
@@ -21,9 +42,19 @@ type QuestionRendererProps = {
   onAnswer: (questionId: string, variableName: string, value: unknown) => void;
   issues: FormValidationIssue[];
   visible?: boolean;
+  allResponses?: Map<string, unknown>;
+  referenceLists?: MobileReferenceList[];
 };
 
-export function QuestionRenderer({ question, value, onAnswer, issues, visible = true }: QuestionRendererProps) {
+export function QuestionRenderer({
+  question,
+  value,
+  onAnswer,
+  issues,
+  visible = true,
+  allResponses,
+  referenceLists,
+}: QuestionRendererProps) {
   if (!visible) return null;
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
@@ -57,10 +88,11 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
         {question.helpText ? (
           <Text style={{ color: "#49635a", fontSize: 13 }}>{question.helpText}</Text>
         ) : null}
+        <QuestionControlHints question={question} />
       </View>
 
       {/* Input by type */}
-      {renderInput(question, value, answer)}
+      {renderInput(question, value, answer, allResponses ?? new Map(), referenceLists ?? [])}
 
       {/* Validation messages */}
       {issues
@@ -74,6 +106,11 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
             <Text style={{ color: issue.severity === "Error" ? "#b42318" : "#9a3412", fontSize: 13, fontWeight: "600" }}>
               {issue.message}
             </Text>
+            {issue.fixHint ? (
+              <Text style={{ color: issue.severity === "Error" ? "#7f1d1d" : "#9a3412", fontSize: 12, marginTop: 4 }}>
+                How to fix: {issue.fixHint}
+              </Text>
+            ) : null}
           </View>
         ))}
     </View>
@@ -82,7 +119,13 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
 
 // ─── Input renderers ─────────────────────────────────────────────────────────
 
-function renderInput(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+function renderInput(
+  question: MobileQuestion,
+  value: unknown,
+  answer: (v: unknown) => void,
+  allResponses: Map<string, unknown>,
+  referenceLists: MobileReferenceList[],
+) {
   const { type } = question;
 
   // ── GPS ──────────────────────────────────────────────────────────────────
@@ -96,6 +139,24 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
     );
   }
 
+  // ── Polygon / boundary ──────────────────────────────────────────────────
+  if (type === "Polygon") {
+    const minVerticesRule = question.validationRules.find(
+      (rule) => rule.ruleType === "Custom" && typeof rule.value === "string" && rule.value.startsWith("minVertices:"),
+    );
+    const minVertices = typeof minVerticesRule?.value === "string"
+      ? Number(minVerticesRule.value.replace("minVertices:", "")) || 3
+      : 3;
+    return (
+      <PolygonCapture
+        minVertices={minVertices}
+        onChange={(r) => answer(r)}
+        required={question.required}
+        value={value as MobilePolygonGeometry | null}
+      />
+    );
+  }
+
   // ── Photo / Video ────────────────────────────────────────────────────────
   if (type === "Photo" || type === "Video") {
     return (
@@ -104,6 +165,7 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
         onChange={(r) => answer(r)}
         required={question.required}
         label={type === "Video" ? "Video" : "Photo"}
+        mediaType={type === "Video" ? "video" : "photo"}
       />
     );
   }
@@ -148,9 +210,18 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Single select / Dropdown ──────────────────────────────────────────────
   if (type === "SingleSelect" || type === "Dropdown") {
+    if (isCascadeBlocked(question, allResponses)) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the related question above first</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>Choices for this question depend on a previous answer.</Text>
+        </View>
+      );
+    }
+    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
     return (
       <View style={{ gap: 8 }}>
-        {question.options.map((opt) => {
+        {cascadeOptions.map((opt) => {
           const selected = String(value) === opt.value;
           return (
             <Pressable
@@ -191,10 +262,19 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Multi select ──────────────────────────────────────────────────────────
   if (type === "MultiSelect") {
+    if (isCascadeBlocked(question, allResponses)) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the related question above first</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>Choices for this question depend on a previous answer.</Text>
+        </View>
+      );
+    }
+    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
       <View style={{ gap: 8 }}>
-        {question.options.map((opt) => {
+        {cascadeOptions.map((opt) => {
           const isSelected = selected.includes(opt.value);
           return (
             <Pressable
@@ -241,13 +321,21 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
   // ── Date / DateTime ───────────────────────────────────────────────────────
   if (type === "Date" || type === "DateTime") {
     return (
-      <TextInput
-        onChangeText={(t) => answer(t)}
-        placeholder={type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}
-        placeholderTextColor="#b0c5bc"
-        style={inputStyle}
+      <DateTimeField
+        mode={type === "DateTime" ? "datetime" : "date"}
         value={String(value ?? "")}
-        keyboardType="numbers-and-punctuation"
+        onChange={(next) => answer(next)}
+      />
+    );
+  }
+
+  // ── Time ─────────────────────────────────────────────────────────────────
+  if (type === "Time") {
+    return (
+      <DateTimeField
+        mode="time"
+        value={String(value ?? "")}
+        onChange={(next) => answer(next)}
       />
     );
   }
@@ -255,87 +343,34 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
   // ── Signature ─────────────────────────────────────────────────────────────
   if (type === "Signature") {
     return (
-      <View style={{
-        backgroundColor: "#f6faf8",
-        borderColor: "#dbe7e2",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderStyle: "dashed",
-        padding: 24,
-        alignItems: "center",
-        gap: 4,
-      }}>
-        {value ? (
-          <Text style={{ color: "#0f766e", fontWeight: "700" }}>✓ Signature captured</Text>
-        ) : (
-          <>
-            <Text style={{ fontSize: 28 }}>✍️</Text>
-            <Text style={{ color: "#49635a", fontWeight: "600" }}>Signature capture</Text>
-            <Text style={{ color: "#8aa79b", fontSize: 12, textAlign: "center" }}>
-              Signature pad will be enabled in the next update. Record the person's name for now.
-            </Text>
-          </>
-        )}
-        <TextInput
-          onChangeText={(t) => answer(t)}
-          placeholder="Enter full name as signature reference"
-          placeholderTextColor="#b0c5bc"
-          style={{ ...inputStyle, marginTop: 8, width: "100%" }}
-          value={String(value ?? "")}
-        />
-      </View>
+      <SignatureCapture
+        value={value as SignatureResult | null}
+        onChange={(result) => answer(result)}
+        required={question.required}
+      />
     );
   }
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   if (type === "Audio") {
     return (
-      <View style={{
-        backgroundColor: "#fff7ed",
-        borderColor: "#fed7aa",
-        borderRadius: 12,
-        borderWidth: 1,
-        padding: 14,
-        alignItems: "center",
-        gap: 6,
-      }}>
-        <Text style={{ fontSize: 28 }}>🎙</Text>
-        <Text style={{ color: "#9a3412", fontWeight: "700" }}>Audio recording</Text>
-        <Text style={{ color: "#9a3412", fontSize: 12, textAlign: "center" }}>
-          Audio capture will be available in the next update. Use a text note for now.
-        </Text>
-        <TextInput
-          onChangeText={(t) => answer(t)}
-          placeholder="Describe the audio content or key points"
-          placeholderTextColor="#b0c5bc"
-          multiline
-          style={{ ...inputStyle, minHeight: 70, width: "100%", marginTop: 8 }}
-          value={String(value ?? "")}
-        />
-      </View>
+      <AudioCapture
+        value={value as AudioResult | null}
+        onChange={(result) => answer(result)}
+        required={question.required}
+      />
     );
   }
 
   // ── FileUpload ────────────────────────────────────────────────────────────
   if (type === "FileUpload") {
-    return (
-      <View style={{
-        backgroundColor: "#f6faf8",
-        borderColor: "#dbe7e2",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderStyle: "dashed",
-        padding: 20,
-        alignItems: "center",
-        gap: 4,
-      }}>
-        <Text style={{ fontSize: 28 }}>📎</Text>
-        <Text style={{ color: "#49635a", fontWeight: "600" }}>File upload</Text>
-        <Text style={{ color: "#8aa79b", fontSize: 12, textAlign: "center" }}>
-          File attachment will be available in the next update.
-        </Text>
-      </View>
-    );
+    return renderEvidenceReference("FileUpload", value, answer, {
+      icon: "📎",
+      title: "File evidence",
+      referencePlaceholder: "Enter file name, receipt number, or document reference",
+      notesPlaceholder: "Describe the file or where it is stored",
+      help: "This stores the file reference with the submission so the web reviewer knows what evidence belongs to the record.",
+    });
   }
 
   // ── Number / Decimal / Currency ───────────────────────────────────────────
@@ -364,6 +399,7 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
         onChangeText={(t) => answer(t)}
         placeholder="Enter your answer…"
         placeholderTextColor="#b0c5bc"
+        secureTextEntry={Boolean(question.privacyControls?.maskOnScreen)}
         style={{ ...inputStyle, minHeight: 100, textAlignVertical: "top" }}
         value={String(value ?? "")}
       />
@@ -371,7 +407,7 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
   }
 
   // ── Calculated (read-only display) ────────────────────────────────────────
-  if (type === "Calculated") {
+  if (type === "CalculatedField" || String(type) === "Calculated") {
     return (
       <View style={{
         backgroundColor: "#f0f5f3",
@@ -388,17 +424,659 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
     );
   }
 
+  // ── Repeat group ─────────────────────────────────────────────────────────
+  if (type === "RepeatGroup") {
+    return renderRepeatGroup(question, value, answer);
+  }
+
+  // ── Matrix ───────────────────────────────────────────────────────────────
+  if (type === "Matrix") {
+    return renderMatrix(question, value, answer);
+  }
+
+  // ── Ranking ──────────────────────────────────────────────────────────────
+  if (type === "Ranking") {
+    return renderRanking(question, value, answer);
+  }
+
+  // ── Rating (stars) ───────────────────────────────────────────────────────
+  if (type === "Rating") {
+    const max = 5;
+    const current = Number(value) || 0;
+    return (
+      <View style={{ flexDirection: "row", gap: 6 }}>
+        {Array.from({ length: max }, (_, index) => index + 1).map((star) => (
+          <Pressable key={star} onPress={() => answer(star === current ? null : star)} hitSlop={6}>
+            <Text style={{ fontSize: 28, color: star <= current ? "#f59e0b" : "#dbe7e2" }}>
+              {star <= current ? "★" : "☆"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
+
+  // ── NPS (0-10 score) ─────────────────────────────────────────────────────
+  if (type === "Nps") {
+    const current = value === null || value === undefined || value === "" ? null : Number(value);
+    return (
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {Array.from({ length: 11 }, (_, score) => score).map((score) => {
+            const selected = current === score;
+            return (
+              <Pressable
+                key={score}
+                onPress={() => answer(score)}
+                style={{
+                  alignItems: "center",
+                  backgroundColor: selected ? "#12332b" : "white",
+                  borderColor: selected ? "#12332b" : "#dbe7e2",
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  height: 32,
+                  justifyContent: "center",
+                  width: 32,
+                }}
+              >
+                <Text style={{ color: selected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>{score}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: "#8aa79b", fontSize: 11 }}>Not likely</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 11 }}>Very likely</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Default: Text ─────────────────────────────────────────────────────────
+  const inputModeProps = textInputModeProps(question.inputMode);
+  return (
+    <TextInput
+      autoCapitalize={inputModeProps.autoCapitalize ?? "sentences"}
+      keyboardType={inputModeProps.keyboardType}
+      textContentType={inputModeProps.textContentType}
+      onChangeText={(t) => answer(t)}
+      placeholder="Enter answer…"
+      placeholderTextColor="#b0c5bc"
+      secureTextEntry={Boolean(question.privacyControls?.maskOnScreen)}
+      style={inputStyle}
+      value={String(value ?? "")}
+    />
+  );
+}
+
+function textInputModeProps(inputMode: MobileQuestion["inputMode"]): {
+  keyboardType?: "default" | "email-address" | "phone-pad" | "url";
+  autoCapitalize?: "none" | "sentences";
+  textContentType?: "emailAddress" | "telephoneNumber" | "URL";
+} {
+  switch (inputMode) {
+    case "email":
+      return { keyboardType: "email-address", autoCapitalize: "none", textContentType: "emailAddress" };
+    case "phone":
+      return { keyboardType: "phone-pad", autoCapitalize: "none", textContentType: "telephoneNumber" };
+    case "url":
+      return { keyboardType: "url", autoCapitalize: "none", textContentType: "URL" };
+    default:
+      return {};
+  }
+}
+
+function QuestionControlHints({ question }: { question: MobileQuestion }) {
+  const hints: { label: string; tone: "warning" | "danger" | "success" | "neutral" }[] = [];
+  if (question.qualityControls?.captureGps) hints.push({ label: "GPS evidence", tone: question.qualityControls.integrityAction === "block_submission" ? "danger" : "warning" });
+  if (question.qualityControls?.photoEvidence) hints.push({ label: "Photo evidence", tone: question.qualityControls.integrityAction === "block_submission" ? "danger" : "warning" });
+  if (question.privacyControls?.consentRequired) hints.push({ label: "Consent required", tone: "danger" });
+  if (question.privacyControls?.maskOnScreen) hints.push({ label: "Masked", tone: "neutral" });
+  if (question.beneficiaryMapping?.beneficiaryField) hints.push({ label: `Profile: ${humanize(question.beneficiaryMapping.beneficiaryField)}`, tone: "success" });
+  if (question.referenceControls?.offlineRequired || question.referenceListId) hints.push({ label: "Offline list", tone: "neutral" });
+  if (!hints.length && !question.mobileControls?.blockedHelp) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      {question.mobileControls?.blockedHelp ? (
+        <View style={{ backgroundColor: "#fff7ed", borderColor: "#fed7aa", borderRadius: 10, borderWidth: 1, padding: 8 }}>
+          <Text style={{ color: "#9a3412", fontSize: 12, fontWeight: "700" }}>{question.mobileControls.blockedHelp}</Text>
+        </View>
+      ) : null}
+      {hints.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {hints.map((hint) => (
+            <View
+              key={hint.label}
+              style={{
+                backgroundColor: hint.tone === "danger" ? "#fee2e2" : hint.tone === "warning" ? "#fff7ed" : hint.tone === "success" ? "#f0fdf4" : "#f0f5f3",
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  color: hint.tone === "danger" ? "#b42318" : hint.tone === "warning" ? "#9a3412" : hint.tone === "success" ? "#0f766e" : "#49635a",
+                  fontSize: 11,
+                  fontWeight: "800",
+                }}
+              >
+                {hint.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function renderEvidenceReference(
+  kind: EvidenceReference["kind"],
+  value: unknown,
+  answer: (v: unknown) => void,
+  copy: { icon: string; title: string; referencePlaceholder: string; notesPlaceholder: string; help: string },
+) {
+  const evidence = evidenceValue(kind, value);
+  const hasReference = evidence.reference.trim().length > 0;
+
+  function update(next: Partial<EvidenceReference>) {
+    const reference = next.reference ?? evidence.reference;
+    answer({
+      ...evidence,
+      ...next,
+      capturedAt: reference.trim() ? evidence.capturedAt ?? new Date().toISOString() : null,
+    });
+  }
+
+  return (
+    <View style={{
+      backgroundColor: hasReference ? "#f0fdf4" : "#f6faf8",
+      borderColor: hasReference ? "#bbf7d0" : "#dbe7e2",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 14,
+      gap: 10,
+    }}>
+      <View style={{ alignItems: "center", gap: 4 }}>
+        <Text style={{ fontSize: 28 }}>{copy.icon}</Text>
+        <Text style={{ color: "#12332b", fontWeight: "800" }}>
+          {hasReference ? `${copy.title} recorded` : copy.title}
+        </Text>
+        <Text style={{ color: "#49635a", fontSize: 12, textAlign: "center" }}>{copy.help}</Text>
+      </View>
+      <TextInput
+        onChangeText={(text) => update({ reference: text })}
+        placeholder={copy.referencePlaceholder}
+        placeholderTextColor="#b0c5bc"
+        style={inputStyle}
+        value={evidence.reference}
+      />
+      <TextInput
+        multiline
+        onChangeText={(text) => update({ notes: text })}
+        placeholder={copy.notesPlaceholder}
+        placeholderTextColor="#b0c5bc"
+        style={{ ...inputStyle, minHeight: 70, textAlignVertical: "top" }}
+        value={evidence.notes}
+      />
+    </View>
+  );
+}
+
+function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+  const rows = asRecordArray(value);
+  const fields = repeatFields(question);
+  const maxRepeats = question.repeatSettings?.maxRepeats ?? null;
+  const minRepeats = question.repeatSettings?.minRepeats ?? null;
+  const canAdd = maxRepeats === null || rows.length < maxRepeats;
+
+  function updateRow(rowIndex: number, fieldId: string, fieldValue: unknown) {
+    answer(rows.map((row, index) => index === rowIndex ? { ...row, [fieldId]: fieldValue } : row));
+  }
+
+  function addRow() {
+    const blank = Object.fromEntries(fields.map((field) => [field.id, blankRepeatValue(field)]));
+    answer([...rows, blank]);
+  }
+
+  return (
+    <View style={{ gap: 10 }}>
+      {minRepeats !== null || maxRepeats !== null ? (
+        <Text style={{ color: "#49635a", fontSize: 12 }}>
+          Repeat rows: {rows.length}{minRepeats !== null ? ` · minimum ${minRepeats}` : ""}{maxRepeats !== null ? ` · maximum ${maxRepeats}` : ""}
+        </Text>
+      ) : null}
+      {rows.length === 0 ? (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>No rows added yet</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>Add one row for each household member, item, crop, or repeated record.</Text>
+        </View>
+      ) : rows.map((row, rowIndex) => (
+        <View key={`row-${rowIndex + 1}`} style={repeatRowCard}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ color: "#12332b", fontWeight: "800" }}>Row {rowIndex + 1}</Text>
+            <Pressable
+              disabled={minRepeats !== null && rows.length <= minRepeats}
+              onPress={() => answer(rows.filter((_, index) => index !== rowIndex))}
+              style={{ opacity: minRepeats !== null && rows.length <= minRepeats ? 0.35 : 1 }}
+            >
+              <Text style={{ color: "#b42318", fontWeight: "700", fontSize: 12 }}>Remove</Text>
+            </Pressable>
+          </View>
+          {fields.map((field) => (
+            <View key={field.id} style={{ gap: 4 }}>
+              <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
+                {field.label}{field.required ? " *" : ""}
+              </Text>
+              {renderRepeatFieldInput(field, row[field.id], (next) => updateRow(rowIndex, field.id, next))}
+            </View>
+          ))}
+        </View>
+      ))}
+      <Pressable
+        disabled={!canAdd}
+        onPress={addRow}
+        style={{
+          ...secondaryActionButton,
+          opacity: canAdd ? 1 : 0.45,
+        }}
+      >
+        <Text style={secondaryActionText}>{question.repeatSettings?.addButtonLabel ?? "Add row"}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+  const { rows, columns, multi } = matrixMetadata(question);
+  const matrix = isRecord(value) ? value : {};
+
+  function toggle(rowValue: string, columnValue: string) {
+    if (multi) {
+      const current = Array.isArray(matrix[rowValue]) ? (matrix[rowValue] as unknown[]).map(String) : [];
+      const next = current.includes(columnValue)
+        ? current.filter((item) => item !== columnValue)
+        : [...current, columnValue];
+      answer({ ...matrix, [rowValue]: next });
+      return;
+    }
+    answer({ ...matrix, [rowValue]: columnValue });
+  }
+
+  return (
+    <View style={{ gap: 10 }}>
+      <Text style={{ color: "#49635a", fontSize: 12 }}>
+        {multi ? "Select all choices that apply for each row." : "Select one choice for each row."}
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View style={{ gap: 8, minWidth: 320 }}>
+          {rows.map((row) => (
+            <View key={row.id} style={matrixRowCard}>
+              <Text style={{ color: "#12332b", fontWeight: "800", marginBottom: 8 }}>{row.label}</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {columns.map((column) => {
+                  const current = matrix[row.value];
+                  const selected = multi
+                    ? (Array.isArray(current) ? current.map(String).includes(column.value) : false)
+                    : String(current ?? "") === column.value;
+                  return (
+                    <Pressable
+                      key={column.id}
+                      onPress={() => toggle(row.value, column.value)}
+                      style={{
+                        backgroundColor: selected ? "#12332b" : "white",
+                        borderColor: selected ? "#12332b" : "#dbe7e2",
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <Text style={{ color: selected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>{column.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function renderRanking(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+  const options = question.options.length ? question.options : optionListFromUnknown(question.defaultValue, "options");
+  const ranked = Array.isArray(value) ? value.map(String).filter((item) => options.some((option) => option.value === item)) : [];
+  const remaining = options.filter((option) => !ranked.includes(option.value));
+
+  function move(valueToMove: string, direction: -1 | 1) {
+    const index = ranked.indexOf(valueToMove);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= ranked.length) return;
+    const next = [...ranked];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    answer(next);
+  }
+
+  return (
+    <View style={{ gap: 10 }}>
+      <Text style={{ color: "#49635a", fontSize: 12 }}>Tap choices to build the ranking. Use arrows to adjust the order.</Text>
+      {ranked.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          {ranked.map((optionValue, index) => {
+            const option = options.find((item) => item.value === optionValue);
+            return (
+              <View key={optionValue} style={rankingRow}>
+                <Text style={{ color: "#12332b", fontWeight: "800", width: 28 }}>{index + 1}</Text>
+                <Text style={{ color: "#12332b", fontWeight: "700", flex: 1 }}>{option?.label ?? optionValue}</Text>
+                <Pressable onPress={() => move(optionValue, -1)}><Text style={rankingAction}>↑</Text></Pressable>
+                <Pressable onPress={() => move(optionValue, 1)}><Text style={rankingAction}>↓</Text></Pressable>
+                <Pressable onPress={() => answer(ranked.filter((item) => item !== optionValue))}><Text style={{ ...rankingAction, color: "#b42318" }}>×</Text></Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>No choices ranked yet</Text>
+        </View>
+      )}
+      {remaining.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {remaining.map((option) => (
+            <Pressable key={option.id} onPress={() => answer([...ranked, option.value])} style={secondaryActionButton}>
+              <Text style={secondaryActionText}>+ {option.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function evidenceValue(kind: EvidenceReference["kind"], value: unknown): EvidenceReference {
+  if (isRecord(value)) {
+    return {
+      kind,
+      reference: String(value.reference ?? ""),
+      notes: String(value.notes ?? ""),
+      capturedAt: typeof value.capturedAt === "string" ? value.capturedAt : null,
+    };
+  }
+  return {
+    kind,
+    reference: typeof value === "string" ? value : "",
+    notes: "",
+    capturedAt: typeof value === "string" && value.trim() ? new Date().toISOString() : null,
+  };
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function renderRepeatFieldInput(field: MobileQuestion, value: unknown, onChange: (v: unknown) => void) {
+  const { type } = field;
+
+  if (type === "Number" || type === "Decimal" || type === "Currency") {
+    return (
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(t) => {
+          const n = type === "Number" ? parseInt(t, 10) : parseFloat(t);
+          onChange(Number.isNaN(n) ? t : n);
+        }}
+        placeholder={type === "Currency" ? "0.00" : "0"}
+        placeholderTextColor="#b0c5bc"
+        style={inputStyle}
+        value={String(value ?? "")}
+      />
+    );
+  }
+
+  if (type === "LongText") {
+    return (
+      <TextInput
+        multiline
+        onChangeText={(t) => onChange(t)}
+        placeholder={`Enter ${field.label.toLowerCase()}`}
+        placeholderTextColor="#b0c5bc"
+        style={{ ...inputStyle, minHeight: 70, textAlignVertical: "top" }}
+        value={String(value ?? "")}
+      />
+    );
+  }
+
+  if (type === "Date" || type === "DateTime") {
+    return (
+      <DateTimeField
+        mode={type === "DateTime" ? "datetime" : "date"}
+        value={String(value ?? "")}
+        onChange={(next) => onChange(next)}
+      />
+    );
+  }
+
+  if (type === "Time") {
+    return <DateTimeField mode="time" value={String(value ?? "")} onChange={(next) => onChange(next)} />;
+  }
+
+  if (type === "Consent") {
+    const checked = value === true;
+    return (
+      <Pressable
+        onPress={() => onChange(!checked)}
+        style={{
+          alignItems: "center",
+          backgroundColor: checked ? "#12332b" : "white",
+          borderColor: checked ? "#12332b" : "#dbe7e2",
+          borderRadius: 10,
+          borderWidth: 1,
+          paddingVertical: 10,
+        }}
+      >
+        <Text style={{ color: checked ? "white" : "#12332b", fontWeight: "700", fontSize: 13 }}>
+          {checked ? "✓ Yes" : "Tap to confirm"}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  if ((type === "SingleSelect" || type === "Dropdown" || type === "MultiSelect") && field.options.length > 0) {
+    const isMulti = type === "MultiSelect";
+    const selected = isMulti ? (Array.isArray(value) ? value.map(String) : []) : [String(value ?? "")];
+    return (
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {field.options.map((option) => {
+          const isSelected = selected.includes(option.value);
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => {
+                if (isMulti) {
+                  const next = isSelected
+                    ? selected.filter((item) => item !== option.value)
+                    : [...selected, option.value];
+                  onChange(next);
+                } else {
+                  onChange(option.value);
+                }
+              }}
+              style={{
+                backgroundColor: isSelected ? "#12332b" : "white",
+                borderColor: isSelected ? "#12332b" : "#dbe7e2",
+                borderRadius: 999,
+                borderWidth: 1,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: isSelected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
   // ── Default: Text ─────────────────────────────────────────────────────────
   return (
     <TextInput
-      autoCapitalize="sentences"
-      onChangeText={(t) => answer(t)}
-      placeholder="Enter answer…"
+      onChangeText={(t) => onChange(t)}
+      placeholder={`Enter ${field.label.toLowerCase()}`}
       placeholderTextColor="#b0c5bc"
       style={inputStyle}
       value={String(value ?? "")}
     />
   );
+}
+
+function blankRepeatValue(field: MobileQuestion): unknown {
+  if (field.type === "MultiSelect") return [];
+  if (field.type === "Consent") return false;
+  return "";
+}
+
+const REPEAT_FIELD_TYPES = new Set<string>([
+  "Text",
+  "LongText",
+  "Number",
+  "Decimal",
+  "Currency",
+  "Date",
+  "Time",
+  "DateTime",
+  "SingleSelect",
+  "MultiSelect",
+  "Dropdown",
+  "Consent",
+]);
+
+function repeatFields(question: MobileQuestion): MobileQuestion[] {
+  const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
+  const rawFields = firstNonEmptyArray(metadata.fields, metadata.questions, metadata.children);
+  if (rawFields.length > 0) {
+    return rawFields.map((field, index) => normalizeRepeatField(field, question, index));
+  }
+  if (question.options.length > 0) {
+    return question.options.map((option, index) => normalizeRepeatField(option, question, index));
+  }
+  return [normalizeRepeatField({ id: "description", label: "Description" }, question, 0)];
+}
+
+function firstNonEmptyArray(...lists: unknown[]): unknown[] {
+  for (const list of lists) {
+    if (Array.isArray(list) && list.length > 0) return list;
+  }
+  return [];
+}
+
+function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: number): MobileQuestion {
+  if (isRecord(raw) && typeof raw.id === "string" && typeof raw.type === "string" && REPEAT_FIELD_TYPES.has(raw.type)) {
+    return {
+      id: raw.id,
+      sectionId: typeof raw.sectionId === "string" ? raw.sectionId : parent.id,
+      variableName: typeof raw.variableName === "string" ? raw.variableName : raw.id,
+      label: String(raw.label ?? raw.id),
+      helpText: typeof raw.helpText === "string" ? raw.helpText : null,
+      type: raw.type as MobileQuestionType,
+      required: Boolean(raw.required),
+      readOnly: Boolean(raw.readOnly),
+      defaultValue: raw.defaultValue ?? null,
+      options: Array.isArray(raw.options) ? (raw.options as MobileQuestionOption[]) : [],
+      validationRules: Array.isArray(raw.validationRules) ? (raw.validationRules as MobileValidationRule[]) : [],
+      logicRules: Array.isArray(raw.logicRules) ? (raw.logicRules as MobileLogicRule[]) : [],
+      referenceListId: typeof raw.referenceListId === "string" ? raw.referenceListId : null,
+      cascadingParentQuestionId: null,
+      sensitive: Boolean(raw.sensitive),
+      repeatSettings: null,
+      order: typeof raw.order === "number" ? raw.order : index + 1,
+    };
+  }
+
+  // Legacy `{id,label,value}` option shape — render as a plain text field.
+  const id = isRecord(raw) ? String(raw.id ?? raw.value ?? raw.label ?? `field_${index + 1}`) : String(raw || `field_${index + 1}`);
+  const label = isRecord(raw) ? String(raw.label ?? raw.name ?? id) : String(raw || id);
+  return {
+    id,
+    sectionId: parent.id,
+    variableName: id,
+    label,
+    helpText: null,
+    type: "Text",
+    required: false,
+    readOnly: false,
+    defaultValue: null,
+    options: [],
+    validationRules: [],
+    logicRules: [],
+    referenceListId: null,
+    cascadingParentQuestionId: null,
+    sensitive: false,
+    repeatSettings: null,
+    order: index + 1,
+  };
+}
+
+function matrixMetadata(question: MobileQuestion): { rows: SimpleOption[]; columns: SimpleOption[]; multi: boolean } {
+  const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
+  const rows = firstNonEmptyOptionList(
+    optionListFromUnknown(metadata.rows, "rows"),
+    optionListFromUnknown(metadata.matrixRows, "matrixRows"),
+    optionListFromUnknown(metadata.statements, "statements"),
+  );
+  const columns = firstNonEmptyOptionList(
+    optionListFromUnknown(metadata.columns, "columns"),
+    optionListFromUnknown(metadata.matrixColumns, "matrixColumns"),
+    question.options,
+  );
+  const mode = String(metadata.mode ?? metadata.matrixMode ?? metadata.type ?? "").toLowerCase();
+  const multiRule = question.validationRules.some((rule) => rule.ruleType === "Custom" && String(rule.value).toLowerCase() === "matrixmode:multi");
+  return {
+    rows: rows.length ? rows : [{ id: question.id, label: question.label, value: question.variableName || question.id }],
+    columns: columns.length ? columns : [
+      { id: "yes", label: "Yes", value: "yes" },
+      { id: "no", label: "No", value: "no" },
+    ],
+    multi: mode.includes("multi") || multiRule,
+  };
+}
+
+function optionListFromUnknown(value: unknown, fallbackKey: string): SimpleOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item, index) => {
+    if (isRecord(item)) {
+      const rawValue = item.value ?? item.id ?? item.name ?? item.label ?? `${fallbackKey}_${index + 1}`;
+      const label = String(item.label ?? item.name ?? item.text ?? rawValue);
+      return {
+        id: String(item.id ?? rawValue),
+        label,
+        value: String(rawValue),
+      };
+    }
+    const label = String(item || `${fallbackKey} ${index + 1}`);
+    return {
+      id: label,
+      label,
+      value: label,
+    };
+  });
+}
+
+function firstNonEmptyOptionList(...lists: SimpleOption[][]): SimpleOption[] {
+  return lists.find((list) => list.length > 0) ?? [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const inputStyle = {
@@ -409,4 +1087,62 @@ const inputStyle = {
   color: "#12332b",
   fontSize: 15,
   padding: 14,
+} as const;
+
+const emptySubCard = {
+  backgroundColor: "#f6faf8",
+  borderColor: "#dbe7e2",
+  borderRadius: 12,
+  borderWidth: 1,
+  padding: 12,
+} as const;
+
+const repeatRowCard = {
+  backgroundColor: "#f6faf8",
+  borderColor: "#dbe7e2",
+  borderRadius: 12,
+  borderWidth: 1,
+  gap: 10,
+  padding: 12,
+} as const;
+
+const matrixRowCard = {
+  backgroundColor: "#f6faf8",
+  borderColor: "#dbe7e2",
+  borderRadius: 12,
+  borderWidth: 1,
+  padding: 12,
+} as const;
+
+const rankingRow = {
+  alignItems: "center",
+  backgroundColor: "#f6faf8",
+  borderColor: "#dbe7e2",
+  borderRadius: 12,
+  borderWidth: 1,
+  flexDirection: "row",
+  gap: 8,
+  padding: 10,
+} as const;
+
+const rankingAction = {
+  color: "#12332b",
+  fontSize: 18,
+  fontWeight: "800",
+  paddingHorizontal: 4,
+} as const;
+
+const secondaryActionButton = {
+  backgroundColor: "#f0f5f3",
+  borderColor: "#dbe7e2",
+  borderRadius: 10,
+  borderWidth: 1,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+} as const;
+
+const secondaryActionText = {
+  color: "#12332b",
+  fontSize: 12,
+  fontWeight: "700",
 } as const;

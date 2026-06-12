@@ -52,6 +52,7 @@ class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     employee_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     home_region: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -59,7 +60,8 @@ class FieldOfficerProfile(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     device_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
+    supervisor = relationship("User", foreign_keys=[supervisor_user_id])
 
 
 class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -72,6 +74,28 @@ class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Ba
     form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
     region: Mapped[str | None] = mapped_column(String(160), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class FieldWorkAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "field_work_assignments"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assignment_type: Mapped[str] = mapped_column(String(80), default="Form only")
+    officer_ids_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    assigned_entity_ids_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    location: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    target_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    priority: Mapped[str] = mapped_column(String(20), default="Normal", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Assigned", index=True)
 
 
 class Survey(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
@@ -169,6 +193,7 @@ class DataForm(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    form_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -181,6 +206,7 @@ class DataFormVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
     offline_compatible: Mapped[bool] = mapped_column(Boolean, default=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     source_record_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
@@ -205,7 +231,7 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     supervisor_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     frequency_period: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
     event_id: Mapped[str | None] = mapped_column(String(160), index=True, nullable=True)
-    field_officer_id: Mapped[UUID] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True)
+    field_officer_id: Mapped[UUID | None] = mapped_column(ForeignKey("field_officer_profiles.id"), index=True, nullable=True)
     client_submission_id: Mapped[str] = mapped_column(String(160), nullable=False)
     server_sequence: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(40), default="submitted", index=True)
@@ -229,6 +255,24 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     import_batch_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_import_jobs.id"), index=True, nullable=True)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SubmissionEntityLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_entity_links"
+    __table_args__ = (UniqueConstraint("submission_id", "beneficiary_id", "link_type"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    beneficiary_id: Mapped[UUID] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
+    link_type: Mapped[str] = mapped_column(String(60), default="participant", index=True)
+    source: Mapped[str] = mapped_column(String(80), default="approved_submission")
+    source_field: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
 
 class SubmissionVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -266,3 +310,14 @@ class MobileSyncBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), default="processed")
     processed_count: Mapped[int] = mapped_column(Integer, default=0)
     conflict_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SubmissionRepeatRow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_repeat_rows"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    parent_submission_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    field_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_json: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)

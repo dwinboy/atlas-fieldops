@@ -65,7 +65,7 @@ const previewPolicies: GovernancePolicyRead[] = [
   },
   {
     id: "preview-policy-2",
-    name: "Beneficiary data protection",
+    name: "Entity data protection",
     policy_type: "privacy",
     lifecycle_state: "approved",
     version: 1,
@@ -83,17 +83,17 @@ const previewRetentionPolicies: RetentionPolicyRead[] = [
 
 const previewRules: ValidationRuleRead[] = [
   { id: "preview-rule-1", rule_code: "gps-required", name: "Require GPS evidence for field submissions", target_entity: "submissions", severity: "high", expression: "latitude != null && longitude != null && accuracy <= 50", version: 1, is_active: true, created_at: nowIso },
-  { id: "preview-rule-2", rule_code: "consent-required", name: "Consent must be captured before approval", target_entity: "beneficiaries", severity: "critical", expression: "consent == true", version: 1, is_active: true, created_at: nowIso }
+  { id: "preview-rule-2", rule_code: "consent-required", name: "Consent must be captured before approval", target_entity: "entities", severity: "critical", expression: "consent == true", version: 1, is_active: true, created_at: nowIso }
 ];
 
 const previewExports: ExportLogRead[] = [
-  { id: "preview-export-1", dataset_type: "beneficiaries", export_format: "xlsx", status: "approved", anonymized: true, record_count: 1200, risk_score: 0.12, created_at: nowIso },
+  { id: "preview-export-1", dataset_type: "entities", export_format: "xlsx", status: "approved", anonymized: true, record_count: 1200, risk_score: 0.12, created_at: nowIso },
   { id: "preview-export-2", dataset_type: "submissions", export_format: "csv", status: "review_required", anonymized: false, record_count: 4200, risk_score: 0.74, created_at: nowIso }
 ];
 
 const previewLineage: LineageEventRead[] = [
   { id: "preview-lineage-1", source_type: "submission", source_id: "sub-001", target_type: "report", target_id: "donor-q2", transformation: "approved aggregation", lineage_json: {}, created_at: nowIso },
-  { id: "preview-lineage-2", source_type: "import", source_id: "csv-228", target_type: "beneficiary", target_id: "ben-1182", transformation: "deduplicated merge", lineage_json: {}, created_at: nowIso }
+  { id: "preview-lineage-2", source_type: "import", source_id: "csv-228", target_type: "entity", target_id: "ben-1182", transformation: "deduplicated merge", lineage_json: {}, created_at: nowIso }
 ];
 
 const previewVersions: DataVersionRead[] = [
@@ -101,15 +101,15 @@ const previewVersions: DataVersionRead[] = [
 ];
 
 const previewMasterData: MasterDataEntryRead[] = [
-  { id: "preview-master-1", category: "district", code: "district-default", label: "Default District", status: "active", version: 1, created_at: nowIso },
-  { id: "preview-master-2", category: "program", code: "nutrition-project", label: "Nutrition Project", status: "active", version: 1, created_at: nowIso }
+  { id: "preview-master-1", category: "district", code: "district-default", label: "Default District", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso },
+  { id: "preview-master-2", category: "program", code: "nutrition-project", label: "Nutrition Project", status: "active", version: 1, order_index: 0, language: "en", created_at: nowIso }
 ];
 
 export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps) {
   const [policyName, setPolicyName] = useState("Official reporting governance");
   const [retentionRecordType, setRetentionRecordType] = useState("submissions");
   const [validationRuleCode, setValidationRuleCode] = useState("gps-required");
-  const [exportDataset, setExportDataset] = useState("beneficiaries");
+  const [exportDataset, setExportDataset] = useState("entities");
   const [localPolicies, setLocalPolicies] = useState(previewPolicies);
   const [localRetention, setLocalRetention] = useState(previewRetentionPolicies);
   const [localRules, setLocalRules] = useState(previewRules);
@@ -381,7 +381,7 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? createPreviewRetention() : createRetentionMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Retention</h2>
           <Select className="mt-3" value={retentionRecordType} onChange={(event) => setRetentionRecordType(event.target.value)}>
-            {["submissions", "beneficiaries", "reports", "media", "audit_logs"].map((type) => <option key={type} value={type}>{type}</option>)}
+            {["submissions", "entities", "reports", "media", "audit_logs"].map((type) => <option key={type} value={type}>{type}</option>)}
           </Select>
           <Button className="mt-4 w-full" disabled={createRetentionMutation.isPending} type="submit" variant="primary">Set retention</Button>
         </form>
@@ -393,7 +393,7 @@ export function GovernanceCommandCenter({ token }: GovernanceCommandCenterProps)
         <form className="rounded-2xl border bg-panel p-4" onSubmit={(event) => { event.preventDefault(); isPreview ? governPreviewExport() : governExportMutation.mutate(); }}>
           <h2 className="text-sm font-semibold">Export control</h2>
           <Select className="mt-3" value={exportDataset} onChange={(event) => setExportDataset(event.target.value)}>
-            {["beneficiaries", "submissions", "indicators", "reports"].map((type) => <option key={type} value={type}>{type}</option>)}
+            {["entities", "submissions", "indicators", "reports"].map((type) => <option key={type} value={type}>{type}</option>)}
           </Select>
           <Button className="mt-4 w-full" disabled={governExportMutation.isPending} type="submit" variant="primary">Govern export</Button>
         </form>

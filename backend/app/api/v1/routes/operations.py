@@ -1,7 +1,8 @@
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -11,6 +12,7 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryMergeRead,
+    BeneficiaryUpdate,
     BeneficiaryMergeRequest,
     BeneficiaryRead,
     BulkEditRead,
@@ -20,13 +22,20 @@ from app.schemas.operations import (
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
+    DataQualitySignalUpdate,
     DonorReportCreate,
     DonorReportRead,
+    EntityCategoryCreate,
+    EntityCategoryRead,
+    EntityCategoryUpdate,
     EntityDuplicateCandidateRead,
     EntityDuplicateCheckRequest,
     EntityPrefillRead,
     ExportJobCreate,
     ExportJobRead,
+    FieldVisitRequestRead,
+    FieldVisitRequestReview,
+    FieldVisitOutcomeReview,
     ImportAnalysisRequest,
     ImportAnalysisResponse,
     ImportApplyResponse,
@@ -44,6 +53,9 @@ from app.schemas.operations import (
     ImportSupportedSourceRead,
     ImportUploadResponse,
     IndicatorCreate,
+    IndicatorUpdate,
+    IndicatorDisaggregationsRead,
+    IndicatorLinkedSubmissionsRead,
     IndicatorRead,
     InterventionCreate,
     InterventionRead,
@@ -52,6 +64,7 @@ from app.schemas.operations import (
     MappingTemplateCreate,
     MediaEvidenceCreate,
     MediaEvidenceRead,
+    OperationalActivityReportRead,
     MobileSyncPackageRead,
     OperationalAssetCreate,
     OperationalAssetRead,
@@ -66,14 +79,21 @@ from app.schemas.operations import (
     OperationsSummary,
     ProgramCreate,
     ProgramRead,
+    PredefinedEntityCategoryRead,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
     PublicCollectionLinkCreate,
     PublicCollectionLinkRead,
+    FieldWorkPlanCreate,
+    FieldWorkPlanRead,
+    FieldWorkPlanUpdate,
+    OperationalTargetCreate,
+    OperationalTargetRead,
+    OperationalTargetUpdate,
     WorkflowDefinitionCreate,
     WorkflowDefinitionRead,
 )
-from app.services.operations import OperationsService
+from app.services.operations import FieldPlanningService, OperationsService
 
 router = APIRouter()
 
@@ -187,6 +207,203 @@ async def create_task(
     return await OperationsService(session).create_task(organization_uuid(principal), user_uuid(principal), payload)
 
 
+@router.get(
+    "/operational-activities/reports/{report_type}",
+    response_model=OperationalActivityReportRead,
+    summary="Generate an operational activity report",
+)
+async def operational_activity_report(
+    report_type: str,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_REPORTS_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    period_start: date | None = Query(default=None),
+    period_end: date | None = Query(default=None),
+) -> OperationalActivityReportRead:
+    allowed = {
+        "monthly_operations",
+        "field_officer_movement",
+        "incident_report",
+        "supervisor_approval",
+        "gps_exception",
+    }
+    if report_type not in allowed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported operational activity report type.")
+    return await OperationsService(session).operational_activity_report(
+        organization_id=organization_uuid(principal),
+        report_type=report_type,
+        period_start=period_start,
+        period_end=period_end,
+        actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
+    )
+
+
+@router.get(
+    "/operational-activities/{activity_id}/media-evidence",
+    response_model=list[MediaEvidenceRead],
+    summary="List media evidence attached to an operational activity",
+)
+async def list_operational_activity_media_evidence(
+    activity_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_EVIDENCE_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[MediaEvidenceRead]:
+    try:
+        return await OperationsService(session).list_activity_media_evidence(
+            organization_uuid(principal),
+            activity_id,
+            actor_user_id=user_uuid(principal),
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/operational-activities/{activity_id}/media-evidence",
+    response_model=MediaEvidenceRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach media evidence to an operational activity",
+)
+async def create_operational_activity_media_evidence(
+    activity_id: UUID,
+    payload: MediaEvidenceCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_EVIDENCE_ATTACH))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MediaEvidenceRead:
+    try:
+        result = await OperationsService(session).create_activity_media_evidence(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            activity_id=activity_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get(
+    "/field-visit-requests",
+    response_model=list[FieldVisitRequestRead],
+    summary="List field visit requests for supervisor review",
+)
+async def list_field_visit_requests(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await OperationsService(session).list_field_visit_requests(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
+        status=request_status,
+    )
+
+
+@router.get(
+    "/operational-activities",
+    response_model=list[FieldVisitRequestRead],
+    summary="List organization operational activities and movement requests",
+)
+async def list_operational_activities(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_VIEW))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await OperationsService(session).list_field_visit_requests(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        actor_roles=principal.roles,
+        actor_project_ids=principal.project_ids,
+        status=request_status,
+    )
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/outcome-review",
+    response_model=FieldVisitRequestRead,
+    summary="Review completed activity evidence and make a supervisor outcome decision",
+)
+async def review_operational_activity_outcome(
+    visit_request_id: UUID,
+    payload: FieldVisitOutcomeReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_REVIEW_OUTCOME))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).review_operational_activity_outcome(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            visit_request_id=visit_request_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/field-visit-requests/{visit_request_id}/review",
+    response_model=FieldVisitRequestRead,
+    summary="Approve, reject, or request changes for a field visit request",
+)
+async def review_field_visit_request(
+    visit_request_id: UUID,
+    payload: FieldVisitRequestReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_APPROVE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).review_field_visit_request(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            visit_request_id=visit_request_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/review",
+    response_model=FieldVisitRequestRead,
+    summary="Review an organization operational activity request",
+)
+async def review_operational_activity(
+    visit_request_id: UUID,
+    payload: FieldVisitRequestReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OPERATIONS_ACTIVITIES_APPROVE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    return await review_field_visit_request(visit_request_id, payload, principal, session)
+
+
 @router.post("/interventions", response_model=InterventionRead, status_code=status.HTTP_201_CREATED, summary="Plan intervention")
 async def create_intervention(
     payload: InterventionCreate,
@@ -255,6 +472,142 @@ async def list_beneficiaries(
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
+@router.patch(
+    "/beneficiaries/{beneficiary_id}",
+    response_model=BeneficiaryRead,
+    summary="Correct an entity profile with an audited reason",
+)
+async def update_beneficiary(
+    beneficiary_id: UUID,
+    payload: BeneficiaryUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BeneficiaryRead:
+    service = OperationsService(session)
+    try:
+        beneficiary = await service.update_beneficiary(
+            organization_uuid(principal),
+            beneficiary_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return BeneficiaryRead.model_validate(beneficiary)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get(
+    "/entity-categories/library",
+    response_model=list[PredefinedEntityCategoryRead],
+    summary="List predefined entity categories by sector",
+)
+async def predefined_entity_categories(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    sector: Annotated[str | None, Query()] = None,
+) -> list[PredefinedEntityCategoryRead]:
+    _ = principal
+    return OperationsService(session).predefined_entity_categories(sector)
+
+
+@router.get(
+    "/entity-categories",
+    response_model=list[EntityCategoryRead],
+    summary="List configured entity categories",
+)
+async def list_entity_categories(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    project_id: Annotated[UUID | None, Query()] = None,
+    include_archived: Annotated[bool, Query()] = False,
+) -> list[EntityCategoryRead]:
+    return await OperationsService(session).list_entity_categories(
+        organization_uuid(principal),
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+
+
+@router.post(
+    "/entity-categories",
+    response_model=EntityCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create custom entity category",
+)
+async def create_entity_category(
+    payload: EntityCategoryCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).create_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/entity-categories/activate-predefined",
+    response_model=EntityCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Activate predefined entity category for a project",
+)
+async def activate_predefined_entity_category(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    project_id: Annotated[UUID, Query()],
+    slug: Annotated[str, Query(max_length=120)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).activate_predefined_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            project_id,
+            slug,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/entity-categories/{category_id}",
+    response_model=EntityCategoryRead,
+    summary="Update, archive, or restore entity category",
+)
+async def update_entity_category(
+    category_id: UUID,
+    payload: EntityCategoryUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).update_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            category_id,
+            payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.get("/data-quality/signals", response_model=list[DataQualitySignalRead], summary="List data cleaning and reconciliation signals")
 async def list_quality_signals(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
@@ -267,6 +620,27 @@ async def list_quality_signals(
         status=status_filter,
         signal_type=signal_type,
     )
+
+
+@router.patch("/data-quality/signals/{signal_id}", response_model=DataQualitySignalRead, summary="Update data quality signal status")
+async def update_quality_signal(
+    signal_id: UUID,
+    payload: DataQualitySignalUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DataQualitySignalRead:
+    try:
+        signal = await OperationsService(session).update_quality_signal(
+            organization_uuid(principal),
+            signal_id,
+            payload,
+            actor_user_id=user_uuid(principal),
+        )
+        await session.commit()
+        return signal
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/beneficiaries/search", response_model=list[BeneficiaryRead], summary="Search beneficiary and entity registry")
@@ -404,6 +778,71 @@ async def create_indicator(
     return await OperationsService(session).create_indicator(organization_uuid(principal), payload, user_uuid(principal))
 
 
+@router.patch(
+    "/indicators/{indicator_id}",
+    response_model=IndicatorRead,
+    summary="Update an indicator's definition, baseline, target, or formula",
+)
+async def update_indicator(
+    indicator_id: UUID,
+    payload: IndicatorUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorRead:
+    service = OperationsService(session)
+    try:
+        indicator = await service.update_indicator(
+            organization_uuid(principal),
+            indicator_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return indicator
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get(
+    "/indicators/{indicator_id}/disaggregation",
+    response_model=IndicatorDisaggregationsRead,
+    summary="Get indicator disaggregation breakdown",
+)
+async def get_indicator_disaggregation(
+    indicator_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorDisaggregationsRead:
+    service = OperationsService(session)
+    organization_id = organization_uuid(principal)
+    indicator = await service.repository.get_indicator_by_id(organization_id=organization_id, indicator_id=indicator_id)
+    if indicator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Indicator not found")
+    return await service.calculate_indicator_disaggregation(organization_id, indicator)
+
+
+@router.get(
+    "/indicators/{indicator_id}/linked-submissions",
+    response_model=IndicatorLinkedSubmissionsRead,
+    summary="Get submissions linked to an indicator's formula",
+)
+async def get_indicator_linked_submissions(
+    indicator_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorLinkedSubmissionsRead:
+    service = OperationsService(session)
+    organization_id = organization_uuid(principal)
+    indicator = await service.repository.get_indicator_by_id(organization_id=organization_id, indicator_id=indicator_id)
+    if indicator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Indicator not found")
+    return await service.list_indicator_linked_submissions(organization_id, indicator)
+
+
 @router.get("/cases", response_model=list[CaseRead], summary="List cases")
 async def list_cases(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
@@ -440,6 +879,36 @@ async def create_report(
 ) -> DonorReportRead:
     report = await OperationsService(session).create_report(organization_uuid(principal), payload)
     return DonorReportRead.model_validate(report)
+
+
+@router.post("/reports/{report_id}/generate", response_model=DonorReportRead, summary="Generate computed metrics for a donor report")
+async def generate_report(
+    report_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DonorReportRead:
+    try:
+        report = await OperationsService(session).generate_report(organization_uuid(principal), report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return DonorReportRead.model_validate(report)
+
+
+@router.get("/reports/{report_id}/export.csv", summary="Export donor report metrics as CSV")
+async def export_report_csv(
+    report_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        csv_text, filename = await OperationsService(session).export_report_csv(organization_uuid(principal), report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/data/imports/preview", response_model=ImportPreviewResponse, summary="Preview and validate imported data")
@@ -712,3 +1181,119 @@ async def create_bulk_edit_batch(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BulkEditRead:
     return await OperationsService(session).create_bulk_edit_batch(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/work-plans", response_model=list[FieldWorkPlanRead], summary="List field work plans")
+async def list_work_plans(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[FieldWorkPlanRead]:
+    return await FieldPlanningService(session).list_work_plans(organization_uuid(principal))
+
+
+@router.post(
+    "/work-plans",
+    response_model=FieldWorkPlanRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a field work plan",
+)
+async def create_work_plan(
+    payload: FieldWorkPlanCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkPlanRead:
+    service = FieldPlanningService(session)
+    plan = await service.create_work_plan(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        payload=payload,
+    )
+    await session.commit()
+    return plan
+
+
+@router.patch(
+    "/work-plans/{work_plan_id}",
+    response_model=FieldWorkPlanRead,
+    summary="Update a field work plan",
+)
+async def update_work_plan(
+    work_plan_id: UUID,
+    payload: FieldWorkPlanUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkPlanRead:
+    service = FieldPlanningService(session)
+    try:
+        plan = await service.update_work_plan(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            work_plan_id=work_plan_id,
+            payload=payload,
+        )
+        await session.commit()
+        return plan
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get("/targets", response_model=list[OperationalTargetRead], summary="List operational targets")
+async def list_operational_targets(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OperationalTargetRead]:
+    return await FieldPlanningService(session).list_targets(organization_uuid(principal))
+
+
+@router.post(
+    "/targets",
+    response_model=OperationalTargetRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an operational target",
+)
+async def create_operational_target(
+    payload: OperationalTargetCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalTargetRead:
+    service = FieldPlanningService(session)
+    target = await service.create_target(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        payload=payload,
+    )
+    await session.commit()
+    return target
+
+
+@router.patch(
+    "/targets/{target_id}",
+    response_model=OperationalTargetRead,
+    summary="Update an operational target, including achieved progress",
+)
+async def update_operational_target(
+    target_id: UUID,
+    payload: OperationalTargetUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalTargetRead:
+    service = FieldPlanningService(session)
+    try:
+        target = await service.update_target(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            target_id=target_id,
+            payload=payload,
+        )
+        await session.commit()
+        return target
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise

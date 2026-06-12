@@ -141,9 +141,12 @@ async def seed_super_admin() -> None:
         organizations = OrganizationRepository(session)
         organization = await organizations.get_by_slug(organization_slug)
         if organization is None:
-            organization = await OrganizationService(session).create_organization(
+            await OrganizationService(session).create_organization(
                 OrganizationCreate(name=organization_name, slug=organization_slug)
             )
+            organization = await organizations.get_by_slug(organization_slug)
+            if organization is None:
+                raise RuntimeError("Organization seed failed; organization was not persisted")
 
         existing_identity = await UserRepository(session).find_for_login(
             email=admin_email,

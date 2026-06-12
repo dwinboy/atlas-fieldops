@@ -1,4 +1,5 @@
 from typing import Literal
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -61,6 +62,63 @@ class UserCreate(BaseModel):
     project_ids: list[str] = Field(default_factory=list)
 
 
+class UserRoleAssignmentRead(BaseModel):
+    id: UUID
+    role_id: UUID
+    role_name: str
+    role_label: str
+    scope_type: str
+    geography_id: str | None = None
+    project_id: str | None = None
+    organization_unit_id: UUID | None = None
+    team_id: UUID | None = None
+    assigned_by_user_id: UUID | None = None
+    starts_at: datetime | None = None
+    expires_at: datetime | None = None
+    is_active: bool = True
+    reason: str | None = None
+
+
+class UserRoleAssignmentCreate(BaseModel):
+    role_name: str = Field(min_length=2, max_length=100)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] | None = None
+    geography_id: str | None = Field(default=None, max_length=120)
+    project_id: str | None = Field(default=None, max_length=36)
+    organization_unit_id: UUID | None = None
+    team_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class UserRoleAssignmentUpdate(BaseModel):
+    role_name: str | None = Field(default=None, min_length=2, max_length=100)
+    scope_type: Literal["global", "organization", "country", "region", "district", "field_team", "project", "own"] | None = None
+    geography_id: str | None = Field(default=None, max_length=120)
+    project_id: str | None = Field(default=None, max_length=36)
+    organization_unit_id: UUID | None = None
+    team_id: UUID | None = None
+    is_active: bool | None = None
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class UserOperationalProfileRead(BaseModel):
+    id: UUID
+    profile_type: str
+    display_name: str
+    status: str
+    supervisor_user_id: UUID | None = None
+    primary_project_id: str | None = None
+    primary_geography_id: str | None = None
+    primary_team_id: UUID | None = None
+    responsibilities_json: list[str] = Field(default_factory=list)
+    metrics_json: dict[str, object] = Field(default_factory=dict)
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    last_activity_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class UserRead(BaseModel):
     id: UUID
     email: EmailStr
@@ -73,6 +131,8 @@ class UserRead(BaseModel):
     organization_unit_id: UUID | None = None
     login_slug: str | None = None
     temporary_password: str | None = None
+    role_assignments: list[UserRoleAssignmentRead] = Field(default_factory=list)
+    operational_profiles: list[UserOperationalProfileRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -136,6 +196,8 @@ class RoleCatalogItem(BaseModel):
     label: str
     description: str
     scope_type: str
+    architecture_group: str = "Custom"
+    common_usage: str = ""
     permissions: list[str]
     workflow_actions: list[str]
     menu_views: list[str]

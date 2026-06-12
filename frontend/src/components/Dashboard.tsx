@@ -5,6 +5,7 @@ import {
   BarChart3,
   BookOpenCheck,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Clock,
@@ -26,6 +27,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import {
+  ApprovalStatusChart,
+  FormResponseChart,
+} from "@/components/dashboard/DashboardCharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -33,6 +38,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
   getOperationsSummary,
+  listDataQualitySignals,
+  listFieldOfficers,
+  listFieldVisitRequests,
   listUsers,
   listForms,
   listSubmissions,
@@ -97,8 +105,6 @@ type QualityWorkflowStep = {
   icon: typeof Plus;
 };
 
-type DashboardHelpId = "dailyFocus" | "formActivity";
-
 type DashboardAlert = {
   detail: string;
   label: string;
@@ -106,55 +112,6 @@ type DashboardAlert = {
   value: string;
   view: WorkspaceView;
 };
-
-function ContextHelp({
-  activeHelp,
-  children,
-  id,
-  setActiveHelp,
-  title,
-}: {
-  activeHelp: DashboardHelpId | null;
-  children: ReactNode;
-  id: DashboardHelpId;
-  setActiveHelp: (id: DashboardHelpId | null) => void;
-  title: string;
-}) {
-  const open = activeHelp === id;
-
-  return (
-    <div className="relative inline-flex">
-      <button
-        aria-expanded={open}
-        aria-label={`Help: ${title}`}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-line transition hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-        onClick={() => setActiveHelp(open ? null : id)}
-        type="button"
-      >
-        <HelpCircle aria-hidden="true" size={15} />
-      </button>
-      {open ? (
-        <div
-          aria-label={title}
-          className="absolute right-0 top-9 z-30 w-72 rounded-xl border bg-panel p-3 text-left shadow-elevated"
-          role="dialog"
-        >
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground">
-            {children}
-          </div>
-          <button
-            className="mt-3 text-xs font-medium text-primary hover:underline"
-            onClick={() => setActiveHelp(null)}
-            type="button"
-          >
-            Close
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
   const roles = new Set(
@@ -392,8 +349,10 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
 
 export function Dashboard({ token, principal }: DashboardProps) {
   const [dashboardResult, setDashboardResult] = useState("");
-  const [activeHelp, setActiveHelp] = useState<DashboardHelpId | null>(null);
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [learnOpenOverride, setLearnOpenOverride] = useState<boolean | null>(
+    null,
+  );
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setLastActionResult = useWorkspaceStore(
     (state) => state.setLastActionResult,
@@ -423,8 +382,27 @@ export function Dashboard({ token, principal }: DashboardProps) {
     queryFn: () => listUsers(token ?? ""),
     enabled: Boolean(token && !preview),
   });
+  const fieldOfficersQuery = useQuery({
+    queryKey: ["dashboard-field-officers", token],
+    queryFn: () => listFieldOfficers(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const visitRequestsQuery = useQuery({
+    queryKey: ["dashboard-visit-requests", token],
+    queryFn: () => listFieldVisitRequests(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const qualitySignalsQuery = useQuery({
+    queryKey: ["dashboard-quality-signals", token],
+    queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
+    enabled: Boolean(token && !preview),
+  });
   const dashboardForms = formsQuery.data ?? [];
   const dashboardSubmissions = submissionsQuery.data ?? [];
+  const dashboardUsers = usersQuery.data ?? [];
+  const dashboardFieldOfficers = fieldOfficersQuery.data ?? [];
+  const dashboardVisitRequests = visitRequestsQuery.data ?? [];
+  const dashboardQualitySignals = qualitySignalsQuery.data ?? [];
   const draftForms = dashboardForms.filter(
     (form) => form.is_active && form.status.toLowerCase() !== "published",
   );
@@ -437,15 +415,28 @@ export function Dashboard({ token, principal }: DashboardProps) {
     formPerformance[0] ??
     null;
   const formPerformanceTotals = getFormPerformanceTotals(formPerformance);
+  const formResponseChartData = formPerformance
+    .filter((item) => item.totalSubmissions > 0)
+    .slice(0, 6)
+    .map((item) => ({
+      name:
+        item.form.name.length > 22
+          ? `${item.form.name.slice(0, 21)}…`
+          : item.form.name,
+      responses: item.totalSubmissions,
+    }));
   const formStatsLoading = formsQuery.isLoading || submissionsQuery.isLoading;
   const dashboardLoading =
     summaryQuery.isLoading ||
     formsQuery.isLoading ||
-    submissionsQuery.isLoading;
+    submissionsQuery.isLoading ||
+    fieldOfficersQuery.isLoading ||
+    visitRequestsQuery.isLoading ||
+    qualitySignalsQuery.isLoading;
   const summaryMetrics = summaryQuery.data
     ? [
         {
-          label: "Beneficiaries",
+          label: "Entities",
           value: summaryQuery.data.beneficiaries.toLocaleString(),
           delta: "live",
           tone: "good" as const,
@@ -473,7 +464,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       ]
     : [
         {
-          label: "Beneficiaries",
+          label: "Entities",
           value: "0",
           delta: summaryQuery.isLoading ? "loading" : "not started",
           tone: "neutral" as const,
@@ -512,6 +503,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         summaryQuery.data.open_cases ||
         summaryQuery.data.quality_flags)),
   );
+  const learnExpanded = learnOpenOverride ?? !hasOperationalData;
   const setupSteps: ManagementStep[] = [
     {
       title: "Create team access",
@@ -554,7 +546,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     {
       title: "Import existing data",
       description:
-        "Bring beneficiaries, regions, officers, indicators, or historical records into the system.",
+        "Bring entities, regions, officers, indicators, or historical records into the system.",
       view: "data",
       action: "Open Data tools",
       complete: Boolean(summaryQuery.data?.beneficiaries),
@@ -834,7 +826,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           ].filter(Boolean),
         ).size
       : 0);
-  const liveFieldOfficerUsers = (usersQuery.data ?? []).filter((user) =>
+  const liveFieldOfficerUsers = dashboardUsers.filter((user) =>
     ["field_officer", "collector", "enumerator"].includes((user.role_name ?? "").toLowerCase()),
   ).length;
   const fieldOfficerActivity = liveFieldOfficerUsers || (
@@ -906,6 +898,121 @@ export function Dashboard({ token, principal }: DashboardProps) {
     UsersRound,
     Target,
   ];
+  const nowMs = Date.now();
+  const staleSyncThresholdMs = 48 * 60 * 60 * 1000;
+  const activeOfficerCount =
+    dashboardFieldOfficers.filter((officer) => officer.is_active).length ||
+    fieldOfficerActivity;
+  const recentlySeenOfficerCount = dashboardFieldOfficers.filter((officer) => {
+    const seenValue = officer.last_seen_at ?? officer.last_sync_at;
+    if (!seenValue) return false;
+    const seenMs = new Date(seenValue).getTime();
+    return Number.isFinite(seenMs) && nowMs - seenMs <= staleSyncThresholdMs;
+  }).length;
+  const staleSyncCount = dashboardFieldOfficers.filter((officer) => {
+    if (!officer.is_active) return false;
+    if (!officer.last_sync_at) return true;
+    const syncMs = new Date(officer.last_sync_at).getTime();
+    return !Number.isFinite(syncMs) || nowMs - syncMs > staleSyncThresholdMs;
+  }).length;
+  const roleProfileCount = dashboardUsers.reduce(
+    (total, user) => total + (user.operational_profiles?.length ?? 0),
+    0,
+  );
+  const pendingVisitRequests = dashboardVisitRequests.filter((request) =>
+    ["pending", "change_requested"].includes(request.status.toLowerCase()),
+  ).length;
+  const activeVisitRequests = dashboardVisitRequests.filter((request) =>
+    ["approved", "scheduled", "checked_in"].includes(request.status.toLowerCase()),
+  ).length;
+  const openQualitySignalCount =
+    dashboardQualitySignals.length || summaryQuery.data?.quality_flags || 0;
+  const pendingManagerActions =
+    approvalOverview.pending +
+    pendingVisitRequests +
+    openQualitySignalCount +
+    staleSyncCount;
+  const managerCommandCards: {
+    action: string;
+    detail: string;
+    icon: typeof Plus;
+    label: string;
+    result: string;
+    tone: "accent" | "danger" | "neutral" | "success" | "warning";
+    value: string;
+    view: WorkspaceView;
+  }[] = [
+    {
+      action: "Open field operations",
+      detail: `${activeOfficerCount.toLocaleString()} active officer(s), ${recentlySeenOfficerCount.toLocaleString()} seen or synced recently.`,
+      icon: UsersRound,
+      label: "Field officer activity",
+      result: "Opening Field Operations so managers can review officer status, assignments, devices, and latest field activity.",
+      tone: activeOfficerCount ? "accent" : "neutral",
+      value: activeOfficerCount.toLocaleString(),
+      view: "officers",
+    },
+    {
+      action: "Review role profiles",
+      detail: `${roleProfileCount.toLocaleString()} operational role profile(s) generated from users and stacked roles.`,
+      icon: UserRoundCheck,
+      label: "Role profiles",
+      result: "Opening Users & Teams so managers can review role profiles, responsibilities, scopes, and account controls.",
+      tone: roleProfileCount ? "success" : "neutral",
+      value: roleProfileCount.toLocaleString(),
+      view: "organizations",
+    },
+    {
+      action: "Check sync health",
+      detail: staleSyncCount ? `${staleSyncCount.toLocaleString()} active officer(s) have stale or missing sync.` : "No stale sync signal from active officers.",
+      icon: DatabaseZap,
+      label: "Sync health",
+      result: "Opening sync and connectivity tools so managers can inspect pending uploads, failed syncs, and device readiness.",
+      tone: staleSyncCount ? "warning" : "success",
+      value: staleSyncCount ? `${staleSyncCount} stale` : `${summaryQuery.data?.sync_health_percent ?? syncProgressPercent}%`,
+      view: "connectivity",
+    },
+    {
+      action: "Open approvals",
+      detail: `${approvalOverview.pending.toLocaleString()} submission(s) waiting for approval or review.`,
+      icon: ClipboardCheck,
+      label: "Pending approvals",
+      result: "Opening Submissions so reviewers can approve, return, reject, or archive records before they count.",
+      tone: approvalOverview.pending ? "warning" : "success",
+      value: approvalOverview.pending.toLocaleString(),
+      view: "submissions",
+    },
+    {
+      action: "Review visits",
+      detail: `${pendingVisitRequests.toLocaleString()} visit request(s) need supervisor action, ${activeVisitRequests.toLocaleString()} are approved or underway.`,
+      icon: MapPinned,
+      label: "Visit requests",
+      result: "Opening Field Operations so supervisors can approve visit requests and verify check-in evidence.",
+      tone: pendingVisitRequests ? "warning" : activeVisitRequests ? "accent" : "neutral",
+      value: pendingVisitRequests.toLocaleString(),
+      view: "officers",
+    },
+    {
+      action: "Resolve quality issues",
+      detail: `${openQualitySignalCount.toLocaleString()} open quality issue(s), flags, or reconciliation risks need attention.`,
+      icon: AlertTriangle,
+      label: "Data quality issues",
+      result: "Opening Data Quality so managers can resolve duplicates, GPS issues, missing data, outliers, and conflicts.",
+      tone: openQualitySignalCount ? "danger" : "success",
+      value: openQualitySignalCount.toLocaleString(),
+      view: "dataQuality",
+    },
+    {
+      action: "Open coverage maps",
+      detail: `${coverageOverview.coveragePercent}% GPS coverage across ${coverageOverview.totalSubmissions.toLocaleString()} submitted record(s).`,
+      icon: Gauge,
+      label: "Project coverage",
+      result: "Opening Mapping so managers can inspect project coverage, entity locations, GPS evidence, and collection gaps.",
+      tone: coverageOverview.coveragePercent >= 80 ? "success" : coverageOverview.coveragePercent ? "warning" : "neutral",
+      value: `${coverageOverview.coveragePercent}%`,
+      view: "map",
+    },
+  ];
   const possibleAlerts: Array<DashboardAlert | null> = [
     formPerformanceTotals.pendingReview
       ? {
@@ -955,6 +1062,65 @@ export function Dashboard({ token, principal }: DashboardProps) {
   ];
   const recentAlerts = possibleAlerts.filter((alert): alert is DashboardAlert =>
     Boolean(alert),
+  );
+  const possibleActionQueueItems: {
+    count: number;
+    label: string;
+    result: string;
+    tone: "danger" | "warning" | "neutral";
+    view: WorkspaceView;
+  }[] = [
+    {
+      count: approvalOverview.pending,
+      label: "submissions awaiting review",
+      result:
+        "Opening the review queue so you can approve, return, or reject waiting records.",
+      tone: "warning",
+      view: "submissions",
+    },
+    {
+      count: openQualitySignalCount,
+      label: "open data quality issues",
+      result:
+        "Opening Data Quality so duplicates, GPS issues, and validation failures can be resolved.",
+      tone: "danger",
+      view: "dataQuality",
+    },
+    {
+      count: pendingVisitRequests,
+      label: "visit requests need supervisor action",
+      result:
+        "Opening Field Operations so supervisors can approve or reschedule visit requests.",
+      tone: "warning",
+      view: "officers",
+    },
+    {
+      count: staleSyncCount,
+      label: "officers with stale or missing sync",
+      result:
+        "Opening sync monitoring so pending uploads and offline devices can be checked.",
+      tone: "warning",
+      view: "connectivity",
+    },
+    {
+      count: summaryQuery.data?.open_cases ?? 0,
+      label: "open cases need follow-up",
+      result:
+        "Opening cases so follow-ups can be assigned, progressed, or closed.",
+      tone: "warning",
+      view: "cases",
+    },
+    {
+      count: draftForms.length,
+      label: "draft forms waiting to publish",
+      result:
+        "Opening Forms so drafts can be tested and published for field collection.",
+      tone: "neutral",
+      view: "forms",
+    },
+  ];
+  const actionQueueItems = possibleActionQueueItems.filter(
+    (item) => item.count > 0,
   );
 
   function openView(action: {
@@ -1010,7 +1176,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
   return (
     <section aria-labelledby="dashboard-title" className="space-y-6">
       <section
-        className="surface-premium rounded-2xl p-5 md:p-6"
+        className="surface-hero rounded-2xl p-5 md:p-6"
         aria-labelledby="dashboard-title"
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1055,7 +1221,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 openView({
                   label: "Open map overview",
                   result:
-                    "Opening Mapping so managers can inspect project, submission, beneficiary, coverage, and quality maps.",
+                    "Opening Mapping so managers can inspect project, submission, entity, coverage, and quality maps.",
                   view: "map",
                 })
               }
@@ -1066,6 +1232,51 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </Button>
           </div>
         </div>
+
+        {!dashboardLoading ? (
+          <section
+            aria-label="Needs your attention today"
+            className="mt-5 rounded-2xl border bg-background/80 p-4 shadow-line"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Needs you today
+              </p>
+              <Badge tone={actionQueueItems.length ? "warning" : "success"}>
+                {actionQueueItems.length
+                  ? `${actionQueueItems.reduce((total, item) => total + item.count, 0).toLocaleString()} item(s)`
+                  : "All caught up"}
+              </Badge>
+            </div>
+            {actionQueueItems.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {actionQueueItems.map((item) => (
+                  <button
+                    className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-left text-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    key={item.label}
+                    onClick={() =>
+                      handleAttention(item.label, item.view, item.result)
+                    }
+                    type="button"
+                  >
+                    <Badge tone={item.tone}>{item.count.toLocaleString()}</Badge>
+                    <span className="font-medium">{item.label}</span>
+                    <ArrowUpRight
+                      aria-hidden="true"
+                      className="text-muted-foreground"
+                      size={14}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                No reviews, quality issues, visit requests, or sync problems are
+                waiting on you right now.
+              </p>
+            )}
+          </section>
+        ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {dashboardLoading
@@ -1101,7 +1312,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                           {metric.label}
                         </p>
-                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                        <p className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">
                           {metric.value}
                         </p>
                       </div>
@@ -1121,6 +1332,103 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 );
               })}
         </div>
+
+        <section
+          aria-labelledby="manager-command-center-title"
+          className="mt-5 rounded-2xl border bg-panel p-4 shadow-line"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="support">Manager command center</Badge>
+                <Badge tone={pendingManagerActions ? "warning" : "success"}>
+                  {pendingManagerActions
+                    ? `${pendingManagerActions.toLocaleString()} action(s)`
+                    : "No urgent action"}
+                </Badge>
+              </div>
+              <h2
+                className="mt-2 text-lg font-semibold tracking-tight"
+                id="manager-command-center-title"
+              >
+                What needs management attention today
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                One place to review field officer activity, role profiles, sync
+                health, approvals, visit requests, data quality issues, and
+                project coverage before work slows down in the field.
+              </p>
+            </div>
+            <Button
+              onClick={() =>
+                openView({
+                  label: pendingManagerActions
+                    ? "Open urgent management work"
+                    : "Open field operations",
+                  result: pendingManagerActions
+                    ? "Opening Submissions first because pending approvals, visit requests, quality flags, or stale sync items need management action."
+                    : "Opening Field Operations so managers can inspect field officers, assignments, devices, visits, and readiness.",
+                  view: pendingManagerActions ? "submissions" : "officers",
+                })
+              }
+              type="button"
+              variant={pendingManagerActions ? "primary" : "secondary"}
+            >
+              {pendingManagerActions ? "Open priority work" : "Open operations"}
+              <ArrowUpRight aria-hidden="true" />
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+            {dashboardLoading
+              ? Array.from({ length: 7 }).map((_, index) => (
+                  <div
+                    className="rounded-xl border bg-background/80 p-3"
+                    key={index}
+                  >
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="mt-3 h-7 w-1/2" />
+                    <Skeleton className="mt-3 h-12 w-full" />
+                  </div>
+                ))
+              : managerCommandCards.map((card) => {
+                  const Icon = card.icon;
+
+                  return (
+                    <button
+                      className="group flex min-h-[156px] flex-col justify-between rounded-xl border bg-background/80 p-3 text-left shadow-line transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                      key={card.label}
+                      onClick={() =>
+                        openView({
+                          label: card.label,
+                          result: card.result,
+                          view: card.view,
+                        })
+                      }
+                      type="button"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <Badge tone={card.tone}>{card.label}</Badge>
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                            <Icon aria-hidden="true" size={16} />
+                          </span>
+                        </div>
+                        <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">
+                          {card.value}
+                        </p>
+                        <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                          {card.detail}
+                        </p>
+                      </div>
+                      <span className="mt-3 text-xs font-medium text-primary">
+                        {card.action}
+                      </span>
+                    </button>
+                  );
+                })}
+          </div>
+        </section>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px_360px]">
           <section className="rounded-2xl border bg-panel p-4 shadow-line">
@@ -1198,11 +1506,19 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   type="button"
                 >
                   <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="mt-1 text-lg font-semibold">
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
                     {Number(value).toLocaleString()}
                   </p>
                 </button>
               ))}
+            </div>
+            <div className="mt-4 rounded-xl border bg-background/80 p-3">
+              <ApprovalStatusChart
+                approved={approvalOverview.approved}
+                pending={approvalOverview.pending}
+                rejected={approvalOverview.rejected}
+                returned={approvalOverview.returned}
+              />
             </div>
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs">
@@ -1260,7 +1576,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 type="button"
               >
                 <p className="text-xs text-muted-foreground">Mapped records</p>
-                <p className="mt-1 text-lg font-semibold">
+                <p className="mt-1 text-lg font-semibold tabular-nums">
                   {coverageOverview.locatedSubmissions.toLocaleString()}
                 </p>
               </button>
@@ -1276,7 +1592,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 type="button"
               >
                 <p className="text-xs text-muted-foreground">Locations</p>
-                <p className="mt-1 text-lg font-semibold">
+                <p className="mt-1 text-lg font-semibold tabular-nums">
                   {coverageOverview.uniqueLocations.toLocaleString()}
                 </p>
               </button>
@@ -1329,18 +1645,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Data collection
               </p>
-              <ContextHelp
-                activeHelp={activeHelp}
-                id="formActivity"
-                setActiveHelp={setActiveHelp}
-                title="Active form cards"
-              >
+              <HelpHint label="About active form cards" title="Active form cards">
                 <p>
                   These cards show forms that are live or already receiving
                   responses. Open a card to see its purpose, responses, sync
                   count, review status, and edit actions.
                 </p>
-              </ContextHelp>
+              </HelpHint>
             </div>
             <h2
               id="form-activity-title"
@@ -1370,11 +1681,35 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {label}
                 </p>
-                <p className="mt-2 text-lg font-semibold">{value}</p>
+                <p className="mt-2 text-lg font-semibold tabular-nums">{value}</p>
               </button>
             ))}
           </div>
         </div>
+
+        {formStatsLoading ? (
+          <div className="mt-5 rounded-2xl border bg-background/70 p-4">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="mt-4 h-32 w-full" />
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border bg-background/80 p-4 shadow-line">
+            <p className="text-sm font-semibold">Response volume by form</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Submission counts for the most active forms.
+            </p>
+            <div className="mt-4">
+              {formResponseChartData.length ? (
+                <FormResponseChart data={formResponseChartData} />
+              ) : (
+                <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed text-center text-xs text-muted-foreground">
+                  No form responses yet. Published forms will appear here once
+                  data starts coming in.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {formStatsLoading ? (
           <div className="mt-5 grid gap-3 lg:grid-cols-3">
@@ -1443,7 +1778,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                           <p className="text-xs text-muted-foreground">
                             {label}
                           </p>
-                          <p className="mt-1 text-lg font-semibold">{value}</p>
+                          <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
                         </div>
                       ))}
                     </div>
@@ -1560,7 +1895,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                       key={label}
                     >
                       <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className="mt-1 text-lg font-semibold">{value}</p>
+                      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -1673,17 +2008,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 Today
               </p>
-              <ContextHelp
-                activeHelp={activeHelp}
-                id="dailyFocus"
-                setActiveHelp={setActiveHelp}
-                title="Daily focus"
-              >
+              <HelpHint label="About daily focus" title="Daily focus">
                 <p>
                   Use this section to jump into review, sync, quality, or field
                   activity when something needs attention today.
                 </p>
-              </ContextHelp>
+              </HelpHint>
             </div>
             <h2
               id="daily-focus-title"
@@ -1761,6 +2091,41 @@ export function Dashboard({ token, principal }: DashboardProps) {
         </section>
       ) : null}
 
+      <section
+        aria-label="Setup guide and learning"
+        className="surface-premium rounded-2xl"
+      >
+        <button
+          aria-expanded={learnExpanded}
+          className="flex w-full items-center justify-between gap-3 p-5 text-left"
+          onClick={() => setLearnOpenOverride(!learnExpanded)}
+          type="button"
+        >
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Setup guide &amp; learning
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Role guidance, setup readiness, manager questions, and the data
+              quality workflow.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={setupProgress >= 80 ? "success" : "warning"}>
+              Setup {setupProgress}%
+            </Badge>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "text-muted-foreground transition-transform",
+                learnExpanded && "rotate-180",
+              )}
+              size={18}
+            />
+          </div>
+        </button>
+        {learnExpanded ? (
+          <div className="space-y-6 px-5 pb-5">
       <section
         className="surface-premium rounded-2xl p-5"
         aria-labelledby="role-focus-title"
@@ -2095,6 +2460,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
           })}
         </div>
       </section>
+          </div>
+        ) : null}
+      </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {summaryMetrics.map((metric, index) => {
@@ -2112,7 +2480,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   size={17}
                 />
               </div>
-              <p className="mt-3 text-2xl font-semibold tracking-tight">
+              <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">
                 {metric.value}
               </p>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -2305,12 +2673,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Waiting to sync</dt>
-              <dd className="mt-2 text-xl font-semibold">0</dd>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">0</dd>
               <Skeleton className="mt-3 h-1.5 w-4/5" />
             </div>
             <div className="rounded-xl border bg-background/80 p-3">
               <dt className="text-muted-foreground">Retry queue</dt>
-              <dd className="mt-2 text-xl font-semibold">0</dd>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">0</dd>
               <Skeleton className="mt-3 h-1.5 w-1/3" />
             </div>
           </dl>

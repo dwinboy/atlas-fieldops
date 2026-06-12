@@ -43,6 +43,7 @@ import {
   type SurveyStatus,
   type XlsFormWorkbook,
 } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type SurveyManagementProps = {
@@ -235,11 +236,10 @@ function titleCase(value: string): string {
 }
 
 function statusTone(status: SurveyStatus): "neutral" | "success" | "warning" | "danger" | "accent" {
-  if (status === "active") return "success";
-  if (status === "completed") return "accent";
-  if (status === "paused") return "warning";
-  if (status === "archived") return "danger";
-  return "neutral";
+  const tone = canonicalStatusTone(status);
+  return tone === "success" || tone === "warning" || tone === "danger"
+    ? tone
+    : "neutral";
 }
 
 function surveyProgress(status: SurveyStatus, formCount: number): number {

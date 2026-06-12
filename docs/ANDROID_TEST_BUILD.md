@@ -2,7 +2,7 @@
 
 ## Build Goal
 
-Generate an Android build connected to:
+Generate an Android build connected to the production backend API:
 
 `https://atlasfieldops.com/api/v1`
 
@@ -15,7 +15,7 @@ The APK is for direct phone testing. The AAB is for future Play Store release.
 - Android package: `com.atlasfieldops.mobile`
 - App name: Atlas FieldOps
 - Version name: `1.0.0-test`
-- Version code: `1`
+- Version code: `2`
 - Runtime production API URL: `https://atlasfieldops.com/api/v1`
 
 ## Environment Files
@@ -169,4 +169,3 @@ adb logcat | grep -i "Atlas FieldOps"
 ```
 
 Never share passwords, tokens, or sensitive form answers in support messages.
-

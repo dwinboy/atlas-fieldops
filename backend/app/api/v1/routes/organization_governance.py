@@ -31,6 +31,7 @@ from app.schemas.organization_governance import (
     SessionLogRead,
     TeamCreate,
     TeamRead,
+    TeamUpdate,
     WorkforceProfileCreate,
     WorkforceProfileRead,
 )
@@ -91,6 +92,19 @@ async def create_team(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TeamRead:
     return await OrganizationGovernanceService(session).create_team(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.patch("/teams/{team_id}", response_model=TeamRead)
+async def update_team(
+    team_id: UUID,
+    payload: TeamUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TeamRead:
+    try:
+        return await OrganizationGovernanceService(session).update_team(organization_uuid(principal), user_uuid(principal), team_id, payload)
+    except OrganizationGovernanceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/workforce-profiles", response_model=list[WorkforceProfileRead])

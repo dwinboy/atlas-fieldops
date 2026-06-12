@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 from typing import TypeVar
 
@@ -16,6 +17,8 @@ from app.models.operations import (
     DataMappingTemplate,
     DataQualitySignal,
     DonorReport,
+    EntityAttribute,
+    EntityCategory,
     InterventionRecord,
     KnowledgeDocument,
     MediaEvidence,
@@ -170,6 +173,118 @@ class OperationsRepository:
         result = await self.session.execute(query.order_by(Beneficiary.updated_at.desc()).limit(500))
         return list(result.scalars())
 
+    async def list_entity_categories(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None = None,
+        include_archived: bool = False,
+    ) -> list[EntityCategory]:
+        query = select(EntityCategory).where(
+            EntityCategory.organization_id == organization_id,
+            EntityCategory.deleted_at.is_(None),
+        )
+        if project_id is not None:
+            query = query.where(EntityCategory.project_id == project_id)
+        if not include_archived:
+            query = query.where(EntityCategory.status != "archived")
+        result = await self.session.execute(query.order_by(EntityCategory.updated_at.desc()))
+        return list(result.scalars())
+
+    async def get_entity_category(self, *, organization_id: UUID, category_id: UUID) -> EntityCategory | None:
+        result = await self.session.execute(
+            select(EntityCategory).where(
+                EntityCategory.organization_id == organization_id,
+                EntityCategory.id == category_id,
+                EntityCategory.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def create_entity_category(
+        self,
+        *,
+        organization_id: UUID,
+        values: dict[str, object],
+        attributes: list[dict[str, object]],
+    ) -> EntityCategory:
+        category = EntityCategory(organization_id=organization_id, **values)
+        self.session.add(category)
+        await self.session.flush()
+        await self.replace_entity_attributes(organization_id=organization_id, category=category, attributes=attributes)
+        return category
+
+    async def update_entity_category(
+        self,
+        *,
+        organization_id: UUID,
+        category: EntityCategory,
+        values: dict[str, object],
+        attributes: list[dict[str, object]] | None = None,
+    ) -> EntityCategory:
+        for key, value in values.items():
+            setattr(category, key, value)
+        if attributes is not None:
+            await self.replace_entity_attributes(organization_id=organization_id, category=category, attributes=attributes)
+        await self.session.flush()
+        return category
+
+    async def replace_entity_attributes(
+        self,
+        *,
+        organization_id: UUID,
+        category: EntityCategory,
+        attributes: list[dict[str, object]],
+    ) -> list[EntityAttribute]:
+        existing_result = await self.session.execute(
+            select(EntityAttribute).where(
+                EntityAttribute.organization_id == organization_id,
+                EntityAttribute.category_id == category.id,
+                EntityAttribute.deleted_at.is_(None),
+            )
+        )
+        existing_by_key = {attribute.field_key: attribute for attribute in existing_result.scalars()}
+        keep_keys: set[str] = set()
+        saved: list[EntityAttribute] = []
+        for index, values in enumerate(attributes):
+            field_key = str(values["field_key"])
+            keep_keys.add(field_key)
+            attribute = existing_by_key.get(field_key)
+            payload = {**values, "order_index": values.get("order_index", index)}
+            if attribute is None:
+                attribute = EntityAttribute(organization_id=organization_id, category_id=category.id, **payload)
+                self.session.add(attribute)
+            else:
+                for key, value in payload.items():
+                    setattr(attribute, key, value)
+            saved.append(attribute)
+        for field_key, attribute in existing_by_key.items():
+            if field_key not in keep_keys:
+                attribute.status = "archived"
+                attribute.deleted_at = datetime.now(UTC)
+        await self.session.flush()
+        return saved
+
+    async def list_entity_attributes(
+        self,
+        *,
+        organization_id: UUID,
+        category_ids: set[UUID],
+    ) -> dict[UUID, list[EntityAttribute]]:
+        if not category_ids:
+            return {}
+        result = await self.session.execute(
+            select(EntityAttribute).where(
+                EntityAttribute.organization_id == organization_id,
+                EntityAttribute.category_id.in_(category_ids),
+                EntityAttribute.deleted_at.is_(None),
+            ).order_by(EntityAttribute.order_index, EntityAttribute.created_at)
+        )
+        grouped: dict[UUID, list[EntityAttribute]] = {}
+        for attribute in result.scalars():
+            grouped.setdefault(attribute.category_id, []).append(attribute)
+        return grouped
+
     async def list_quality_signals(
         self,
         organization_id: UUID,
@@ -215,6 +330,16 @@ class OperationsRepository:
             .order_by(MonitoringIndicator.code)
         )
         return list(result.scalars())
+
+    async def get_indicator_by_id(self, *, organization_id: UUID, indicator_id: UUID) -> MonitoringIndicator | None:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.id == indicator_id,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def list_approved_submissions(
         self,
@@ -280,6 +405,48 @@ class OperationsRepository:
             .order_by(DonorReport.updated_at.desc())
         )
         return list(result.scalars())
+
+    async def get_report_by_id(self, *, organization_id: UUID, report_id: UUID) -> DonorReport | None:
+        result = await self.session.execute(
+            select(DonorReport).where(
+                DonorReport.organization_id == organization_id,
+                DonorReport.id == report_id,
+                DonorReport.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_report(self, report: DonorReport, values: dict[str, object]) -> DonorReport:
+        for key, value in values.items():
+            setattr(report, key, value)
+        await self.session.flush()
+        return report
+
+    async def count_submissions_scoped(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None = None,
+        status: str | None = None,
+    ) -> int:
+        query = select(func.count()).select_from(Submission).where(
+            Submission.organization_id == organization_id, Submission.deleted_at.is_(None)
+        )
+        if project_id is not None:
+            query = query.where(Submission.project_id == project_id)
+        if status is not None:
+            query = query.where(Submission.status == status)
+        result = await self.session.execute(query)
+        return int(result.scalar_one())
+
+    async def count_beneficiaries_scoped(self, *, organization_id: UUID, project_id: UUID | None = None) -> int:
+        query = select(func.count()).select_from(Beneficiary).where(
+            Beneficiary.organization_id == organization_id, Beneficiary.deleted_at.is_(None)
+        )
+        if project_id is not None:
+            query = query.where(Beneficiary.project_id == project_id)
+        result = await self.session.execute(query)
+        return int(result.scalar_one())
 
     async def create_enterprise_record(
         self,

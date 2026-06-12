@@ -1,32 +1,65 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from shapely.geometry.base import BaseGeometry
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project
 from app.models.collection import Submission
-from app.models.operations import Beneficiary
+from app.models.operations import Beneficiary, EntityCategory, MediaEvidence, WorkforceProfile
+from app.repositories.audit import AuditRepository
+from app.repositories.collection import SubmissionRepository
+from app.repositories.operations import OperationsRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.collection import DeviceMetadata, LocationCapture, SubmissionCreate
 from app.schemas.mobile import (
+    MobileActionAcceptedRead,
     MobileAssignmentRead,
+    MobileAssignedCountsRead,
+    MobileAttachmentRead,
+    MobileAuditEventUpload,
+    MobileAuditEventUploadRead,
+    MobileBlockedStateRead,
     MobileBootstrapRead,
+    MobileDeviceRegistrationCreate,
+    MobileDeviceRegistrationRead,
+    MobileDeviceRecordRead,
+    MobileEntityCategoryRead,
+    MobileEntityCategoryAttributeRead,
     MobileEntityRead,
     MobileFormRead,
     MobileFormVersionRead,
     MobileLocationRead,
+    MobileOfflineRulesRead,
+    MobileOfficerProfileRead,
+    MobilePermissionSetRead,
     MobileProjectRead,
     MobileReferenceListRead,
+    MobileSubmissionRead,
+    MobileSubmissionStatusRead,
     MobileSubmissionUpload,
     MobileSubmissionUploadRead,
     MobileSyncPackageRead,
+    MobileSyncQueueUpload,
+    MobileSyncUploadRead,
 )
 from app.services.collection import CollectionNotFoundError, SubmissionService
+from app.services.geometry import find_overlaps, overlap_ratio, polygon_from_geojson
+
+_ATTACHMENT_MEDIA_TYPES = {
+    "Photo": "photo",
+    "Audio": "audio",
+    "Video": "video",
+    "Signature": "signature",
+    "FileUpload": "file",
+}
 
 
 def _form_status(value: str) -> str:
@@ -39,8 +72,28 @@ def _form_status(value: str) -> str:
     }.get(value.lower(), value.title())
 
 
+def _flatten_mobile_responses(responses: list[dict[str, Any]]) -> dict[str, Any]:
+    flattened: dict[str, Any] = {}
+    for response in responses:
+        variable_name = str(response.get("variableName") or response.get("variable_name") or "").strip()
+        question_id = str(response.get("questionId") or response.get("question_id") or "").strip()
+        key = variable_name or question_id
+        if key:
+            flattened[key] = response.get("value")
+    return flattened
+
+
 def _assignment_status(is_active: bool) -> str:
     return "Assigned" if is_active else "Paused"
+
+
+def _review_status(submission_status: str) -> str:
+    return {
+        "approved": "approved",
+        "under_review": "under_review",
+        "rejected": "returned",
+        "correction_requested": "returned",
+    }.get(submission_status, "pending_review")
 
 
 def _mobile_question_type(value: str) -> str:
@@ -58,6 +111,7 @@ def _mobile_question_type(value: str) -> str:
         "dropdown": "Dropdown",
         "multiselect": "MultiSelect",
         "checkbox": "MultiSelect",
+        "likert": "SingleSelect",
         "gps": "GPS",
         "geolocation": "GPS",
         "map": "GPS",
@@ -76,8 +130,21 @@ def _mobile_question_type(value: str) -> str:
         "repeatable_group": "RepeatGroup",
         "matrix_single": "Matrix",
         "matrix_multi": "Matrix",
+        "grid": "Matrix",
         "ranking": "Ranking",
+        "nps": "Nps",
+        "rating": "Rating",
+        "hidden": "Hidden",
+        "polygon": "Polygon",
     }.get(value.lower(), "Text")
+
+
+def _mobile_input_mode(value: str) -> str | None:
+    return {
+        "phone": "phone",
+        "email": "email",
+        "url": "url",
+    }.get(value.lower())
 
 
 def _field_options(options: list[Any]) -> list[dict[str, Any]]:
@@ -93,14 +160,117 @@ def _field_options(options: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def _field_appearance_text(field: dict[str, Any]) -> str:
+    appearance = field.get("appearance")
+    if isinstance(appearance, dict):
+        return str(appearance.get("helpText") or "")
+    return ""
+
+
+def _field_metadata_value(field: dict[str, Any], key: str) -> str | None:
+    text = _field_appearance_text(field)
+    match = re.search(rf"\[{re.escape(key)}:([^\]]*)\]", text)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def _field_has_tag(field: dict[str, Any], tag: str) -> bool:
+    return f"[{tag}]" in _field_appearance_text(field)
+
+
+def _field_metadata_tags(field: dict[str, Any]) -> list[str]:
+    text = _field_appearance_text(field)
+    tags = re.findall(r"\[([a-zA-Z0-9_-]+)\]", text)
+    return sorted({tag for tag in tags if ":" not in tag})
+
+
+def _field_mobile_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "displayMode": _field_metadata_value(field, "mobile"),
+        "blockedHelp": _field_metadata_value(field, "blocked-help"),
+        "offlineCompatible": _field_has_tag(field, "offline-compatible"),
+        "lowBandwidth": _field_has_tag(field, "low-bandwidth"),
+        "prefillAllowed": _field_has_tag(field, "prefill-allowed"),
+        "saveDraftAfterAnswer": _field_has_tag(field, "save-draft-after-answer"),
+        "reviewBeforeSubmit": _field_has_tag(field, "review-answer-before-submit"),
+        "syncPriority": _field_has_tag(field, "sync-priority"),
+    }
+
+
+def _field_privacy_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "sensitivity": _field_metadata_value(field, "sensitivity") or ("sensitive" if field.get("sensitive") else "standard"),
+        "consentField": _field_metadata_value(field, "consent-field"),
+        "maskOnScreen": _field_has_tag(field, "mask-on-screen"),
+        "maskOnExport": _field_has_tag(field, "mask-on-export"),
+        "encryptAtRest": _field_has_tag(field, "encrypt-at-rest"),
+        "hideAfterSubmit": _field_has_tag(field, "hide-after-submit"),
+        "screenshotRestricted": _field_has_tag(field, "screenshot-restricted"),
+        "consentRequired": _field_has_tag(field, "consent-required"),
+    }
+
+
+def _field_quality_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "captureTimestamp": _field_has_tag(field, "capture-timestamp"),
+        "captureGps": _field_has_tag(field, "capture-gps"),
+        "photoEvidence": _field_has_tag(field, "photo-evidence"),
+        "backCheckCandidate": _field_has_tag(field, "back-check-candidate"),
+        "staticGpsWarning": _field_has_tag(field, "static-gps-warning"),
+        "fastInterviewWarning": _field_has_tag(field, "fast-interview-warning"),
+        "minimumSeconds": _field_metadata_value(field, "min-seconds"),
+        "integrityAction": _field_metadata_value(field, "integrity-action"),
+    }
+
+
+def _field_governance_controls(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "editRule": _field_metadata_value(field, "edit-rule"),
+        "reviewerRole": _field_metadata_value(field, "reviewer-role"),
+        "auditLabel": _field_metadata_value(field, "audit-label"),
+        "changeReasonRequired": _field_has_tag(field, "change-reason-required"),
+        "approvedDataLock": _field_has_tag(field, "approved-data-lock"),
+        "reviewerCommentRequired": _field_has_tag(field, "reviewer-comment-required"),
+        "includeInDataFreeze": _field_has_tag(field, "include-in-data-freeze"),
+        "qualityFlagVisible": _field_has_tag(field, "quality-flag-visible"),
+        "sourceLineageVisible": _field_has_tag(field, "source-lineage-visible"),
+    }
+
+
+def _field_indicator_mapping(field: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "indicatorId": _field_metadata_value(field, "indicator"),
+        "component": _field_metadata_value(field, "indicator-component"),
+        "unit": _field_metadata_value(field, "unit"),
+        "reportingPeriod": _field_metadata_value(field, "report-period"),
+        "disaggregation": _field_metadata_value(field, "disaggregation"),
+        "donorTag": _field_metadata_value(field, "donor-tag"),
+    }
+
+
+def _field_beneficiary_mapping(field: dict[str, Any]) -> dict[str, Any]:
+    typed_mapping = field.get("beneficiary") if isinstance(field.get("beneficiary"), dict) else {}
+    return {
+        "profileImpact": _field_metadata_value(field, "profile-impact") or typed_mapping.get("profileImpact"),
+        "beneficiaryField": _field_metadata_value(field, "beneficiary-field") or typed_mapping.get("profileField"),
+        "profileUpdateRule": _field_metadata_value(field, "profile-update-rule") or typed_mapping.get("profileUpdateRule"),
+        "duplicateKey": _field_has_tag(field, "duplicate-key"),
+        "sourceOfTruth": _field_has_tag(field, "source-of-truth"),
+        "lineageRequired": _field_has_tag(field, "lineage-required"),
+    }
+
+
 def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
+    blocked_help = _field_metadata_value(field, "blocked-help")
     if bool(field.get("required", False)):
         rules.append(
             {
                 "ruleType": "Required",
                 "value": True,
-                "message": "This question is required.",
+                "message": blocked_help or "This question is required.",
                 "severity": "Block",
             }
         )
@@ -120,7 +290,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     {
                         "ruleType": rule_type,
                         "value": validation[source],
-                        "message": str(validation.get("message") or "Check the allowed value for this question."),
+                        "message": str(validation.get("message") or blocked_help or "Check the allowed value for this question."),
                         "severity": "Block",
                     }
                 )
@@ -129,7 +299,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                 {
                     "ruleType": "Custom",
                     "value": f"accuracyMax:{validation['accuracyMax']}",
-                    "message": f"GPS accuracy must be {validation['accuracyMax']} meters or better.",
+                    "message": blocked_help or f"GPS accuracy must be {validation['accuracyMax']} meters or better.",
                     "severity": "Block",
                 }
             )
@@ -142,6 +312,72 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Warning",
                 }
             )
+    if field_type == "polygon":
+        polygon_config = field.get("polygon") if isinstance(field.get("polygon"), dict) else {}
+        min_vertices = polygon_config.get("minVertices", 3)
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": f"minVertices:{min_vertices}",
+                "message": blocked_help or f"Draw a boundary with at least {min_vertices} points.",
+                "severity": "Block",
+            }
+        )
+        if polygon_config.get("requireClosed", True):
+            rules.append(
+                {
+                    "ruleType": "Custom",
+                    "value": "requireClosed:true",
+                    "message": blocked_help or "The boundary must form a closed shape.",
+                    "severity": "Block",
+                }
+            )
+        if polygon_config.get("overlapCheck", True):
+            scope = polygon_config.get("overlapScope", "form")
+            rules.append(
+                {
+                    "ruleType": "Custom",
+                    "value": f"overlapCheck:true:{scope}",
+                    "message": "This boundary will be checked for overlaps with other submissions.",
+                    "severity": "Warning",
+                }
+            )
+    if _field_has_tag(field, "capture-gps"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "captureGps:true",
+                "message": blocked_help or "Capture GPS evidence before submitting this answer.",
+                "severity": "Block" if _field_metadata_value(field, "integrity-action") == "block_submission" else "Warning",
+            }
+        )
+    if _field_has_tag(field, "photo-evidence"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "photoEvidence:true",
+                "message": blocked_help or "Add photo evidence for this question when required by the form.",
+                "severity": "Block" if _field_metadata_value(field, "integrity-action") == "block_submission" else "Warning",
+            }
+        )
+    if _field_has_tag(field, "consent-required"):
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "consentRequired:true",
+                "message": blocked_help or "Consent must be captured before this answer can be used.",
+                "severity": "Block",
+            }
+        )
+    if field_type == "matrix_multi":
+        rules.append(
+            {
+                "ruleType": "Custom",
+                "value": "matrixMode:multi",
+                "message": "Multiple matrix choices are allowed per row.",
+                "severity": "Warning",
+            }
+        )
     if field_type == "email":
         rules.append(
             {
@@ -234,11 +470,115 @@ def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[
                 "action": "Calculate",
                 "sourceQuestionId": str(field.get("id")),
                 "operator": "IsNotEmpty",
-                "value": None,
+                "value": expression,
                 "targetQuestionId": field.get("id"),
             }
         )
     return rules
+
+
+def _mobile_default_value(
+    field: dict[str, Any],
+    variable_to_id: dict[str, str] | None = None,
+    reference_by_question: dict[str, str] | None = None,
+) -> Any:
+    field_type = str(field.get("type") or "").lower()
+    default_value = field.get("defaultValue")
+    if field_type not in {"matrix_single", "matrix_multi", "grid", "repeat_group", "repeatable_group", "ranking"}:
+        return default_value
+
+    metadata: dict[str, Any] = default_value if isinstance(default_value, dict) else {}
+    if default_value is not None and not isinstance(default_value, dict):
+        metadata["value"] = default_value
+    if field_type in {"matrix_single", "matrix_multi", "grid"}:
+        matrix_config = field.get("matrix") if isinstance(field.get("matrix"), dict) else {}
+        metadata.setdefault("mode", "multi" if field_type == "matrix_multi" else "single")
+        metadata.setdefault(
+            "rows",
+            field.get("rows") or field.get("matrixRows") or field.get("statements") or matrix_config.get("rows") or [],
+        )
+        metadata.setdefault(
+            "columns",
+            field.get("columns") or field.get("matrixColumns") or field.get("options") or matrix_config.get("columns") or [],
+        )
+    if field_type in {"repeat_group", "repeatable_group"}:
+        raw_fields = field.get("fields") or field.get("questions") or field.get("children") or []
+        metadata["fields"] = [
+            _build_question_field(
+                sub_field,
+                field_id=str(sub_field.get("id") or f"{field.get('id')}-field-{sub_index + 1}"),
+                section_id=str(field.get("id") or ""),
+                order=sub_index + 1,
+                variable_to_id=variable_to_id,
+                reference_by_question=reference_by_question,
+            )
+            for sub_index, sub_field in enumerate(raw_fields)
+            if isinstance(sub_field, dict)
+        ]
+    if field_type == "ranking":
+        metadata.setdefault("options", field.get("options") or [])
+    return metadata
+
+
+def _build_question_field(
+    field: dict[str, Any],
+    *,
+    field_id: str,
+    section_id: str,
+    order: int,
+    variable_to_id: dict[str, str] | None = None,
+    reference_by_question: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    variable_to_id = variable_to_id or {}
+    reference_by_question = reference_by_question or {}
+    variable_name = str(field.get("variable_name") or field.get("variableName") or field_id.replace("-", "_").lower())
+    reference_list_id = (
+        field.get("referenceListId")
+        or _field_metadata_value(field, "reference-list")
+        or reference_by_question.get(field_id)
+    )
+    cascading_parent = field.get("cascadingParentQuestionId") or variable_to_id.get(
+        str(_field_metadata_value(field, "reference-parent") or "")
+    )
+    privacy_controls = _field_privacy_controls(field)
+    return {
+        "id": field_id,
+        "sectionId": section_id,
+        "variableName": variable_name,
+        "label": str(field.get("label") or field_id),
+        "helpText": field.get("hint"),
+        "type": _mobile_question_type(str(field.get("type") or "text")),
+        "inputMode": _mobile_input_mode(str(field.get("type") or "text")),
+        "required": bool(field.get("required", False)),
+        "readOnly": bool(field.get("readOnly", False)),
+        "defaultValue": _mobile_default_value(field, variable_to_id, reference_by_question),
+        "options": _field_options(list(field.get("options") or [])),
+        "validationRules": _validation_rules(field),
+        "logicRules": _logic_rules(field, variable_to_id),
+        "referenceListId": reference_list_id,
+        "cascadingParentQuestionId": cascading_parent,
+        "sensitive": bool(
+            field.get("sensitive", False)
+            or privacy_controls["sensitivity"] in {"sensitive", "restricted", "pii"}
+        ),
+        "repeatSettings": field.get("repeatSettings"),
+        "metadataTags": _field_metadata_tags(field),
+        "indicatorMapping": _field_indicator_mapping(field),
+        "beneficiaryMapping": _field_beneficiary_mapping(field),
+        "referenceControls": {
+            "referenceListId": reference_list_id,
+            "parentQuestionId": cascading_parent,
+            "newReferencePolicy": _field_metadata_value(field, "new-reference-policy"),
+            "offlineRequired": _field_has_tag(field, "reference-offline"),
+            "searchable": _field_has_tag(field, "searchable-reference"),
+            "versionLocked": _field_has_tag(field, "reference-version-lock"),
+        },
+        "qualityControls": _field_quality_controls(field),
+        "privacyControls": privacy_controls,
+        "mobileControls": _field_mobile_controls(field),
+        "governanceControls": _field_governance_controls(field),
+        "order": order,
+    }
 
 
 def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -264,27 +604,15 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
         questions: list[dict[str, Any]] = []
         for field_index, field in enumerate(section.get("fields", [])):
             field_id = str(field.get("id") or f"{section_id}-question-{field_index + 1}")
-            variable_name = str(field.get("variable_name") or field.get("variableName") or field_id.replace("-", "_").lower())
             questions.append(
-                {
-                    "id": field_id,
-                    "sectionId": section_id,
-                    "variableName": variable_name,
-                    "label": str(field.get("label") or field_id),
-                    "helpText": field.get("hint"),
-                    "type": _mobile_question_type(str(field.get("type") or "text")),
-                    "required": bool(field.get("required", False)),
-                    "readOnly": bool(field.get("readOnly", False)),
-                    "defaultValue": field.get("defaultValue"),
-                    "options": _field_options(list(field.get("options") or [])),
-                    "validationRules": _validation_rules(field),
-                    "logicRules": _logic_rules(field, variable_to_id),
-                    "referenceListId": field.get("referenceListId") or reference_by_question.get(field_id),
-                    "cascadingParentQuestionId": field.get("cascadingParentQuestionId"),
-                    "sensitive": bool(field.get("sensitive", False)),
-                    "repeatSettings": field.get("repeatSettings"),
-                    "order": field_index + 1,
-                }
+                _build_question_field(
+                    field,
+                    field_id=field_id,
+                    section_id=section_id,
+                    order=field_index + 1,
+                    variable_to_id=variable_to_id,
+                    reference_by_question=reference_by_question,
+                )
             )
         sections.append(
             {
@@ -296,6 +624,18 @@ def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] 
             }
         )
     return sections
+
+
+def _polygon_question_ids(schema_json: dict[str, Any]) -> set[str]:
+    question_ids: set[str] = set()
+    for section_index, section in enumerate(schema_json.get("sections", [])):
+        section_id = str(section.get("id") or f"section-{section_index + 1}")
+        for field_index, field in enumerate(section.get("fields", [])):
+            if _mobile_question_type(str(field.get("type") or "")) != "Polygon":
+                continue
+            field_id = str(field.get("id") or f"{section_id}-question-{field_index + 1}")
+            question_ids.add(field_id)
+    return question_ids
 
 
 def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
@@ -312,22 +652,46 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
         "once_per_event": "OncePerEventPerEntity",
         "unlimited": "Unlimited",
     }
+    duplicate_mode = str(entity_controls.get("duplicate_mode") or "weighted")
+    if duplicate_mode not in {"exact", "fuzzy", "weighted"}:
+        duplicate_mode = "weighted"
+    duplicate_action = str(entity_controls.get("duplicate_action") or "block")
+    if duplicate_action not in {"block", "warn", "review"}:
+        duplicate_action = "block"
+    raw_threshold = entity_controls.get("duplicate_threshold")
+    duplicate_threshold = (
+        int(raw_threshold) if isinstance(raw_threshold, (int, float)) and 0 <= raw_threshold <= 100 else 60
+    )
     return {
         "linkedToEntity": bool(entity_controls.get("is_entity_linked", False)),
         "entityType": entity_controls.get("entity_type"),
+        "entityCategoryId": str(entity_controls.get("entity_category_id")) if entity_controls.get("entity_category_id") else None,
         "createsNewEntity": bool(entity_controls.get("creates_new_entity", False)),
         "updatesExistingEntity": bool(entity_controls.get("updates_existing_entity", False)),
         "requiresExistingEntity": bool(entity_controls.get("requires_existing_entity", False)),
         "allowsAnonymousSubmission": bool(entity_controls.get("allows_anonymous_submission", True)),
         "frequencyRule": frequency_map.get(frequency, frequency if frequency in frequency_map.values() else "Unlimited"),
         "prefillMappings": entity_controls.get("prefill_mappings") or [],
+        "duplicateMode": duplicate_mode,
+        "duplicateThreshold": duplicate_threshold,
+        "duplicateAction": duplicate_action,
     }
+
+
+def _entity_type_prefix(entity_type: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]", "", entity_type.upper())
+    if len(compact) >= 3:
+        return compact[:3]
+    return (compact or "ENT").ljust(3, "X")
 
 
 class MobileService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.submissions = SubmissionService(session)
+        self.submission_repo = SubmissionRepository(session)
+        self.operations_repo = OperationsRepository(session)
+        self.audit = AuditRepository(session)
 
     async def _officer_profile(self, organization_id: UUID, user_id: UUID) -> FieldOfficerProfile | None:
         result = await self.session.execute(
@@ -335,10 +699,54 @@ class MobileService:
                 FieldOfficerProfile.organization_id == organization_id,
                 FieldOfficerProfile.user_id == user_id,
                 FieldOfficerProfile.deleted_at.is_(None),
-                FieldOfficerProfile.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none()
+
+    async def _ensure_officer_profile(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        principal: CurrentPrincipal,
+    ) -> FieldOfficerProfile | None:
+        officer = await self._officer_profile(organization_id, user_id)
+        if officer is not None:
+            return officer
+        if "field_officer" not in {canonical_role(role) for role in principal.roles}:
+            return None
+        officer = FieldOfficerProfile(
+            organization_id=organization_id,
+            user_id=user_id,
+            employee_code=f"FO-{str(user_id)[:8].upper()}",
+            phone_number=None,
+            home_region=None,
+            is_active=True,
+        )
+        self.session.add(officer)
+        await self.session.flush()
+        return officer
+
+    async def register_device(
+        self,
+        principal: CurrentPrincipal,
+        payload: MobileDeviceRegistrationCreate,
+    ) -> MobileDeviceRegistrationRead:
+        organization_id = UUID(principal.organization_id)
+        user_id = UUID(principal.user_id)
+        now = datetime.now(UTC)
+        officer = await self._ensure_officer_profile(organization_id, user_id, principal)
+        if officer is not None:
+            officer.device_id = payload.device_id
+            officer.last_seen_at = now
+            await self.session.flush()
+        return MobileDeviceRegistrationRead(
+            device_id=payload.device_id,
+            status="Active" if officer is None or officer.is_active else "Inactive",
+            registered_at=officer.created_at if officer is not None else now,
+            last_seen_at=now,
+            remote_logout_required=False,
+            remote_wipe_required=False,
+        )
 
     async def _assignments(self, organization_id: UUID, officer_id: UUID) -> list[OfficerAssignment]:
         result = await self.session.execute(
@@ -383,7 +791,7 @@ class MobileService:
         )
         return list(result.scalars())
 
-    async def _forms_for_officer_access(self, organization_id: UUID, officer_id: UUID) -> list[DataForm]:
+    async def _forms_for_officer_access(self, organization_id: UUID, officer_id: UUID, user_id: UUID) -> list[DataForm]:
         result = await self.session.execute(
             select(DataForm)
             .where(
@@ -394,9 +802,30 @@ class MobileService:
             )
             .order_by(DataForm.name)
         )
+        all_forms = list(result.scalars())
+        forms_with_team_filter = [
+            form
+            for form in all_forms
+            if isinstance(form.controls_json, dict)
+            and isinstance(form.controls_json.get("collection_access"), dict)
+            and form.controls_json["collection_access"].get("selection_mode") == "assigned_only"
+            and form.controls_json["collection_access"].get("team_ids")
+        ]
+        team_id: UUID | None = None
+        if forms_with_team_filter:
+            workforce_result = await self.session.execute(
+                select(WorkforceProfile.team_id).where(
+                    WorkforceProfile.organization_id == organization_id,
+                    WorkforceProfile.user_id == user_id,
+                    WorkforceProfile.deleted_at.is_(None),
+                )
+            )
+            team_id = workforce_result.scalar_one_or_none()
+
         officer_key = str(officer_id)
+        team_key = str(team_id) if team_id is not None else None
         forms: list[DataForm] = []
-        for form in result.scalars():
+        for form in all_forms:
             controls = form.controls_json or {}
             collection_access = controls.get("collection_access")
             if not isinstance(collection_access, dict):
@@ -405,6 +834,14 @@ class MobileService:
                 continue
             selected_officers = collection_access.get("field_officer_ids")
             if isinstance(selected_officers, list) and officer_key in {str(item) for item in selected_officers}:
+                forms.append(form)
+                continue
+            selected_teams = collection_access.get("team_ids")
+            if (
+                team_key is not None
+                and isinstance(selected_teams, list)
+                and team_key in {str(item) for item in selected_teams}
+            ):
                 forms.append(form)
         return forms
 
@@ -501,7 +938,101 @@ class MobileService:
         )
         return {assignment_id: int(count) for assignment_id, count in result.all() if assignment_id is not None}
 
-    def _bootstrap(self, principal: CurrentPrincipal, projects: list[MobileProjectRead]) -> MobileBootstrapRead:
+    def _permission_set(self, principal: CurrentPrincipal) -> MobilePermissionSetRead:
+        permissions = set(principal.permissions)
+        can_sync = "sync.mobile" in permissions
+        can_submit = "submissions.create" in permissions
+        return MobilePermissionSetRead(
+            id=principal.user_id,
+            user_id=principal.user_id,
+            permissions=principal.permissions,
+            can_collect_data=can_submit,
+            can_work_offline=can_sync,
+            can_upload_media=can_sync,
+            can_use_gps=can_sync,
+            can_correct_returned_submissions=can_submit,
+        )
+
+    def _mobile_rules(self, principal: CurrentPrincipal) -> MobileOfflineRulesRead:
+        permissions = set(principal.permissions)
+        return MobileOfflineRulesRead(
+            id=f"mobile-rules:{principal.user_id}",
+            offline_collection_allowed="sync.mobile" in permissions,
+            sync_required=False,
+            max_offline_days=7,
+            gps_required=False,
+            photo_required=False,
+            minimum_app_version="1.0.0-test",
+            allowed_collection_hours={"start": None, "end": None},
+            maximum_submissions_per_day=None,
+            minimum_interview_duration_seconds=None,
+        )
+
+    def _officer_read(self, officer: FieldOfficerProfile | None, principal: CurrentPrincipal) -> MobileOfficerProfileRead | None:
+        if officer is None:
+            return None
+        return MobileOfficerProfileRead(
+            id=str(officer.id),
+            user_id=str(officer.user_id),
+            username=(principal.email or "").split("@")[0] or principal.email or str(officer.user_id),
+            email=principal.email,
+            full_name=principal.full_name,
+            employee_code=officer.employee_code,
+            phone=officer.phone_number,
+            team=officer.home_region,
+            supervisor_id=None,
+            supervisor_name=None,
+            status="Active" if officer.is_active else "Inactive",
+            last_sync_at=officer.last_sync_at,
+        )
+
+    def _device_read(self, officer: FieldOfficerProfile | None, principal: CurrentPrincipal) -> MobileDeviceRecordRead | None:
+        if officer is None or not officer.device_id:
+            return None
+        now = datetime.now(UTC)
+        return MobileDeviceRecordRead(
+            id=officer.device_id,
+            device_id=officer.device_id,
+            device_name="Atlas FieldOps Android",
+            platform="Android",
+            app_version="1.0.0-test",
+            os_version=None,
+            user_id=principal.user_id,
+            organization_id=principal.organization_id,
+            status="Active" if officer.is_active else "Inactive",
+            registered_at=officer.created_at,
+            last_seen_at=officer.last_seen_at or now,
+            last_sync_at=officer.last_sync_at,
+            last_login_at=officer.last_seen_at or now,
+            remote_logout_required=False,
+            remote_wipe_required=False,
+        )
+
+    def _blocked_state(self, officer: FieldOfficerProfile | None) -> MobileBlockedStateRead:
+        if officer is None:
+            return MobileBlockedStateRead(
+                blocked=True,
+                reason="This account is not configured as an assigned field officer. Contact your administrator.",
+                account_status="Unknown",
+                device_status="Unknown",
+            )
+        if not officer.is_active:
+            return MobileBlockedStateRead(
+                blocked=True,
+                reason="This field officer account is inactive or suspended. Contact your supervisor.",
+                account_status="Inactive",
+                device_status="Active",
+            )
+        return MobileBlockedStateRead(blocked=False, account_status="Active", device_status="Active")
+
+    def _bootstrap(
+        self,
+        principal: CurrentPrincipal,
+        projects: list[MobileProjectRead],
+        *,
+        officer: FieldOfficerProfile | None,
+        assigned_counts: MobileAssignedCountsRead | None = None,
+    ) -> MobileBootstrapRead:
         now = datetime.now(UTC)
         return MobileBootstrapRead(
             user={
@@ -519,20 +1050,53 @@ class MobileService:
                 "timezone": "UTC",
                 "branding": {"logoUrl": None, "brandColor": None},
             },
+            field_officer_profile=self._officer_read(officer, principal),
+            supervisor=None,
+            permission_set=self._permission_set(principal),
+            mobile_rules=self._mobile_rules(principal),
+            device=self._device_read(officer, principal),
+            assigned_counts=assigned_counts or MobileAssignedCountsRead(projects=len(projects)),
+            blocked_state=self._blocked_state(officer),
             permissions=principal.permissions,
             assigned_projects=projects,
-            last_sync={"deviceId": None, "lastSyncedAt": None, "serverTime": now.isoformat()},
+            last_sync={
+                "deviceId": officer.device_id if officer is not None else None,
+                "lastSyncedAt": officer.last_sync_at.isoformat() if officer is not None and officer.last_sync_at else None,
+                "serverTime": now.isoformat(),
+            },
         )
 
     async def sync_package(self, principal: CurrentPrincipal) -> MobileSyncPackageRead:
         organization_id = UUID(principal.organization_id)
         user_id = UUID(principal.user_id)
-        officer = await self._officer_profile(organization_id, user_id)
+        officer = await self._ensure_officer_profile(organization_id, user_id, principal)
         if officer is None:
-            return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, []))
+            return MobileSyncPackageRead(bootstrap=self._bootstrap(principal, [], officer=None))
+        officer.last_sync_at = datetime.now(UTC)
+        await self.session.flush()
 
         assignments = await self._assignments(organization_id, officer.id)
-        controlled_forms = await self._forms_for_officer_access(organization_id, officer.id)
+        controlled_forms = await self._forms_for_officer_access(organization_id, officer.id, officer.user_id)
+        assignment_keys = {
+            (assignment.project_id, assignment.form_id)
+            for assignment in assignments
+            if assignment.deleted_at is None
+        }
+        for form in controlled_forms:
+            if form.project_id is None or (form.project_id, form.id) in assignment_keys:
+                continue
+            assignment = OfficerAssignment(
+                organization_id=organization_id,
+                officer_id=officer.id,
+                project_id=form.project_id,
+                form_id=form.id,
+                region=None,
+                is_active=True,
+            )
+            self.session.add(assignment)
+            await self.session.flush()
+            assignments.append(assignment)
+            assignment_keys.add((form.project_id, form.id))
         project_ids = {assignment.project_id for assignment in assignments if assignment.is_active}
         project_ids.update(form.project_id for form in controlled_forms if form.project_id is not None)
         assigned_form_ids = {assignment.form_id for assignment in assignments if assignment.is_active and assignment.form_id is not None}
@@ -563,7 +1127,8 @@ class MobileService:
                 code=project.slug,
                 status="Active" if project.is_active else "Archived",
                 region=project.region,
-                country=None,
+                country=project.country,
+                sector=project.settings_json.get("sector", {}) if isinstance(project.settings_json, dict) else {},
             )
             for project in projects
         ]
@@ -639,18 +1204,134 @@ class MobileService:
             )
             for entity in entities
         ]
+        project_ids = {project.id for project in projects}
+        active_categories = await self.operations_repo.list_entity_categories(
+            organization_id=organization_id,
+            include_archived=False,
+        )
+        category_attributes = await self.operations_repo.list_entity_attributes(
+            organization_id=organization_id,
+            category_ids={category.id for category in active_categories},
+        )
+        category_reads: list[MobileEntityCategoryRead] = []
+        for category in active_categories:
+            if category.project_id is not None and category.project_id not in project_ids:
+                continue
+            attributes = category_attributes.get(category.id, [])
+            category_reads.append(
+                MobileEntityCategoryRead(
+                    id=str(category.id),
+                    project_id=str(category.project_id) if category.project_id else None,
+                    name=category.name,
+                    slug=category.slug,
+                    sector=category.sector,
+                    icon=category.icon,
+                    color=category.color,
+                    statuses=list(category.statuses_json or []),
+                    workflow=dict(category.workflow_json or {}),
+                    attributes=[
+                        MobileEntityCategoryAttributeRead(
+                            id=str(attribute.id),
+                            label=attribute.label,
+                            field_key=attribute.field_key,
+                            field_type=attribute.field_type,
+                            description=attribute.description,
+                            required=attribute.required,
+                            order_index=attribute.order_index,
+                            options=list(attribute.options_json or []),
+                            validation=dict(attribute.validation_json or {}),
+                            default_value=attribute.default_value,
+                        )
+                        for attribute in attributes
+                    ],
+                )
+            )
         location_reads = self._locations_from_entities(organization_id, projects, entities)
+        officer_submissions = await self._officer_submissions(organization_id, officer.id)
+        returned_submissions = [
+            self._submission_read(submission)
+            for submission in officer_submissions
+            if submission.status in {"rejected", "correction_requested"}
+        ]
+        submission_statuses = [self._submission_status_read(submission) for submission in officer_submissions]
+        assigned_counts = MobileAssignedCountsRead(
+            projects=len(project_reads),
+            assignments=len(assignment_reads),
+            forms=len(form_reads),
+            beneficiaries=len(entity_reads),
+            locations=len(location_reads),
+            returned_submissions=len(returned_submissions),
+            pending_uploads=0,
+        )
 
         return MobileSyncPackageRead(
-            bootstrap=self._bootstrap(principal, project_reads),
+            bootstrap=self._bootstrap(principal, project_reads, officer=officer, assigned_counts=assigned_counts),
             assignments=assignment_reads,
             forms=form_reads,
             form_versions=version_reads,
+            entity_categories=category_reads,
             entities=entity_reads,
             locations=location_reads,
             reference_lists=reference_lists,
-            returned_submissions=[],
+            returned_submissions=returned_submissions,
+            submission_statuses=submission_statuses,
             notifications=[],
+        )
+
+    async def returned_submissions(self, principal: CurrentPrincipal) -> list[MobileSubmissionRead]:
+        organization_id = UUID(principal.organization_id)
+        user_id = UUID(principal.user_id)
+        officer = await self._officer_profile(organization_id, user_id)
+        if officer is None:
+            return []
+        submissions = await self._officer_submissions(organization_id, officer.id)
+        return [
+            self._submission_read(submission)
+            for submission in submissions
+            if submission.status in {"rejected", "correction_requested"}
+        ]
+
+    async def _officer_submissions(self, organization_id: UUID, officer_id: UUID, *, limit: int = 200) -> list[Submission]:
+        result = await self.session.execute(
+            select(Submission)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.field_officer_id == officer_id,
+                Submission.deleted_at.is_(None),
+            )
+            .order_by(Submission.sync_received_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    def _submission_status_read(self, submission: Submission) -> MobileSubmissionStatusRead:
+        return MobileSubmissionStatusRead(
+            client_submission_id=submission.client_submission_id,
+            status=submission.status,
+            review_status=_review_status(submission.status),
+            review_comments=submission.review_comments,
+            reviewed_at=submission.reviewed_at,
+            approved_at=submission.approved_at,
+        )
+
+    def _submission_read(self, submission: Submission) -> MobileSubmissionRead:
+        responses = (submission.payload_json or {}).get("_mobile_responses")
+        return MobileSubmissionRead(
+            id=submission.client_submission_id,
+            project_id=str(submission.project_id) if submission.project_id else "",
+            assignment_id=str(submission.assignment_id) if submission.assignment_id else None,
+            form_id=str(submission.form_id),
+            form_version_id=str(submission.form_version_id),
+            entity_id=str(submission.entity_id) if submission.entity_id else None,
+            status="ReturnedForCorrection",
+            frequency_period=submission.frequency_period,
+            event_id=submission.event_id,
+            responses=responses if isinstance(responses, list) else [],
+            sync_status="ReturnedForCorrection",
+            review_status=_review_status(submission.status),
+            review_comments=submission.review_comments,
+            reviewed_at=submission.reviewed_at,
+            approved_at=submission.approved_at,
         )
 
     def _locations_from_entities(
@@ -750,13 +1431,18 @@ class MobileService:
         entity_type = payload.entity_type
         entity_settings = _entity_settings(form.controls_json or {})
         if entity_id is None and bool(entity_settings.get("createsNewEntity")):
-            entity_type = str(entity_settings.get("entityType") or payload.entity_type or "Farmer")
+            entity_type = await self._entity_type_from_settings(organization_id, entity_settings, payload.entity_type)
         now = datetime.now(UTC)
-        location_payload = payload.location or {}
+        response_payload = [response.model_dump(mode="json", by_alias=True) for response in payload.responses]
+        derived_location = self._location_from_responses(response_payload)
+        location_payload = payload.location or derived_location or {}
         latitude = location_payload.get("latitude")
         longitude = location_payload.get("longitude")
         if latitude is None or longitude is None:
-            raise ValueError("Capture GPS before syncing this submission. The record was kept on the device for retry.")
+            if self._form_requires_gps(form_version.schema_json, form.controls_json or {}):
+                raise ValueError("Capture GPS before syncing this submission. The record was kept on the device for retry.")
+            latitude = 0
+            longitude = 0
         location = LocationCapture(
             latitude=float(latitude),
             longitude=float(longitude),
@@ -764,6 +1450,7 @@ class MobileService:
             accuracy=location_payload.get("accuracy"),
             timestamp=location_payload.get("timestamp") or now,
         )
+        flattened_responses = _flatten_mobile_responses(response_payload)
         submission_payload = SubmissionCreate(
             client_submission_id=payload.local_id,
             project_id=form.project_id,
@@ -775,7 +1462,14 @@ class MobileService:
             assignment_id=UUID(payload.assignment_id) if payload.assignment_id else None,
             frequency_period=payload.frequency_period,
             event_id=payload.event_id,
-            payload={"responses": [response.model_dump(mode="json", by_alias=True) for response in payload.responses]},
+            payload={
+                **flattened_responses,
+                "_mobile_responses": response_payload,
+                "_linked_entity_ids": payload.linked_entity_ids,
+                "_mobile_location_status": "captured" if payload.location or derived_location else "not_required_or_missing",
+                "_mobile_integrity": payload.integrity_signals or {},
+                "_mobile_integrity_status": self._integrity_status(payload.integrity_signals),
+            },
             captured_at=payload.created_at,
             submitted_at=payload.submitted_at or now,
             offline_created=True,
@@ -791,6 +1485,28 @@ class MobileService:
             actor_user_id=UUID(principal.user_id),
             payload=submission_payload,
         )
+        await self._check_polygon_overlaps(
+            organization_id=organization_id,
+            submission=submission,
+            form_version=form_version,
+            response_payload=response_payload,
+        )
+        for attachment in payload.attachments:
+            if not isinstance(attachment, dict):
+                continue
+            await self._persist_attachment(
+                organization_id=organization_id,
+                actor_user_id=UUID(principal.user_id),
+                submission=submission,
+                attachment_id=str(attachment.get("id") or attachment.get("localId") or ""),
+                submission_local_id=payload.local_id,
+                attachment_type=str(attachment.get("type") or "FileUpload"),
+                local_uri=str(attachment.get("localUri") or attachment.get("local_uri") or ""),
+                remote_url=attachment.get("remoteUrl") or attachment.get("remote_url"),
+                mime_type=str(attachment.get("mimeType") or attachment.get("mime_type") or "application/octet-stream"),
+                size=int(attachment.get("size") or 0),
+                sync_status=str(attachment.get("syncStatus") or attachment.get("sync_status") or "Synced"),
+            )
         return MobileSubmissionUploadRead(
             status="synced",
             server_submission_id=str(submission.id),
@@ -798,6 +1514,341 @@ class MobileService:
             synced_at=submission.sync_received_at,
             message="Submission synced to the web platform.",
         )
+
+    async def _entity_type_from_settings(
+        self,
+        organization_id: UUID,
+        entity_settings: dict[str, Any],
+        fallback: str | None,
+    ) -> str:
+        category_id = entity_settings.get("entityCategoryId")
+        if category_id:
+            try:
+                result = await self.session.execute(
+                    select(EntityCategory.name).where(
+                        EntityCategory.organization_id == organization_id,
+                        EntityCategory.id == UUID(str(category_id)),
+                        EntityCategory.deleted_at.is_(None),
+                    )
+                )
+                category_name = result.scalar_one_or_none()
+                if category_name:
+                    return str(category_name)
+            except (TypeError, ValueError):
+                pass
+        return str(entity_settings.get("entityType") or fallback or "Entity")
+
+    async def upload_attachment(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        payload: MobileAttachmentRead,
+    ) -> MobileActionAcceptedRead:
+        organization_id = UUID(principal.organization_id)
+        submission = await self.submission_repo.get_by_client_id(
+            organization_id=organization_id,
+            client_submission_id=payload.submission_local_id,
+        )
+        evidence = await self._persist_attachment(
+            organization_id=organization_id,
+            actor_user_id=UUID(principal.user_id),
+            submission=submission,
+            attachment_id=payload.id,
+            submission_local_id=payload.submission_local_id,
+            attachment_type=payload.type,
+            local_uri=payload.local_uri,
+            remote_url=payload.remote_url,
+            mime_type=payload.mime_type,
+            size=payload.size,
+            sync_status=payload.sync_status,
+        )
+        return MobileActionAcceptedRead(message="Attachment metadata stored.", server_id=str(evidence.id))
+
+    async def _persist_attachment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission | None,
+        attachment_id: str,
+        submission_local_id: str,
+        attachment_type: str,
+        local_uri: str,
+        remote_url: str | None,
+        mime_type: str,
+        size: int,
+        sync_status: str,
+    ) -> MediaEvidence:
+        media_type = _ATTACHMENT_MEDIA_TYPES.get(attachment_type, "file")
+        file_name = local_uri.rsplit("/", 1)[-1] or f"{media_type}-{attachment_id}"
+        evidence = await self.operations_repo.create_media_evidence(
+            organization_id=organization_id,
+            uploaded_by_user_id=actor_user_id,
+            values={
+                "submission_id": submission.id if submission else None,
+                "beneficiary_id": submission.entity_id if submission else None,
+                "form_id": submission.form_id if submission else None,
+                "activity_id": None,
+                "media_type": media_type,
+                "file_name": file_name,
+                "storage_url": remote_url or local_uri,
+                "mime_type": mime_type,
+                "size_bytes": size,
+                "review_status": "pending_review",
+                "checksum": None,
+                "latitude": None,
+                "longitude": None,
+                "captured_at": None,
+                "metadata_json": {
+                    "contextType": "Submission",
+                    "localAttachmentId": attachment_id,
+                    "submissionLocalId": submission_local_id,
+                    "syncStatus": sync_status,
+                },
+            },
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="mobile.attachment_received",
+            resource_type="media_evidence",
+            resource_id=str(evidence.id),
+            metadata={
+                "mediaType": media_type,
+                "submissionLocalId": submission_local_id,
+                "submissionId": str(submission.id) if submission else None,
+            },
+        )
+        return evidence
+
+    async def upload_audit_events(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        payload: MobileAuditEventUpload,
+    ) -> MobileAuditEventUploadRead:
+        organization_id = UUID(principal.organization_id)
+        actor_user_id = UUID(principal.user_id)
+        for event in payload.events:
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action=event.event_type[:120],
+                resource_type=event.entity_type or "mobile_device",
+                resource_id=event.entity_id or event.id,
+                metadata={
+                    **event.metadata,
+                    "module": event.module,
+                    "occurredAt": event.occurred_at.isoformat(),
+                    "deviceLocalId": event.id,
+                },
+            )
+        return MobileAuditEventUploadRead(accepted=len(payload.events))
+
+    async def upload_sync_queue(
+        self,
+        *,
+        principal: CurrentPrincipal,
+        payload: MobileSyncQueueUpload,
+    ) -> MobileSyncUploadRead:
+        organization_id = UUID(principal.organization_id)
+        actor_user_id = UUID(principal.user_id)
+        accepted = 0
+        failed = 0
+        for item in payload.items:
+            local_id = str(item.get("id") or item.get("localId") or "")
+            if not local_id:
+                failed += 1
+                continue
+            operation = str(item.get("operation") or "UNKNOWN")
+            item_payload = item.get("payload")
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="mobile.sync_queue_item_received",
+                resource_type="sync_queue_item",
+                resource_id=local_id,
+                metadata={
+                    "operation": operation,
+                    "payload": item_payload if isinstance(item_payload, dict) else {},
+                },
+            )
+            accepted += 1
+        return MobileSyncUploadRead(accepted=accepted, failed=failed)
+
+    async def _check_polygon_overlaps(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        form_version: DataFormVersion,
+        response_payload: list[dict[str, Any]],
+    ) -> None:
+        polygon_question_ids = _polygon_question_ids(form_version.schema_json or {})
+        if not polygon_question_ids:
+            return
+        target_geometries: dict[str, BaseGeometry] = {}
+        for response in response_payload:
+            question_id = str(response.get("questionId") or "")
+            if question_id not in polygon_question_ids:
+                continue
+            geometry = polygon_from_geojson(response.get("value"))
+            if geometry is not None:
+                target_geometries[question_id] = geometry
+        if not target_geometries:
+            return
+
+        result = await self.session.execute(
+            select(Submission)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.form_id == submission.form_id,
+                Submission.deleted_at.is_(None),
+                Submission.id != submission.id,
+            )
+            .limit(500)
+        )
+        candidates = list(result.scalars().all())
+        candidates_by_id = {candidate.id: candidate for candidate in candidates}
+
+        overlaps_by_question: dict[str, list[dict[str, Any]]] = {}
+        for question_id, target_geometry in target_geometries.items():
+            candidate_geometries: list[tuple[UUID, BaseGeometry]] = []
+            for candidate in candidates:
+                candidate_responses = (candidate.payload_json or {}).get("_mobile_responses")
+                if not isinstance(candidate_responses, list):
+                    continue
+                for candidate_response in candidate_responses:
+                    if not isinstance(candidate_response, dict):
+                        continue
+                    if str(candidate_response.get("questionId") or "") != question_id:
+                        continue
+                    parsed_candidate_geometry = polygon_from_geojson(candidate_response.get("value"))
+                    if parsed_candidate_geometry is not None:
+                        candidate_geometries.append((candidate.id, parsed_candidate_geometry))
+                    break
+            overlaps = find_overlaps(target_geometry, candidate_geometries)
+            if overlaps:
+                overlaps_by_question[question_id] = overlaps
+
+        if not overlaps_by_question:
+            return
+
+        flagged_at = datetime.now(UTC).isoformat()
+        submission.payload_json = {
+            **(submission.payload_json or {}),
+            "_spatial_flags": {
+                "polygonOverlaps": [
+                    {"questionId": question_id, "overlaps": overlaps}
+                    for question_id, overlaps in overlaps_by_question.items()
+                ],
+                "flaggedAt": flagged_at,
+                "status": "pending_review",
+            },
+        }
+
+        for question_id, overlaps in overlaps_by_question.items():
+            target_geometry = target_geometries[question_id]
+            for overlap in overlaps:
+                target_candidate = candidates_by_id.get(UUID(overlap["submissionId"]))
+                if target_candidate is None:
+                    continue
+                candidate_responses = (target_candidate.payload_json or {}).get("_mobile_responses") or []
+                reciprocal_geometry: BaseGeometry | None = None
+                for candidate_response in candidate_responses:
+                    if not isinstance(candidate_response, dict):
+                        continue
+                    if str(candidate_response.get("questionId") or "") != question_id:
+                        continue
+                    reciprocal_geometry = polygon_from_geojson(candidate_response.get("value"))
+                    break
+                if reciprocal_geometry is None:
+                    continue
+                reciprocal_ratio = overlap_ratio(reciprocal_geometry, target_geometry)
+                existing_flags = (target_candidate.payload_json or {}).get("_spatial_flags")
+                existing_overlaps = (
+                    existing_flags.get("polygonOverlaps", [])
+                    if isinstance(existing_flags, dict) and isinstance(existing_flags.get("polygonOverlaps"), list)
+                    else []
+                )
+                overlaps_by_question_for_candidate = {
+                    str(entry.get("questionId")): dict(entry)
+                    for entry in existing_overlaps
+                    if isinstance(entry, dict)
+                }
+                question_entry = overlaps_by_question_for_candidate.get(question_id, {"questionId": question_id, "overlaps": []})
+                question_overlaps = [
+                    item
+                    for item in question_entry.get("overlaps", [])
+                    if isinstance(item, dict) and item.get("submissionId") != str(submission.id)
+                ]
+                question_overlaps.append({"submissionId": str(submission.id), "overlapRatio": reciprocal_ratio})
+                question_entry["overlaps"] = question_overlaps
+                overlaps_by_question_for_candidate[question_id] = question_entry
+                target_candidate.payload_json = {
+                    **(target_candidate.payload_json or {}),
+                    "_spatial_flags": {
+                        "polygonOverlaps": list(overlaps_by_question_for_candidate.values()),
+                        "flaggedAt": flagged_at,
+                        "status": "pending_review",
+                    },
+                }
+
+    def _integrity_status(self, integrity_signals: dict[str, Any] | None) -> str:
+        if not integrity_signals:
+            return "not_evaluated"
+        risk_level = str(integrity_signals.get("riskLevel") or integrity_signals.get("risk_level") or "").lower()
+        signals = integrity_signals.get("signals")
+        critical = [
+            signal for signal in signals
+            if isinstance(signal, dict) and str(signal.get("severity") or "").lower() == "critical"
+        ] if isinstance(signals, list) else []
+        if risk_level == "high" or critical:
+            return "requires_supervisor_attention"
+        if risk_level == "medium":
+            return "review_recommended"
+        return "no_unusual_signal"
+
+    def _location_from_responses(self, responses: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for response in responses:
+            value = response.get("value")
+            if not isinstance(value, dict):
+                continue
+            latitude = value.get("latitude")
+            longitude = value.get("longitude")
+            if latitude is None or longitude is None:
+                continue
+            try:
+                parsed_latitude = float(latitude)
+                parsed_longitude = float(longitude)
+            except (TypeError, ValueError):
+                continue
+            if not (-90 <= parsed_latitude <= 90 and -180 <= parsed_longitude <= 180):
+                continue
+            return {
+                "latitude": parsed_latitude,
+                "longitude": parsed_longitude,
+                "altitude": value.get("altitude"),
+                "accuracy": value.get("accuracy"),
+                "timestamp": value.get("timestamp"),
+            }
+        return None
+
+    def _form_requires_gps(self, schema_json: dict[str, Any], controls_json: dict[str, Any]) -> bool:
+        quality = controls_json.get("quality") if isinstance(controls_json.get("quality"), dict) else {}
+        governance = controls_json.get("governance") if isinstance(controls_json.get("governance"), dict) else {}
+        if quality.get("gps_required") is True or governance.get("gps_required") is True:
+            return True
+        for section in schema_json.get("sections", []):
+            if not isinstance(section, dict):
+                continue
+            for field in section.get("fields", []):
+                if not isinstance(field, dict):
+                    continue
+                field_type = str(field.get("type") or "").lower()
+                if field_type in {"gps", "geolocation", "map", "geofence"} and bool(field.get("required")):
+                    return True
+        return False
 
     async def _create_entity_from_registration(
         self,
@@ -824,17 +1875,21 @@ class MobileService:
             raise ValueError(
                 f"Possible duplicate beneficiary found: {duplicate.display_name}. Select the existing record or send the duplicate for review."
             )
-        now = datetime.now(UTC)
-        prefix = {
-            "farmer": "FRM",
-            "household": "HH",
-            "beneficiary": "BEN",
-            "facility": "FAC",
-        }.get(entity_type.lower(), "BEN")
+        prefix, include_year, separator, width = await self._entity_uid_format_parts(
+            organization_id=organization_id,
+            entity_type=entity_type,
+            project_id=project_id,
+        )
         entity = Beneficiary(
             organization_id=organization_id,
             project_id=project_id,
-            beneficiary_uid=f"{prefix}-{now.year}-{int(now.timestamp())}",
+            beneficiary_uid=await self._next_entity_uid(
+                organization_id=organization_id,
+                include_year=include_year,
+                prefix=prefix,
+                separator=separator,
+                width=width,
+            ),
             beneficiary_type=entity_type,
             display_name=display_name,
             sex=self._string_value(values, "gender", "sex"),
@@ -856,6 +1911,77 @@ class MobileService:
         self.session.add(entity)
         await self.session.flush()
         return entity
+
+    async def _next_entity_uid(
+        self,
+        *,
+        organization_id: UUID,
+        include_year: bool,
+        prefix: str,
+        separator: str,
+        width: int,
+    ) -> str:
+        year = datetime.now(UTC).year
+        static_prefix = f"{prefix}{separator}{year}{separator}" if include_year else f"{prefix}{separator}"
+        result = await self.session.execute(
+            select(Beneficiary.beneficiary_uid).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.beneficiary_uid.like(f"{static_prefix}%"),
+            )
+        )
+        existing = set(result.scalars())
+        existing_numbers = [
+            int(match.group(1))
+            for uid in existing
+            if (match := re.match(rf"^{re.escape(static_prefix)}(\d+)$", uid))
+        ]
+        next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+        while True:
+            candidate = f"{static_prefix}{next_number:0{width}d}"
+            if candidate not in existing:
+                return candidate
+            next_number += 1
+
+    async def _entity_uid_format_parts(
+        self,
+        *,
+        organization_id: UUID,
+        entity_type: str,
+        project_id: UUID,
+    ) -> tuple[str, bool, str, int]:
+        result = await self.session.execute(
+            select(Project.settings_json).where(
+                Project.organization_id == organization_id,
+                Project.id == project_id,
+                Project.deleted_at.is_(None),
+            )
+        )
+        settings_json = result.scalar_one_or_none()
+        beneficiary_settings = (
+            settings_json.get("beneficiary") if isinstance(settings_json, dict) else None
+        )
+        code_format = (
+            beneficiary_settings.get("codeFormat")
+            if isinstance(beneficiary_settings, dict)
+            else None
+        )
+        cleaned = code_format.strip().upper() if isinstance(code_format, str) else ""
+        default_prefix = {
+            "farmer": "FRM",
+            "household": "HH",
+            "beneficiary": "BEN",
+            "facility": "FAC",
+            "school": "SCH",
+            "village": "VIL",
+            "group": "GRP",
+        }.get(entity_type.strip().lower(), _entity_type_prefix(entity_type))
+        prefix_match = re.match(r"^([A-Z0-9]{2,12})", cleaned)
+        prefix = prefix_match.group(1) if prefix_match else default_prefix
+        separator = "/" if "/" in cleaned else "_" if "_" in cleaned else "-"
+        width_match = re.search(r"0{3,10}", cleaned)
+        width = len(width_match.group(0)) if width_match else 6
+        include_year = bool(re.search(r"YYYY|YEAR|20\d{2}", cleaned)) or not cleaned
+        return prefix, include_year, separator, width
 
     def _display_name(self, values: dict[str, Any]) -> str:
         full_name = self._string_value(values, "full_name", "farmer_name", "name", "beneficiary_name")

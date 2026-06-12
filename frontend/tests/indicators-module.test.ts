@@ -15,9 +15,9 @@ describe("Indicators module helpers", () => {
     const summary = computeIndicatorSummary(previewIndicators);
 
     expect(summary.totalIndicators).toBe(4);
-    expect(summary.outputIndicators).toBe(1);
-    expect(summary.outcomeIndicators).toBe(2);
-    expect(summary.impactIndicators).toBe(1);
+    expect(summary.topCategories.find((category) => category.label === "Output")?.count).toBe(1);
+    expect(summary.topCategories.find((category) => category.label === "Outcome")?.count).toBe(2);
+    expect(summary.topCategories.find((category) => category.label === "Impact")?.count).toBe(1);
     expect(summary.behindTarget).toBe(2);
     expect(summary.withoutBaseline).toBe(1);
     expect(summary.withoutDataSource).toBe(1);

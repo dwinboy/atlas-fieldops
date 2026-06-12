@@ -16,12 +16,13 @@ import {
   MapPinned,
   Plus,
   ShieldCheck,
+  SlidersHorizontal,
   Target,
   UploadCloud,
   UsersRound,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -31,18 +32,33 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
+  activatePredefinedEntityCategory,
   createProject,
+  createEntityCategory,
   getProjectDetail,
   getProjectsSummary,
+  importOrganizationUnits,
+  installProjectSectorForms,
+  installProjectSectorIndicators,
+  installProjectSectorReports,
+  listProjectSectorPacks,
   listProjectTemplates,
   listProjects,
+  listEntityCategories,
+  listPredefinedEntityCategories,
+  updateEntityCategory,
   updateProject,
   type CurrentPrincipal,
   type ProjectCreate,
   type ProjectDetailRead,
   type ProjectListItemRead,
   type ProjectRelatedRecordRead,
+  type ProjectSectorPackRead,
   type ProjectSummaryRead,
+  type ProjectUpdate,
+  type EntityAttributeCreate,
+  type EntityCategoryRead,
+  type PredefinedEntityCategoryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
@@ -87,6 +103,7 @@ const defaultProjectDraft: ProjectCreate = {
   program_type: "",
   project_code: "",
   region: "",
+  sector_id: "",
   settings_json: {
     automationRules: [],
     beneficiary: {
@@ -133,6 +150,125 @@ const defaultProjectDraft: ProjectCreate = {
   start_date: null,
   status: "draft",
 };
+
+const previewSectorPacks: ProjectSectorPackRead[] = ([
+  {
+    dashboard_widgets: ["Farmer coverage", "Yield progress", "Input distribution", "Training completion"],
+    data_quality_rules: ["Duplicate farmer by phone or name + village", "Static GPS", "Yield outliers"],
+    description: "For farmer registration, extension visits, input distribution, yield monitoring, cooperatives, and seasonal agriculture programs.",
+    entity_types: ["Farmer", "Household", "Farm", "Cooperative", "Village"],
+    form_templates: ["Farmer Registration", "Baseline Farm Survey", "Input Distribution", "Seasonal Yield Monitoring", "Endline Survey"],
+    governance_defaults: { approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved", approvedDataOnly: true },
+    id: "agriculture",
+    indicator_templates: ["Farmers registered", "Farmers trained", "Improved seed adoption rate", "Average yield per hectare"],
+    mobile_guidance: ["Require GPS at farm or household", "Allow offline collection", "Prefill assigned farmers"],
+    name: "Agriculture and Farmer Programs",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "FRM-YYYY-000001",
+        duplicateFields: ["Phone", "National ID", "Household ID", "Name + Village", "GPS"],
+        primaryEntityType: "Farmer",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Household", "Farm", "Cooperative"],
+      },
+      forms: {
+        journey: "Farmer Registration → Baseline Farm Survey → Seasonal Monitoring → Endline Survey",
+        starterPack: "Install project starter pack",
+      },
+      indicators: {
+        dataSource: "Approved farmer registration, training, distribution, and yield monitoring forms",
+        disaggregation: ["Sex", "Age", "Village", "Crop", "Farm size"],
+        frequency: "Seasonal",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly extension report", "Seasonal yield report", "Input distribution report"],
+    sector: "Agriculture",
+    terminology: { field_visit: "Extension visit", primary_entity: "Farmer", secondary_entities: "Household, Farm, Cooperative", submission: "Farm record" },
+    validation_rules: ["Farm size cannot be negative", "Harvest date cannot be in the future", "Yield must match crop and season"],
+    workflows: ["Registration → Baseline → Monitoring → Endline", "Training attendance → Follow-up visit"],
+  },
+  {
+    dashboard_widgets: ["Referral follow-up", "Facility coverage", "Sensitive data quality", "Visit timeliness"],
+    data_quality_rules: ["Duplicate client by phone or ID", "Missing consent", "Invalid age/date"],
+    description: "For community health work, facility assessments, referrals, service follow-up, campaigns, and sensitive health data collection.",
+    entity_types: ["Patient", "Client", "Household", "Facility", "Health Worker"],
+    form_templates: ["Client Intake", "Facility Assessment", "Referral Follow-up", "Community Health Visit"],
+    governance_defaults: { approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved", approvedDataOnly: true },
+    id: "health",
+    indicator_templates: ["Clients reached", "Referral completion rate", "Facilities assessed", "Service uptake"],
+    mobile_guidance: ["Mask sensitive fields", "Require consent before submission", "Support offline visits"],
+    name: "Health and Community Systems",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "HLT-YYYY-000001",
+        duplicateFields: ["Phone", "National ID", "Name + Date of Birth", "Name + Village"],
+        primaryEntityType: "Beneficiary",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Household", "Facility", "Health Worker"],
+      },
+      forms: { journey: "Client Intake → Health Visit → Referral Follow-up", starterPack: "Install project starter pack" },
+      indicators: {
+        dataSource: "Approved intake, facility, referral, and visit forms",
+        disaggregation: ["Sex", "Age", "Location", "Disability status", "Service type"],
+        frequency: "Monthly",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly health outreach report", "Facility assessment report", "Referral tracking report"],
+    sector: "Health",
+    terminology: { field_visit: "Health visit", primary_entity: "Patient or Client", secondary_entities: "Household, Facility, Health Worker", submission: "Health record" },
+    validation_rules: ["Date of birth cannot be in the future", "Age must match date of birth", "Consent required for PII"],
+    workflows: ["Client Intake → Service Visit → Referral Follow-up", "Facility Assessment → Improvement Action → Verification"],
+  },
+  {
+    dashboard_widgets: ["School coverage", "Attendance trend", "Learning outcomes", "Teacher support"],
+    data_quality_rules: ["Duplicate school by code or name + district", "Attendance outliers", "Missing location"],
+    description: "For school profiles, attendance monitoring, teacher support, learning assessments, and education access programs.",
+    entity_types: ["School", "Student", "Teacher", "Classroom", "Household"],
+    form_templates: ["School Registration", "Attendance Monitoring", "Teacher Observation", "Learning Assessment"],
+    governance_defaults: { approvalWorkflow: "Submitted → Under Review → Approved", approvedDataOnly: true },
+    id: "education",
+    indicator_templates: ["Schools monitored", "Attendance rate", "Students assessed", "Learning outcome improvement"],
+    mobile_guidance: ["Prefill assigned schools", "Require GPS at school", "Work offline during rural visits"],
+    name: "Education and School Monitoring",
+    recommended_settings: {
+      beneficiary: {
+        codeFormat: "SCH-YYYY-000001",
+        duplicateFields: ["Name + Village", "GPS"],
+        primaryEntityType: "School",
+        profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+        secondaryEntityTypes: ["Student", "Teacher", "Classroom"],
+      },
+      forms: { journey: "School Registration → Baseline Assessment → Attendance Monitoring → Endline Assessment", starterPack: "Install project starter pack" },
+      indicators: {
+        dataSource: "Approved school, attendance, assessment, and teacher observation forms",
+        disaggregation: ["Sex", "Age", "Grade", "School", "District"],
+        frequency: "Monthly",
+        setupMode: "Use indicator templates",
+      },
+    },
+    report_templates: ["Monthly school monitoring report", "Learning assessment report", "Attendance report"],
+    sector: "Education",
+    terminology: { field_visit: "School monitoring visit", primary_entity: "School or Student", secondary_entities: "Teacher, Classroom, Household", submission: "Education record" },
+    validation_rules: ["Attendance cannot exceed enrollment", "Assessment date cannot be in the future", "School code required"],
+    workflows: ["School Registration → Baseline Assessment → Attendance Monitoring → Endline Assessment"],
+  },
+] as Array<
+  Omit<
+    ProjectSectorPackRead,
+    | "form_definitions"
+    | "indicator_definitions"
+    | "report_definitions"
+    | "manager_controls"
+  >
+>).map((pack) => ({
+  ...pack,
+  form_definitions: [],
+  indicator_definitions: [],
+  manager_controls: {},
+  report_definitions: [],
+}));
 
 const countryOptions = [
   "Cameroon",
@@ -237,7 +373,13 @@ function messageFromError(error: unknown): string {
       if (typeof parsed.detail === "string") return parsed.detail;
       if (Array.isArray(parsed.detail))
         return parsed.detail
-          .map((item) => item?.msg ?? "Invalid field")
+          .map((item) => {
+            const location = Array.isArray(item?.loc)
+              ? item.loc.filter((part: unknown) => part !== "body").join(".")
+              : "";
+            const message = item?.msg ?? "Invalid field";
+            return location ? `${location}: ${message}` : message;
+          })
           .join(" ");
     } catch {
       return error.message;
@@ -246,16 +388,54 @@ function messageFromError(error: unknown): string {
   return "Check the project code, required fields, and your project permissions.";
 }
 
+function optionalText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const text = value.map((item) => String(item).trim()).filter(Boolean).join(", ");
+    return text || null;
+  }
+  if (typeof value === "object") return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function requiredText(value: unknown): string {
+  return optionalText(value) ?? "";
+}
+
+function sanitizeProjectSettings(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 function normalizeProjectPayload(draft: ProjectCreate): ProjectCreate {
   const generatedCode = draft.project_code || projectCodeFromName(draft.name);
   return {
-    ...draft,
-    name: draft.name.trim(),
+    category: optionalText(draft.category),
+    community: optionalText(draft.community),
+    country: optionalText(draft.country),
+    description: optionalText(draft.description),
+    district: optionalText(draft.district),
+    donor: optionalText(draft.donor),
+    end_date: optionalText(draft.end_date),
+    implementing_organization: optionalText(draft.implementing_organization),
+    name: requiredText(draft.name),
+    owner: optionalText(draft.owner),
+    program_type: optionalText(draft.program_type),
     project_code: generatedCode
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-|-$/g, ""),
+    region: optionalText(draft.region),
+    sector_id: optionalText(draft.sector_id),
+    settings_json: sanitizeProjectSettings(draft.settings_json),
+    start_date: optionalText(draft.start_date),
+    status: optionalText(draft.status)?.toLowerCase() ?? "draft",
   };
 }
 
@@ -309,6 +489,66 @@ function settingStringList(
     : [];
 }
 
+type BeneficiaryCodeFormatParts = {
+  digits: number;
+  includeYear: boolean;
+  prefix: string;
+  separator: "-" | "/" | "_";
+};
+
+const entityCodePrefixes: Record<string, string> = {
+  Beneficiary: "BEN",
+  Farmer: "FRM",
+  Household: "HH",
+  Facility: "FAC",
+  School: "SCH",
+  Village: "VIL",
+  Group: "GRP",
+  "Health Worker": "HW",
+};
+
+function defaultEntityCodePrefix(entityType: string): string {
+  const configuredPrefix = entityCodePrefixes[entityType];
+  if (configuredPrefix) return configuredPrefix;
+  return entityType.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "BEN";
+}
+
+function parseBeneficiaryCodeFormat(value: string, entityType: string): BeneficiaryCodeFormatParts {
+  const cleaned = value.trim().toUpperCase();
+  const prefix = cleaned.match(/^([A-Z0-9]{2,12})/)?.[1] ?? defaultEntityCodePrefix(entityType);
+  const separator = cleaned.includes("/") ? "/" : cleaned.includes("_") ? "_" : "-";
+  const zeroRun = cleaned.match(/0{3,10}/)?.[0];
+  return {
+    digits: Math.min(10, Math.max(3, zeroRun?.length ?? 6)),
+    includeYear: /YYYY|YEAR|20\d{2}/.test(cleaned) || !cleaned,
+    prefix,
+    separator,
+  };
+}
+
+function buildBeneficiaryCodeFormat(parts: BeneficiaryCodeFormatParts): string {
+  return [parts.prefix, parts.includeYear ? "YYYY" : null, "0".repeat(parts.digits)]
+    .filter(Boolean)
+    .join(parts.separator);
+}
+
+function beneficiaryCodePreview(value: string, entityType: string): string {
+  const parts = parseBeneficiaryCodeFormat(value, entityType);
+  return buildBeneficiaryCodeFormat(parts)
+    .replace("YYYY", String(new Date().getFullYear()))
+    .replace(/0{3,10}/, (match) => "1".padStart(match.length, "0"));
+}
+
+function topLevelStringList(
+  settingsJson: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  const value = settingsJson?.[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 function mergeProjectSettings(
   draft: ProjectCreate,
   section: string,
@@ -324,6 +564,82 @@ function mergeProjectSettings(
       },
     },
   };
+}
+
+function applySectorPackToDraft(
+  draft: ProjectCreate,
+  pack: ProjectSectorPackRead,
+): ProjectCreate {
+  const currentSettings = sanitizeProjectSettings(draft.settings_json);
+  const recommendedSettings = sanitizeProjectSettings(pack.recommended_settings);
+  const nextSettings: Record<string, unknown> = { ...currentSettings };
+
+  for (const [section, sectionDefaults] of Object.entries(recommendedSettings)) {
+    const currentSection = sectionSettings(
+      { settings_json: nextSettings },
+      section,
+    );
+    if (
+      sectionDefaults &&
+      typeof sectionDefaults === "object" &&
+      !Array.isArray(sectionDefaults)
+    ) {
+      nextSettings[section] = {
+        ...currentSection,
+        ...(sectionDefaults as Record<string, unknown>),
+      };
+    }
+  }
+
+  const currentGovernance = sectionSettings(
+    { settings_json: nextSettings },
+    "governance",
+  );
+  nextSettings.governance = {
+    ...currentGovernance,
+    ...pack.governance_defaults,
+  };
+  nextSettings.sector = {
+    dashboardWidgets: pack.dashboard_widgets,
+    dataQualityRules: pack.data_quality_rules,
+    entityTypes: pack.entity_types,
+    formDefinitions: pack.form_definitions,
+    formTemplates: pack.form_templates,
+    indicatorDefinitions: pack.indicator_definitions,
+    id: pack.id,
+    indicatorTemplates: pack.indicator_templates,
+    managerControls: pack.manager_controls,
+    mobileGuidance: pack.mobile_guidance,
+    name: pack.name,
+    reportDefinitions: pack.report_definitions,
+    reportTemplates: pack.report_templates,
+    sector: pack.sector,
+    terminology: pack.terminology,
+    validationRules: pack.validation_rules,
+    workflows: pack.workflows,
+  };
+
+  return {
+    ...draft,
+    category: draft.category || pack.sector,
+    program_type: draft.program_type || pack.sector,
+    sector_id: pack.id,
+    settings_json: nextSettings,
+  };
+}
+
+function selectedSectorPack(
+  draft: Pick<ProjectCreate, "sector_id" | "settings_json">,
+  packs: ProjectSectorPackRead[],
+): ProjectSectorPackRead | null {
+  if (draft.sector_id) {
+    return packs.find((pack) => pack.id === draft.sector_id) ?? null;
+  }
+  const sector = sectionSettings(draft, "sector");
+  const sectorId = sector.id;
+  return typeof sectorId === "string"
+    ? packs.find((pack) => pack.id === sectorId) ?? null
+    : null;
 }
 
 function dateInputValue(value?: string | null): string {
@@ -358,6 +674,13 @@ function projectReadiness(draft: ProjectCreate): {
       targetStep: 0,
     },
     {
+      label: "Sector pack is selected",
+      status: draft.sector_id || sectionSettings(draft, "sector").id
+        ? "passed"
+        : "warning",
+      targetStep: 0,
+    },
+    {
       critical: true,
       label: "Project type is selected",
       status: draft.program_type ? "passed" : "failed",
@@ -385,7 +708,7 @@ function projectReadiness(draft: ProjectCreate): {
     },
     {
       critical: true,
-      label: "Primary beneficiary/entity type is selected",
+      label: "Primary entity type is selected",
       status:
         typeof beneficiary.primaryEntityType === "string" &&
         beneficiary.primaryEntityType.trim()
@@ -394,7 +717,7 @@ function projectReadiness(draft: ProjectCreate): {
       targetStep: 3,
     },
     {
-      label: "Beneficiary code format is configured",
+      label: "Entity code format is configured",
       status:
         typeof beneficiary.codeFormat === "string" &&
         beneficiary.codeFormat.trim()
@@ -493,6 +816,8 @@ function projectFromDraft(draft: ProjectCreate): ProjectListItemRead {
     progress_percent: 10,
     project_code: draft.project_code,
     region: draft.region || draft.country || null,
+    sector_id: draft.sector_id ?? null,
+    sector_name: settingText(draft, "sector", "name") || draft.category || null,
     start_date: draft.start_date ?? null,
     status: draft.status ?? "draft",
     total_submissions: 0,
@@ -573,6 +898,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     "projects.manage",
     "projects.edit",
   ]);
+  const canManageOrganization = hasAnyPermission(principal, [
+    "organization.manage",
+  ]);
 
   const projectsQuery = useQuery({
     queryKey: ["projects", token],
@@ -589,6 +917,11 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     queryFn: () => listProjectTemplates(token ?? ""),
     enabled,
   });
+  const sectorPacksQuery = useQuery({
+    queryKey: ["projects", "sector-packs", token],
+    queryFn: () => listProjectSectorPacks(token ?? ""),
+    enabled,
+  });
   const detailQuery = useQuery({
     enabled: enabled && Boolean(selectedProjectId),
     queryKey: ["projects", "detail", token, selectedProjectId],
@@ -602,6 +935,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const summary: ProjectSummaryRead =
     preview ? (summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary) : (summaryQuery.data ?? computeProjectSummary(projects));
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
+  const sectorPacks = preview
+    ? previewSectorPacks
+    : (sectorPacksQuery.data ?? previewSectorPacks);
   const selectedProject = selectedProjectId
     ? (projects.find((project) => project.id === selectedProjectId) ?? null)
     : null;
@@ -613,13 +949,52 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     () => filterProjects(projects, activeSection),
     [activeSection, projects],
   );
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterCountry, setFilterCountry] = useState("");
+  const [filterRegion, setFilterRegion] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const projectFilters = {
+    country: filterCountry,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+    owner: filterOwner,
+    region: filterRegion,
+    status: filterStatus,
+  };
+  function setProjectFilters(patch: Partial<typeof projectFilters>): void {
+    if (patch.status !== undefined) setFilterStatus(patch.status);
+    if (patch.country !== undefined) setFilterCountry(patch.country);
+    if (patch.region !== undefined) setFilterRegion(patch.region);
+    if (patch.owner !== undefined) setFilterOwner(patch.owner);
+    if (patch.dateFrom !== undefined) setFilterDateFrom(patch.dateFrom);
+    if (patch.dateTo !== undefined) setFilterDateTo(patch.dateTo);
+  }
+  const filteredProjects = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(filterDateFrom).getTime() : null;
+    const toTime = filterDateTo ? new Date(filterDateTo).getTime() : null;
+    return visibleProjects.filter((project) => {
+      if (filterStatus && project.status !== filterStatus) return false;
+      if (filterCountry && project.country !== filterCountry) return false;
+      if (filterRegion && project.region !== filterRegion) return false;
+      if (filterOwner && project.owner !== filterOwner) return false;
+      if (fromTime !== null || toTime !== null) {
+        if (!project.start_date) return false;
+        const startTime = new Date(project.start_date).getTime();
+        if (fromTime !== null && startTime < fromTime) return false;
+        if (toTime !== null && startTime > toTime) return false;
+      }
+      return true;
+    });
+  }, [filterCountry, filterDateFrom, filterDateTo, filterOwner, filterRegion, filterStatus, visibleProjects]);
 
   useEffect(() => {
     const match = pathname?.match(/^\/projects\/([^/]+)\/data-import\/?$/);
     if (!match?.[1]) return;
     setSelectedProjectId(match[1]);
     setActiveSection("all");
-    setActiveTab("Data Import");
+    setActiveTab("Settings");
   }, [pathname]);
 
   const createProjectMutation = useMutation({
@@ -685,6 +1060,113 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     },
   });
 
+  const importUnitsMutation = useMutation({
+    mutationFn: (file: File) => importOrganizationUnits(token ?? "", file),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["users-teams", "units", token] });
+      pushToast({
+        title: "Locations imported",
+        description: `${result.created_count} created, ${result.skipped_count} skipped, ${result.error_count} issue(s).`,
+        tone: result.error_count ? "warning" : "success",
+      });
+    },
+    onError: () =>
+      pushToast({
+        title: "Location import failed",
+        description: "Use a CSV with name, code, unit_type columns (optional parent_code, region).",
+        tone: "danger",
+      }),
+  });
+
+  const updateProjectSettingsMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      settings,
+    }: {
+      projectId: string;
+      settings: Record<string, unknown>;
+    }) =>
+      updateProject(token ?? "", projectId, {
+        settings_json: settings,
+      } satisfies ProjectUpdate),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Sector pack updated",
+        description:
+          "Project-specific terminology, templates, validation, dashboards, and reports were saved.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not save sector pack",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
+  const installSectorFormsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorForms(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Starter forms installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install forms",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
+  const installSectorIndicatorsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorIndicators(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Indicator templates installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install indicators",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
+  const installSectorReportsMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      installProjectSectorReports(token ?? "", projectId),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({
+        title: "Report templates installed",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not install reports",
+        description: messageFromError(error),
+        tone: "danger",
+      });
+    },
+  });
+
   function openProjectWizard(nextDraft: ProjectCreate = projectDraft): void {
     setProjectWizardError("");
     setEditingProjectId(null);
@@ -711,6 +1193,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       program_type: currentDetail.program_type ?? "",
       project_code: currentDetail.project_code,
       region: currentDetail.region ?? "",
+      sector_id: currentDetail.sector_id ?? "",
       settings_json: currentDetail.settings_json ?? defaultProjectDraft.settings_json,
       start_date: currentDetail.start_date ?? null,
       status: currentDetail.status,
@@ -767,6 +1250,27 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     setActiveTab("Overview");
   }
 
+  function saveProjectSettings(settings: Record<string, unknown>): void {
+    if (!detail) return;
+    if (preview) {
+      queryClient.setQueryData(
+        ["projects", "detail", token, detail.id],
+        { ...detail, settings_json: settings },
+      );
+      pushToast({
+        title: "Sector pack updated",
+        description:
+          "Project-specific sector settings were saved in this local preview.",
+        tone: "success",
+      });
+      return;
+    }
+    updateProjectSettingsMutation.mutate({
+      projectId: detail.id,
+      settings,
+    });
+  }
+
   const projectColumns: TableColumn<ProjectListItemRead>[] = [
     {
       key: "name",
@@ -792,6 +1296,12 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       render: (project) => (
         <Badge tone={statusTone(project.status)}>{project.status}</Badge>
       ),
+    },
+    {
+      key: "sector",
+      header: "Sector",
+      value: (project) => project.sector_name ?? project.sector_id ?? "",
+      render: (project) => project.sector_name ?? "Custom",
     },
     {
       key: "donor",
@@ -944,7 +1454,48 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       {selectedProjectId && detail ? (
         <ProjectDetailWorkspace
           detail={detail}
+          canManageProjects={canManageProjects}
+          installSectorFormsPending={installSectorFormsMutation.isPending}
+          installSectorIndicatorsPending={installSectorIndicatorsMutation.isPending}
+          installSectorReportsPending={installSectorReportsMutation.isPending}
+          isSavingSettings={updateProjectSettingsMutation.isPending}
           onClose={() => setSelectedProjectId(null)}
+          onInstallSectorForms={() => {
+            if (preview) {
+              pushToast({
+                title: "Starter forms preview",
+                description:
+                  "In production this installs editable draft forms from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorFormsMutation.mutate(detail.id);
+          }}
+          onInstallSectorIndicators={() => {
+            if (preview) {
+              pushToast({
+                title: "Indicator templates preview",
+                description:
+                  "In production this installs editable indicator templates from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorIndicatorsMutation.mutate(detail.id);
+          }}
+          onInstallSectorReports={() => {
+            if (preview) {
+              pushToast({
+                title: "Report templates preview",
+                description:
+                  "In production this installs editable report packages from the selected sector pack.",
+                tone: "neutral",
+              });
+              return;
+            }
+            installSectorReportsMutation.mutate(detail.id);
+          }}
           onOpenForms={() => {
             setActiveView("forms");
             router.push("/forms");
@@ -956,6 +1507,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           onOpenIndicators={() => {
             setActiveView("indicators");
             router.push("/indicators");
+          }}
+          onOpenMapping={() => {
+            setActiveView("map");
+            router.push("/mapping");
           }}
           onOpenReports={() => {
             setActiveView("analytics");
@@ -969,6 +1524,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
             setActiveView("organizations");
             router.push("/users-teams");
           }}
+          onUpdateSettings={saveProjectSettings}
           preview={preview}
           tab={activeTab}
           setTab={setActiveTab}
@@ -988,26 +1544,27 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       ["all", "active", "draft", "closed"].includes(activeSection) ? (
         <section className="space-y-4">
           <SectionHeader
-            action={
-              <Button
-                disabled={!canManageProjects}
-                onClick={() => openProjectWizard()}
-                variant="primary"
-              >
-                <Plus aria-hidden="true" /> Create project
-              </Button>
-            }
             description="Search, filter, sort, export, and open project workspaces. Detailed forms, submissions, mapping, reports, and governance remain in their modules."
             title={
               projectSections.find((section) => section.id === activeSection)
                 ?.label ?? "Projects"
             }
           />
-          <ProjectFilters />
+          <ProjectFilters
+            filters={projectFilters}
+            onChange={setProjectFilters}
+            projects={visibleProjects}
+          />
           <DataTable
             columns={projectColumns}
+            emptyAction={
+              canManageProjects
+                ? { label: "Create project", onClick: () => openProjectWizard() }
+                : undefined
+            }
+            emptyDescription="Projects hold your forms, field teams, entities, and indicators. Create one to set up the program context first."
             emptyLabel="No projects match this view yet"
-            rows={visibleProjects}
+            rows={filteredProjects}
             searchLabel="Search projects, donors, owners, countries"
             title="Project list"
           />
@@ -1041,17 +1598,21 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           !createProjectMutation.isPending &&
           !updateProjectMutation.isPending
         }
+        canImportLocations={canManageOrganization && enabled}
         draft={projectDraft}
         error={projectWizardError}
+        importingLocations={importUnitsMutation.isPending}
         isEditing={Boolean(editingProjectId)}
         isSubmitting={createProjectMutation.isPending || updateProjectMutation.isPending}
         onChange={setProjectDraft}
+        onImportLocations={(file) => importUnitsMutation.mutate(file)}
         onOpenChange={(open) => {
           setWizardOpen(open);
           if (!open) setProjectWizardError("");
         }}
         onSubmit={submitProject}
         open={wizardOpen}
+        sectorPacks={sectorPacks}
         step={wizardStep}
         setStep={setWizardStep}
       />
@@ -1207,27 +1768,47 @@ function ProjectsDashboard({
 }
 
 function ProjectDetailWorkspace({
+  canManageProjects,
   detail,
+  installSectorFormsPending,
+  installSectorIndicatorsPending,
+  installSectorReportsPending,
+  isSavingSettings,
   onClose,
+  onInstallSectorForms,
+  onInstallSectorIndicators,
+  onInstallSectorReports,
   onOpenForms,
   onOpenBeneficiaries,
   onOpenIndicators,
+  onOpenMapping,
   onOpenReports,
   onOpenSubmissions,
   onOpenTeams,
+  onUpdateSettings,
   preview,
   setTab,
   tab,
   token,
 }: {
+  canManageProjects: boolean;
   detail: ProjectDetailRead;
+  installSectorFormsPending: boolean;
+  installSectorIndicatorsPending: boolean;
+  installSectorReportsPending: boolean;
+  isSavingSettings: boolean;
   onClose: () => void;
+  onInstallSectorForms: () => void;
+  onInstallSectorIndicators: () => void;
+  onInstallSectorReports: () => void;
   onOpenForms: () => void;
   onOpenBeneficiaries: () => void;
   onOpenIndicators: () => void;
+  onOpenMapping: () => void;
   onOpenReports: () => void;
   onOpenSubmissions: () => void;
   onOpenTeams: () => void;
+  onUpdateSettings: (settings: Record<string, unknown>) => void;
   preview: boolean;
   setTab: (tab: ProjectTab) => void;
   tab: ProjectTab;
@@ -1271,7 +1852,17 @@ function ProjectDetailWorkspace({
         ))}
       </div>
       {tab === "Overview" ? (
-        <ProjectOverview detail={detail} onSelectTab={setTab} />
+        <ProjectOverview
+          canManageProjects={canManageProjects}
+          detail={detail}
+          installSectorFormsPending={installSectorFormsPending}
+          installSectorIndicatorsPending={installSectorIndicatorsPending}
+          installSectorReportsPending={installSectorReportsPending}
+          onInstallSectorForms={onInstallSectorForms}
+          onInstallSectorIndicators={onInstallSectorIndicators}
+          onInstallSectorReports={onInstallSectorReports}
+          onSelectTab={setTab}
+        />
       ) : null}
       {tab === "Beneficiaries" ? (
         <ProjectBeneficiariesPanel
@@ -1281,92 +1872,163 @@ function ProjectDetailWorkspace({
           token={token}
         />
       ) : null}
-      {tab === "Data Import" ? (
-        <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+      {tab === "Forms & Indicators" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Forms"
+            description="Forms are managed in the Forms module. This tab shows the project relationship only."
+            onAction={onOpenForms}
+            records={detail.forms}
+            title="Project Forms"
+          />
+          <RelatedTab
+            actionLabel="Open Indicators"
+            description="Indicators stay reusable and are tracked in the Indicators module."
+            onAction={onOpenIndicators}
+            records={detail.indicators}
+            title="Project Indicators"
+          />
+        </div>
       ) : null}
-      {tab === "Forms" ? (
-        <RelatedTab
-          actionLabel="Open Forms"
-          description="Forms are managed in the Forms module. This tab shows the project relationship only."
-          onAction={onOpenForms}
-          records={detail.forms}
-          title="Project Forms"
-        />
+      {tab === "Locations & Teams" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Mapping"
+            description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
+            onAction={onOpenMapping}
+            records={detail.locations}
+            title="Project Locations"
+          />
+          <RelatedTab
+            actionLabel="Open Users & Teams"
+            description="Project teams reference Users & Teams without duplicating identity management."
+            onAction={onOpenTeams}
+            records={detail.teams}
+            title="Project Teams"
+          />
+          <RelatedTab
+            description="Assignments are operational activities owned by Field Operations."
+            records={detail.assignments}
+            title="Project Assignments"
+          />
+        </div>
       ) : null}
-      {tab === "Indicators" ? (
-        <RelatedTab
-          actionLabel="Open Indicators"
-          description="Indicators stay reusable and are tracked in the Indicators module."
-          onAction={onOpenIndicators}
-          records={detail.indicators}
-          title="Project Indicators"
-        />
+      {tab === "Submissions & Reports" ? (
+        <div className="space-y-4">
+          <RelatedTab
+            actionLabel="Open Submissions"
+            description="Collected records are reviewed in Submissions; this tab shows project-level counts and recent records."
+            onAction={onOpenSubmissions}
+            records={detail.submissions}
+            title="Project Submissions"
+          />
+          <RelatedTab
+            actionLabel="Open Reports"
+            description="Project reports, indicator reports, and coverage reports are produced in Reports."
+            onAction={onOpenReports}
+            records={detail.reports}
+            title="Project Reports"
+          />
+        </div>
       ) : null}
-      {tab === "Locations" ? (
-        <RelatedTab
-          actionLabel="Open Mapping"
-          description="Projects consume mapping boundaries and coverage; GIS tools remain in Mapping."
-          records={detail.locations}
-          title="Project Locations"
-        />
+      {tab === "Data Quality & Governance" ? (
+        <div className="space-y-4">
+          <ProjectDataQuality detail={detail} />
+          <SectionHeader
+            description="Default approval workflow, consent, retention, and entity rules applied to this project."
+            title="Governance"
+          />
+          <ProjectGovernance detail={detail} />
+          <SectionHeader
+            description="Immutable record of changes made to this project."
+            title="Audit Trail"
+          />
+          <AuditTrail detail={detail} />
+        </div>
       ) : null}
-      {tab === "Teams" ? (
-        <RelatedTab
-          actionLabel="Open Users & Teams"
-          description="Project teams reference Users & Teams without duplicating identity management."
-          onAction={onOpenTeams}
-          records={detail.teams}
-          title="Project Teams"
-        />
+      {tab === "Settings" ? (
+        <div className="space-y-4">
+          <ProjectSettings
+            canManageProjects={canManageProjects}
+            detail={detail}
+            isSaving={isSavingSettings}
+            onUpdateSettings={onUpdateSettings}
+            token={token}
+          />
+          <SectionHeader
+            description="Bring external data into this project or migrate records between systems."
+            title="Data Import & Migration"
+          />
+          <ImportsMigrationModule mode="project" projectId={detail.id} token={token} />
+        </div>
       ) : null}
-      {tab === "Assignments" ? (
-        <RelatedTab
-          description="Assignments are operational activities owned by Field Operations."
-          records={detail.assignments}
-          title="Project Assignments"
-        />
-      ) : null}
-      {tab === "Submissions" ? (
-        <RelatedTab
-          actionLabel="Open Submissions"
-          description="Collected records are reviewed in Submissions; this tab shows project-level counts and recent records."
-          onAction={onOpenSubmissions}
-          records={detail.submissions}
-          title="Project Submissions"
-        />
-      ) : null}
-      {tab === "Reports" ? (
-        <RelatedTab
-          actionLabel="Open Reports"
-          description="Project reports, indicator reports, and coverage reports are produced in Reports."
-          onAction={onOpenReports}
-          records={detail.reports}
-          title="Project Reports"
-        />
-      ) : null}
-      {tab === "Data Quality" ? <ProjectDataQuality detail={detail} /> : null}
-      {tab === "Governance" ? <ProjectGovernance detail={detail} /> : null}
-      {tab === "Settings" ? <ProjectSettings detail={detail} /> : null}
-      {tab === "Audit Trail" ? <AuditTrail detail={detail} /> : null}
     </section>
   );
 }
 
 function ProjectOverview({
+  canManageProjects,
   detail,
+  installSectorFormsPending,
+  installSectorIndicatorsPending,
+  installSectorReportsPending,
+  onInstallSectorForms,
+  onInstallSectorIndicators,
+  onInstallSectorReports,
   onSelectTab,
 }: {
+  canManageProjects: boolean;
   detail: ProjectDetailRead;
+  installSectorFormsPending: boolean;
+  installSectorIndicatorsPending: boolean;
+  installSectorReportsPending: boolean;
+  onInstallSectorForms: () => void;
+  onInstallSectorIndicators: () => void;
+  onInstallSectorReports: () => void;
   onSelectTab: (tab: ProjectTab) => void;
 }) {
   const health = projectHealthSummary(detail);
   const settingsDraft = { settings_json: detail.settings_json ?? {} };
+  const sectorSettings = sectionSettings(settingsDraft, "sector");
+  const sectorName =
+    (typeof sectorSettings.name === "string" && sectorSettings.name) ||
+    detail.sector_name ||
+    "Custom sector";
+  const sectorFormTemplates = Array.isArray(sectorSettings.formTemplates)
+    ? sectorSettings.formTemplates.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const sectorIndicatorTemplates = Array.isArray(sectorSettings.indicatorTemplates)
+    ? sectorSettings.indicatorTemplates.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const sectorInstalled =
+    typeof sectorSettings.installed === "object" &&
+    sectorSettings.installed !== null &&
+    !Array.isArray(sectorSettings.installed)
+      ? (sectorSettings.installed as Record<string, unknown>)
+      : {};
+  const sectorFormsInstalled =
+    typeof sectorInstalled.forms === "object" &&
+    sectorInstalled.forms !== null &&
+    "installed" in sectorInstalled.forms;
+  const sectorIndicatorsInstalled =
+    typeof sectorInstalled.indicators === "object" &&
+    sectorInstalled.indicators !== null &&
+    "installed" in sectorInstalled.indicators;
+  const sectorReportsInstalled =
+    typeof sectorInstalled.reports === "object" &&
+    sectorInstalled.reports !== null &&
+    "installed" in sectorInstalled.reports;
   const beneficiaryType =
     settingText(settingsDraft, "beneficiary", "primaryEntityType") ||
     "Not configured";
   const approvalWorkflow =
     settingText(settingsDraft, "governance", "approvalWorkflow") ||
     "Not configured";
+  const formJourney = topLevelStringList(detail.settings_json, "formJourney");
   const overviewCards: {
     label: string;
     value: string;
@@ -1378,41 +2040,123 @@ function ProjectOverview({
       tab: "Beneficiaries",
       value: `${detail.beneficiary_count}`,
     },
-    { label: "Forms", tab: "Forms", value: `${detail.active_forms}` },
+    { label: "Forms", tab: "Forms & Indicators", value: `${detail.active_forms}` },
     {
       label: "Assignments",
-      tab: "Assignments",
+      tab: "Locations & Teams",
       value: `${detail.active_assignments}`,
     },
     {
       label: "Submissions",
-      tab: "Submissions",
+      tab: "Submissions & Reports",
       value: `${detail.total_submissions}`,
     },
     {
       label: "Indicators",
-      tab: "Indicators",
+      tab: "Forms & Indicators",
       value: `${detail.indicator_count}`,
     },
     {
       label: "Data Quality",
-      tab: "Data Quality",
+      tab: "Data Quality & Governance",
       tone: health.qualityTone,
       value: health.qualityLabel,
     },
     {
       label: "Coverage",
-      tab: "Locations",
+      tab: "Locations & Teams",
       value: detail.region ?? detail.country ?? "All areas",
     },
     {
       label: "Field Officers",
-      tab: "Teams",
+      tab: "Locations & Teams",
       value: `${detail.teams.length || detail.active_assignments}`,
     },
   ];
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border bg-background/50 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="support">Sector setup</Badge>
+              <Badge tone={detail.sector_id ? "success" : "warning"}>
+                {detail.sector_id ? sectorName : "No sector selected"}
+              </Badge>
+            </div>
+            <h3 className="mt-2 font-semibold">
+              Project setup checklist
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Use the sector pack to install editable forms and indicators,
+              then assign teams, publish forms, and sync field officers. The
+              project remains customizable for donor and local requirements.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorFormsPending}
+              onClick={onInstallSectorForms}
+              size="sm"
+              variant={sectorFormsInstalled || detail.active_forms ? "secondary" : "primary"}
+            >
+              {installSectorFormsPending
+                ? "Installing forms..."
+                : sectorFormsInstalled || detail.active_forms
+                  ? "Install/update forms"
+                  : "Install starter forms"}
+            </Button>
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorIndicatorsPending}
+              onClick={onInstallSectorIndicators}
+              size="sm"
+              variant={sectorIndicatorsInstalled || detail.indicator_count ? "secondary" : "primary"}
+            >
+              {installSectorIndicatorsPending
+                ? "Installing indicators..."
+                : sectorIndicatorsInstalled || detail.indicator_count
+                  ? "Install/update indicators"
+                : "Install indicators"}
+            </Button>
+            <Button
+              disabled={!canManageProjects || !detail.sector_id || installSectorReportsPending}
+              onClick={onInstallSectorReports}
+              size="sm"
+              variant={sectorReportsInstalled || detail.reports.length ? "secondary" : "primary"}
+            >
+              {installSectorReportsPending
+                ? "Installing reports..."
+                : sectorReportsInstalled || detail.reports.length
+                  ? "Install/update reports"
+                  : "Install reports"}
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
+          {[
+            ["Sector", detail.sector_id ? "Ready" : "Select pack", Boolean(detail.sector_id), "Overview"],
+            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms & Indicators"],
+            ["Indicators", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Forms & Indicators"],
+            ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Submissions & Reports"],
+            ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Locations & Teams"],
+            ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Data Quality & Governance"],
+            ["Mobile", detail.active_assignments && detail.active_forms ? "Ready" : "Assign work", Boolean(detail.active_assignments && detail.active_forms), "Locations & Teams"],
+          ].map(([label, value, ready, target]) => (
+            <button
+              className="rounded-xl border bg-panel p-3 text-left transition hover:border-primary hover:bg-primary/5"
+              key={String(label)}
+              onClick={() => onSelectTab(target as ProjectTab)}
+              type="button"
+            >
+              <Badge tone={ready ? "success" : "warning"}>
+                {ready ? "Done" : "Next"}
+              </Badge>
+              <p className="mt-2 text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1 text-sm font-semibold">{value}</p>
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border bg-background/50 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1449,7 +2193,8 @@ function ProjectOverview({
               </button>
             ))}
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <Signal label="Sector" value={sectorName} tone="success" />
             <Signal
               label="Primary entity"
               value={beneficiaryType}
@@ -1471,7 +2216,7 @@ function ProjectOverview({
           <h3 className="font-semibold">Coverage Map Preview</h3>
           <button
             className="mt-4 grid min-h-64 w-full place-items-center rounded-2xl border bg-[radial-gradient(circle_at_25%_25%,rgba(20,184,166,0.18),transparent_28%),linear-gradient(135deg,rgba(34,197,94,0.15),rgba(15,23,42,0.04))] p-5 text-center transition hover:border-primary"
-            onClick={() => onSelectTab("Locations")}
+            onClick={() => onSelectTab("Locations & Teams")}
             type="button"
           >
             <div>
@@ -1493,13 +2238,30 @@ function ProjectOverview({
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <InfoPanel
-          title="Beneficiary Journey"
+          title="Sector Pack"
           lines={[
-            "Registration before baseline",
-            "Baseline before monitoring",
-            "Monitoring before endline",
+            sectorName,
+            sectorFormTemplates.length
+              ? `${sectorFormTemplates.slice(0, 2).join(", ")} forms`
+              : "Custom form templates",
+            sectorIndicatorTemplates.length
+              ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} indicators`
+              : "Custom indicators",
           ]}
-          onClick={() => onSelectTab("Governance")}
+          onClick={() => onSelectTab("Forms & Indicators")}
+        />
+        <InfoPanel
+          title="Entity Journey"
+          lines={
+            formJourney.length
+              ? formJourney
+              : [
+                  "Registration before baseline",
+                  "Baseline before monitoring",
+                  "Monitoring before endline",
+                ]
+          }
+          onClick={() => onSelectTab("Data Quality & Governance")}
         />
         <InfoPanel
           title="Project Health Inputs"
@@ -1508,12 +2270,12 @@ function ProjectOverview({
             "Data quality and approvals",
             "Indicator and assignment progress",
           ]}
-          onClick={() => onSelectTab("Data Quality")}
+          onClick={() => onSelectTab("Data Quality & Governance")}
         />
         <InfoPanel
           title="Source Tracking"
           lines={submissionSourceOptions}
-          onClick={() => onSelectTab("Submissions")}
+          onClick={() => onSelectTab("Submissions & Reports")}
         />
       </div>
     </div>
@@ -1596,7 +2358,7 @@ function InfoPanel({
 function ProjectDataQuality({ detail }: { detail: ProjectDetailRead }) {
   const health = projectHealthSummary(detail);
   const items = [
-    ["Duplicate candidates", `${Math.max(0, Math.round(detail.beneficiary_count * 0.015))}`],
+    ["Duplicate Review", detail.beneficiary_count > 0 ? "Tracked in Entities" : "No entities yet"],
     ["Missing data checks", detail.total_submissions ? "Active" : "Waiting for data"],
     ["GPS issues", detail.total_submissions ? "Tracked in Data Quality" : "No submissions yet"],
     ["Validation failures", detail.total_submissions ? "Review queue enabled" : "No issues yet"],
@@ -1635,7 +2397,7 @@ function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
     [
       "Approved Data Only",
       settingBoolean(settingsDraft, "governance", "approvedDataOnly", true)
-        ? "Beneficiaries, indicators, and reports use approved records"
+        ? "Entities, indicators, and reports use approved records"
         : "Draft policy allows unapproved data where configured",
     ],
   ];
@@ -1660,7 +2422,7 @@ function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
         </div>
       </div>
       <div className="rounded-2xl border bg-background/50 p-5">
-        <h3 className="font-semibold">Beneficiary Rules</h3>
+        <h3 className="font-semibold">Entity Rules</h3>
         <div className="mt-4 grid gap-3">
           {beneficiaryItems.map(([label, value]) => (
             <Signal key={label} label={label} value={value} />
@@ -1721,23 +2483,578 @@ function RelatedTab({
   );
 }
 
-function ProjectSettings({ detail }: { detail: ProjectDetailRead }) {
+function ProjectSettings({
+  canManageProjects,
+  detail,
+  isSaving,
+  onUpdateSettings,
+  token,
+}: {
+  canManageProjects: boolean;
+  detail: ProjectDetailRead;
+  isSaving: boolean;
+  onUpdateSettings: (settings: Record<string, unknown>) => void;
+  token: string | null;
+}) {
+  const [settings, setSettings] = useState<Record<string, unknown>>(() =>
+    sanitizeProjectSettings(detail.settings_json),
+  );
+
+  useEffect(() => {
+    setSettings(sanitizeProjectSettings(detail.settings_json));
+  }, [detail.id, detail.settings_json]);
+
+  const draft = { settings_json: settings };
+  const sectorSettings = sectionSettings(draft, "sector");
+  const beneficiarySettings = sectionSettings(draft, "beneficiary");
+  const terminology =
+    typeof sectorSettings.terminology === "object" &&
+    sectorSettings.terminology !== null &&
+    !Array.isArray(sectorSettings.terminology)
+      ? (sectorSettings.terminology as Record<string, unknown>)
+      : {};
+  const sectorName =
+    settingText(draft, "sector", "name") || detail.sector_name || "Custom sector";
+  const setSection = (section: string, patch: Record<string, unknown>): void => {
+    setSettings((current) => {
+      const currentSection =
+        typeof current[section] === "object" &&
+        current[section] !== null &&
+        !Array.isArray(current[section])
+          ? (current[section] as Record<string, unknown>)
+          : {};
+      return {
+        ...current,
+        [section]: {
+          ...currentSection,
+          ...patch,
+        },
+      };
+    });
+  };
+  const setSector = (patch: Record<string, unknown>): void =>
+    setSection("sector", patch);
+  const setTerminology = (key: string, value: string): void => {
+    setSector({ terminology: { ...terminology, [key]: value } });
+  };
+  const setSectorList = (key: string, value: string): void =>
+    setSector({ [key]: splitLines(value) });
+  const setBeneficiary = (patch: Record<string, unknown>): void =>
+    setSection("beneficiary", patch);
+  const categoriesQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token"),
+    queryFn: () => listEntityCategories(token ?? "", { include_archived: true, project_id: detail.id }),
+    queryKey: ["entity-categories", token, detail.id],
+  });
+  const libraryQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token"),
+    queryFn: () => listPredefinedEntityCategories(token ?? ""),
+    queryKey: ["entity-category-library", token],
+  });
+
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {[
-        ["Project Status", detail.status],
-        ["Ownership", detail.owner ?? "Unassigned"],
-        ["Default Locations", detail.region ?? detail.country ?? "All areas"],
-        ["Default Teams", `${detail.teams.length} assigned team(s)`],
-        ["Approval Requirements", "Project manager approval before closure"],
-        ["Retention Rules", "Controlled by Governance"],
-        ["Consent Policies", "Inherited from forms and governance"],
-        ["Read-only Rules", "Closed projects become read-only"],
-      ].map(([label, value]) => (
-        <Signal key={label} label={label} value={value} />
-      ))}
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        {[
+          ["Project Status", detail.status],
+          ["Ownership", detail.owner ?? "Unassigned"],
+          ["Default Locations", detail.region ?? detail.country ?? "All areas"],
+          ["Default Teams", `${detail.teams.length} assigned team(s)`],
+        ].map(([label, value]) => (
+          <Signal key={label} label={label} value={value} />
+        ))}
+      </div>
+
+      <div className="rounded-2xl border bg-background/50 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <Badge tone="support">Sector Pack Manager</Badge>
+            <h3 className="mt-2 font-semibold">{sectorName}</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Customize this project&apos;s sector pack before installing or updating
+              starter forms, indicators, dashboards, and reports. These settings
+              stay inside the project and do not create another module.
+            </p>
+          </div>
+          <Button
+            disabled={!canManageProjects || isSaving}
+            onClick={() => onUpdateSettings(settings)}
+            variant="primary"
+          >
+            {isSaving ? "Saving..." : "Save sector pack"}
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-3">
+            <div className="rounded-xl border bg-panel p-3">
+              <h4 className="text-sm font-semibold">Terminology</h4>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Set the words this project uses so agriculture, health, education,
+                infrastructure, protection, and custom projects do not all have to
+                sound like beneficiary-only programs.
+              </p>
+              <div className="mt-3 grid gap-2">
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Primary entity name"
+                  onChange={(event) =>
+                    setTerminology("primary_entity", event.target.value)
+                  }
+                  value={String(terminology.primary_entity ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Secondary entities"
+                  onChange={(event) =>
+                    setTerminology("secondary_entities", event.target.value)
+                  }
+                  value={String(terminology.secondary_entities ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Field visit label"
+                  onChange={(event) =>
+                    setTerminology("field_visit", event.target.value)
+                  }
+                  value={String(terminology.field_visit ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Submission label"
+                  onChange={(event) =>
+                    setTerminology("submission", event.target.value)
+                  }
+                  value={String(terminology.submission ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Registry label"
+                  onChange={(event) =>
+                    setTerminology("registry", event.target.value)
+                  }
+                  value={String(terminology.registry ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Form label"
+                  onChange={(event) =>
+                    setTerminology("form", event.target.value)
+                  }
+                  value={String(terminology.form ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Approval label"
+                  onChange={(event) =>
+                    setTerminology("approval", event.target.value)
+                  }
+                  value={String(terminology.approval ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Report label"
+                  onChange={(event) =>
+                    setTerminology("report", event.target.value)
+                  }
+                  value={String(terminology.report ?? "")}
+                />
+              </div>
+              <div className="mt-3 rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+                <p className="font-semibold text-foreground">Preview</p>
+                <p className="mt-1">
+                  {String(terminology.registry || "Registry")} tracks{" "}
+                  {String(terminology.primary_entity || beneficiarySettings.primaryEntityType || "entities")}.
+                  Field teams submit {String(terminology.submission || "records")} using{" "}
+                  {String(terminology.form || "forms")}; managers complete{" "}
+                  {String(terminology.approval || "review")} before data appears in{" "}
+                  {String(terminology.report || "reports")}.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-panel p-3">
+              <h4 className="text-sm font-semibold">Entity controls</h4>
+              <div className="mt-3 grid gap-2">
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Primary entity type"
+                  onChange={(event) =>
+                    setBeneficiary({ primaryEntityType: event.target.value })
+                  }
+                  value={String(beneficiarySettings.primaryEntityType ?? "")}
+                />
+                <BeneficiaryCodeFormatDesigner
+                  disabled={!canManageProjects}
+                  entityType={String(beneficiarySettings.primaryEntityType ?? "Beneficiary")}
+                  onChange={(codeFormat) => setBeneficiary({ codeFormat })}
+                  value={String(beneficiarySettings.codeFormat ?? "")}
+                />
+                <ListEditor
+                  disabled={!canManageProjects}
+                  label="Custom entity types"
+                  onChange={(value) => setSectorList("entityTypes", value)}
+                  value={joinLines(settingStringList(draft, "sector", "entityTypes"))}
+                />
+              </div>
+            </div>
+
+            <EntityCategoryManager
+              canManage={canManageProjects}
+              categories={categoriesQuery.data ?? []}
+              detail={detail}
+              isLoading={categoriesQuery.isLoading || libraryQuery.isLoading}
+              library={libraryQuery.data ?? []}
+              token={token}
+            />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Custom form templates"
+              onChange={(value) => setSectorList("formTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "formTemplates"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Custom indicators"
+              onChange={(value) => setSectorList("indicatorTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "indicatorTemplates"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Validation rules"
+              onChange={(value) => setSectorList("validationRules", value)}
+              value={joinLines(settingStringList(draft, "sector", "validationRules"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Data quality rules"
+              onChange={(value) => setSectorList("dataQualityRules", value)}
+              value={joinLines(settingStringList(draft, "sector", "dataQualityRules"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Dashboard widgets"
+              onChange={(value) => setSectorList("dashboardWidgets", value)}
+              value={joinLines(settingStringList(draft, "sector", "dashboardWidgets"))}
+            />
+            <ListEditor
+              disabled={!canManageProjects}
+              label="Report templates"
+              onChange={(value) => setSectorList("reportTemplates", value)}
+              value={joinLines(settingStringList(draft, "sector", "reportTemplates"))}
+            />
+            <div className="md:col-span-2">
+              <ListEditor
+                disabled={!canManageProjects}
+                label="Mobile field guidance"
+                onChange={(value) => setSectorList("mobileGuidance", value)}
+                value={joinLines(settingStringList(draft, "sector", "mobileGuidance"))}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
+}
+
+function FieldInput({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      <span>{label}</span>
+      <Input disabled={disabled} onChange={onChange} value={value} />
+    </label>
+  );
+}
+
+function BeneficiaryCodeFormatDesigner({
+  disabled,
+  entityType,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  entityType: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const parts = parseBeneficiaryCodeFormat(value, entityType);
+  const setParts = (patch: Partial<BeneficiaryCodeFormatParts>): void =>
+    onChange(buildBeneficiaryCodeFormat({ ...parts, ...patch }));
+  const preview = beneficiaryCodePreview(value, entityType);
+
+  return (
+    <div className="rounded-xl border bg-background/60 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-foreground">Entity code format</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Controls new entity codes created from approved submissions and imports.
+          </p>
+        </div>
+        <Badge tone="support">{preview}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Prefix
+          <Input
+            disabled={disabled}
+            maxLength={12}
+            onChange={(event) =>
+              setParts({
+                prefix:
+                  event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase() ||
+                  defaultEntityCodePrefix(entityType),
+              })
+            }
+            value={parts.prefix}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Separator
+          <Select
+            disabled={disabled}
+            onChange={(event) =>
+              setParts({ separator: event.target.value as BeneficiaryCodeFormatParts["separator"] })
+            }
+            value={parts.separator}
+          >
+            <option value="-">Dash (-)</option>
+            <option value="/">Slash (/)</option>
+            <option value="_">Underscore (_)</option>
+          </Select>
+        </label>
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Sequence length
+          <Select
+            disabled={disabled}
+            onChange={(event) => setParts({ digits: Number(event.target.value) })}
+            value={String(parts.digits)}
+          >
+            {[4, 5, 6, 7, 8].map((digits) => (
+              <option key={digits} value={digits}>
+                {digits} digits
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium text-muted-foreground">
+          <input
+            checked={parts.includeYear}
+            disabled={disabled}
+            onChange={(event) => setParts({ includeYear: event.target.checked })}
+            type="checkbox"
+          />
+          Include year
+        </label>
+      </div>
+      <label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
+        Advanced pattern
+        <Input
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+          placeholder="BEN-YYYY-000001"
+          value={value}
+        />
+      </label>
+      <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+        Existing codes stay unchanged. Imports can keep a legacy ID separately while Atlas assigns this official ID.
+      </p>
+    </div>
+  );
+}
+
+function EntityCategoryManager({
+  canManage,
+  categories,
+  detail,
+  isLoading,
+  library,
+  token,
+}: {
+  canManage: boolean;
+  categories: EntityCategoryRead[];
+  detail: ProjectDetailRead;
+  isLoading: boolean;
+  library: PredefinedEntityCategoryRead[];
+  token: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const [customName, setCustomName] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
+  const activeCategoryNames = new Set(categories.filter((category) => category.status !== "archived").map((category) => category.slug));
+  const availablePresets = library.filter((category) => !activeCategoryNames.has(category.slug)).slice(0, 80);
+  const invalidate = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ["entity-categories", token, detail.id] });
+  };
+  const activateMutation = useMutation({
+    mutationFn: (slug: string) => activatePredefinedEntityCategory(token ?? "", detail.id, slug),
+    onSuccess: () => void invalidate(),
+  });
+  const createMutation = useMutation({
+    mutationFn: (name: string) =>
+      createEntityCategory(token ?? "", {
+        attributes: [
+          { field_key: "name", field_type: "text", label: "Name", required: true },
+          { field_key: "status", field_type: "dropdown", label: "Status", options_json: ["active", "inactive", "archived"] },
+          { field_key: "location", field_type: "text", label: "Location" },
+        ],
+        color: "#0f8a4b",
+        description: `Custom ${name} entity category for ${detail.name}.`,
+        icon: "layers",
+        name,
+        project_id: detail.id,
+        statuses_json: ["active", "inactive", "archived"],
+      }),
+    onSuccess: () => {
+      setCustomName("");
+      void invalidate();
+    },
+  });
+  const archiveMutation = useMutation({
+    mutationFn: (category: EntityCategoryRead) =>
+      updateEntityCategory(token ?? "", category.id, { status: category.status === "archived" ? "active" : "archived" }),
+    onSuccess: () => void invalidate(),
+  });
+
+  return (
+    <div className="rounded-xl border bg-panel p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold">Entity Category Manager</h4>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Define what this project tracks: people, institutions, assets, locations, groups, cases, or any custom record type.
+          </p>
+        </div>
+        <Badge tone="support">{categories.filter((category) => category.status !== "archived").length} active</Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {isLoading ? <p className="text-xs text-muted-foreground">Loading entity categories...</p> : null}
+        {categories.slice(0, 6).map((category) => (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/70 px-3 py-2" key={category.id}>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color }} />
+                <p className="truncate text-sm font-medium">{category.name}</p>
+                <Badge tone={category.status === "archived" ? "neutral" : "success"}>{category.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {category.attributes.length} field(s) · {category.sector ?? "custom"} · {category.statuses_json.join(", ") || "standard workflow"}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                New record code example: <span className="font-medium text-foreground">{beneficiaryCodePreview("", category.name)}</span>
+              </p>
+            </div>
+            <Button
+              disabled={!canManage || archiveMutation.isPending}
+              onClick={() => archiveMutation.mutate(category)}
+              size="sm"
+              variant="ghost"
+            >
+              {category.status === "archived" ? "Restore" : "Archive"}
+            </Button>
+          </div>
+        ))}
+        {!categories.length && !isLoading ? (
+          <div className="rounded-lg border border-dashed bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+            No entity categories configured yet. Activate a sector preset or create a custom category before building entity-linked forms.
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-2">
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Activate sector preset
+          <Select
+            disabled={!canManage || activateMutation.isPending}
+            onChange={(event) => setSelectedPreset(event.target.value)}
+            value={selectedPreset}
+          >
+            <option value="">Choose predefined category</option>
+            {availablePresets.map((category) => (
+              <option key={`${category.sector}-${category.slug}`} value={category.slug}>
+                {category.name} · {category.sector}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button
+          disabled={!canManage || !selectedPreset || activateMutation.isPending}
+          onClick={() => {
+            activateMutation.mutate(selectedPreset);
+            setSelectedPreset("");
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          Activate preset
+        </Button>
+        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <Input
+            disabled={!canManage || createMutation.isPending}
+            onChange={(event) => setCustomName(event.target.value)}
+            placeholder="Create custom category, e.g. Innovation Hub"
+            value={customName}
+          />
+          <Button
+            disabled={!canManage || customName.trim().length < 2 || createMutation.isPending}
+            onClick={() => createMutation.mutate(customName.trim())}
+            size="sm"
+            variant="primary"
+          >
+            Create category
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ListEditor({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      <span>{label}</span>
+      <Textarea
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        rows={5}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function joinLines(value: string[]): string {
+  return value.join("\n");
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function AuditTrail({ detail }: { detail: ProjectDetailRead }) {
@@ -1821,27 +3138,35 @@ function TemplatesSection({
 }
 
 function ProjectWizard({
+  canImportLocations,
   canSubmit,
   draft,
   error,
+  importingLocations,
   isEditing,
   isSubmitting,
   onChange,
+  onImportLocations,
   onOpenChange,
   onSubmit,
   open,
+  sectorPacks,
   setStep,
   step,
 }: {
+  canImportLocations: boolean;
   canSubmit: boolean;
   draft: ProjectCreate;
   error: string;
+  importingLocations: boolean;
   isEditing: boolean;
   isSubmitting: boolean;
   onChange: (draft: ProjectCreate) => void;
+  onImportLocations: (file: File) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
   open: boolean;
+  sectorPacks: ProjectSectorPackRead[];
   setStep: (step: number) => void;
   step: number;
 }) {
@@ -1921,10 +3246,14 @@ function ProjectWizard({
             </div>
           </div>
           <ProjectWizardStepContent
+            canImportLocations={canImportLocations}
             draft={draft}
             duplicateFields={duplicateFields}
+            importingLocations={importingLocations}
             onChange={onChange}
+            onImportLocations={onImportLocations}
             readiness={readiness}
+            sectorPacks={sectorPacks}
             setDuplicateField={setDuplicateField}
             setStep={setStep}
             step={step}
@@ -1981,27 +3310,105 @@ function ProjectWizard({
 }
 
 function ProjectWizardStepContent({
+  canImportLocations,
   draft,
   duplicateFields,
+  importingLocations,
   onChange,
+  onImportLocations,
   readiness,
+  sectorPacks,
   setDuplicateField,
   setStep,
   step,
   updateSettings,
 }: {
+  canImportLocations: boolean;
   draft: ProjectCreate;
   duplicateFields: string[];
+  importingLocations: boolean;
   onChange: (draft: ProjectCreate) => void;
+  onImportLocations: (file: File) => void;
   readiness: ReturnType<typeof projectReadiness>;
+  sectorPacks: ProjectSectorPackRead[];
   setDuplicateField: (field: string, enabled: boolean) => void;
   setStep: (step: number) => void;
   step: number;
   updateSettings: (section: string, patch: ProjectSettingsSection) => void;
 }) {
+  const activeSectorPack = selectedSectorPack(draft, sectorPacks);
+
   if (step === 0) {
     return (
       <div className="grid gap-3">
+        <div className="rounded-2xl border bg-background/50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Sector pack</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                Choose the industry context for this project. Atlas keeps the
+                same M&E engine, but suggests the right entity types, forms,
+                indicators, validation rules, dashboards, reports, and mobile
+                guidance for the sector.
+              </p>
+            </div>
+            <Select
+              className="lg:w-72"
+              value={draft.sector_id ?? ""}
+              onChange={(event) => {
+                const pack = sectorPacks.find(
+                  (item) => item.id === event.target.value,
+                );
+                onChange(
+                  pack
+                    ? applySectorPackToDraft(draft, pack)
+                    : { ...draft, sector_id: event.target.value },
+                );
+              }}
+            >
+              <option value="">Select sector pack</option>
+              {sectorPacks.map((pack) => (
+                <option key={pack.id} value={pack.id}>
+                  {pack.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {activeSectorPack ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Entities
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.entity_types.slice(0, 5).join(", ")}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Starter forms
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.form_templates.slice(0, 4).join(", ")}
+                </p>
+              </div>
+              <div className="rounded-xl border bg-panel p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  M&E controls
+                </p>
+                <p className="mt-2 text-sm leading-5">
+                  {activeSectorPack.validation_rules.slice(0, 3).join(", ")}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
+              A sector pack is recommended. You can still create a custom
+              project, but sector packs make the setup faster and more
+              professional for real field work.
+            </div>
+          )}
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Input
             placeholder="Project name"
@@ -2209,24 +3616,28 @@ function ProjectWizardStepContent({
             }
           />
         </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <InfoPanel
-            title="Select Existing Locations"
-            lines={["Use the organization hierarchy", "Drives assignments and reports"]}
-            onClick={() => undefined}
-          />
+        <div className="grid gap-3 md:grid-cols-2">
           <ProjectSetupFileCard
-            accept=".csv,.xlsx,.xls,.json"
+            accept=".csv"
+            disabled={!canImportLocations || importingLocations}
             fileName={settingText(draft, "geography", "locationImportFileName")}
             inputId="project-location-import-file"
             title="Import Locations"
-            lines={["CSV and Excel-ready", "Use Data Import for large lists"]}
-            onFileSelected={(file) =>
+            lines={["CSV columns: name, code, unit_type", "Optional: parent_code, region"]}
+            onFileSelected={(file) => {
               updateSettings("geography", {
                 locationImportFileName: file.name,
                 locationImportFileSize: file.size,
                 locationImportFileType: file.type || "unknown",
-              })
+              });
+              onImportLocations(file);
+            }}
+            statusLine={
+              importingLocations
+                ? "Importing..."
+                : !canImportLocations
+                  ? "Requires organization management permission"
+                  : undefined
             }
           />
           <ProjectSetupFileCard
@@ -2234,7 +3645,7 @@ function ProjectWizardStepContent({
             fileName={settingText(draft, "geography", "boundaryFileName")}
             inputId="project-boundary-upload-file"
             title="Upload Boundaries"
-            lines={["GeoJSON/KML/Shapefile-ready", "Used for GPS checks"]}
+            lines={["GeoJSON/KML/Shapefile", "Stored as a project reference only"]}
             onFileSelected={(file) =>
               updateSettings("geography", {
                 boundaryFileName: file.name,
@@ -2282,13 +3693,13 @@ function ProjectWizardStepContent({
               })
             }
           />
-          <Input
-            placeholder="Code format, e.g. FRM-YYYY-000001"
-            value={settingText(draft, "beneficiary", "codeFormat")}
-            onChange={(event) =>
-              updateSettings("beneficiary", { codeFormat: event.target.value })
-            }
-          />
+          <div className="md:col-span-2">
+            <BeneficiaryCodeFormatDesigner
+              entityType={settingText(draft, "beneficiary", "primaryEntityType", "Beneficiary")}
+              onChange={(codeFormat) => updateSettings("beneficiary", { codeFormat })}
+              value={settingText(draft, "beneficiary", "codeFormat")}
+            />
+          </div>
           <Select
             value={settingText(
               draft,
@@ -2637,22 +4048,31 @@ function ProjectWizardStepContent({
 
 function ProjectSetupFileCard({
   accept,
+  disabled,
   fileName,
   inputId,
   lines,
   onFileSelected,
+  statusLine,
   title,
 }: {
   accept: string;
+  disabled?: boolean;
   fileName: string;
   inputId: string;
   lines: string[];
   onFileSelected: (file: File) => void;
+  statusLine?: string;
   title: string;
 }) {
   return (
     <label
-      className="cursor-pointer rounded-2xl border bg-background/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+      className={cn(
+        "rounded-2xl border bg-background/50 p-4 text-left transition",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer hover:border-primary hover:bg-primary/5",
+      )}
       htmlFor={inputId}
     >
       <span className="flex items-center gap-2 font-semibold">
@@ -2669,13 +4089,20 @@ function ProjectSetupFileCard({
       <span className="mt-3 block rounded-lg border border-dashed bg-panel px-3 py-2 text-xs text-muted-foreground">
         {fileName ? `Selected: ${fileName}` : "Choose file"}
       </span>
+      {statusLine ? (
+        <span className="mt-1.5 block text-xs font-medium text-accent-foreground">
+          {statusLine}
+        </span>
+      ) : null}
       <input
         accept={accept}
         className="sr-only"
+        disabled={disabled}
         id={inputId}
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) onFileSelected(file);
+          event.target.value = "";
         }}
         type="file"
       />
@@ -2724,14 +4151,113 @@ function ReadinessChecklist({
   );
 }
 
-function ProjectFilters() {
+type ProjectFiltersState = {
+  country: string;
+  dateFrom: string;
+  dateTo: string;
+  owner: string;
+  region: string;
+  status: string;
+};
+
+function ProjectFilters({
+  filters,
+  onChange,
+  projects,
+}: {
+  filters: ProjectFiltersState;
+  onChange: (patch: Partial<ProjectFiltersState>) => void;
+  projects: ProjectListItemRead[];
+}) {
+  const statuses = Array.from(
+    new Set(projects.map((project) => project.status).filter(Boolean)),
+  );
+  const countries = Array.from(
+    new Set(projects.map((project) => project.country).filter((value): value is string => Boolean(value))),
+  );
+  const regions = Array.from(
+    new Set(projects.map((project) => project.region).filter((value): value is string => Boolean(value))),
+  );
+  const owners = Array.from(
+    new Set(projects.map((project) => project.owner).filter((value): value is string => Boolean(value))),
+  );
+  const hasActiveFilters =
+    Boolean(filters.status) ||
+    Boolean(filters.country) ||
+    Boolean(filters.region) ||
+    Boolean(filters.owner) ||
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo);
   return (
-    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line md:grid-cols-5">
-      <Input placeholder="Status" />
-      <Input placeholder="Country" />
-      <Input placeholder="Region" />
-      <Input placeholder="Owner" />
-      <Input placeholder="Date range" />
+    <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <Select
+        onChange={(event) => onChange({ status: event.target.value })}
+        value={filters.status}
+      >
+        <option value="">All statuses</option>
+        {statuses.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ country: event.target.value })}
+        value={filters.country}
+      >
+        <option value="">All countries</option>
+        {countries.map((country) => (
+          <option key={country} value={country}>
+            {country}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ region: event.target.value })}
+        value={filters.region}
+      >
+        <option value="">All regions</option>
+        {regions.map((region) => (
+          <option key={region} value={region}>
+            {region}
+          </option>
+        ))}
+      </Select>
+      <Select
+        onChange={(event) => onChange({ owner: event.target.value })}
+        value={filters.owner}
+      >
+        <option value="">All owners</option>
+        {owners.map((owner) => (
+          <option key={owner} value={owner}>
+            {owner}
+          </option>
+        ))}
+      </Select>
+      <div className="col-span-2 flex gap-2 md:col-span-1">
+        <Input
+          aria-label="Start date from"
+          onChange={(event) => onChange({ dateFrom: event.target.value })}
+          type="date"
+          value={filters.dateFrom}
+        />
+        <Input
+          aria-label="Start date to"
+          onChange={(event) => onChange({ dateTo: event.target.value })}
+          type="date"
+          value={filters.dateTo}
+        />
+      </div>
+      <Button
+        disabled={!hasActiveFilters}
+        onClick={() =>
+          onChange({ country: "", dateFrom: "", dateTo: "", owner: "", region: "", status: "" })
+        }
+        variant="ghost"
+      >
+        <SlidersHorizontal aria-hidden="true" />
+        Clear filters
+      </Button>
     </div>
   );
 }

@@ -21,9 +21,9 @@ export default function CareersPage() {
             <h2 className="text-xl font-semibold">Open roles</h2>
             <div className="mt-5 space-y-3">
               {["Senior Frontend Engineer", "M&E Product Specialist", "Implementation Lead"].map((role) => (
-                <div className="rounded-lg border border-black/10 bg-[#f7faf8] p-4" key={role}>
+                <div className="rounded-lg border border-black/10 bg-[#fafaf8] p-4" key={role}>
                   <p className="font-semibold">{role}</p>
-                  <p className="mt-1 text-sm text-[#52615d]">Remote-friendly · Enterprise SaaS · Field operations</p>
+                  <p className="mt-1 text-sm text-[#5b6a65]">Remote-friendly · Enterprise SaaS · Field operations</p>
                 </div>
               ))}
             </div>

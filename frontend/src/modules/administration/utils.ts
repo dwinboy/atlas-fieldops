@@ -1,4 +1,5 @@
 import type { BadgeProps } from "@/components/ui/badge";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type {
   AdminStatus,
   ApiKeyRecord,
@@ -150,16 +151,7 @@ export function getAdministrationOverviewMetrics({
 }
 
 export function statusTone(status: AdminStatus | string): BadgeProps["tone"] {
-  if (["active", "completed", "connected", "healthy"].includes(status)) {
-    return "success";
-  }
-  if (["archived", "disabled", "disconnected", "scheduled"].includes(status)) {
-    return "neutral";
-  }
-  if (["failed", "critical", "revoked"].includes(status)) {
-    return "danger";
-  }
-  return "warning";
+  return canonicalStatusTone(status);
 }
 
 export function filterByQuery<T>(

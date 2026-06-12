@@ -3,6 +3,7 @@ import type { SubmissionRead } from "@/lib/api";
 export type SubmissionSection =
   | "dashboard"
   | "all"
+  | "data"
   | "pending-review"
   | "approved"
   | "rejected"
@@ -23,6 +24,7 @@ export type SubmissionQualitySeverity = "Low" | "Medium" | "High" | "Critical";
 
 export type SubmissionWorkflowStage =
   | "Draft"
+  | "Import Staged"
   | "Submitted"
   | "Pending Review"
   | "Returned for Correction"
@@ -103,6 +105,7 @@ export const submissionSections: {
 }[] = [
   { id: "dashboard", label: "Overview", route: "/submissions", description: "Operational submission status, review workload, quality, SLA, and bottlenecks." },
   { id: "all", label: "All Submissions", route: "/submissions/all", description: "Search, filter, review, export, and manage collected records." },
+  { id: "data", label: "Data Explorer", route: "/submissions/data", description: "Spreadsheet view of collected field values for a single form, with CSV export." },
   { id: "pending-review", label: "Pending Review", route: "/submissions/pending-review", description: "Reviewer queue for submitted records waiting for a decision." },
   { id: "approved", label: "Approved", route: "/submissions/approved", description: "Approved and report-ready records." },
   { id: "rejected", label: "Rejected", route: "/submissions/rejected", description: "Rejected records and rejection reasons." },
@@ -137,6 +140,7 @@ export const previewSubmissions: SubmissionRecord[] = [
     ],
     captured_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
     client_submission_id: "MOB-2026-0001",
+    device_id: "preview-android-amina",
     duplicate_risk: "none",
     entity_id: "entity-farmer-musa",
     entity_type: "Farmer",
@@ -190,6 +194,7 @@ export const previewSubmissions: SubmissionRecord[] = [
     ],
     captured_at: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
     client_submission_id: "MOB-2026-0002",
+    device_id: "preview-android-joseph",
     duplicate_risk: "possible",
     entity_id: "entity-facility-bonaberi",
     entity_type: "Facility",
@@ -243,6 +248,7 @@ export const previewSubmissions: SubmissionRecord[] = [
     ],
     captured_at: new Date(now - 7 * 60 * 60 * 1000).toISOString(),
     client_submission_id: "IMP-2026-0003",
+    device_id: "legacy-import",
     duplicate_risk: "none",
     entity_id: "entity-esther",
     entity_type: "Beneficiary",

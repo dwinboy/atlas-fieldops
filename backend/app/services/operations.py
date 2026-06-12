@@ -1,23 +1,29 @@
 import csv
+import math
 import re
 from difflib import SequenceMatcher
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from io import StringIO
 from uuid import UUID
-from typing import cast
+from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
+from app.core.permissions import canonical_role
 from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project
 from app.models.operations import (
     Beneficiary,
     CaseRecord,
     DataQualitySignal,
     DonorReport,
+    FieldVisitRequest,
+    FieldWorkPlan,
+    OperationalTargetRecord,
     InterventionRecord,
     KnowledgeDocument,
+    MediaEvidence,
     MonitoringIndicator,
     OperationalAsset,
     OperationalTask,
@@ -31,6 +37,7 @@ from app.repositories.identity import IdentityRepository, OrganizationUnitReposi
 from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryMergeRead,
+    BeneficiaryUpdate,
     BeneficiaryMergeRequest,
     BeneficiaryRead,
     EntityDuplicateCandidateRead,
@@ -43,9 +50,27 @@ from app.schemas.operations import (
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
+    DataQualitySignalUpdate,
     DonorReportCreate,
+    EntityAttributeRead,
+    EntityAttributeCreate,
+    EntityCategoryCreate,
+    EntityCategoryRead,
+    EntityCategoryUpdate,
     ExportJobCreate,
     ExportJobRead,
+    FieldWorkPlanCreate,
+    FieldWorkPlanRead,
+    FieldWorkPlanUpdate,
+    OperationalTargetCreate,
+    OperationalTargetRead,
+    OperationalTargetUpdate,
+    FieldVisitCheckIn,
+    FieldVisitCheckOut,
+    FieldVisitOutcomeReview,
+    FieldVisitRequestCreate,
+    FieldVisitRequestRead,
+    FieldVisitRequestReview,
     ImportAnalysisRequest,
     ImportAnalysisResponse,
     ImportApplyResponse,
@@ -70,7 +95,14 @@ from app.schemas.operations import (
     ImportPreviewRequest,
     ImportPreviewResponse,
     ImportValidationIssue,
+    DonorReportIndicatorMetric,
+    DonorReportMetrics,
     IndicatorCreate,
+    IndicatorUpdate,
+    IndicatorDisaggregationRead,
+    IndicatorDisaggregationsRead,
+    IndicatorLinkedSubmissionRead,
+    IndicatorLinkedSubmissionsRead,
     IndicatorRead,
     InterventionCreate,
     InterventionRead,
@@ -81,6 +113,7 @@ from app.schemas.operations import (
     MappingTemplateCreate,
     EcosystemEdge,
     EcosystemNode,
+    OperationalActivityReportRead,
     OperationalEcosystemRead,
     OperationalEffect,
     OperationalEventCreate,
@@ -95,6 +128,7 @@ from app.schemas.operations import (
     OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
+    PredefinedEntityCategoryRead,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
     PublicCollectionLinkCreate,
@@ -107,11 +141,63 @@ from app.schemas.operations import (
 from app.services.file_imports import parse_uploaded_dataset
 
 
-def indicator_progress(indicator: MonitoringIndicator) -> float:
-    if indicator.target_value <= indicator.baseline_value:
+def _progress_percent(current_value: float, baseline_value: float, target_value: float) -> float:
+    if target_value <= baseline_value:
         return 0
-    progress = ((indicator.current_value - indicator.baseline_value) / (indicator.target_value - indicator.baseline_value)) * 100
+    progress = ((current_value - baseline_value) / (target_value - baseline_value)) * 100
     return round(max(0, min(progress, 100)), 1)
+
+
+def indicator_progress(indicator: MonitoringIndicator) -> float:
+    return _progress_percent(indicator.current_value, indicator.baseline_value, indicator.target_value)
+
+
+def _parse_formula(formula: str | None) -> tuple[str, str] | None:
+    """Parse an indicator formula string into (operation, field_name).
+
+    Supports `sum(field)`, `avg(field)`/`average(field)`, `count(field)`,
+    `percent(field)`, or a bare field name (implicit `sum`).
+    """
+    formula = (formula or "").strip()
+    if not formula:
+        return None
+    match = re.fullmatch(r"(?:(sum|avg|average|count|percent)\(([^)]+)\)|([A-Za-z0-9_.-]+))", formula, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    operation = (match.group(1) or "sum").lower()
+    field_name = (match.group(2) or match.group(3) or "").strip()
+    if not field_name:
+        return None
+    return operation, field_name
+
+
+def _build_report_summary(report: DonorReport, metrics: DonorReportMetrics) -> str:
+    parts = [
+        f"{metrics.submissions_approved} of {metrics.submissions_total} submissions approved",
+        f"{metrics.beneficiaries} beneficiaries recorded",
+    ]
+    if metrics.indicators:
+        on_track = sum(1 for indicator in metrics.indicators if indicator.progress_percent >= 75)
+        parts.append(f"{on_track} of {len(metrics.indicators)} indicators at 75%+ of target")
+    scope = f"project {report.project_id}" if report.project_id else "the organization"
+    return f"Auto-generated summary for {scope}: " + "; ".join(parts) + "."
+
+
+def _aggregate_values(operation: str, values: list[object]) -> float:
+    if operation == "count":
+        return float(sum(1 for value in values if value not in (None, "", [], {})))
+    if operation == "percent":
+        answered = [value for value in values if value not in (None, "", [], {})]
+        if not answered:
+            return 0.0
+        positive = sum(1 for value in answered if str(value).strip().lower() in {"1", "true", "yes", "y", "approved", "complete"})
+        return round((positive / len(answered)) * 100, 2)
+    numeric = [number for number in (number_value(value) for value in values) if number is not None]
+    if not numeric:
+        return 0.0
+    if operation in {"avg", "average"}:
+        return round(sum(numeric) / len(numeric), 2)
+    return round(sum(numeric), 2)
 
 
 FIELD_ALIASES = {
@@ -663,6 +749,10 @@ def normalized_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+def category_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "entity-category"
+
+
 def normalized_phone(value: str | None) -> str:
     return "".join(character for character in (value or "") if character.isdigit())
 
@@ -882,6 +972,45 @@ def mark_record_as_imported(record: object, *, job: object, user_id: UUID, row_n
     setattr(record, "imported_by_user_id", user_id)
 
 
+def preset_attribute(label: str, field_key: str, field_type: str = "text", required: bool = False) -> EntityAttributeCreate:
+    return EntityAttributeCreate(label=label, field_key=field_key, field_type=field_type, required=required)
+
+
+PREDEFINED_ENTITY_CATEGORIES: list[PredefinedEntityCategoryRead] = [
+    PredefinedEntityCategoryRead(
+        sector=sector,
+        name=name,
+        slug=category_slug(name),
+        description=description,
+        icon=icon,
+        color=color,
+        attributes=attributes,
+    )
+    for sector, icon, color, names, description, attributes in [
+        ("education", "school", "#2563eb", ["Schools", "Students", "Teachers", "Classrooms", "School Clubs", "Parent Teacher Associations", "Education Districts"], "Education entity category for school and learner monitoring.", [preset_attribute("Name", "name", required=True), preset_attribute("District", "district"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("health", "hospital", "#dc2626", ["Health Facilities", "Patients", "Community Health Workers", "Pregnant Women", "Children Under Five", "Vaccination Sites", "Pharmacies"], "Health service entity category for facilities, clients, and service points.", [preset_attribute("Name", "name", required=True), preset_attribute("Facility Type", "facility_type", "dropdown"), preset_attribute("Phone Number", "phone_number", "phone")]),
+        ("agriculture", "sprout", "#0f8a4b", ["Farmers", "Farmer Groups", "Cooperatives", "Farms", "Crops", "Livestock", "Input Suppliers", "Aggregation Centers"], "Agriculture entity category for farmers, farms, crops, and market actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Farm Size", "farm_size", "number"), preset_attribute("Crop Type", "crop_type", "dropdown")]),
+        ("wash", "droplets", "#0891b2", ["Water Points", "Boreholes", "Toilets", "Households", "Communities", "Hygiene Clubs", "Waste Collection Points"], "WASH entity category for water, sanitation, and community infrastructure.", [preset_attribute("Name", "name", required=True), preset_attribute("Status", "status", "dropdown"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("nutrition", "heart-pulse", "#ea580c", ["Children Under Five", "Mothers", "Households", "Feeding Centers", "Nutrition Sites", "Health Workers"], "Nutrition entity category for clients, sites, and service workers.", [preset_attribute("Name", "name", required=True), preset_attribute("Age", "age", "number"), preset_attribute("Nutrition Status", "nutrition_status", "dropdown")]),
+        ("livelihoods", "briefcase", "#7c3aed", ["Beneficiaries", "Businesses", "Savings Groups", "Vocational Trainees", "Employers", "Markets", "Cooperatives"], "Livelihoods entity category for economic inclusion programs.", [preset_attribute("Name", "name", required=True), preset_attribute("Business Type", "business_type", "dropdown"), preset_attribute("Phone Number", "phone_number", "phone")]),
+        ("protection", "shield", "#be123c", ["Case Records", "Vulnerable Children", "Households", "Service Providers", "Referral Points", "Safe Spaces"], "Protection entity category for case, referral, and service tracking.", [preset_attribute("Case Code", "case_code", required=True), preset_attribute("Risk Level", "risk_level", "dropdown"), preset_attribute("Referral Status", "referral_status", "dropdown")]),
+        ("gender-gbv", "shield-check", "#db2777", ["Women's Groups", "Safe Spaces", "GBV Cases", "Service Providers", "Community Activists", "Referral Pathways"], "Gender and GBV category with sensitive data controls.", [preset_attribute("Name or Code", "name_or_code", required=True), preset_attribute("Service Type", "service_type", "dropdown"), preset_attribute("Confidentiality Level", "confidentiality_level", "dropdown")]),
+        ("emergency-response", "tent", "#f97316", ["Affected Households", "Refugees", "Internally Displaced Persons", "Camps", "Shelters", "Distribution Points", "Assessment Sites"], "Emergency response category for affected populations and service points.", [preset_attribute("Name or Code", "name_or_code", required=True), preset_attribute("Population Count", "population_count", "number"), preset_attribute("Location", "location", "gps")]),
+        ("food-security", "wheat", "#ca8a04", ["Households", "Farmers", "Markets", "Vendors", "Storage Facilities"], "Food security category for markets, households, and supply actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Food Security Status", "food_security_status", "dropdown"), preset_attribute("Market Type", "market_type", "dropdown")]),
+        ("environment-climate", "leaf", "#16a34a", ["Forest Areas", "Communities", "Protected Areas", "Tree Nurseries", "Climate Risk Zones", "Water Bodies"], "Environment and climate category for natural assets and risk zones.", [preset_attribute("Name", "name", required=True), preset_attribute("Area Size", "area_size", "number"), preset_attribute("GPS Boundary", "gps_boundary", "gps")]),
+        ("infrastructure", "construction", "#475569", ["Roads", "Bridges", "Buildings", "Construction Sites", "Contractors", "Assets"], "Infrastructure category for works, assets, and contractors.", [preset_attribute("Asset Name", "asset_name", required=True), preset_attribute("Condition", "condition", "dropdown"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("governance", "landmark", "#4f46e5", ["Local Councils", "Community Committees", "Public Institutions", "Citizens", "Civil Society Organizations"], "Governance category for institutions and civic actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Institution Type", "institution_type", "dropdown"), preset_attribute("Contact Person", "contact_person")]),
+        ("economic-development", "chart-line", "#0d9488", ["SMEs", "Entrepreneurs", "Cooperatives", "Markets", "Financial Institutions"], "Economic development category for businesses and financial actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Sector", "sector", "dropdown"), preset_attribute("Revenue", "revenue", "currency")]),
+        ("youth-development", "graduation-cap", "#9333ea", ["Youth Beneficiaries", "Training Centers", "Trainers", "Employers", "Apprenticeship Sites", "Youth Groups"], "Youth development category for trainees, trainers, and placement sites.", [preset_attribute("Name", "name", required=True), preset_attribute("Age", "age", "number"), preset_attribute("Training Cohort", "training_cohort")]),
+        ("disability-inclusion", "accessibility", "#0369a1", ["Persons with Disabilities", "Households", "Schools", "Health Facilities", "Service Providers"], "Disability inclusion category for people, providers, and inclusive services.", [preset_attribute("Name", "name", required=True), preset_attribute("Disability Type", "disability_type", "dropdown"), preset_attribute("Assistive Need", "assistive_need", "dropdown")]),
+        ("peacebuilding", "handshake", "#65a30d", ["Community Groups", "Conflict Incidents", "Mediation Committees", "Dialogue Sessions", "Youth Groups"], "Peacebuilding category for incidents, groups, and dialogue processes.", [preset_attribute("Name or Incident Code", "name_or_incident_code", required=True), preset_attribute("Conflict Type", "conflict_type", "dropdown"), preset_attribute("Resolution Status", "resolution_status", "dropdown")]),
+        ("donor-grant-management", "file-contract", "#64748b", ["Partners", "Grantees", "Sub-Grantees", "Projects", "Contracts", "Funding Windows"], "Donor and grant category for partners, grants, and funding instruments.", [preset_attribute("Name", "name", required=True), preset_attribute("Agreement Number", "agreement_number"), preset_attribute("Budget", "budget", "currency")]),
+        ("universal", "layers", "#0f8a4b", ["Beneficiaries", "Households", "Communities", "Facilities", "Institutions", "Groups", "Service Providers", "Assets", "Locations", "Activities", "Cases", "Partners"], "Universal entity category available to all programs.", [preset_attribute("Name", "name", required=True), preset_attribute("Status", "status", "dropdown"), preset_attribute("Location", "location")]),
+    ]
+    for name in names
+]
+
+
 class OperationsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -890,6 +1019,117 @@ class OperationsService:
         self.identity = IdentityRepository(session)
         self.roles = RoleRepository(session)
         self.units = OrganizationUnitRepository(session)
+
+    def predefined_entity_categories(self, sector: str | None = None) -> list[PredefinedEntityCategoryRead]:
+        if not sector:
+            return PREDEFINED_ENTITY_CATEGORIES
+        normalized = category_slug(sector)
+        return [category for category in PREDEFINED_ENTITY_CATEGORIES if category.sector == normalized]
+
+    async def list_entity_categories(
+        self,
+        organization_id: UUID,
+        *,
+        project_id: UUID | None = None,
+        include_archived: bool = False,
+    ) -> list[EntityCategoryRead]:
+        categories = await self.repository.list_entity_categories(
+            organization_id=organization_id,
+            project_id=project_id,
+            include_archived=include_archived,
+        )
+        attributes = await self.repository.list_entity_attributes(
+            organization_id=organization_id,
+            category_ids={category.id for category in categories},
+        )
+        return [
+            EntityCategoryRead.model_validate(category).model_copy(
+                update={"attributes": [EntityAttributeRead.model_validate(attribute) for attribute in attributes.get(category.id, [])]}
+            )
+            for category in categories
+        ]
+
+    async def create_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: EntityCategoryCreate,
+    ) -> EntityCategoryRead:
+        if payload.project_id and not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise ValueError("Project not found")
+        values = payload.model_dump(exclude={"attributes"})
+        values["slug"] = payload.slug or category_slug(payload.name)
+        category = await self.repository.create_entity_category(
+            organization_id=organization_id,
+            values=values,
+            attributes=[attribute.model_dump() for attribute in payload.attributes],
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_category.created",
+            resource_type="entity_category",
+            resource_id=str(category.id),
+            metadata={"name": category.name, "project_id": str(category.project_id) if category.project_id else None},
+        )
+        await self.session.flush()
+        categories = await self.list_entity_categories(organization_id, project_id=category.project_id, include_archived=True)
+        return next(item for item in categories if item.id == category.id)
+
+    async def update_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        category_id: UUID,
+        payload: EntityCategoryUpdate,
+    ) -> EntityCategoryRead:
+        category = await self.repository.get_entity_category(organization_id=organization_id, category_id=category_id)
+        if category is None:
+            raise ValueError("Entity category not found")
+        values = payload.model_dump(exclude_unset=True, exclude={"attributes"})
+        category = await self.repository.update_entity_category(
+            organization_id=organization_id,
+            category=category,
+            values=values,
+            attributes=[attribute.model_dump() for attribute in payload.attributes] if payload.attributes is not None else None,
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_category.updated",
+            resource_type="entity_category",
+            resource_id=str(category.id),
+            metadata={"status": category.status, "name": category.name},
+        )
+        await self.session.flush()
+        categories = await self.list_entity_categories(organization_id, project_id=category.project_id, include_archived=True)
+        return next(item for item in categories if item.id == category.id)
+
+    async def activate_predefined_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        project_id: UUID,
+        slug: str,
+    ) -> EntityCategoryRead:
+        preset = next((category for category in PREDEFINED_ENTITY_CATEGORIES if category.slug == slug), None)
+        if preset is None:
+            raise ValueError("Predefined entity category not found")
+        return await self.create_entity_category(
+            organization_id,
+            actor_user_id,
+            EntityCategoryCreate(
+                name=preset.name,
+                slug=preset.slug,
+                project_id=project_id,
+                sector=preset.sector,
+                description=preset.description,
+                icon=preset.icon,
+                color=preset.color,
+                is_predefined=True,
+                attributes=preset.attributes,
+            ),
+        )
 
     async def create_program(self, organization_id: UUID, payload: ProgramCreate, actor_user_id: UUID | None = None) -> Project:
         program = await self.repository.create_program(
@@ -915,6 +1155,670 @@ class OperationsService:
 
     async def list_programs(self, organization_id: UUID) -> list[Project]:
         return await self.repository.list_programs(organization_id)
+
+    async def _field_officer_for_user(self, organization_id: UUID, user_id: UUID) -> FieldOfficerProfile | None:
+        result = await self.session.execute(
+            select(FieldOfficerProfile).where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.user_id == user_id,
+                FieldOfficerProfile.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _operational_activity_scope_filters(
+        self,
+        organization_id: UUID,
+        *,
+        actor_user_id: UUID | None,
+        actor_roles: list[str] | None,
+        actor_project_ids: list[str] | None,
+    ) -> list[object]:
+        if actor_user_id is None or actor_roles is None:
+            return []
+        roles = {canonical_role(role) for role in actor_roles}
+        if roles & {"super_admin", "owner", "organization_owner", "system_admin", "national_admin", "regional_manager"}:
+            return []
+        project_ids: list[UUID] = []
+        for project_id in actor_project_ids or []:
+            try:
+                project_ids.append(UUID(str(project_id)))
+            except ValueError:
+                continue
+        if roles & {"me_manager", "project_manager", "data_manager", "data_analyst", "donor_viewer"} and project_ids:
+            return [FieldVisitRequest.project_id.in_(project_ids)]
+        clauses: list[object] = []
+        if project_ids:
+            clauses.append(FieldVisitRequest.project_id.in_(project_ids))
+        if "district_supervisor" in roles:
+            clauses.append(FieldVisitRequest.supervisor_user_id == actor_user_id)
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        if officer is not None:
+            clauses.append(FieldVisitRequest.field_officer_id == officer.id)
+        if clauses:
+            return [or_(*clauses)]
+        return [FieldVisitRequest.id.is_(None)]
+
+    async def _assert_operational_activity_access(
+        self,
+        organization_id: UUID,
+        visit: FieldVisitRequest,
+        *,
+        actor_user_id: UUID | None,
+        actor_roles: list[str] | None,
+        actor_project_ids: list[str] | None,
+    ) -> None:
+        filters = await self._operational_activity_scope_filters(
+            organization_id,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        if not filters:
+            return
+        result = await self.session.execute(
+            select(FieldVisitRequest.id).where(
+                FieldVisitRequest.id == visit.id,
+                FieldVisitRequest.organization_id == organization_id,
+                FieldVisitRequest.deleted_at.is_(None),
+                *filters,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Operational activity is outside your assigned scope.")
+
+    def _read_visit_request(self, visit: FieldVisitRequest) -> FieldVisitRequestRead:
+        return FieldVisitRequestRead(
+            id=visit.id,
+            organization_id=visit.organization_id,
+            project_id=visit.project_id,
+            beneficiary_id=visit.beneficiary_id,
+            field_officer_id=visit.field_officer_id,
+            supervisor_user_id=visit.supervisor_user_id,
+            title=visit.title,
+            activity_type=visit.activity_type,
+            activity_scope=visit.activity_scope,
+            requires_approval=visit.requires_approval,
+            purpose=visit.purpose,
+            location_name=visit.location_name,
+            latitude=visit.latitude,
+            longitude=visit.longitude,
+            requested_start_at=visit.requested_start_at,
+            requested_end_at=visit.requested_end_at,
+            priority=visit.priority,
+            status=visit.status,
+            required_form_ids=[UUID(str(form_id)) for form_id in (visit.required_form_ids_json or [])],
+            planned_activities=[str(activity) for activity in (visit.planned_activities_json or [])],
+            supervisor_instructions=visit.supervisor_instructions,
+            reviewed_by_user_id=visit.reviewed_by_user_id,
+            reviewed_at=visit.reviewed_at,
+            check_in_at=visit.check_in_at,
+            check_in_latitude=visit.check_in_latitude,
+            check_in_longitude=visit.check_in_longitude,
+            check_in_accuracy=visit.check_in_accuracy,
+            check_in_note=visit.check_in_note,
+            check_out_at=visit.check_out_at,
+            check_out_latitude=visit.check_out_latitude,
+            check_out_longitude=visit.check_out_longitude,
+            check_out_accuracy=visit.check_out_accuracy,
+            check_out_summary=visit.check_out_summary,
+            verification_status=visit.verification_status,
+            distance_from_planned_meters=visit.distance_from_planned_meters,
+            metadata_json=visit.metadata_json or {},
+            created_at=visit.created_at,
+            updated_at=visit.updated_at,
+        )
+
+    @staticmethod
+    def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        radius_meters = 6_371_000
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
+        a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+        return round(radius_meters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 1)
+
+    async def create_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: FieldVisitRequestCreate,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        if officer is None or not officer.is_active:
+            raise ValueError("Only active field officers can request field visits from mobile.")
+        if payload.project_id and not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise ValueError("Choose a project that belongs to this organization.")
+        if payload.beneficiary_id:
+            beneficiary = await self.repository.get_beneficiary(organization_id=organization_id, beneficiary_id=payload.beneficiary_id)
+            if beneficiary is None:
+                raise ValueError("Choose a beneficiary that belongs to this organization.")
+        visit = FieldVisitRequest(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            beneficiary_id=payload.beneficiary_id,
+            field_officer_id=officer.id,
+            supervisor_user_id=officer.supervisor_user_id,
+            title=payload.title,
+            activity_type=payload.activity_type,
+            activity_scope=payload.activity_scope if payload.project_id or payload.beneficiary_id else "organization",
+            requires_approval=payload.requires_approval,
+            purpose=payload.purpose,
+            location_name=payload.location_name,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            requested_start_at=payload.requested_start_at,
+            requested_end_at=payload.requested_end_at,
+            priority=payload.priority,
+            status="pending" if payload.requires_approval else "approved",
+            required_form_ids_json=[str(form_id) for form_id in payload.required_form_ids],
+            planned_activities_json=payload.planned_activities,
+            metadata_json=payload.metadata_json,
+        )
+        self.session.add(visit)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.request_submitted",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "field_officer_id": str(officer.id),
+                "project_id": str(payload.project_id) if payload.project_id else None,
+                "beneficiary_id": str(payload.beneficiary_id) if payload.beneficiary_id else None,
+                "activity_type": payload.activity_type,
+                "activity_scope": payload.activity_scope,
+                "location_name": payload.location_name,
+                "requested_start_at": payload.requested_start_at.isoformat(),
+                "requested_end_at": payload.requested_end_at.isoformat(),
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def list_field_visit_requests(
+        self,
+        organization_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+        own_only: bool = False,
+        status: str | None = None,
+    ) -> list[FieldVisitRequestRead]:
+        filters = [
+            FieldVisitRequest.organization_id == organization_id,
+            FieldVisitRequest.deleted_at.is_(None),
+        ]
+        if status:
+            filters.append(FieldVisitRequest.status == status)
+        if own_only:
+            if actor_user_id is None:
+                return []
+            officer = await self._field_officer_for_user(organization_id, actor_user_id)
+            if officer is None:
+                return []
+            filters.append(FieldVisitRequest.field_officer_id == officer.id)
+        else:
+            filters.extend(
+                await self._operational_activity_scope_filters(
+                    organization_id,
+                    actor_user_id=actor_user_id,
+                    actor_roles=actor_roles,
+                    actor_project_ids=actor_project_ids,
+                )
+            )
+        result = await self.session.execute(
+            select(FieldVisitRequest)
+            .where(*filters)
+            .order_by(FieldVisitRequest.requested_start_at.desc(), FieldVisitRequest.created_at.desc())
+        )
+        return [self._read_visit_request(visit) for visit in result.scalars()]
+
+    async def review_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitRequestReview,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> FieldVisitRequestRead:
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        if visit.status not in {"pending", "change_requested"}:
+            raise ValueError("Only pending or change-requested visits can be reviewed.")
+        now = datetime.now(UTC)
+        metadata = dict(visit.metadata_json or {})
+        metadata.setdefault("reviews", [])
+        reviews = metadata["reviews"]
+        if not isinstance(reviews, list):
+            reviews = []
+            metadata["reviews"] = reviews
+        reviews.append(
+            {
+                "action": payload.action,
+                "comment": payload.comment,
+                "reviewedByUserId": str(actor_user_id),
+                "reviewedAt": now.isoformat(),
+            }
+        )
+        if payload.approved_start_at:
+            visit.requested_start_at = payload.approved_start_at
+        if payload.approved_end_at:
+            visit.requested_end_at = payload.approved_end_at
+        visit.status = {
+            "approve": "approved",
+            "reject": "rejected",
+            "request_changes": "change_requested",
+        }[payload.action]
+        visit.supervisor_instructions = payload.supervisor_instructions or payload.comment or visit.supervisor_instructions
+        visit.reviewed_by_user_id = actor_user_id
+        visit.reviewed_at = now
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=f"field_visit.request_{visit.status}",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={"action": payload.action, "comment": payload.comment, "field_officer_id": str(visit.field_officer_id)},
+        )
+        return self._read_visit_request(visit)
+
+    async def check_in_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitCheckIn,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        if officer is None or visit.field_officer_id != officer.id:
+            raise ValueError("This visit request is not assigned to this mobile account.")
+        if visit.status not in {"approved", "scheduled"}:
+            raise ValueError("Your supervisor must approve this visit before you can check in.")
+        distance = None
+        verification = "verified"
+        if visit.latitude is not None and visit.longitude is not None:
+            distance = self._distance_meters(visit.latitude, visit.longitude, payload.latitude, payload.longitude)
+            if distance > 500:
+                verification = "outside_planned_area"
+            elif distance > 100:
+                verification = "warning_distance"
+        if payload.accuracy is not None and payload.accuracy > 100 and verification == "verified":
+            verification = "poor_gps_accuracy"
+        visit.status = "flagged" if verification in {"outside_planned_area", "poor_gps_accuracy"} else "checked_in"
+        visit.verification_status = verification
+        visit.distance_from_planned_meters = distance
+        visit.check_in_at = payload.timestamp
+        visit.check_in_latitude = payload.latitude
+        visit.check_in_longitude = payload.longitude
+        visit.check_in_accuracy = payload.accuracy
+        visit.check_in_note = payload.note
+        officer.last_seen_at = datetime.now(UTC)
+        officer.last_latitude = payload.latitude
+        officer.last_longitude = payload.longitude
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.checked_in",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "verification_status": verification,
+                "distance_from_planned_meters": distance,
+                "accuracy": payload.accuracy,
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def check_out_field_visit_request(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitCheckOut,
+    ) -> FieldVisitRequestRead:
+        officer = await self._field_officer_for_user(organization_id, actor_user_id)
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Field visit request not found.")
+        if officer is None or visit.field_officer_id != officer.id:
+            raise ValueError("This visit request is not assigned to this mobile account.")
+        if visit.check_in_at is None:
+            raise ValueError("Check in before completing this visit.")
+        visit.status = "completed"
+        visit.check_out_at = payload.timestamp
+        visit.check_out_latitude = payload.latitude
+        visit.check_out_longitude = payload.longitude
+        visit.check_out_accuracy = payload.accuracy
+        visit.check_out_summary = payload.summary
+        officer.last_seen_at = datetime.now(UTC)
+        officer.last_latitude = payload.latitude
+        officer.last_longitude = payload.longitude
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_visit.completed",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={"summary_provided": bool(payload.summary), "accuracy": payload.accuracy},
+        )
+        return self._read_visit_request(visit)
+
+    async def review_operational_activity_outcome(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        visit_request_id: UUID,
+        payload: FieldVisitOutcomeReview,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> FieldVisitRequestRead:
+        visit = await self.session.get(FieldVisitRequest, visit_request_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        if visit.status not in {"checked_in", "completed", "flagged", "change_requested"}:
+            raise ValueError("Only checked-in, completed, flagged, or correction-requested activities can receive an outcome decision.")
+        now = datetime.now(UTC)
+        metadata = dict(visit.metadata_json or {})
+        outcome_reviews = metadata.get("outcomeReviews")
+        if not isinstance(outcome_reviews, list):
+            outcome_reviews = []
+        outcome_reviews.append(
+            {
+                "action": payload.action,
+                "comment": payload.comment,
+                "qualityScore": payload.quality_score,
+                "reviewedByUserId": str(actor_user_id),
+                "reviewedAt": now.isoformat(),
+            }
+        )
+        metadata["outcomeReviews"] = outcome_reviews
+        metadata["outcomeStatus"] = payload.action
+        if payload.quality_score is not None:
+            metadata["qualityScore"] = payload.quality_score
+        if payload.action == "verify":
+            visit.status = "completed"
+            visit.verification_status = "supervisor_verified"
+            metadata["supervisorDecision"] = "Verified by supervisor"
+        elif payload.action == "accept_with_exception":
+            visit.status = "completed"
+            visit.verification_status = "accepted_with_exception"
+            metadata["supervisorDecision"] = "Accepted with documented exception"
+        elif payload.action == "flag":
+            visit.status = "flagged"
+            visit.verification_status = "supervisor_flagged"
+            metadata["supervisorDecision"] = "Flagged for investigation"
+        elif payload.action == "request_correction":
+            visit.status = "change_requested"
+            visit.verification_status = "correction_requested"
+            metadata["supervisorDecision"] = "Correction requested"
+        visit.supervisor_instructions = payload.supervisor_instructions or payload.comment
+        visit.reviewed_by_user_id = actor_user_id
+        visit.reviewed_at = now
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=f"operational_activity.outcome_{payload.action}",
+            resource_type="field_visit_request",
+            resource_id=str(visit.id),
+            metadata={
+                "comment": payload.comment,
+                "field_officer_id": str(visit.field_officer_id),
+                "quality_score": payload.quality_score,
+                "verification_status": visit.verification_status,
+            },
+        )
+        return self._read_visit_request(visit)
+
+    async def create_activity_media_evidence(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        activity_id: UUID,
+        payload: MediaEvidenceCreate,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> MediaEvidenceRead:
+        visit = await self.session.get(FieldVisitRequest, activity_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        values = payload.model_dump()
+        values["activity_id"] = activity_id
+        evidence = await self.repository.create_media_evidence(
+            organization_id=organization_id,
+            uploaded_by_user_id=actor_user_id,
+            values=values,
+        )
+        metadata = dict(visit.metadata_json or {})
+        attachments = metadata.get("attachments")
+        if not isinstance(attachments, list):
+            attachments = []
+        attachments.append(
+            {
+                "mediaEvidenceId": str(evidence.id),
+                "mediaType": evidence.media_type,
+                "fileName": evidence.file_name,
+                "uploadedAt": datetime.now(UTC).isoformat(),
+            }
+        )
+        metadata["attachments"] = attachments
+        visit.metadata_json = metadata
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_activity.evidence_attached",
+            resource_type="field_visit_request",
+            resource_id=str(activity_id),
+            metadata={
+                "media_evidence_id": str(evidence.id),
+                "media_type": evidence.media_type,
+                "file_name": evidence.file_name,
+            },
+        )
+        return MediaEvidenceRead.model_validate(evidence)
+
+    async def list_activity_media_evidence(
+        self,
+        organization_id: UUID,
+        activity_id: UUID,
+        *,
+        actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> list[MediaEvidenceRead]:
+        visit = await self.session.get(FieldVisitRequest, activity_id)
+        if visit is None or visit.organization_id != organization_id or visit.deleted_at is not None:
+            raise ValueError("Operational activity not found.")
+        await self._assert_operational_activity_access(
+            organization_id,
+            visit,
+            actor_user_id=actor_user_id,
+            actor_roles=actor_roles,
+            actor_project_ids=actor_project_ids,
+        )
+        result = await self.session.execute(
+            select(MediaEvidence)
+            .where(
+                MediaEvidence.organization_id == organization_id,
+                MediaEvidence.activity_id == activity_id,
+                MediaEvidence.deleted_at.is_(None),
+            )
+            .order_by(MediaEvidence.created_at.desc())
+        )
+        return [MediaEvidenceRead.model_validate(item) for item in result.scalars()]
+
+    async def operational_activity_report(
+        self,
+        organization_id: UUID,
+        *,
+        report_type: str,
+        period_start: date | None = None,
+        period_end: date | None = None,
+        actor_user_id: UUID | None = None,
+        actor_roles: list[str] | None = None,
+        actor_project_ids: list[str] | None = None,
+    ) -> OperationalActivityReportRead:
+        filters = [
+            FieldVisitRequest.organization_id == organization_id,
+            FieldVisitRequest.deleted_at.is_(None),
+        ]
+        if period_start is not None:
+            filters.append(FieldVisitRequest.requested_start_at >= datetime.combine(period_start, datetime.min.time(), tzinfo=UTC))
+        if period_end is not None:
+            filters.append(FieldVisitRequest.requested_start_at <= datetime.combine(period_end, datetime.max.time(), tzinfo=UTC))
+        filters.extend(
+            await self._operational_activity_scope_filters(
+                organization_id,
+                actor_user_id=actor_user_id,
+                actor_roles=actor_roles,
+                actor_project_ids=actor_project_ids,
+            )
+        )
+        result = await self.session.execute(select(FieldVisitRequest).where(*filters).order_by(FieldVisitRequest.requested_start_at.desc()))
+        activities = list(result.scalars())
+        activity_ids = [activity.id for activity in activities]
+        attachment_count = 0
+        if activity_ids:
+            media_result = await self.session.execute(
+                select(MediaEvidence).where(
+                    MediaEvidence.organization_id == organization_id,
+                    MediaEvidence.activity_id.in_(activity_ids),
+                    MediaEvidence.deleted_at.is_(None),
+                )
+            )
+            attachment_count = len(list(media_result.scalars()))
+        filtered = activities
+        if report_type == "incident_report":
+            filtered = [activity for activity in activities if activity.activity_type == "incident_report"]
+        if report_type == "gps_exception":
+            filtered = [
+                activity
+                for activity in activities
+                if activity.status == "flagged"
+                or activity.verification_status
+                in {"warning_distance", "outside_planned_area", "poor_gps_accuracy", "supervisor_flagged", "correction_requested"}
+            ]
+        if report_type == "supervisor_approval":
+            filtered = [activity for activity in activities if activity.requires_approval]
+        total = len(filtered)
+        pending = sum(1 for activity in filtered if activity.status == "pending")
+        approved = sum(1 for activity in filtered if activity.status in {"approved", "scheduled", "checked_in"})
+        completed = sum(1 for activity in filtered if activity.status == "completed")
+        rejected = sum(1 for activity in filtered if activity.status == "rejected")
+        flagged = sum(1 for activity in filtered if activity.status == "flagged")
+        gps_verified = sum(1 for activity in filtered if activity.verification_status in {"verified", "supervisor_verified"})
+        organization_scope = sum(1 for activity in filtered if activity.activity_scope == "organization")
+        project_scope = sum(1 for activity in filtered if activity.activity_scope == "project")
+        incident_count = sum(1 for activity in filtered if activity.activity_type == "incident_report")
+        by_activity_type: dict[str, int] = {}
+        by_officer_id: dict[str, int] = {}
+        by_scope: dict[str, int] = {}
+        rows: list[dict[str, object]] = []
+        for activity in filtered:
+            metadata = dict(activity.metadata_json or {})
+            by_activity_type[activity.activity_type] = by_activity_type.get(activity.activity_type, 0) + 1
+            by_officer_id[str(activity.field_officer_id)] = by_officer_id.get(str(activity.field_officer_id), 0) + 1
+            by_scope[activity.activity_scope] = by_scope.get(activity.activity_scope, 0) + 1
+            rows.append(
+                {
+                    "id": str(activity.id),
+                    "title": activity.title,
+                    "activityType": activity.activity_type,
+                    "scope": activity.activity_scope,
+                    "status": activity.status,
+                    "verificationStatus": activity.verification_status,
+                    "supervisorDecision": metadata.get("supervisorDecision"),
+                    "outcomeStatus": metadata.get("outcomeStatus"),
+                    "qualityScore": metadata.get("qualityScore"),
+                    "fieldOfficerId": str(activity.field_officer_id),
+                    "locationName": activity.location_name,
+                    "requestedStartAt": activity.requested_start_at.isoformat(),
+                    "distanceFromPlannedMeters": activity.distance_from_planned_meters,
+                }
+            )
+        recommendations: list[str] = []
+        if pending:
+            recommendations.append("Review pending activity requests before field movement begins.")
+        if flagged:
+            recommendations.append("Investigate flagged GPS evidence with the supervisor before accepting activity outcomes.")
+        if incident_count:
+            recommendations.append("Escalate incident reports into follow-up tasks and document management response.")
+        if attachment_count < completed:
+            recommendations.append("Ask officers to attach evidence for completed activities where required by policy.")
+        approval_rate = round(((approved + completed) / total) * 100, 1) if total else 0
+        completion_rate = round((completed / total) * 100, 1) if total else 0
+        gps_exception_rate = round((flagged / total) * 100, 1) if total else 0
+        title = {
+            "monthly_operations": "Monthly Organization Operations Report",
+            "field_officer_movement": "Field Officer Movement Report",
+            "incident_report": "Incident Report",
+            "supervisor_approval": "Supervisor Approval Report",
+            "gps_exception": "GPS Exception Report",
+        }.get(report_type, "Operational Activity Report")
+        return OperationalActivityReportRead(
+            report_type=cast(
+                Literal["monthly_operations", "field_officer_movement", "incident_report", "supervisor_approval", "gps_exception"],
+                report_type,
+            ),
+            title=title,
+            period_start=period_start,
+            period_end=period_end,
+            generated_at=datetime.now(UTC),
+            total_activities=total,
+            pending=pending,
+            approved=approved,
+            completed=completed,
+            rejected=rejected,
+            flagged=flagged,
+            gps_verified=gps_verified,
+            organization_scope=organization_scope,
+            project_scope=project_scope,
+            incident_count=incident_count,
+            attachment_count=attachment_count,
+            approval_rate=approval_rate,
+            completion_rate=completion_rate,
+            gps_exception_rate=gps_exception_rate,
+            by_activity_type=by_activity_type,
+            by_officer_id=by_officer_id,
+            by_scope=by_scope,
+            recommendations=recommendations,
+            rows=rows,
+        )
 
     async def create_beneficiary(self, organization_id: UUID, payload: BeneficiaryCreate, actor_user_id: UUID | None = None) -> Beneficiary:
         if not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
@@ -960,6 +1864,56 @@ class OperationsService:
         await event_publisher.publish(
             "beneficiary.enrolled",
             {"organization_id": str(organization_id), "beneficiary_id": str(beneficiary.id), "type": beneficiary.beneficiary_type},
+        )
+        return beneficiary
+
+    async def update_beneficiary(
+        self,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+        payload: BeneficiaryUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> Beneficiary:
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id == beneficiary_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        beneficiary = result.scalar_one_or_none()
+        if beneficiary is None:
+            raise LookupError("Entity not found")
+        changed: list[str] = []
+        for field in (
+            "display_name",
+            "sex",
+            "birth_year",
+            "phone_number",
+            "region",
+            "district",
+            "community",
+            "enrollment_status",
+            "vulnerability_score",
+            "latitude",
+            "longitude",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(beneficiary, field) != value:
+                setattr(beneficiary, field, value)
+                changed.append(field)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="beneficiary.updated",
+            resource_type="beneficiary",
+            resource_id=str(beneficiary.id),
+            metadata={
+                "beneficiary_uid": beneficiary.beneficiary_uid,
+                "changed_fields": changed,
+                "reason": payload.reason,
+            },
         )
         return beneficiary
 
@@ -1124,6 +2078,51 @@ class OperationsService:
         )
         return [DataQualitySignalRead.model_validate(signal) for signal in signals]
 
+    async def update_quality_signal(
+        self,
+        organization_id: UUID,
+        signal_id: UUID,
+        payload: DataQualitySignalUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> DataQualitySignalRead:
+        result = await self.session.execute(
+            select(DataQualitySignal).where(
+                DataQualitySignal.organization_id == organization_id,
+                DataQualitySignal.id == signal_id,
+            )
+        )
+        signal = result.scalar_one_or_none()
+        if signal is None:
+            raise ValueError("Data quality signal not found.")
+        previous_status = signal.status
+        evidence = dict(signal.evidence_json or {})
+        history = evidence.get("statusHistory")
+        signal.evidence_json = {
+            **evidence,
+            "statusHistory": [
+                *(history if isinstance(history, list) else []),
+                {
+                    "from": previous_status,
+                    "to": payload.status,
+                    "comment": payload.comment,
+                    "changedByUserId": str(actor_user_id) if actor_user_id else None,
+                    "changedAt": datetime.now(UTC).isoformat(),
+                },
+            ],
+        }
+        signal.status = payload.status
+        self.session.add(signal)
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="data_quality.signal_status_updated",
+            resource_type="data_quality_signal",
+            resource_id=str(signal.id),
+            metadata={"from": previous_status, "to": payload.status, "comment": payload.comment},
+        )
+        await self.session.flush()
+        return DataQualitySignalRead.model_validate(signal)
+
     async def search_beneficiaries(
         self,
         organization_id: UUID,
@@ -1280,7 +2279,9 @@ class OperationsService:
         )
 
     async def create_indicator(self, organization_id: UUID, payload: IndicatorCreate, actor_user_id: UUID | None = None) -> IndicatorRead:
-        indicator = await self.repository.create_indicator(organization_id=organization_id, values=payload.model_dump())
+        values = payload.model_dump()
+        values["disaggregation_json"] = values.pop("disaggregation_fields", [])
+        indicator = await self.repository.create_indicator(organization_id=organization_id, values=values)
         if indicator.project_id:
             await self.repository.upsert_operational_link(
                 organization_id=organization_id,
@@ -1307,6 +2308,56 @@ class OperationsService:
         await event_publisher.publish("indicator.created", {"organization_id": str(organization_id), "indicator_id": str(indicator.id)})
         return self.to_indicator_read(indicator)
 
+    async def update_indicator(
+        self,
+        organization_id: UUID,
+        indicator_id: UUID,
+        payload: IndicatorUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> IndicatorRead:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.id == indicator_id,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        indicator = result.scalar_one_or_none()
+        if indicator is None:
+            raise LookupError("Indicator not found")
+        changed: list[str] = []
+        for field in (
+            "name",
+            "description",
+            "unit",
+            "reporting_frequency",
+            "baseline_value",
+            "target_value",
+            "current_value",
+            "sdg_code",
+            "formula",
+            "category",
+            "is_active",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(indicator, field) != value:
+                setattr(indicator, field, value)
+                changed.append(field)
+        if payload.disaggregation_fields is not None:
+            indicator.disaggregation_json = list(payload.disaggregation_fields)
+            changed.append("disaggregation_fields")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="indicator.updated",
+            resource_type="indicator",
+            resource_id=str(indicator.id),
+            metadata={"code": indicator.code, "changed_fields": changed},
+        )
+        calculated_value = await self.calculate_indicator_current_value(organization_id, indicator)
+        return self.to_indicator_read(indicator, calculated_value=calculated_value)
+
     async def list_indicators(self, organization_id: UUID) -> list[IndicatorRead]:
         indicators = await self.repository.list_indicators(organization_id)
         reads: list[IndicatorRead] = []
@@ -1316,36 +2367,69 @@ class OperationsService:
         return reads
 
     async def calculate_indicator_current_value(self, organization_id: UUID, indicator: MonitoringIndicator) -> float | None:
-        formula = (indicator.formula or "").strip()
-        if not formula or not indicator.project_id:
+        if not indicator.project_id:
             return None
-        match = re.fullmatch(r"(?:(sum|avg|average|count|percent)\(([^)]+)\)|([A-Za-z0-9_.-]+))", formula, flags=re.IGNORECASE)
-        if match is None:
+        parsed = _parse_formula(indicator.formula)
+        if parsed is None:
             return None
-        operation = (match.group(1) or "sum").lower()
-        field_name = (match.group(2) or match.group(3) or "").strip()
-        if not field_name:
-            return None
+        operation, field_name = parsed
         submissions = await self.repository.list_approved_submissions(
             organization_id=organization_id,
             project_id=indicator.project_id,
             survey_id=indicator.survey_id,
         )
         values = [submission_values(submission.payload_json).get(field_name) for submission in submissions]
-        if operation == "count":
-            return float(sum(1 for value in values if value not in (None, "", [], {})))
-        if operation == "percent":
-            answered = [value for value in values if value not in (None, "", [], {})]
-            if not answered:
-                return 0.0
-            positive = sum(1 for value in answered if str(value).strip().lower() in {"1", "true", "yes", "y", "approved", "complete"})
-            return round((positive / len(answered)) * 100, 2)
-        numeric = [number for number in (number_value(value) for value in values) if number is not None]
-        if not numeric:
-            return 0.0
-        if operation in {"avg", "average"}:
-            return round(sum(numeric) / len(numeric), 2)
-        return round(sum(numeric), 2)
+        return _aggregate_values(operation, values)
+
+    async def calculate_indicator_disaggregation(
+        self, organization_id: UUID, indicator: MonitoringIndicator
+    ) -> IndicatorDisaggregationsRead:
+        if not indicator.project_id or not indicator.disaggregation_json:
+            return IndicatorDisaggregationsRead(items=[])
+        parsed = _parse_formula(indicator.formula)
+        operation, field_name = parsed if parsed is not None else ("sum", None)
+        submissions = await self.repository.list_approved_submissions(
+            organization_id=organization_id,
+            project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
+        )
+        payloads = [submission_values(submission.payload_json) for submission in submissions]
+        items: list[IndicatorDisaggregationRead] = []
+        for disaggregation_field in indicator.disaggregation_json:
+            groups: dict[str, list[object]] = {}
+            for values_map in payloads:
+                group_key = values_map.get(disaggregation_field)
+                group_label = "Unspecified" if group_key in (None, "", [], {}) else str(group_key)
+                groups.setdefault(group_label, []).append(values_map.get(field_name) if field_name else None)
+            breakdown = {label: _aggregate_values(operation, values) for label, values in groups.items()}
+            items.append(IndicatorDisaggregationRead(field_name=disaggregation_field, operation=operation, breakdown=breakdown))
+        return IndicatorDisaggregationsRead(items=items)
+
+    async def list_indicator_linked_submissions(
+        self, organization_id: UUID, indicator: MonitoringIndicator
+    ) -> IndicatorLinkedSubmissionsRead:
+        if not indicator.project_id:
+            return IndicatorLinkedSubmissionsRead(field_name=None, operation=None, total_count=0, items=[])
+        parsed = _parse_formula(indicator.formula)
+        operation, field_name = parsed if parsed is not None else (None, None)
+        submissions = await self.repository.list_approved_submissions(
+            organization_id=organization_id,
+            project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
+        )
+        ordered = sorted(submissions, key=lambda submission: submission.submitted_at, reverse=True)
+        items = [
+            IndicatorLinkedSubmissionRead(
+                submission_id=submission.id,
+                client_submission_id=submission.client_submission_id,
+                submitted_at=submission.submitted_at,
+                approved_at=submission.approved_at,
+                field_value=submission_values(submission.payload_json).get(field_name) if field_name else None,
+                project_id=submission.project_id,
+            )
+            for submission in ordered[:200]
+        ]
+        return IndicatorLinkedSubmissionsRead(field_name=field_name, operation=operation, total_count=len(ordered), items=items)
 
     async def create_case(self, organization_id: UUID, payload: CaseCreate, actor_user_id: UUID | None = None) -> CaseRecord:
         case = await self.repository.create_case(organization_id=organization_id, values=payload.model_dump())
@@ -1388,6 +2472,107 @@ class OperationsService:
 
     async def list_reports(self, organization_id: UUID) -> list[DonorReport]:
         return await self.repository.list_reports(organization_id)
+
+    async def _compute_report_metrics(self, organization_id: UUID, report: DonorReport) -> DonorReportMetrics:
+        project_id = report.project_id
+        submissions_total = await self.repository.count_submissions_scoped(organization_id=organization_id, project_id=project_id)
+        submissions_approved = await self.repository.count_submissions_scoped(
+            organization_id=organization_id, project_id=project_id, status="approved"
+        )
+        beneficiaries = await self.repository.count_beneficiaries_scoped(organization_id=organization_id, project_id=project_id)
+        projects = 1 if project_id is not None else await self.repository.count(Project, organization_id)
+
+        indicators = await self.repository.list_indicators(organization_id)
+        scoped_indicators = [
+            indicator
+            for indicator in indicators
+            if indicator.is_active and (project_id is None or indicator.project_id == project_id)
+        ]
+        indicator_metrics: list[DonorReportIndicatorMetric] = []
+        for indicator in scoped_indicators:
+            calculated_value = await self.calculate_indicator_current_value(organization_id, indicator)
+            current_value = indicator.current_value if calculated_value is None else calculated_value
+            indicator_metrics.append(
+                DonorReportIndicatorMetric(
+                    code=indicator.code,
+                    name=indicator.name,
+                    unit=indicator.unit,
+                    baseline_value=indicator.baseline_value,
+                    target_value=indicator.target_value,
+                    current_value=current_value,
+                    progress_percent=_progress_percent(current_value, indicator.baseline_value, indicator.target_value),
+                )
+            )
+
+        return DonorReportMetrics(
+            projects=projects,
+            submissions_total=submissions_total,
+            submissions_approved=submissions_approved,
+            beneficiaries=beneficiaries,
+            indicators=indicator_metrics,
+            period_start=report.period_start,
+            period_end=report.period_end,
+            generated_at=datetime.now(UTC),
+        )
+
+    async def generate_report(self, organization_id: UUID, report_id: UUID) -> DonorReport:
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)
+        if report is None:
+            raise ValueError("Report not found")
+
+        metrics = await self._compute_report_metrics(organization_id, report)
+        values: dict[str, object] = {
+            "metrics_json": metrics.model_dump(mode="json"),
+            "generated_at": metrics.generated_at,
+            "status": "ready",
+        }
+        if not report.summary:
+            values["summary"] = _build_report_summary(report, metrics)
+        report = await self.repository.update_report(report, values)
+        await self.session.commit()
+        await event_publisher.publish("report.generated", {"organization_id": str(organization_id), "report_id": str(report.id)})
+        return report
+
+    async def export_report_csv(self, organization_id: UUID, report_id: UUID) -> tuple[str, str]:
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)
+        if report is None:
+            raise ValueError("Report not found")
+
+        if not report.metrics_json:
+            report = await self.generate_report(organization_id, report_id)
+
+        metrics_json = report.metrics_json
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Report", report.name])
+        writer.writerow(["Donor", report.donor or ""])
+        writer.writerow(["Report type", report.report_type])
+        writer.writerow(["Status", report.status])
+        writer.writerow(["Period start", metrics_json.get("period_start") or ""])
+        writer.writerow(["Period end", metrics_json.get("period_end") or ""])
+        writer.writerow(["Generated at", metrics_json.get("generated_at") or ""])
+        writer.writerow([])
+        writer.writerow(["Projects", metrics_json.get("projects", 0)])
+        writer.writerow(["Submissions (total)", metrics_json.get("submissions_total", 0)])
+        writer.writerow(["Submissions (approved)", metrics_json.get("submissions_approved", 0)])
+        writer.writerow(["Beneficiaries", metrics_json.get("beneficiaries", 0)])
+        writer.writerow([])
+        writer.writerow(["Indicator code", "Indicator name", "Unit", "Baseline", "Target", "Current", "Progress %"])
+        for indicator in metrics_json.get("indicators", []):
+            writer.writerow(
+                [
+                    indicator.get("code"),
+                    indicator.get("name"),
+                    indicator.get("unit"),
+                    indicator.get("baseline_value"),
+                    indicator.get("target_value"),
+                    indicator.get("current_value"),
+                    indicator.get("progress_percent"),
+                ]
+            )
+
+        filename = f"{report.name.strip().lower().replace(' ', '-') or 'report'}.csv"
+        return buffer.getvalue(), filename
 
     async def create_unit(self, organization_id: UUID, user_id: UUID, payload: OrganizationalUnitCreate) -> OrganizationalUnitRead:
         unit = await self.repository.create_enterprise_record(OrganizationalUnit, organization_id=organization_id, values=payload.model_dump())
@@ -2617,11 +3802,7 @@ class OperationsService:
     @staticmethod
     def to_indicator_read(indicator: MonitoringIndicator, calculated_value: float | None = None) -> IndicatorRead:
         current_value = indicator.current_value if calculated_value is None else calculated_value
-        progress = (
-            round(max(0, min(((current_value - indicator.baseline_value) / (indicator.target_value - indicator.baseline_value)) * 100, 100)), 1)
-            if indicator.target_value > indicator.baseline_value
-            else 0
-        )
+        progress = _progress_percent(current_value, indicator.baseline_value, indicator.target_value)
         return IndicatorRead(
             id=indicator.id,
             project_id=indicator.project_id,
@@ -2636,6 +3817,281 @@ class OperationsService:
             current_value=current_value,
             sdg_code=indicator.sdg_code,
             formula=indicator.formula,
+            category=indicator.category,
+            disaggregation_fields=indicator.disaggregation_json,
             is_active=indicator.is_active,
             progress_percent=progress,
+            calculated_at=datetime.now(UTC) if calculated_value is not None else None,
         )
+
+
+class FieldPlanningService:
+    """Work plans and operational targets for the Field Operations module."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.audit = AuditRepository(session)
+
+    @staticmethod
+    def _work_plan_to_read(record: FieldWorkPlan) -> FieldWorkPlanRead:
+        return FieldWorkPlanRead(
+            id=record.id,
+            created_by_user_id=record.created_by_user_id,
+            name=record.name,
+            project=record.project,
+            objectives=record.objectives,
+            locations=list(record.locations_json),
+            assigned_teams=list(record.assigned_teams_json),
+            deliverables=list(record.deliverables_json),
+            start_date=record.start_date,
+            end_date=record.end_date,
+            progress=record.progress,
+            view=record.view,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def _target_to_read(
+        record: OperationalTargetRecord,
+        *,
+        achieved_value: int | None = None,
+        achieved_source: str = "manual",
+    ) -> OperationalTargetRead:
+        return OperationalTargetRead(
+            id=record.id,
+            created_by_user_id=record.created_by_user_id,
+            name=record.name,
+            target_type=record.target_type,
+            project=record.project,
+            indicator=record.indicator,
+            indicator_id=record.indicator_id,
+            team=record.team,
+            assigned_staff=list(record.assigned_staff_json),
+            target_value=record.target_value,
+            achieved_value=achieved_value if achieved_value is not None else record.achieved_value,
+            achieved_source=achieved_source,
+            deadline=record.deadline,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    async def _get_indicator(
+        self, organization_id: UUID, indicator_id: UUID
+    ) -> MonitoringIndicator | None:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.id == indicator_id,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _target_with_live_achievement(
+        self, organization_id: UUID, record: OperationalTargetRecord
+    ) -> OperationalTargetRead:
+        if record.indicator_id is None:
+            return self._target_to_read(record)
+        indicator = await self._get_indicator(organization_id, record.indicator_id)
+        if indicator is None:
+            return self._target_to_read(record)
+        calculated = await OperationsService(self.session).calculate_indicator_current_value(
+            organization_id, indicator
+        )
+        value = calculated if calculated is not None else indicator.current_value
+        return self._target_to_read(
+            record,
+            achieved_value=int(round(value)),
+            achieved_source="indicator",
+        )
+
+    async def list_work_plans(self, organization_id: UUID) -> list[FieldWorkPlanRead]:
+        result = await self.session.execute(
+            select(FieldWorkPlan)
+            .where(
+                FieldWorkPlan.organization_id == organization_id,
+                FieldWorkPlan.deleted_at.is_(None),
+            )
+            .order_by(FieldWorkPlan.created_at.desc())
+        )
+        return [self._work_plan_to_read(record) for record in result.scalars()]
+
+    async def create_work_plan(
+        self, *, organization_id: UUID, actor_user_id: UUID, payload: FieldWorkPlanCreate
+    ) -> FieldWorkPlanRead:
+        record = FieldWorkPlan(
+            organization_id=organization_id,
+            created_by_user_id=actor_user_id,
+            name=payload.name,
+            project=payload.project,
+            objectives=payload.objectives,
+            locations_json=list(payload.locations),
+            assigned_teams_json=list(payload.assigned_teams),
+            deliverables_json=list(payload.deliverables),
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            progress=0,
+            view=payload.view,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_plan.created",
+            resource_type="field_work_plan",
+            resource_id=str(record.id),
+            metadata={"name": record.name, "project": record.project},
+        )
+        return self._work_plan_to_read(record)
+
+    async def update_work_plan(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        work_plan_id: UUID,
+        payload: FieldWorkPlanUpdate,
+    ) -> FieldWorkPlanRead:
+        result = await self.session.execute(
+            select(FieldWorkPlan).where(
+                FieldWorkPlan.organization_id == organization_id,
+                FieldWorkPlan.id == work_plan_id,
+                FieldWorkPlan.deleted_at.is_(None),
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise LookupError("Work plan not found")
+        changed: list[str] = []
+        for field in ("name", "project", "objectives", "start_date", "end_date", "progress", "view"):
+            value = getattr(payload, field)
+            if value is not None and getattr(record, field) != value:
+                setattr(record, field, value)
+                changed.append(field)
+        if payload.locations is not None:
+            record.locations_json = list(payload.locations)
+            changed.append("locations")
+        if payload.assigned_teams is not None:
+            record.assigned_teams_json = list(payload.assigned_teams)
+            changed.append("assigned_teams")
+        if payload.deliverables is not None:
+            record.deliverables_json = list(payload.deliverables)
+            changed.append("deliverables")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_plan.updated",
+            resource_type="field_work_plan",
+            resource_id=str(record.id),
+            metadata={"changed_fields": changed},
+        )
+        return self._work_plan_to_read(record)
+
+    async def list_targets(self, organization_id: UUID) -> list[OperationalTargetRead]:
+        result = await self.session.execute(
+            select(OperationalTargetRecord)
+            .where(
+                OperationalTargetRecord.organization_id == organization_id,
+                OperationalTargetRecord.deleted_at.is_(None),
+            )
+            .order_by(OperationalTargetRecord.created_at.desc())
+        )
+        return [
+            await self._target_with_live_achievement(organization_id, record)
+            for record in result.scalars()
+        ]
+
+    async def create_target(
+        self, *, organization_id: UUID, actor_user_id: UUID, payload: OperationalTargetCreate
+    ) -> OperationalTargetRead:
+        indicator_name = payload.indicator
+        if payload.indicator_id is not None:
+            linked = await self._get_indicator(organization_id, payload.indicator_id)
+            if linked is None:
+                raise LookupError("Linked indicator not found")
+            indicator_name = indicator_name or linked.name
+        record = OperationalTargetRecord(
+            organization_id=organization_id,
+            created_by_user_id=actor_user_id,
+            indicator_id=payload.indicator_id,
+            name=payload.name,
+            target_type=payload.target_type,
+            project=payload.project,
+            indicator=indicator_name,
+            team=payload.team,
+            assigned_staff_json=list(payload.assigned_staff),
+            target_value=payload.target_value,
+            achieved_value=0,
+            deadline=payload.deadline,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_target.created",
+            resource_type="operational_target",
+            resource_id=str(record.id),
+            metadata={
+                "name": record.name,
+                "target_value": record.target_value,
+                "indicator_id": str(record.indicator_id) if record.indicator_id else None,
+            },
+        )
+        return await self._target_with_live_achievement(organization_id, record)
+
+    async def update_target(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        target_id: UUID,
+        payload: OperationalTargetUpdate,
+    ) -> OperationalTargetRead:
+        result = await self.session.execute(
+            select(OperationalTargetRecord).where(
+                OperationalTargetRecord.organization_id == organization_id,
+                OperationalTargetRecord.id == target_id,
+                OperationalTargetRecord.deleted_at.is_(None),
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise LookupError("Operational target not found")
+        changed: list[str] = []
+        if payload.indicator_id is not None:
+            if await self._get_indicator(organization_id, payload.indicator_id) is None:
+                raise LookupError("Linked indicator not found")
+            if record.indicator_id != payload.indicator_id:
+                record.indicator_id = payload.indicator_id
+                changed.append("indicator_id")
+        for field in (
+            "name",
+            "target_type",
+            "project",
+            "indicator",
+            "team",
+            "target_value",
+            "achieved_value",
+            "deadline",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(record, field) != value:
+                setattr(record, field, value)
+                changed.append(field)
+        if payload.assigned_staff is not None:
+            record.assigned_staff_json = list(payload.assigned_staff)
+            changed.append("assigned_staff")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_target.updated",
+            resource_type="operational_target",
+            resource_id=str(record.id),
+            metadata={"changed_fields": changed},
+        )
+        return await self._target_with_live_achievement(organization_id, record)

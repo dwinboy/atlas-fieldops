@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LifeBuoy, RotateCcw } from "lucide-react";
+import { LifeBuoy, Megaphone, RotateCcw } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -35,9 +35,11 @@ import {
   getNavigationItemByView,
   isWorkspaceViewAllowed,
 } from "@/config/navigation";
+import { statusTone } from "@/lib/statusTones";
 import {
   getCurrentPrincipal,
   getOrganizationContext,
+  getPlatformAnnouncement,
   returnToPlatformSession,
 } from "@/lib/api";
 import { clearToken, readToken, writeToken } from "@/lib/session";
@@ -57,6 +59,7 @@ import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
   const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/app/help") return "help";
   if (path === "/app") return null;
   if (path === "/dashboard") return "dashboard";
   if (path.startsWith("/projects")) return "programs";
@@ -105,6 +108,11 @@ export function WorkspaceApp() {
     queryKey: ["organization-context", token],
     queryFn: () => getOrganizationContext(token ?? ""),
     enabled: Boolean(token && !isPreviewToken),
+  });
+  const announcementQuery = useQuery({
+    queryKey: ["platform-announcement"],
+    queryFn: getPlatformAnnouncement,
+    enabled: Boolean(token),
   });
 
   const returnSupportMutation = useMutation({
@@ -388,6 +396,23 @@ export function WorkspaceApp() {
     >
       <CommandPalette principal={principalQuery.data} />
       <NotificationCenter />
+      {announcementQuery.data?.announcement_enabled &&
+      announcementQuery.data.announcement_title.trim() ? (
+        <section className="mb-4 rounded-2xl border border-info/30 bg-info/10 p-4 shadow-line">
+          <div className="flex items-start gap-3">
+            <Megaphone aria-hidden="true" className="mt-0.5 text-info" size={18} />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold">{announcementQuery.data.announcement_title}</h2>
+                <Badge tone={statusTone(announcementQuery.data.announcement_tone)}>{announcementQuery.data.announcement_tone}</Badge>
+              </div>
+              {announcementQuery.data.announcement_body ? (
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{announcementQuery.data.announcement_body}</p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
       {principalQuery.data?.platform_admin &&
       principalQuery.data.support_mode ? (
         <section className="mb-4 rounded-2xl border border-warning/30 bg-warning/10 p-4 shadow-line">

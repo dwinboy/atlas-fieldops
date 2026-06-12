@@ -41,6 +41,7 @@ def create_access_token(
     geography_ids: list[str] | None = None,
     project_ids: list[str] | None = None,
     organization_unit_ids: list[str] | None = None,
+    role_assignments: list[dict[str, Any]] | None = None,
 ) -> str:
     secret = get_jwt_secret()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
@@ -61,6 +62,28 @@ def create_access_token(
         "geography_ids": geography_ids or [],
         "project_ids": project_ids or [],
         "organization_unit_ids": organization_unit_ids or [],
+        "role_assignments": role_assignments or [],
+        "token_type": "access",
+        "exp": expires_at,
+    }
+    return cast(str, jwt.encode(payload, secret, algorithm=settings.jwt_algorithm))
+
+
+def create_refresh_token(
+    subject: str,
+    organization_id: str,
+    *,
+    email: str | None = None,
+    organization_slug: str | None = None,
+) -> str:
+    secret = get_jwt_secret()
+    expires_at = datetime.now(UTC) + timedelta(days=30)
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "organization_id": organization_id,
+        "email": email,
+        "organization_slug": organization_slug,
+        "token_type": "refresh",
         "exp": expires_at,
     }
     return cast(str, jwt.encode(payload, secret, algorithm=settings.jwt_algorithm))
@@ -72,4 +95,19 @@ def decode_access_token(token: str) -> dict[str, Any]:
         payload = jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
     except (JWTError, RuntimeError) as exc:
         raise ValueError("Invalid access token") from exc
-    return cast(dict[str, Any], payload)
+    data = cast(dict[str, Any], payload)
+    if data.get("token_type") == "refresh":
+        raise ValueError("Invalid access token")
+    return data
+
+
+def decode_refresh_token(token: str) -> dict[str, Any]:
+    try:
+        secret = get_jwt_secret()
+        payload = jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
+    except (JWTError, RuntimeError) as exc:
+        raise ValueError("Invalid refresh token") from exc
+    data = cast(dict[str, Any], payload)
+    if data.get("token_type") != "refresh":
+        raise ValueError("Invalid refresh token")
+    return data

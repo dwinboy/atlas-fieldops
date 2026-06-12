@@ -159,7 +159,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Draft Projects", route: "/projects/draft", description: "Projects still being designed." },
           { label: "Closed Projects", route: "/projects/closed", description: "Completed or archived project workspaces." },
           { label: "Project Templates", route: "/projects/templates", description: "Reusable project setup patterns." },
-          { label: "Project Beneficiaries", route: "/projects/:projectId/beneficiaries", description: "Project entity enrollment and registry scope." },
+          { label: "Project Entities", route: "/projects/:projectId/beneficiaries", description: "Project entity enrollment and registry scope." },
           { label: "Data Import", route: "/projects/:projectId/data-import", description: "Continue project data from Kobo, ODK, Excel, and other tools." },
         ],
       },
@@ -207,6 +207,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Assignments", route: "/field-operations/assignments", description: "Form, project, and location assignments." },
           { label: "Field Officers", route: "/field-operations/field-officers", description: "Enumerator and collector management." },
           { label: "Supervisors", route: "/field-operations/supervisors", description: "Supervisor teams and responsibilities." },
+          { label: "Operational Activities", route: "/field-operations/operational-activities", description: "Supervisor approval and GPS evidence for organization and project field activities." },
           { label: "Work Plans", route: "/field-operations/work-plans", description: "Daily and weekly field activity plans." },
           { label: "Targets", route: "/field-operations/targets", description: "Collection targets and progress tracking." },
           { label: "Field Monitoring", route: "/field-operations/field-monitoring", description: "Device, sync, GPS, and productivity monitoring." },
@@ -242,7 +243,7 @@ const sidebarSections: NavigationSection[] = [
       },
       {
         id: "beneficiaries",
-        label: "Beneficiaries",
+        label: "Entities",
         hint: "Registry & history",
         description:
           "Search, import, assign, deduplicate, and track farmers, households, facilities, schools, groups, and other project entities over time.",
@@ -293,7 +294,7 @@ const sidebarSections: NavigationSection[] = [
         children: [
           { label: "Project Maps", route: "/mapping/project-maps", description: "Project geographic scope and activity maps." },
           { label: "Submission Maps", route: "/mapping/submission-maps", description: "Submitted records plotted by location." },
-          { label: "Beneficiary Maps", route: "/mapping/beneficiary-maps", description: "Beneficiary and household locations." },
+          { label: "Entity Maps", route: "/mapping/beneficiary-maps", description: "Entity and household locations." },
           { label: "Facility Maps", route: "/mapping/facility-maps", description: "Facilities, schools, and service points." },
           { label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Target vs actual geographic coverage." },
           { label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Spatial indicator performance." },
@@ -461,12 +462,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "System Settings", route: "/administration/system-settings", description: "Global platform configuration." },
           { label: "Backup & Recovery", route: "/administration/backup-recovery", description: "Data backup, restore, and recovery settings." },
           { label: "Imports & Migration", route: "/administration/imports-migration", description: "Migration batches, field mapping, validation, history, and rollback." },
-          { label: "Mobile Devices", route: "/administration/mobile-devices", description: "Registered Android devices, status, and remote logout controls." },
-          { label: "Mobile Versions", route: "/administration/mobile-versions", description: "Production, staging, and minimum supported mobile versions." },
-          { label: "Mobile Pilots", route: "/administration/mobile-pilots", description: "Pilot programs, field officers, supervisors, devices, and rollout status." },
-          { label: "Mobile Monitoring", route: "/administration/mobile-monitoring", description: "Sync health, crashes, offline devices, and app version distribution." },
-          { label: "Mobile Feedback", route: "/administration/mobile-feedback", description: "Field feedback and diagnostics from mobile users." },
-          { label: "Mobile Testing", route: "/administration/mobile-testing", description: "Offline, GPS, attachment, sync, and large-form field test records." },
+          { label: "Mobile Management", route: "/administration/mobile", description: "Devices, app versions, pilots, monitoring, feedback, and field testing in one hub." },
         ],
       },
       {
@@ -475,7 +471,7 @@ const sidebarSections: NavigationSection[] = [
         hint: "Product guidance",
         description:
           "Beginner-friendly guidance for major Atlas FieldOps workflows.",
-        route: "/help",
+        route: "/app/help",
         domain: "SYSTEM",
         icon: BookOpenCheck,
         tone: "support",
@@ -720,7 +716,7 @@ export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
   beneficiaries: {
     step: "Manage records",
     outcome:
-      "Keep beneficiary, household, farmer, group, and visit records organized and traceable.",
+      "Keep entity, household, farmer, group, and visit records organized and traceable.",
     next: "submissions",
     nextLabel: "Review submissions",
   },

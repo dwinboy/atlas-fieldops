@@ -18,7 +18,7 @@ export default function CreateOrganizationPage() {
     <MarketingShell>
       <main>
         <section className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[0.9fr_1fr] lg:px-8">
-          <aside className="rounded-3xl bg-[#10201c] p-8 text-white shadow-xl">
+          <aside className="rounded-3xl bg-[#0c1f1b] p-8 text-white shadow-xl">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#5eead4]">Organization setup</p>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight">Launch with a guided SaaS setup path.</h1>
             <div className="mt-8 grid gap-3">

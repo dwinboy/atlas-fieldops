@@ -14,11 +14,12 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
 const inputClass =
-  "h-8 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-xs text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Input({
   className,
@@ -235,38 +236,45 @@ export function Select({
           size={16}
         />
       </button>
-      {open ? (
-        <div
-          className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
-          id={menuId}
-          role="listbox"
-          style={menuStyle}
-        >
-          {options.map((option) => {
-            const active = option.value === selectedValue;
-            const highlighted = option.value === highlightedValue;
-            return (
-              <button
-                aria-selected={active}
-                className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition hover:bg-muted",
-                  highlighted && !active && "bg-muted/80",
-                  active && "bg-primary/10 text-primary",
-                  option.disabled && "cursor-not-allowed opacity-45",
-                )}
-                disabled={option.disabled}
-                key={`${option.value}-${option.label}`}
-                onClick={() => choose(option)}
-                role="option"
-                type="button"
-              >
-                <span className="min-w-0 truncate">{option.label}</span>
-                {active ? <Check aria-hidden="true" size={15} /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
+              id={menuId}
+              role="listbox"
+              style={menuStyle}
+            >
+              {options.map((option) => {
+                const active = option.value === selectedValue;
+                const highlighted = option.value === highlightedValue;
+                return (
+                  <button
+                    aria-selected={active}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition hover:bg-muted",
+                      highlighted && !active && "bg-muted/80",
+                      active && "bg-primary/10 text-primary",
+                      option.disabled && "cursor-not-allowed opacity-45",
+                    )}
+                    disabled={option.disabled}
+                    key={`${option.value}-${option.label}`}
+                    onClick={() => choose(option)}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      choose(option);
+                    }}
+                    role="option"
+                    type="button"
+                  >
+                    <span className="min-w-0 truncate">{option.label}</span>
+                    {active ? <Check aria-hidden="true" size={15} /> : null}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
       <select
         aria-hidden="true"
         className="hidden"
@@ -289,7 +297,7 @@ export function Textarea({
   return (
     <textarea
       className={cn(
-        "min-h-20 w-full rounded-lg border border-input bg-panel/95 px-2.5 py-2 text-xs shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15",
+        "min-h-20 w-full rounded-lg border border-input bg-panel/95 px-2.5 py-2 text-sm shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15",
         className,
       )}
       {...props}

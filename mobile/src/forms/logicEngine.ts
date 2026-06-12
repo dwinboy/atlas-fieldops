@@ -1,3 +1,4 @@
+import { evaluateExpression } from "@/forms/expressionEngine";
 import type { MobileFormVersion, MobileLogicRule, MobileQuestion, MobileSubmission } from "@/models/contracts";
 
 export type QuestionLogicState = {
@@ -35,29 +36,44 @@ export class LogicEngine {
   evaluate(formVersion: MobileFormVersion, draft: MobileSubmission): Record<string, QuestionLogicState> {
     const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
     const questions = formVersion.sections.flatMap((section) => section.questions);
+    const variableValues = new Map<string, unknown>();
+    for (const question of questions) {
+      variableValues.set(question.variableName, responses.get(question.id));
+    }
     const state: Record<string, QuestionLogicState> = {};
     for (const question of questions) {
       state[question.id] = {
-        visible: true,
+        visible: question.type !== "Hidden",
         required: question.required,
         calculatedValue: null,
         skippedToQuestionId: null,
       };
     }
     for (const question of questions) {
-      this.applyQuestionRules(question, responses, state);
+      this.applyQuestionRules(question, responses, variableValues, state);
     }
     return state;
   }
 
-  private applyQuestionRules(question: MobileQuestion, responses: Map<string, unknown>, state: Record<string, QuestionLogicState>): void {
+  private applyQuestionRules(
+    question: MobileQuestion,
+    responses: Map<string, unknown>,
+    variableValues: Map<string, unknown>,
+    state: Record<string, QuestionLogicState>,
+  ): void {
     for (const rule of question.logicRules) {
-      const passes = compare(responses.get(rule.sourceQuestionId), rule);
       const targetId = rule.targetQuestionId ?? question.id;
       const target = state[targetId];
       if (!target) {
         continue;
       }
+      if (rule.action === "Calculate") {
+        // Calculate rules recompute unconditionally — `operator`/`sourceQuestionId`
+        // are placeholders from rule generation, not a visibility condition.
+        target.calculatedValue = evaluateExpression(String(rule.value ?? ""), variableValues);
+        continue;
+      }
+      const passes = compare(responses.get(rule.sourceQuestionId), rule);
       if (rule.action === "ShowIf") {
         target.visible = passes;
       }
@@ -69,9 +85,6 @@ export class LogicEngine {
       }
       if (rule.action === "SkipTo" && passes) {
         state[question.id].skippedToQuestionId = rule.targetQuestionId;
-      }
-      if (rule.action === "Calculate" && passes) {
-        target.calculatedValue = rule.value;
       }
     }
   }

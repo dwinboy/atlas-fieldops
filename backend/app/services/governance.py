@@ -211,3 +211,7 @@ class GovernanceService:
 
     async def list_master_data_entries(self, organization_id: UUID) -> list[MasterDataEntryRead]:
         return [MasterDataEntryRead.model_validate(entry) for entry in await self.repository.list_master_data_entries(organization_id)]
+
+    async def list_choice_list(self, organization_id: UUID, category: str) -> list[MasterDataEntryRead]:
+        entries = await self.repository.list_master_data_by_category(organization_id, category)
+        return [MasterDataEntryRead.model_validate(entry) for entry in entries]

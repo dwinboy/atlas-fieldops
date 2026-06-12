@@ -17,7 +17,6 @@ depends_on: str | Sequence[str] | None = None
 
 def _drop_unique_by_columns(table_name: str, column_names: list[str]) -> None:
     quoted_columns = ", ".join(f"'{column_name}'" for column_name in column_names)
-    column_count = len(column_names)
     op.execute(
         f"""
         DO $$
@@ -40,7 +39,7 @@ def _drop_unique_by_columns(table_name: str, column_names: list[str]) -> None:
                   AND c.contype = 'u'
                 GROUP BY c.conname
             ) constraints
-            WHERE constrained_columns = ARRAY[{quoted_columns}]
+            WHERE constrained_columns::text[] = ARRAY[{quoted_columns}]::text[]
             LIMIT 1;
 
             IF target_constraint IS NOT NULL THEN

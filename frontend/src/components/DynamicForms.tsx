@@ -38,6 +38,7 @@ import {
   GripVertical,
   Grid3X3,
   Hash,
+  Hexagon,
   History,
   Layers3,
   ListFilter,
@@ -115,15 +116,18 @@ import {
   createForm,
   createPublicCollectionLink,
   exportFormXlsForm,
+  FORM_TYPES,
   getFormCollectionCompatibility,
   listSubmissions,
   listForms,
+  listMasterDataEntries,
   listPrograms,
   listSurveys,
   reviewSubmission,
   updateFormControls,
   type DataFormRead,
   type FormControlsSettings,
+  type FormType,
   type FormWorkflowStage,
   type ProgramRead,
   type SubmissionRead,
@@ -162,6 +166,7 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   geolocation: MapPin,
   map: MapPin,
   geofence: MapPin,
+  polygon: Hexagon,
   photo: Camera,
   image: Camera,
   signature: Type,
@@ -179,6 +184,17 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   grid: Grid3X3,
 };
 
+const frequentFieldTypes: { type: FieldType; label: string }[] = [
+  { type: "text", label: "Short text" },
+  { type: "number", label: "Number" },
+  { type: "date", label: "Date" },
+  { type: "radio", label: "Radio" },
+  { type: "dropdown", label: "Dropdown" },
+  { type: "checkbox", label: "Checkboxes" },
+  { type: "gps", label: "GPS" },
+  { type: "photo", label: "Photo" },
+];
+
 function templateToForm(template: FormTemplateCard): DynamicForm {
   const pageId = `${template.id}-page-1`;
   const sectionId = `${template.id}-main`;
@@ -186,7 +202,7 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
   const fields: FormField[] = [
     {
       id: `${template.id}-beneficiary`,
-      label: "Beneficiary or respondent name",
+      label: "Entity or respondent name",
       type: "text",
       required: true,
       pageId,
@@ -365,6 +381,13 @@ type FocusSettingsTab =
   | "logic"
   | "validation"
   | "data"
+  | "indicator"
+  | "beneficiary"
+  | "reference"
+  | "evidence"
+  | "privacy"
+  | "mobile"
+  | "governance"
   | "appearance";
 type DistributionChannel =
   | "survey_app"
@@ -458,7 +481,7 @@ const quickFieldPresets: FieldPreset[] = [
     id: "person-name",
     label: "Person name",
     type: "text",
-    hint: "Full name of respondent or beneficiary.",
+    hint: "Full name of respondent or entity.",
     required: true,
   },
   {
@@ -527,9 +550,9 @@ const quickFieldPresets: FieldPreset[] = [
   },
   {
     id: "beneficiary-id",
-    label: "Beneficiary ID",
+    label: "Entity ID",
     type: "barcode",
-    hint: "Scan or enter the beneficiary registration code.",
+    hint: "Scan or enter the entity registration code.",
     required: true,
   },
   {
@@ -745,7 +768,7 @@ const templateCategoryDescriptions: Record<string, string> = {
   Surveys:
     "General-purpose questionnaires for research, feedback, assessments, and interviews.",
   "Registration Workflows":
-    "Beneficiary, household, farmer, group, facility, and participant onboarding.",
+    "Entity, household, farmer, group, facility, and participant onboarding.",
   "Case Management":
     "Complaints, referrals, incident follow-up, corrections, and resolution tracking.",
 };
@@ -898,6 +921,20 @@ function fieldAppearanceWithTag(
   return {
     ...field.appearance,
     helpText: enabled ? `${cleaned} ${token}`.trim() : cleaned,
+  };
+}
+
+function fieldMetadataValue(field: FormField, key: string): string {
+  const match = (field.appearance?.helpText ?? "").match(new RegExp(`\\[${key}:([^\\]]+)\\]`));
+  return match?.[1] ?? "";
+}
+
+function fieldAppearanceWithMetadata(field: FormField, key: string, value: string): FormField["appearance"] {
+  const current = field.appearance?.helpText ?? "";
+  const cleaned = current.replace(new RegExp(`\\s*\\[${key}:[^\\]]+\\]`, "g"), "").replace(/\s+/g, " ").trim();
+  return {
+    ...field.appearance,
+    helpText: value ? `${cleaned} [${key}:${value}]`.trim() : cleaned,
   };
 }
 
@@ -1496,6 +1533,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       "geolocation",
       "map",
       "geofence",
+      "polygon",
       "photo",
       "image",
       "file",
@@ -1515,6 +1553,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       submitted_at: new Date(now - 75 * 60 * 1000).toISOString(),
       sync_received_at: new Date(now - 70 * 60 * 1000).toISOString(),
       offline_created: true,
+      device_id: "preview-android-001",
       latitude: 5.9631,
       longitude: 10.1591,
       accuracy: 8.4,
@@ -1539,6 +1578,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       submitted_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       sync_received_at: new Date(now - 110 * 60 * 1000).toISOString(),
       offline_created: false,
+      device_id: "preview-web-entry-002",
       latitude: 4.0511,
       longitude: 9.7679,
       accuracy: 18.2,
@@ -1577,7 +1617,7 @@ function createPreviewQualityFlags(
     ),
   ).length;
   const gpsCount = form.fields.filter((field) =>
-    ["gps", "geolocation", "map", "geofence"].includes(field.type),
+    ["gps", "geolocation", "map", "geofence", "polygon"].includes(field.type),
   ).length;
   const reviewCount = submissions.filter((submission) =>
     ["submitted", "under_review", "correction_requested"].includes(
@@ -1901,6 +1941,25 @@ function FieldInputPreview({ field }: { field: FormField }) {
     return (
       <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
         {["Latitude", "Longitude", "Accuracy", "Timestamp"].map((label) => (
+          <span
+            className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (field.type === "polygon") {
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+        {[
+          `Min vertices: ${field.polygon?.minVertices ?? 3}`,
+          field.polygon?.requireClosed === false ? "Open shape allowed" : "Closed shape required",
+          field.polygon?.overlapCheck === false ? "Overlap check off" : "Overlap check on",
+        ].map((label) => (
           <span
             className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
             key={label}
@@ -3116,7 +3175,13 @@ export function DynamicForms({
   const [builderFocusMode, setBuilderFocusMode] = useState(true);
   const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
     Record<string, boolean>
-  >({});
+  >({
+    "Survey questions": true,
+    Advanced: true,
+    Media: true,
+    Location: true,
+  });
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<
     Record<string, boolean>
   >({});
@@ -3157,6 +3222,7 @@ export function DynamicForms({
   const [newFormDialogOpen, setNewFormDialogOpen] = useState(false);
   const [newFormName, setNewFormName] = useState("New survey form");
   const [newFormDescription, setNewFormDescription] = useState("");
+  const [newFormType, setNewFormType] = useState<FormType | "">("");
   const [newFormChannel, setNewFormChannel] =
     useState<DistributionChannel>("survey_app");
   const [newFormBlocks, setNewFormBlocks] = useState<string[]>([
@@ -3239,6 +3305,16 @@ export function DynamicForms({
     queryFn: () => listForms(token ?? ""),
     enabled: Boolean(token && !isPreview),
   });
+  const masterDataQuery = useQuery({
+    queryKey: ["master-data-categories", token],
+    queryFn: () => listMasterDataEntries(token ?? ""),
+    enabled: Boolean(token && !isPreview),
+  });
+  const choiceListCategories = useMemo(
+    () =>
+      Array.from(new Set((masterDataQuery.data ?? []).map((entry) => entry.category))).sort(),
+    [masterDataQuery.data],
+  );
   const formSubmissionsQuery = useQuery({
     queryKey: ["form-submissions", token, selectedFormId],
     queryFn: () => listSubmissions(token ?? ""),
@@ -3536,6 +3612,7 @@ export function DynamicForms({
         name: payload.form.name,
         slug: `${slugify(payload.form.name)}-${Date.now().toString(36)}`,
         description: payload.form.sections[0]?.description ?? null,
+        form_type: newFormType || null,
         schema: toMobileSchema(payload.form) as Record<string, unknown>,
         publish: payload.publish,
       }),
@@ -5212,6 +5289,7 @@ export function DynamicForms({
         "geolocation",
         "map",
         "geofence",
+        "polygon",
         "photo",
         "image",
         "video",
@@ -5232,7 +5310,7 @@ export function DynamicForms({
     if (!fields.length || !hasIdentity) {
       return {
         description:
-          "Collect the person, beneficiary, or respondent identity first.",
+          "Collect the person, entity, or respondent identity first.",
         label: "Add respondent details",
         mode: "question" as BuilderAssistantMode,
         query: "name",
@@ -5725,6 +5803,21 @@ export function DynamicForms({
               placeholder="Explain what this form collects, who will use it, and what the data will support."
               value={newFormDescription}
             />
+          </label>
+
+          <label className="mt-4 block text-sm">
+            <span className="mb-1 block font-medium">Form type</span>
+            <Select
+              onChange={(event) => setNewFormType(event.target.value as FormType | "")}
+              value={newFormType}
+            >
+              <option value="">Unspecified</option>
+              {FORM_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type.replace("_", " ")}
+                </option>
+              ))}
+            </Select>
           </label>
 
           <div className="mt-4">
@@ -7192,7 +7285,7 @@ export function DynamicForms({
                   </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     Attach districts, schools, facilities, communities,
-                    beneficiaries, donor codes, or custom master data to form
+                    entities, donor codes, or custom master data to form
                     questions.
                   </p>
                 </button>
@@ -7243,8 +7336,8 @@ export function DynamicForms({
                       Entity & duplicate controls
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Decide whether this form creates, updates, or requires a
-                      beneficiary/entity record before collection starts.
+                      Decide whether this form creates, updates, or requires an
+                      entity record before collection starts.
                     </p>
                   </div>
                   <Badge
@@ -7278,7 +7371,7 @@ export function DynamicForms({
                     {[
                       "Farmer",
                       "Household",
-                      "Beneficiary",
+                      "Entity",
                       "Facility",
                       "School",
                       "Village",
@@ -7530,6 +7623,7 @@ export function DynamicForms({
                             Reference list
                             <Input
                               className="mt-2"
+                              list={`choice-list-categories-${binding.id}`}
                               onChange={(event) =>
                                 updateSelectedFormControls((controls) => ({
                                   ...controls,
@@ -7549,6 +7643,11 @@ export function DynamicForms({
                               }
                               value={binding.reference_list_name}
                             />
+                            <datalist id={`choice-list-categories-${binding.id}`}>
+                              {choiceListCategories.map((category) => (
+                                <option key={category} value={category} />
+                              ))}
+                            </datalist>
                           </label>
                           <label className="text-sm font-medium">
                             Parent list
@@ -7576,6 +7675,85 @@ export function DynamicForms({
                             />
                           </label>
                         </div>
+                        {binding.source === "existing" ? (
+                          <div className="mt-3 grid gap-3 md:grid-cols-3">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                              <input
+                                checked={binding.allow_inactive_values}
+                                className="h-4 w-4 rounded border-input"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                allow_inactive_values:
+                                                  event.target.checked,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="checkbox"
+                              />
+                              Allow inactive values
+                            </label>
+                            <label className="text-sm font-medium">
+                              Effective from
+                              <Input
+                                className="mt-2"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                effective_from:
+                                                  event.target.value || null,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="date"
+                                value={binding.effective_from ?? ""}
+                              />
+                            </label>
+                            <label className="text-sm font-medium">
+                              Effective to
+                              <Input
+                                className="mt-2"
+                                onChange={(event) =>
+                                  updateSelectedFormControls((controls) => ({
+                                    ...controls,
+                                    reference_bindings:
+                                      controls.reference_bindings.map(
+                                        (candidate) =>
+                                          candidate.id === binding.id
+                                            ? {
+                                                ...candidate,
+                                                effective_to:
+                                                  event.target.value || null,
+                                                changed_since_publish: true,
+                                              }
+                                            : candidate,
+                                      ),
+                                  }))
+                                }
+                                type="date"
+                                value={binding.effective_to ?? ""}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   ) : (
@@ -7593,7 +7771,7 @@ export function DynamicForms({
                           title="No reference lists attached yet"
                         >
                           Select a district, community, school, facility,
-                          beneficiary, or donor-code question, then bind it to
+                          entity, or donor-code question, then bind it to
                           an official list.
                         </HelpHint>
                       </div>
@@ -8839,8 +9017,60 @@ export function DynamicForms({
                     </Button>
                   </div>
                 </div>
+                <div className="mb-4 rounded-md border bg-background p-2">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Frequently used
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {frequentFieldTypes.map(({ type, label }) => {
+                      const Icon = fieldTypeIcons[type];
+                      return (
+                        <button
+                          className="flex items-center gap-1.5 rounded-md border bg-panel px-2 py-1.5 text-xs font-medium transition hover:border-primary/35 hover:bg-primary/5"
+                          key={type}
+                          onClick={() => addCatalogField(type)}
+                          type="button"
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            className="text-muted-foreground"
+                            size={13}
+                          />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label className="relative mb-3 block">
+                  <span className="sr-only">Search question types</span>
+                  <Search
+                    aria-hidden="true"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={14}
+                  />
+                  <Input
+                    className="h-8 pl-9 text-xs"
+                    onChange={(event) => setLibraryQuery(event.target.value)}
+                    placeholder="Search question types"
+                    value={libraryQuery}
+                  />
+                </label>
                 <div className="space-y-2">
-                  {fieldCatalog.map((group) => (
+                  {fieldCatalog.map((group) => {
+                    const normalizedQuery = libraryQuery.trim().toLowerCase();
+                    const fields = normalizedQuery
+                      ? group.fields.filter((field) =>
+                          `${field.label} ${field.description} ${field.type}`
+                            .toLowerCase()
+                            .includes(normalizedQuery),
+                        )
+                      : group.fields;
+                    if (normalizedQuery && !fields.length) return null;
+                    const expanded =
+                      Boolean(normalizedQuery) ||
+                      !collapsedLibraryGroups[group.group];
+                    return (
                     <div
                       className="rounded-md border bg-background"
                       key={group.group}
@@ -8858,11 +9088,11 @@ export function DynamicForms({
                         <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           {group.group}
                         </span>
-                        <Badge tone="neutral">{group.fields.length}</Badge>
+                        <Badge tone="neutral">{fields.length}</Badge>
                       </button>
-                      {!collapsedLibraryGroups[group.group] ? (
+                      {expanded ? (
                         <div className="space-y-1.5 border-t p-2">
-                          {group.fields.map((field) => {
+                          {fields.map((field) => {
                             const Icon = fieldTypeIcons[field.type];
                             return (
                               <button
@@ -8890,7 +9120,8 @@ export function DynamicForms({
                         </div>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ) : null}
@@ -10299,14 +10530,20 @@ export function DynamicForms({
                             value={selectedField.label}
                           />
 
-                          <div className="mt-4 grid gap-1 rounded-md border bg-panel p-1 sm:grid-cols-6">
+                          <div className="mt-4 grid gap-1 rounded-md border bg-panel p-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
                             {(
                               [
-                                ["common", Settings2, "Common"],
+                                ["common", Settings2, "Basics"],
                                 ["response", ListFilter, "Response"],
-                                ["logic", Workflow, "Logic"],
                                 ["validation", Check, "Validation"],
-                                ["data", Database, "Data"],
+                                ["logic", Workflow, "Logic"],
+                                ["indicator", Sigma, "Indicator"],
+                                ["beneficiary", Fingerprint, "Entity"],
+                                ["reference", Database, "Reference"],
+                                ["evidence", Camera, "Evidence"],
+                                ["privacy", ShieldCheck, "Privacy"],
+                                ["mobile", Smartphone, "Mobile"],
+                                ["governance", History, "Governance"],
                                 ["appearance", Palette, "Advanced"],
                               ] satisfies [
                                 FocusSettingsTab,
@@ -11812,6 +12049,664 @@ export function DynamicForms({
                             </section>
                           ) : null}
 
+                          {focusSettingsTab === "indicator" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Sigma aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Indicator and reporting link</h3>
+                                </div>
+                                <Badge tone="accent">M&E reporting</Badge>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                Define how this answer contributes to indicators, disaggregation, donor reports, and dashboards.
+                              </p>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Linked indicator
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "indicator", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Example: IND-AG-01 or % farmers using improved seed"
+                                    value={fieldMetadataValue(selectedField, "indicator")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Indicator component
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "indicator-component", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "indicator-component")}
+                                  >
+                                    <option value="">Not mapped</option>
+                                    <option value="numerator">Numerator</option>
+                                    <option value="denominator">Denominator</option>
+                                    <option value="disaggregation">Disaggregation</option>
+                                    <option value="baseline">Baseline value</option>
+                                    <option value="target">Target value</option>
+                                    <option value="evidence">Supporting evidence</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Unit of measure
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "unit", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="people, hectares, kg, %, visits"
+                                    value={fieldMetadataValue(selectedField, "unit")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Reporting period
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "report-period", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "report-period")}
+                                  >
+                                    <option value="">Form default</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="quarterly">Quarterly</option>
+                                    <option value="seasonal">Seasonal</option>
+                                    <option value="annual">Annual</option>
+                                    <option value="donor_schedule">Donor schedule</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold lg:col-span-2">
+                                  Disaggregation categories
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "disaggregation", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="sex, age_group, disability_status, district"
+                                    value={fieldMetadataValue(selectedField, "disaggregation")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold lg:col-span-3">
+                                  Donor/reporting tag
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "donor-tag", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="USAID-IR1, FCDO-output-2, Global Fund indicator"
+                                    value={fieldMetadataValue(selectedField, "donor-tag")}
+                                  />
+                                </label>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "beneficiary" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Fingerprint aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Entity and profile mapping</h3>
+                                </div>
+                                <Badge tone="admin">Entity data</Badge>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                Control whether this answer creates, updates, or only supports the entity profile.
+                              </p>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Profile impact
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "profile-impact", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "profile-impact")}
+                                  >
+                                    <option value="">No profile impact</option>
+                                    <option value="creates_profile">Creates profile field</option>
+                                    <option value="updates_profile">Updates profile field</option>
+                                    <option value="evidence_only">Evidence only</option>
+                                    <option value="requires_review">Profile update requires review</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Entity field
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "beneficiary-field", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "beneficiary-field")}
+                                  >
+                                    <option value="">Not mapped</option>
+                                    <option value="full_name">Full name</option>
+                                    <option value="phone">Phone</option>
+                                    <option value="gender">Sex / gender</option>
+                                    <option value="date_of_birth">Date of birth</option>
+                                    <option value="age">Age</option>
+                                    <option value="national_id">National ID</option>
+                                    <option value="household_id">Household ID</option>
+                                    <option value="village">Village / community</option>
+                                    <option value="gps">GPS / location</option>
+                                    <option value="legacy_id">Legacy ID</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Update rule
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "profile-update-rule", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "profile-update-rule")}
+                                  >
+                                    <option value="">Form default</option>
+                                    <option value="keep_history">Keep history</option>
+                                    <option value="require_review">Require profile update approval</option>
+                                    <option value="auto_update">Auto-update after approval</option>
+                                    <option value="source_only">Store as source evidence only</option>
+                                  </Select>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm font-semibold">
+                                  <input
+                                    checked={hasFieldTag(selectedField, "duplicate-key")}
+                                    className="h-4 w-4"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithTag(selectedField, "duplicate-key", event.target.checked),
+                                          validation: {
+                                            ...selectedField.validation,
+                                            duplicateCheck: event.target.checked || undefined,
+                                          },
+                                        }),
+                                      )
+                                    }
+                                    type="checkbox"
+                                  />
+                                  Use for duplicate matching
+                                </label>
+                                <label className="flex items-center gap-2 text-sm font-semibold">
+                                  <input
+                                    checked={hasFieldTag(selectedField, "source-of-truth")}
+                                    className="h-4 w-4"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithTag(selectedField, "source-of-truth", event.target.checked),
+                                        }),
+                                      )
+                                    }
+                                    type="checkbox"
+                                  />
+                                  Source of truth for this field
+                                </label>
+                                <label className="flex items-center gap-2 text-sm font-semibold">
+                                  <input
+                                    checked={hasFieldTag(selectedField, "lineage-required")}
+                                    className="h-4 w-4"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithTag(selectedField, "lineage-required", event.target.checked),
+                                        }),
+                                      )
+                                    }
+                                    type="checkbox"
+                                  />
+                                  Show source lineage on profile
+                                </label>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "reference" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Database aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Reference data and controlled lists</h3>
+                                </div>
+                                <Button onClick={() => addReferenceBinding(selectedField)} size="sm" type="button" variant="secondary">
+                                  Bind list
+                                </Button>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Reference list name
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "reference-list", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="districts, villages, crops, facilities"
+                                    value={fieldMetadataValue(selectedField, "reference-list")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Cascading parent question
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "reference-parent", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "reference-parent")}
+                                  >
+                                    <option value="">No parent</option>
+                                    {selectedForm.fields.filter((field) => field.id !== selectedField.id).map((field) => (
+                                      <option key={field.id} value={field.variableName ?? field.id}>
+                                        {field.label}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  New value policy
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "new-reference-policy", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "new-reference-policy")}
+                                  >
+                                    <option value="">Do not allow new values</option>
+                                    <option value="allow_other">Allow Other</option>
+                                    <option value="allow_with_review">Allow Other, require review</option>
+                                    <option value="block_unknown">Block unknown value</option>
+                                  </Select>
+                                </label>
+                                {[
+                                  ["reference-offline", "Download list for offline mobile"],
+                                  ["searchable-reference", "Searchable list on mobile"],
+                                  ["reference-version-lock", "Lock list version after publishing"],
+                                ].map(([tag, label]) => (
+                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "evidence" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Camera aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Field evidence and integrity</h3>
+                                </div>
+                                <Badge tone="warning">Quality signal</Badge>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                {[
+                                  ["capture-timestamp", "Capture timestamp"],
+                                  ["capture-gps", "Capture GPS evidence"],
+                                  ["photo-evidence", "Photo evidence required"],
+                                  ["back-check-candidate", "Eligible for back-check"],
+                                  ["static-gps-warning", "Flag static GPS"],
+                                  ["fast-interview-warning", "Flag too-fast completion"],
+                                ].map(([tag, label]) => (
+                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                                <label className="text-sm font-semibold">
+                                  Minimum seconds on question
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "min-seconds", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Example: 10"
+                                    type="number"
+                                    value={fieldMetadataValue(selectedField, "min-seconds")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Integrity failure action
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "integrity-action", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "integrity-action")}
+                                  >
+                                    <option value="">Warn reviewer</option>
+                                    <option value="block_submission">Block submission</option>
+                                    <option value="send_to_review">Send to review</option>
+                                    <option value="require_supervisor_note">Require supervisor note</option>
+                                  </Select>
+                                </label>
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "privacy" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <ShieldCheck aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Privacy, consent, and sensitive data</h3>
+                                </div>
+                                <Badge tone="danger">Protection</Badge>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Sensitivity level
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "sensitivity", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "sensitivity")}
+                                  >
+                                    <option value="">None</option>
+                                    <option value="internal">Internal</option>
+                                    <option value="confidential">Confidential</option>
+                                    <option value="restricted">Restricted</option>
+                                    <option value="pii">PII</option>
+                                    <option value="sensitive">Sensitive</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold lg:col-span-2">
+                                  Consent dependency
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "consent-field", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "consent-field")}
+                                  >
+                                    <option value="">No consent dependency</option>
+                                    {selectedForm.fields.filter((field) => /consent|agree|permission/i.test(field.label)).map((field) => (
+                                      <option key={field.id} value={field.variableName ?? field.id}>
+                                        {field.label}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </label>
+                                {[
+                                  ["mask-on-screen", "Mask on screen"],
+                                  ["mask-on-export", "Mask on export"],
+                                  ["encrypt-at-rest", "Require encryption at rest"],
+                                  ["hide-after-submit", "Hide after submit"],
+                                  ["screenshot-restricted", "Restrict screenshots where supported"],
+                                  ["consent-required", "Consent required before answering"],
+                                ].map(([tag, label]) => (
+                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "mobile" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Smartphone aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Mobile field experience</h3>
+                                </div>
+                                <Badge tone="success">Offline-ready</Badge>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Mobile display mode
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "mobile", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "mobile")}
+                                  >
+                                    <option value="">Default</option>
+                                    <option value="compact">Compact</option>
+                                    <option value="large-tap">Large tap area</option>
+                                    <option value="full-screen">Full-screen capture</option>
+                                    <option value="review-before-next">Review before next</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold lg:col-span-2">
+                                  Field officer guidance when blocked
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "blocked-help", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Example: Use YYYY-MM-DD. If unsure, ask supervisor before submitting."
+                                    value={fieldMetadataValue(selectedField, "blocked-help")}
+                                  />
+                                </label>
+                                {[
+                                  ["offline-compatible", "Works offline"],
+                                  ["low-bandwidth", "Use low-bandwidth mode"],
+                                  ["prefill-allowed", "Allow mobile prefill"],
+                                  ["save-draft-after-answer", "Auto-save after this answer"],
+                                  ["review-answer-before-submit", "Review answer before submit"],
+                                  ["sync-priority", "High sync priority"],
+                                ].map(([tag, label]) => (
+                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+
+                          {focusSettingsTab === "governance" ? (
+                            <section className="mt-4 rounded-lg border bg-panel p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <History aria-hidden="true" className="text-primary" size={16} />
+                                  <h3 className="text-sm font-semibold">Review, editing, and audit governance</h3>
+                                </div>
+                                <Badge tone="admin">Audit-safe</Badge>
+                              </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                <label className="text-sm font-semibold">
+                                  Edit after submission
+                                  <Select
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "edit-rule", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    value={fieldMetadataValue(selectedField, "edit-rule")}
+                                  >
+                                    <option value="">Form default</option>
+                                    <option value="allowed_before_approval">Allowed before approval</option>
+                                    <option value="change_request">Change request required</option>
+                                    <option value="locked_after_approval">Locked after approval</option>
+                                    <option value="never_editable">Never editable</option>
+                                  </Select>
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Reviewer role
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "reviewer-role", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="supervisor, data_manager, me_manager"
+                                    value={fieldMetadataValue(selectedField, "reviewer-role")}
+                                  />
+                                </label>
+                                <label className="text-sm font-semibold">
+                                  Audit label
+                                  <Input
+                                    className="mt-2"
+                                    onChange={(event) =>
+                                      updateSelectedForm(
+                                        updateField(selectedForm, selectedField.id, {
+                                          appearance: fieldAppearanceWithMetadata(selectedField, "audit-label", event.target.value),
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Profile phone update, consent, GPS proof"
+                                    value={fieldMetadataValue(selectedField, "audit-label")}
+                                  />
+                                </label>
+                                {[
+                                  ["change-reason-required", "Require reason when edited"],
+                                  ["approved-data-lock", "Lock after approval"],
+                                  ["reviewer-comment-required", "Reviewer comment required"],
+                                  ["include-in-data-freeze", "Include in report data freeze"],
+                                  ["quality-flag-visible", "Show quality flag in data grid"],
+                                  ["source-lineage-visible", "Show source lineage"],
+                                ].map(([tag, label]) => (
+                                  <label className="flex items-center gap-2 text-sm font-semibold" key={tag}>
+                                    <input
+                                      checked={hasFieldTag(selectedField, tag)}
+                                      className="h-4 w-4"
+                                      onChange={(event) =>
+                                        updateSelectedForm(
+                                          updateField(selectedForm, selectedField.id, {
+                                            appearance: fieldAppearanceWithTag(selectedField, tag, event.target.checked),
+                                          }),
+                                        )
+                                      }
+                                      type="checkbox"
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+
                           {focusSettingsTab === "appearance" ? (
                             <section className="mt-4 space-y-4 rounded-lg border bg-panel p-4">
                               <div className="flex items-center gap-2">
@@ -13028,6 +13923,66 @@ export function DynamicForms({
                             }
                           />
                         </label>
+                      ) : null}
+                      {selectedField.type === "polygon" ? (
+                        <div className="grid gap-3 rounded-md border bg-background p-3 sm:grid-cols-2">
+                          <label className="block text-sm font-medium">
+                            Minimum vertices
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              min={3}
+                              value={selectedField.polygon?.minVertices ?? 3}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      minVertices:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Number(event.target.value),
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                              checked={selectedField.polygon?.requireClosed ?? true}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      requireClosed: event.target.checked,
+                                    },
+                                  }),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            Require closed shape
+                          </label>
+                          <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                              checked={selectedField.polygon?.overlapCheck ?? true}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      overlapCheck: event.target.checked,
+                                    },
+                                  }),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            Flag overlapping boundaries
+                          </label>
+                        </div>
                       ) : null}
                       {[
                         "photo",

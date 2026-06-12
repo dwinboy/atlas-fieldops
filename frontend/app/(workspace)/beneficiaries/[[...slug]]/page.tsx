@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import WorkspaceRoutePage from "../../WorkspaceRoutePage";
 
 export const metadata: Metadata = {
-  title: "Beneficiaries",
+  title: "Entities",
   robots: {
     follow: false,
     index: false,

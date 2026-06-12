@@ -3,27 +3,28 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 24% 98%;
-  --foreground: 222 42% 11%;
+  --background: 60 9% 98%;
+  --foreground: 24 10% 10%;
   --panel: 0 0% 100%;
-  --panel-foreground: 222 42% 11%;
-  --muted: 210 22% 95%;
-  --muted-foreground: 215 15% 41%;
-  --border: 214 24% 88%;
-  --input: 214 24% 84%;
-  --ring: 174 68% 32%;
-  --primary: 174 72% 27%;
+  --panel-foreground: 24 10% 10%;
+  --muted: 60 5% 96%;
+  --muted-foreground: 25 5% 45%;
+  --border: 20 6% 90%;
+  --input: 24 6% 83%;
+  --ring: 142 72% 29%;
+  --primary: 143 64% 24%;
   --primary-foreground: 0 0% 100%;
-  --accent: 222 34% 18%;
+  --accent: 24 7% 16%;
   --accent-foreground: 0 0% 100%;
-  --success: 154 64% 32%;
-  --warning: 38 86% 40%;
-  --danger: 356 70% 46%;
+  --success: 142 72% 29%;
+  --warning: 26 90% 37%;
+  --danger: 0 72% 51%;
+  --info: 221 83% 53%;
   --section-daily: 213 76% 43%;
   --section-collect: 166 72% 29%;
   --section-monitor: 239 56% 54%;
   --section-operate: 151 52% 34%;
-  --section-admin: 260 34% 45%;
+  --section-admin: 28 35% 34%;
   --section-support: 191 66% 34%;
   --section-platform: 222 28% 22%;
   --section-governance: 38 78% 39%;
@@ -31,27 +32,28 @@
 }
 
 .dark {
-  --background: 222 24% 8%;
-  --foreground: 210 25% 94%;
-  --panel: 222 22% 11%;
-  --panel-foreground: 210 25% 94%;
-  --muted: 222 17% 17%;
-  --muted-foreground: 215 13% 68%;
-  --border: 222 14% 22%;
-  --input: 222 14% 25%;
-  --ring: 174 70% 46%;
-  --primary: 174 66% 42%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 210 18% 88%;
-  --accent-foreground: 222 24% 8%;
-  --success: 154 60% 45%;
-  --warning: 38 90% 58%;
-  --danger: 356 74% 61%;
+  --background: 20 14% 6%;
+  --foreground: 60 5% 96%;
+  --panel: 24 10% 10%;
+  --panel-foreground: 60 5% 96%;
+  --muted: 24 6% 15%;
+  --muted-foreground: 24 5% 64%;
+  --border: 30 6% 25%;
+  --input: 33 5% 32%;
+  --ring: 142 69% 58%;
+  --primary: 142 69% 58%;
+  --primary-foreground: 24 10% 10%;
+  --accent: 60 5% 96%;
+  --accent-foreground: 24 10% 10%;
+  --success: 142 71% 45%;
+  --warning: 38 92% 50%;
+  --danger: 0 84% 60%;
+  --info: 217 91% 65%;
   --section-daily: 213 78% 62%;
   --section-collect: 166 62% 47%;
   --section-monitor: 239 68% 70%;
   --section-operate: 151 58% 50%;
-  --section-admin: 260 52% 68%;
+  --section-admin: 28 40% 60%;
   --section-support: 191 74% 54%;
   --section-platform: 220 20% 84%;
   --section-governance: 38 88% 60%;
@@ -62,14 +64,7 @@
 }
 
 body {
-  background:
-    linear-gradient(
-      180deg,
-      hsl(var(--background)) 0%,
-      hsl(var(--primary) / 0.025) 54%,
-      hsl(var(--background)) 100%
-    ),
-    hsl(var(--background));
+  background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings:
     "cv02" 1,
@@ -87,12 +82,39 @@ h3 {
 
 .surface-premium {
   border: 1px solid hsl(var(--border) / 0.82);
+  background: hsl(var(--panel));
+  box-shadow:
+    0 1px 0 hsl(var(--panel-foreground) / 0.03),
+    0 24px 60px -46px rgb(15 23 42 / 0.36);
+}
+
+.surface-hero {
+  border: 1px solid hsl(var(--border) / 0.82);
   background:
-    linear-gradient(180deg, hsl(var(--panel) / 0.99), hsl(var(--panel) / 0.94)),
+    radial-gradient(
+      120% 90% at 50% 0%,
+      hsl(var(--primary) / 0.06),
+      transparent 62%
+    ),
     hsl(var(--panel));
   box-shadow:
     0 1px 0 hsl(var(--panel-foreground) / 0.03),
     0 24px 60px -46px rgb(15 23 42 / 0.36);
+}
+
+.view-enter {
+  animation: view-fade-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes view-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .section-icon {
@@ -161,6 +183,35 @@ input[type="radio"] {
 .product-scrollbar {
   scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
   scrollbar-width: thin;
+}
+
+.legal-prose ul,
+.legal-prose ol {
+  list-style-position: outside;
+  margin-left: 1.25rem;
+}
+
+.legal-prose ul {
+  list-style-type: disc;
+}
+
+.legal-prose ol {
+  list-style-type: decimal;
+}
+
+.legal-prose li {
+  margin-top: 0.25rem;
+}
+
+.legal-prose h3 {
+  color: #0c1f1b;
+  font-weight: 600;
+}
+
+.legal-prose a {
+  color: #0d9488;
+  text-decoration: underline;
+  text-decoration-color: rgba(13, 148, 136, 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {

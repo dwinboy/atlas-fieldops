@@ -1,3 +1,4 @@
+import type { FieldOfficerRead, ProjectListItemRead, SubmissionRead } from "@/lib/api";
 import type {
   BeneficiaryEntity,
   DuplicateCandidate,
@@ -84,6 +85,27 @@ export function scoreDuplicate(
   if (distance !== null && distance <= 50) {
     score += 40;
     matchedFields.push(`GPS within ${Math.max(1, Math.round(distance))}m`);
+  }
+
+  for (const [key, draftValue] of Object.entries(draft.customProfile ?? {})) {
+    if (!draftValue) continue;
+    const entityValue = entity.profileJson[key];
+    if (entityValue === undefined || entityValue === null || entityValue === "") continue;
+    const normalizedKey = key.toLowerCase();
+    const entityText = String(entityValue);
+    if (/phone|mobile|contact/.test(normalizedKey) && digits(draftValue) === digits(entityText)) {
+      score += 80;
+      matchedFields.push(`${key} match`);
+    } else if (/(^|_)id$|code|number|registration|license|licence/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 90;
+      matchedFields.push(`${key} match`);
+    } else if (/name|title/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 45;
+      matchedFields.push(`${key} match`);
+    } else if (/village|community|district|location|site/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 30;
+      matchedFields.push(`${key} match`);
+    }
   }
 
   const cappedScore = Math.min(score, 100);
@@ -176,6 +198,26 @@ export function entityFromDraft(
   };
 }
 
+export function enrichEntity(
+  entity: BeneficiaryEntity,
+  submissions: SubmissionRead[],
+  projects: Map<string, ProjectListItemRead>,
+  officers: Map<string, FieldOfficerRead>,
+): BeneficiaryEntity {
+  const latestOfficerSubmission = [...submissions]
+    .filter((submission) => submission.field_officer_id)
+    .sort((left, right) => new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime())[0];
+  const assignedOfficer = latestOfficerSubmission
+    ? officers.get(latestOfficerSubmission.field_officer_id as string)?.full_name ?? entity.assignedOfficer
+    : entity.assignedOfficer;
+  return {
+    ...entity,
+    assignedOfficer,
+    formsCompleted: submissions.length,
+    projectName: projects.get(entity.projectId)?.name ?? entity.projectName,
+  };
+}
+
 export function formatEntityDate(value?: string): string {
   if (!value) return "Not recorded";
   return new Date(value).toLocaleDateString();
@@ -186,4 +228,14 @@ export function frequencyLabel(value: string): string {
     .replace(/^once_/, "Once ")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
+  if (!rows.length) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  return [
+    headers.map(escape).join(","),
+    ...rows.map((row) => headers.map((header) => escape(row[header])).join(",")),
+  ].join("\n");
 }

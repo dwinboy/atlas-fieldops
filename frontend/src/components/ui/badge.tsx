@@ -12,6 +12,7 @@ const badgeVariants = cva(
         success: "border-success/25 bg-success/12 text-success",
         warning: "border-warning/25 bg-warning/12 text-warning",
         danger: "border-danger/25 bg-danger/12 text-danger",
+        info: "border-info/25 bg-info/12 text-info",
         accent: "border-primary/25 bg-primary/12 text-primary",
         daily: "border-section-daily/20 bg-section-daily/12 text-section-daily",
         collect:

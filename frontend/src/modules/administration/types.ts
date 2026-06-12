@@ -10,12 +10,15 @@ export type AdministrationSection =
   | "system-settings"
   | "backup-recovery"
   | "imports-migration"
-  | "mobile-devices"
-  | "mobile-versions"
-  | "mobile-pilots"
-  | "mobile-monitoring"
-  | "mobile-feedback"
-  | "mobile-testing";
+  | "mobile";
+
+export type MobileManagementArea =
+  | "devices"
+  | "versions"
+  | "pilots"
+  | "monitoring"
+  | "feedback"
+  | "testing";
 
 export type AdminStatus =
   | "active"

@@ -138,6 +138,19 @@ class GovernanceRepository:
         )
         return list(result.scalars())
 
+    async def list_master_data_by_category(self, organization_id: UUID, category: str) -> list[MasterDataEntry]:
+        result = await self.session.execute(
+            select(MasterDataEntry)
+            .where(
+                MasterDataEntry.organization_id == organization_id,
+                MasterDataEntry.category == category,
+                MasterDataEntry.status == "active",
+                MasterDataEntry.deleted_at.is_(None),
+            )
+            .order_by(MasterDataEntry.order_index, MasterDataEntry.label)
+        )
+        return list(result.scalars())
+
     async def count(self, model: type[GovernancePolicy | RetentionPolicy | ValidationRule | LineageEvent | ExportLog | ConsentRecord], organization_id: UUID) -> int:
         result = await self.session.execute(select(func.count()).select_from(model).where(model.organization_id == organization_id))
         return int(result.scalar_one())

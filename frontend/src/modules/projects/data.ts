@@ -14,18 +14,11 @@ export type ProjectSection = (typeof projectSections)[number]["id"];
 export const projectTabs = [
   "Overview",
   "Beneficiaries",
-  "Forms",
-  "Indicators",
-  "Locations",
-  "Teams",
-  "Assignments",
-  "Submissions",
-  "Reports",
-  "Data Quality",
-  "Governance",
-  "Data Import",
+  "Forms & Indicators",
+  "Locations & Teams",
+  "Submissions & Reports",
+  "Data Quality & Governance",
   "Settings",
-  "Audit Trail",
 ] as const;
 
 export type ProjectTab = (typeof projectTabs)[number];

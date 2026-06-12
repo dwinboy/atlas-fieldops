@@ -56,12 +56,12 @@ export function ContactRequestForm({
     return (
       <section className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm" aria-live="polite">
         <div className="flex items-start gap-3">
-          <CheckCircle2 aria-hidden="true" className="mt-1 text-[#0f766e]" size={22} />
+          <CheckCircle2 aria-hidden="true" className="mt-1 text-[#0d9488]" size={22} />
           <div>
-            <h2 className="text-xl font-semibold text-[#10201c]">
+            <h2 className="text-xl font-semibold text-[#0c1f1b]">
               {submitState === "stored" ? "Demo request received" : "Demo request prepared"}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-[#52615d]">
+            <p className="mt-2 text-sm leading-6 text-[#5b6a65]">
               Thanks, {submittedRequest.name || "there"}.{" "}
               {submitState === "stored"
                 ? "Your request is stored for the Atlas FieldOps team."
@@ -69,30 +69,33 @@ export function ContactRequestForm({
             </p>
           </div>
         </div>
-        <div className="mt-5 rounded-xl border border-black/10 bg-[#f7faf8] p-4 text-sm text-[#10201c]">
+        <div className="mt-5 rounded-xl border border-black/10 bg-[#fafaf8] p-4 text-sm text-[#0c1f1b]">
           <p className="font-semibold">Lead summary</p>
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
             <div>
-              <dt className="text-xs uppercase tracking-[0.16em] text-[#52615d]">Organization</dt>
+              <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Organization</dt>
               <dd className="mt-1">{submittedRequest.organization || "Not provided"}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.16em] text-[#52615d]">Country</dt>
+              <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Country</dt>
               <dd className="mt-1">{submittedRequest.country || "Not provided"}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.16em] text-[#52615d]">Work email</dt>
+              <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Work email</dt>
               <dd className="mt-1">{submittedRequest.email || "Not provided"}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-[0.16em] text-[#52615d]">Interest</dt>
+              <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Interest</dt>
               <dd className="mt-1">{submittedRequest.interest_area || "Not provided"}</dd>
             </div>
           </dl>
         </div>
         <div className="mt-5 flex flex-wrap gap-3">
+          <a className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white transition hover:bg-[#0b7a70]" href="/demo">
+            Explore the demo while you wait
+          </a>
           <button
-            className="h-11 rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59]"
+            className="h-11 rounded-md border border-black/10 px-5 text-sm font-semibold text-[#0c1f1b] transition hover:bg-black/[0.03]"
             onClick={() => {
               setSubmittedRequest(null);
               setSubmitState("idle");
@@ -101,7 +104,7 @@ export function ContactRequestForm({
           >
             Edit request
           </button>
-          <a className="inline-flex h-11 items-center rounded-md border border-black/10 px-5 text-sm font-semibold text-[#10201c] transition hover:bg-black/[0.03]" href="mailto:hello@atlasfieldops.com">
+          <a className="inline-flex h-11 items-center rounded-md border border-black/10 px-5 text-sm font-semibold text-[#0c1f1b] transition hover:bg-black/[0.03]" href="mailto:hello@atlasfieldops.com">
             Email sales
           </a>
         </div>
@@ -111,8 +114,8 @@ export function ContactRequestForm({
 
   return (
     <form className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm" onSubmit={submitRequest}>
-      <h2 className="text-xl font-semibold text-[#10201c]">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-[#52615d]">
+      <h2 className="text-xl font-semibold text-[#0c1f1b]">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-[#5b6a65]">
         Tell us about your organization, field teams, data collection workflow, and reporting needs.
       </p>
       <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -123,10 +126,10 @@ export function ContactRequestForm({
           ["country", "Country", "text"],
           ["phone", "Phone", "tel"],
         ].map(([field, label, type]) => (
-          <label className="text-sm font-medium text-[#10201c]" key={field}>
+          <label className="text-sm font-medium text-[#0c1f1b]" key={field}>
             {label}
             <input
-              className="mt-2 h-11 w-full rounded-md border border-black/10 px-3 outline-none transition focus:ring-2 focus:ring-[#0f766e]/25"
+              className="mt-2 h-11 w-full rounded-md border border-black/10 px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
               onChange={(event) => updateField(field as keyof LeadFormState, event.target.value)}
               placeholder={label}
               required={field === "name" || field === "email"}
@@ -135,10 +138,10 @@ export function ContactRequestForm({
             />
           </label>
         ))}
-        <label className="text-sm font-medium text-[#10201c]">
+        <label className="text-sm font-medium text-[#0c1f1b]">
           Organization size
           <select
-            className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0f766e]/25"
+            className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
             onChange={(event) => updateField("organization_size", event.target.value)}
             value={request.organization_size}
           >
@@ -149,10 +152,10 @@ export function ContactRequestForm({
             <option value="500+">500+ users</option>
           </select>
         </label>
-        <label className="text-sm font-medium text-[#10201c] md:col-span-2">
+        <label className="text-sm font-medium text-[#0c1f1b] md:col-span-2">
           Interest area
           <select
-            className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0f766e]/25"
+            className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
             onChange={(event) => updateField("interest_area", event.target.value)}
             value={request.interest_area}
           >
@@ -168,23 +171,26 @@ export function ContactRequestForm({
           </select>
         </label>
       </div>
-      <label className="mt-4 block text-sm font-medium text-[#10201c]">
+      <label className="mt-4 block text-sm font-medium text-[#0c1f1b]">
         What are you trying to improve?
         <textarea
-          className="mt-2 min-h-32 w-full rounded-md border border-black/10 p-3 outline-none transition focus:ring-2 focus:ring-[#0f766e]/25"
+          className="mt-2 min-h-32 w-full rounded-md border border-black/10 p-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
           onChange={(event) => updateField("message", event.target.value)}
-          placeholder="Field data collection, beneficiary tracking, reporting, offline sync..."
+          placeholder="Field data collection, entity tracking, reporting, offline sync..."
           value={request.message}
         />
       </label>
-      <button
-        className="mt-5 inline-flex h-11 items-center gap-2 rounded-md bg-[#0f766e] px-5 text-sm font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-60"
-        disabled={submitState === "submitting"}
-        type="submit"
-      >
-        <Send aria-hidden="true" size={16} />
-        {submitState === "submitting" ? "Sending..." : "Submit request"}
-      </button>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <button
+          className="inline-flex h-11 items-center gap-2 rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white transition hover:bg-[#0b7a70] disabled:opacity-60"
+          disabled={submitState === "submitting"}
+          type="submit"
+        >
+          <Send aria-hidden="true" size={16} />
+          {submitState === "submitting" ? "Sending..." : "Submit request"}
+        </button>
+        <p className="text-xs text-[#5b6a65]">We typically respond within 1 business day.</p>
+      </div>
     </form>
   );
 }

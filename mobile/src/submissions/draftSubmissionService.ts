@@ -8,10 +8,13 @@ export type DraftSubmissionInput = {
   formId: string;
   formVersionId: string;
   entityId: string | null;
+  linkedEntityIds?: string[];
   entityType?: string | null;
   deviceId?: string | null;
   appVersion?: string | null;
   prefilledResponses?: MobileSubmissionResponse[];
+  frequencyPeriod?: string | null;
+  eventId?: string | null;
 };
 
 export class DraftSubmissionService {
@@ -28,15 +31,21 @@ export class DraftSubmissionService {
       formId: input.formId,
       formVersionId: input.formVersionId,
       entityId: input.entityId,
+      linkedEntityIds: input.linkedEntityIds ?? [],
       entityType: input.entityType ?? null,
       status: "Draft",
-      frequencyPeriod: null,
-      eventId: null,
+      frequencyPeriod: input.frequencyPeriod ?? null,
+      eventId: input.eventId ?? null,
       responses: input.prefilledResponses ?? [],
       attachments: [],
       location: null,
       submittedAt: null,
       appVersion: input.appVersion ?? null,
+      integritySignals: null,
+      reviewStatus: null,
+      reviewComments: null,
+      reviewedAt: null,
+      approvedAt: null,
       syncStatus: "NotSynced",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -54,9 +63,11 @@ export class DraftSubmissionService {
       throw new Error("Draft submission not found");
     }
     const responses = draft.responses.filter((item) => item.questionId !== response.questionId);
+    const capturedLocation = locationFromResponseValue(response.value);
     const updated = {
       ...draft,
       responses: [...responses, response],
+      location: capturedLocation ?? draft.location,
       syncStatus: "NotSynced" as const,
       updatedAt: nowIso(),
     };
@@ -83,6 +94,19 @@ export class DraftSubmissionService {
       ...ready,
       status: "Queued",
       syncStatus: "Queued",
+      updatedAt: nowIso(),
+    });
+  }
+
+  updateIntegritySignals(draftLocalId: string, integritySignals: MobileSubmission["integritySignals"]): MobileSubmission {
+    const draft = this.database.draftSubmissions.get(draftLocalId);
+    if (!draft) {
+      throw new Error("Draft submission not found");
+    }
+    return this.database.draftSubmissions.upsert({
+      ...draft,
+      integritySignals,
+      syncStatus: "NotSynced",
       updatedAt: nowIso(),
     });
   }
@@ -114,4 +138,50 @@ export class DraftSubmissionService {
       updatedAt: nowIso(),
     });
   }
+}
+
+function locationFromResponseValue(value: unknown): MobileSubmission["location"] | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as {
+    type?: unknown;
+    coordinates?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
+    altitude?: unknown;
+    accuracy?: unknown;
+    timestamp?: unknown;
+  };
+
+  if (candidate.type === "Polygon" && Array.isArray(candidate.coordinates)) {
+    const ring = candidate.coordinates[0];
+    const firstVertex = Array.isArray(ring) ? ring[0] : null;
+    if (!Array.isArray(firstVertex)) return null;
+    const longitude = Number(firstVertex[0]);
+    const latitude = Number(firstVertex[1]);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      latitude,
+      longitude,
+      altitude: null,
+      accuracy: null,
+      timestamp: nowIso(),
+    };
+  }
+
+  const latitude = Number(candidate.latitude);
+  const longitude = Number(candidate.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  return {
+    latitude,
+    longitude,
+    altitude: candidate.altitude == null ? null : Number(candidate.altitude),
+    accuracy: candidate.accuracy == null ? null : Number(candidate.accuracy),
+    timestamp: typeof candidate.timestamp === "string" ? candidate.timestamp : nowIso(),
+  };
 }

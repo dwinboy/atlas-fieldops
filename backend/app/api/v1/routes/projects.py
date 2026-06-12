@@ -9,7 +9,7 @@ from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import BeneficiaryRead, ImportJobRead
-from app.schemas.projects import ProjectCreate, ProjectDetailRead, ProjectListItemRead, ProjectSummaryRead, ProjectTemplateRead, ProjectUpdate
+from app.schemas.projects import ProjectCreate, ProjectDetailRead, ProjectListItemRead, ProjectSectorInstallRead, ProjectSectorPackRead, ProjectSummaryRead, ProjectTemplateRead, ProjectUpdate
 from app.services.operations import OperationsService
 from app.services.projects import ProjectConflictError, ProjectNotFoundError, ProjectsService
 
@@ -62,6 +62,15 @@ async def templates(
     return await ProjectsService(session).templates()
 
 
+@router.get("/sector-packs", response_model=list[ProjectSectorPackRead], summary="List project sector packs")
+async def sector_packs(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ProjectSectorPackRead]:
+    _ = principal
+    return await ProjectsService(session).sector_packs()
+
+
 @router.patch("/{project_id}", response_model=ProjectListItemRead, summary="Update project")
 async def update_project(
     project_id: UUID,
@@ -77,6 +86,45 @@ async def update_project(
     except ProjectConflictError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/sector-pack/install-forms", response_model=ProjectSectorInstallRead, summary="Install sector starter forms")
+async def install_sector_forms(
+    project_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectSectorInstallRead:
+    try:
+        return await ProjectsService(session).install_sector_forms(organization_uuid(principal), user_uuid(principal), project_id)
+    except ProjectNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/sector-pack/install-indicators", response_model=ProjectSectorInstallRead, summary="Install sector indicator templates")
+async def install_sector_indicators(
+    project_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectSectorInstallRead:
+    try:
+        return await ProjectsService(session).install_sector_indicators(organization_uuid(principal), user_uuid(principal), project_id)
+    except ProjectNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/sector-pack/install-reports", response_model=ProjectSectorInstallRead, summary="Install sector report templates")
+async def install_sector_reports(
+    project_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.PROGRAM_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProjectSectorInstallRead:
+    try:
+        return await ProjectsService(session).install_sector_reports(organization_uuid(principal), user_uuid(principal), project_id)
+    except ProjectNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/{project_id}/beneficiaries", response_model=list[BeneficiaryRead], summary="List project beneficiaries and entities")

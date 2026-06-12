@@ -30,6 +30,12 @@ export class FrequencyRuleService {
         return { allowed: false, severity: "Block", reason: "This entity already has a submission for this month." };
       }
     }
+    if (rule === "OncePerYearPerEntity" && draft.frequencyPeriod && existingForEntity.some((submission) => submission.frequencyPeriod === draft.frequencyPeriod)) {
+      return { allowed: false, severity: "Block", reason: "This entity already has a submission for this year." };
+    }
+    if (rule === "OncePerQuarterPerEntity" && draft.frequencyPeriod && existingForEntity.some((submission) => submission.frequencyPeriod === draft.frequencyPeriod)) {
+      return { allowed: false, severity: "Block", reason: "This entity already has a submission for this quarter." };
+    }
     if (rule === "OncePerEventPerEntity" && draft.eventId && existingForEntity.some((submission) => submission.eventId === draft.eventId)) {
       return { allowed: false, severity: "Block", reason: "This entity already has a submission for this event." };
     }

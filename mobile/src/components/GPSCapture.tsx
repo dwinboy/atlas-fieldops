@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
+import { GPSMapPreview } from "@/components/GPSMapPreview";
 import { useGPS, type GPSResult } from "@/hooks/useGPS";
 
 type GPSCaptureProps = {
@@ -10,6 +12,7 @@ type GPSCaptureProps = {
 
 export function GPSCapture({ value, onChange, required = false }: GPSCaptureProps) {
   const { status, error, isCapturing, capture, reset } = useGPS();
+  const [showMap, setShowMap] = useState(false);
 
   async function handleCapture() {
     const result = await capture();
@@ -57,6 +60,14 @@ export function GPSCapture({ value, onChange, required = false }: GPSCaptureProp
               <Text style={{ color: "#49635a", fontSize: 12 }}>Alt {value.altitude.toFixed(0)}m</Text>
             )}
           </View>
+          <Pressable onPress={() => setShowMap((prev) => !prev)}>
+            <Text style={{ color: "#15803d", fontSize: 12, fontWeight: "700" }}>
+              {showMap ? "Hide map" : "View on map"}
+            </Text>
+          </Pressable>
+          {showMap && (
+            <GPSMapPreview accuracy={value.accuracy} latitude={value.latitude} longitude={value.longitude} />
+          )}
         </View>
       ) : (
         <View style={{

@@ -77,6 +77,7 @@ import {
   toCsv,
   toneFromHealth,
 } from "@/modules/governance/utils";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 type GovernanceModuleProps = {
   principal?: CurrentPrincipal | null;
@@ -243,12 +244,13 @@ function buildAuditEvents({
     })),
   ];
 
-  return generated.length ? generated : previewAuditEvents;
+  return generated;
 }
 
 export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   const [activeSection, setActiveSection] = useState<GovernanceSection>("dashboard");
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageGovernance = Boolean(
@@ -268,19 +270,32 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
   const consentQuery = useQuery({ queryKey: ["governance", "consent", token], queryFn: () => listConsentRecords(token ?? ""), enabled });
   const masterDataQuery = useQuery({ queryKey: ["governance", "master-data", token], queryFn: () => listMasterDataEntries(token ?? ""), enabled });
 
-  const summary: GovernanceSummary = summaryQuery.data ?? previewSummary;
-  const policies = policiesQuery.data?.length ? policiesQuery.data : previewPolicies;
-  const retentionRules = retentionQuery.data?.length ? retentionQuery.data : previewRetention;
-  const validationRules = rulesQuery.data?.length ? rulesQuery.data : previewRules;
-  const versions = versionsQuery.data?.length ? versionsQuery.data : previewVersions;
-  const lineage = lineageQuery.data?.length ? lineageQuery.data : previewLineage;
-  const exports = exportsQuery.data?.length ? exportsQuery.data : previewExports;
-  const consentRecords = consentQuery.data?.length ? consentQuery.data : previewConsentRecords;
-  const masterData = masterDataQuery.data?.length ? masterDataQuery.data : previewMasterData;
-  const approvals = previewApprovals;
-  const complianceChecks = previewComplianceChecks;
-  const stewardship = previewStewardship;
-  const risks = previewRisks;
+  const summary: GovernanceSummary = preview
+    ? previewSummary
+    : (summaryQuery.data ?? {
+        audit_events: 0,
+        attention_items: [],
+        compliance_score: 100,
+        consent_records: 0,
+        export_events: 0,
+        lineage_events: 0,
+        open_quality_signals: 0,
+        policies: 0,
+        retention_policies: 0,
+        validation_rules: 0,
+      });
+  const policies = useMemo(() => (preview ? previewPolicies : (policiesQuery.data ?? [])), [policiesQuery.data, preview]);
+  const retentionRules = useMemo(() => (preview ? previewRetention : (retentionQuery.data ?? [])), [preview, retentionQuery.data]);
+  const validationRules = useMemo(() => (preview ? previewRules : (rulesQuery.data ?? [])), [preview, rulesQuery.data]);
+  const versions = useMemo(() => (preview ? previewVersions : (versionsQuery.data ?? [])), [preview, versionsQuery.data]);
+  const lineage = useMemo(() => (preview ? previewLineage : (lineageQuery.data ?? [])), [lineageQuery.data, preview]);
+  const exports = useMemo(() => (preview ? previewExports : (exportsQuery.data ?? [])), [exportsQuery.data, preview]);
+  const consentRecords = useMemo(() => (preview ? previewConsentRecords : (consentQuery.data ?? [])), [consentQuery.data, preview]);
+  const masterData = useMemo(() => (preview ? previewMasterData : (masterDataQuery.data ?? [])), [masterDataQuery.data, preview]);
+  const approvals = useMemo(() => (preview ? previewApprovals : []), [preview]);
+  const complianceChecks = useMemo(() => (preview ? previewComplianceChecks : []), [preview]);
+  const stewardship = useMemo(() => (preview ? previewStewardship : []), [preview]);
+  const risks = useMemo(() => (preview ? previewRisks : []), [preview]);
   const auditEvents = useMemo(
     () => buildAuditEvents({ exports, lineage, policies, retention: retentionRules, versions }),
     [exports, lineage, policies, retentionRules, versions],
@@ -325,7 +340,31 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
     { key: "stage", header: "Stage", value: (approval) => approval.stage, render: (approval) => <Badge tone={severityTone(approval.stage)}>{approval.stage}</Badge> },
     { key: "sla", header: "SLA", value: (approval) => String(approval.sla_hours), render: (approval) => `${approval.age_hours}/${approval.sla_hours}h` },
     { key: "comments", header: "Comments", value: (approval) => String(approval.comments_required), render: (approval) => approval.comments_required ? "Required" : "Optional" },
-    { key: "actions", header: "Actions", align: "right", render: () => <div className="flex justify-end gap-2"><Button disabled={!canManageGovernance} size="sm" variant="secondary">Review</Button><Button disabled={!canManageGovernance} size="sm" variant="ghost">Escalate</Button></div> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (approval) => (
+        <div className="flex justify-end gap-2">
+          <Button
+            disabled={!canManageGovernance}
+            onClick={() => pushToast({ description: `Connect a governance approval workflow service to review the "${approval.approval_type}" request. This control is a preview for now.`, title: "Approval review isn't available yet", tone: "warning" })}
+            size="sm"
+            variant="secondary"
+          >
+            Review
+          </Button>
+          <Button
+            disabled={!canManageGovernance}
+            onClick={() => pushToast({ description: `Connect a governance approval workflow service to escalate the "${approval.approval_type}" request to a reviewer. This control is a preview for now.`, title: "Escalation isn't available yet", tone: "warning" })}
+            size="sm"
+            variant="ghost"
+          >
+            Escalate
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const retentionColumns: TableColumn<RetentionPolicyRead>[] = [

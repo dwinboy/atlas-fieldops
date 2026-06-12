@@ -1,5 +1,5 @@
-from datetime import UTC, datetime
 from typing import Annotated, TypeVar
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,8 +32,10 @@ from app.schemas.mobile import (
     MobileSyncUploadRead,
     MobileVersionPolicyRead,
 )
+from app.schemas.operations import FieldVisitCheckIn, FieldVisitCheckOut, FieldVisitRequestCreate, FieldVisitRequestRead, MediaEvidenceCreate, MediaEvidenceRead
 from app.services.collection import CollectionNotFoundError
 from app.services.mobile import MobileService
+from app.services.operations import OperationsService
 
 router = APIRouter()
 T = TypeVar("T")
@@ -48,23 +50,20 @@ async def mobile_bootstrap(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileBootstrapRead:
-    return (await MobileService(session).sync_package(principal)).bootstrap
+    package = await MobileService(session).sync_package(principal)
+    await session.commit()
+    return package.bootstrap
 
 
 @router.post("/devices/register", response_model=MobileDeviceRegistrationRead, summary="Register mobile device")
 async def register_mobile_device(
     payload: MobileDeviceRegistrationCreate,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileDeviceRegistrationRead:
-    now = datetime.now(UTC)
-    return MobileDeviceRegistrationRead(
-        device_id=payload.device_id,
-        status="Active",
-        registered_at=now,
-        last_seen_at=now,
-        remote_logout_required=False,
-        remote_wipe_required=False,
-    )
+    result = await MobileService(session).register_device(principal, payload)
+    await session.commit()
+    return result
 
 
 @router.get("/version-policy", response_model=MobileVersionPolicyRead, summary="Read mobile app version policy")
@@ -156,9 +155,10 @@ async def mobile_reference_data(
     summary="Get returned mobile submissions",
 )
 async def mobile_returned_submissions(
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[MobileSubmissionRead]:
-    return []
+    return await MobileService(session).returned_submissions(principal)
 
 
 @router.get("/notifications", response_model=list[MobileNotificationRead], summary="Get mobile notifications")
@@ -168,20 +168,188 @@ async def mobile_notifications(
     return []
 
 
+@router.get("/visit-requests", response_model=list[FieldVisitRequestRead], summary="Get field visit requests assigned to this mobile user")
+async def mobile_visit_requests(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await OperationsService(session).list_field_visit_requests(
+        organization_id=UUID(principal.organization_id),
+        actor_user_id=UUID(principal.user_id),
+        own_only=True,
+        status=request_status,
+    )
+
+
+@router.get("/operational-activities", response_model=list[FieldVisitRequestRead], summary="Get organization operational activities assigned to this mobile user")
+async def mobile_operational_activities(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request_status: str | None = Query(default=None, alias="status", max_length=40),
+) -> list[FieldVisitRequestRead]:
+    return await mobile_visit_requests(principal, session, request_status)
+
+
+@router.post(
+    "/visit-requests",
+    response_model=FieldVisitRequestRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Request supervisor approval for a field visit",
+)
+async def mobile_create_visit_request(
+    payload: FieldVisitRequestCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).create_field_visit_request(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            payload=payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/operational-activities",
+    response_model=FieldVisitRequestRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Request or log an organization operational activity",
+)
+async def mobile_create_operational_activity(
+    payload: FieldVisitRequestCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    return await mobile_create_visit_request(payload, principal, session)
+
+
+@router.post("/visit-requests/{visit_request_id}/check-in", response_model=FieldVisitRequestRead, summary="Check in to an approved field visit")
+async def mobile_visit_check_in(
+    visit_request_id: UUID,
+    payload: FieldVisitCheckIn,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).check_in_field_visit_request(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            visit_request_id=visit_request_id,
+            payload=payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post("/operational-activities/{visit_request_id}/check-in", response_model=FieldVisitRequestRead, summary="Check in to an approved organization activity")
+async def mobile_activity_check_in(
+    visit_request_id: UUID,
+    payload: FieldVisitCheckIn,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    return await mobile_visit_check_in(visit_request_id, payload, principal, session)
+
+
+@router.post("/visit-requests/{visit_request_id}/check-out", response_model=FieldVisitRequestRead, summary="Complete an approved field visit")
+async def mobile_visit_check_out(
+    visit_request_id: UUID,
+    payload: FieldVisitCheckOut,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    try:
+        result = await OperationsService(session).check_out_field_visit_request(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            visit_request_id=visit_request_id,
+            payload=payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post("/operational-activities/{visit_request_id}/check-out", response_model=FieldVisitRequestRead, summary="Complete an approved organization activity")
+async def mobile_activity_check_out(
+    visit_request_id: UUID,
+    payload: FieldVisitCheckOut,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldVisitRequestRead:
+    return await mobile_visit_check_out(visit_request_id, payload, principal, session)
+
+
+@router.post(
+    "/operational-activities/{visit_request_id}/attachments",
+    response_model=MediaEvidenceRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload mobile evidence metadata for an operational activity",
+)
+async def mobile_activity_attachment_upload(
+    visit_request_id: UUID,
+    payload: MediaEvidenceCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MediaEvidenceRead:
+    try:
+        result = await OperationsService(session).create_activity_media_evidence(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            activity_id=visit_request_id,
+            payload=payload,
+            actor_roles=principal.roles,
+            actor_project_ids=principal.project_ids,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
 @router.get("/sync", response_model=MobileSyncPackageRead, summary="Get mobile sync package")
 async def mobile_sync_package(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileSyncPackageRead:
-    return await MobileService(session).sync_package(principal)
+    package = await MobileService(session).sync_package(principal)
+    await session.commit()
+    return package
 
 
 @router.post("/sync", response_model=MobileSyncUploadRead, summary="Upload mobile sync queue")
 async def mobile_sync_upload(
     payload: MobileSyncQueueUpload,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileSyncUploadRead:
-    return MobileSyncUploadRead(accepted=len(payload.items), failed=0)
+    result = await MobileService(session).upload_sync_queue(principal=principal, payload=payload)
+    await session.commit()
+    return result
 
 
 @router.post(
@@ -217,15 +385,21 @@ async def mobile_submission_upload(
     summary="Upload mobile attachment metadata",
 )
 async def mobile_attachment_upload(
-    _payload: MobileAttachmentRead,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    payload: MobileAttachmentRead,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileActionAcceptedRead:
-    return MobileActionAcceptedRead(message="Attachment metadata accepted. Binary upload provider will be attached later.")
+    result = await MobileService(session).upload_attachment(principal=principal, payload=payload)
+    await session.commit()
+    return result
 
 
 @router.post("/audit-events", response_model=MobileAuditEventUploadRead, summary="Upload mobile audit events")
 async def mobile_audit_events_upload(
     payload: MobileAuditEventUpload,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileAuditEventUploadRead:
-    return MobileAuditEventUploadRead(accepted=len(payload.events))
+    result = await MobileService(session).upload_audit_events(principal=principal, payload=payload)
+    await session.commit()
+    return result

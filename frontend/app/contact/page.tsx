@@ -22,7 +22,7 @@ export default function ContactPage() {
         />
         <section className="mx-auto grid max-w-6xl gap-8 px-4 pb-20 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:px-8">
           <ContactRequestForm source="contact" title="Contact sales" />
-          <aside className="rounded-2xl border border-black/10 bg-[#10201c] p-6 text-white">
+          <aside className="rounded-2xl border border-black/10 bg-[#0c1f1b] p-6 text-white">
             <h2 className="text-xl font-semibold">Enterprise inquiry</h2>
             <p className="mt-3 text-sm leading-6 text-white/70">
               We can help scope workflows, mobile sync, data migration, reports, geospatial dashboards, and security requirements.

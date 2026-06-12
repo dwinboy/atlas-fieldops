@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   BarChart3,
@@ -33,9 +33,19 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal, DonorReportRead } from "@/lib/api";
-import { listReports } from "@/lib/api";
+import {
+  ApiError,
+  exportReportCsv,
+  generateReport,
+  listReports,
+  type CurrentPrincipal,
+  type DonorReportIndicatorMetric,
+  type DonorReportMetrics,
+  type DonorReportRead,
+} from "@/lib/api";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
+import { progressTone } from "@/modules/indicators/utils";
 import {
   previewAuditEvents,
   previewBuilderSteps,
@@ -110,7 +120,7 @@ function formatDateRange(start: string | null, end: string | null): string {
   return new Date(start ?? end ?? "").toLocaleDateString();
 }
 
-function mapApiReport(row: DonorReportRead): ReportRecord {
+function mapApiReport(row: DonorReportRead, ownerRole: string): ReportRecord {
   const rawStatus = titleCase(row.status || "Draft");
   const normalizedStatus: ReportRecord["status"] = rawStatus.includes("Ready")
     ? "Ready"
@@ -119,18 +129,25 @@ function mapApiReport(row: DonorReportRead): ReportRecord {
       : rawStatus.includes("Fail")
         ? "Failed"
         : "Draft";
+  const metrics = row.metrics_json && Object.keys(row.metrics_json).length > 0 ? (row.metrics_json as DonorReportMetrics) : undefined;
+  const dataSources = [row.project_id ? "Project" : "Organization", "Approved submissions"];
+  if (metrics && metrics.indicators.length > 0) dataSources.push("Indicators");
+  const kpis = metrics && metrics.indicators.length > 0
+    ? metrics.indicators.map((indicator) => `${indicator.code} achievement`)
+    : ["Generate this report to compute KPIs"];
   return {
     category: row.donor ? "Donor Reports" : "Project Reports",
-    dataSources: ["Projects", "Indicators", "Approved submissions"],
+    dataSources,
     description: row.summary ?? "Imported report package generated from approved Atlas FieldOps evidence.",
     donor: row.donor ?? "Internal",
     filters: [row.project_id ? "Project linked" : "All assigned projects", row.survey_id ? "Survey linked" : "Organization-level", "Approved data default"],
     formats: row.export_formats.map((format) => titleCase(format) as ReportRecord["formats"][number]).filter((format) => ["Excel", "CSV", "PDF", "JSON"].includes(format)),
     governance: normalizedStatus === "Ready" ? "Approved" : "Pending approval",
     id: row.id,
-    kpis: ["Indicator achievement", "Data quality score"],
-    lastGenerated: new Date().toISOString(),
-    owner: "M&E Manager",
+    kpis,
+    lastGenerated: row.generated_at,
+    metrics,
+    owner: ownerRole,
     period: formatDateRange(row.period_start, row.period_end),
     project: row.project_id ? "Linked project" : "Organization-wide",
     status: normalizedStatus,
@@ -140,9 +157,26 @@ function mapApiReport(row: DonorReportRead): ReportRecord {
   };
 }
 
+function messageFromError(error: unknown): string {
+  if (error instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(error.message) as { detail?: unknown };
+      if (typeof parsed.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed.detail)) return parsed.detail.map((item) => item?.msg ?? "Invalid field").join(" ");
+    } catch {
+      return error.message;
+    }
+  }
+  return "Check your reporting permission and try again.";
+}
+
 function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
   const csv = toCsv(rows);
   if (!csv) return;
+  downloadCsvText(filename, csv);
+}
+
+function downloadCsvText(filename: string, csv: string): void {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -159,7 +193,9 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const [actionResult, setActionResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const queryClient = useQueryClient();
   const preview = isPreview(token);
+  const terminology = useSectorTerminology(token);
 
   const reportsQuery = useQuery({
     queryKey: ["reports-module", token],
@@ -168,9 +204,32 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   });
 
   const reports = useMemo(
-    () => (preview ? previewReports : (reportsQuery.data ?? []).map(mapApiReport)),
-    [preview, reportsQuery.data],
+    () => (preview ? previewReports : (reportsQuery.data ?? []).map((row) => mapApiReport(row, terminology.reportOwnerRole))),
+    [preview, reportsQuery.data, terminology.reportOwnerRole],
   );
+
+  const generateReportMutation = useMutation({
+    mutationFn: (reportId: string) => generateReport(token ?? "", reportId),
+    onSuccess: async (report) => {
+      await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
+      setActionResult(`${report.name} metrics were recalculated from approved submissions.`);
+      pushToast({ title: "Report generated", description: `${report.name} is up to date.`, tone: "success" });
+    },
+    onError: (error) => {
+      const description = messageFromError(error);
+      pushToast({ title: "Could not generate report", description, tone: "danger" });
+    },
+  });
+
+  async function exportReportData(report: ReportRecord): Promise<void> {
+    try {
+      const csv = await exportReportCsv(token ?? "", report.id);
+      downloadCsvText(`atlas-report-${report.id}-data.csv`, csv);
+      pushToast({ title: "Report data exported", description: `${report.title} computed metrics CSV is ready.`, tone: "success" });
+    } catch (error) {
+      pushToast({ title: "Could not export report data", description: messageFromError(error), tone: "danger" });
+    }
+  }
   const dashboards = useMemo(() => (preview ? previewDashboards : []), [preview]);
   const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
   const scheduledReports = useMemo(() => (preview ? previewScheduledReports : []), [preview]);
@@ -250,7 +309,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 product-scrollbar">
+        <div className="mt-3 flex flex-wrap gap-1.5 pb-1">
           {reportsSections.map((section) => (
             <button
               className={cn(
@@ -264,7 +323,10 @@ export function ReportsModule({ token }: ReportsModuleProps) {
               }}
               type="button"
             >
-              <span className="text-xs font-semibold">{section.label}</span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold">
+                {section.label}
+                {section.status === "planned" ? <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge> : null}
+              </span>
               <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
           ))}
@@ -287,7 +349,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         <ReportDetail
           auditEvents={reportAuditEvents.filter((event) => event.reportId === selectedReport.id)}
           exports={exportJobs}
+          generating={generateReportMutation.isPending && generateReportMutation.variables === selectedReport.id}
           onBack={() => setSelectedReportId(null)}
+          onExportData={exportReportData}
+          onGenerate={(report) => generateReportMutation.mutate(report.id)}
+          preview={preview}
           report={selectedReport}
           schedules={scheduledReports.filter((schedule) => schedule.reportId === selectedReport.id)}
           selectedTab={activeDetailTab}
@@ -307,11 +373,58 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           summary={summary}
         />
       ) : null}
-      {!selectedReport && activeSection === "standard" ? <StandardReports onOpenReport={openReport} onRunReport={runReport} reports={visibleReports} syncing={reportsQuery.isFetching} /> : null}
-      {!selectedReport && activeSection === "custom" ? <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} /> : null}
-      {!selectedReport && activeSection === "dashboards" ? <DashboardsSection dashboards={dashboards} onOpenReports={() => setActiveSection("standard")} /> : null}
-      {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={scheduledReports} /> : null}
-      {!selectedReport && activeSection === "exports" ? <ExportsSection exports={exportJobs} /> : null}
+      {!selectedReport && activeSection === "standard" ? (
+        <StandardReports
+          generatingId={generateReportMutation.isPending ? generateReportMutation.variables ?? null : null}
+          onExportData={exportReportData}
+          onGenerate={(report) => generateReportMutation.mutate(report.id)}
+          onOpenReport={openReport}
+          onRunReport={runReport}
+          preview={preview}
+          reports={visibleReports}
+          syncing={reportsQuery.isFetching}
+        />
+      ) : null}
+      {!selectedReport && activeSection === "custom" ? (
+        preview ? (
+          <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
+            sectionId="custom"
+          />
+        )
+      ) : null}
+      {!selectedReport && activeSection === "dashboards" ? (
+        preview ? (
+          <DashboardsSection dashboards={dashboards} onOpenReports={() => setActiveSection("standard")} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
+            sectionId="dashboards"
+          />
+        )
+      ) : null}
+      {!selectedReport && activeSection === "scheduled" ? (
+        preview ? (
+          <ScheduledReportsSection schedules={scheduledReports} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
+            sectionId="scheduled"
+          />
+        )
+      ) : null}
+      {!selectedReport && activeSection === "exports" ? (
+        preview ? (
+          <ExportsSection exports={exportJobs} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><RefreshCw aria-hidden="true" /> Generate &amp; export reports</Button>}
+            sectionId="exports"
+          />
+        )
+      ) : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -360,7 +473,7 @@ function ReportsDashboard({
   const cards = [
     { icon: FileText, label: "Total Reports", value: summary.totalReports, tone: "accent" as BadgeProps["tone"] },
     { icon: CalendarClock, label: "Scheduled Reports", value: summary.scheduledReports, tone: "success" as BadgeProps["tone"] },
-    { icon: RefreshCw, label: "Reports Generated Today", value: summary.reportsGeneratedToday, tone: "success" as BadgeProps["tone"] },
+    { icon: CheckCircle2, label: "Reports Ready", value: summary.reportsReady, tone: summary.reportsReady ? "success" as BadgeProps["tone"] : "neutral" as BadgeProps["tone"] },
     { icon: Download, label: "Export Jobs", value: summary.exportJobs, tone: "accent" as BadgeProps["tone"] },
     { icon: LayoutDashboard, label: "Active Dashboards", value: summary.activeDashboards, tone: "monitor" as BadgeProps["tone"] },
     { icon: Eye, label: "Most Viewed Reports", value: summary.mostViewedReports, tone: "neutral" as BadgeProps["tone"] },
@@ -392,18 +505,22 @@ function ReportsDashboard({
           </div>
         </Panel>
         <Panel action={<Button onClick={() => onOpenSection("dashboards")} size="sm" variant="secondary">Open dashboards</Button>} title="Executive KPI Snapshot">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {kpis.slice(0, 6).map((kpi) => (
-              <div className="rounded-xl border bg-background p-3" key={kpi.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{kpi.label}</p>
-                  <Badge tone={kpiTone(kpi)}>{kpiAchievement(kpi)}%</Badge>
+          {kpis.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {kpis.slice(0, 6).map((kpi) => (
+                <div className="rounded-xl border bg-background p-3" key={kpi.id}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{kpi.label}</p>
+                    <Badge tone={kpiTone(kpi)}>{kpiAchievement(kpi)}%</Badge>
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold">{kpi.value.toLocaleString()}{kpi.unit}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{kpi.periodComparison} · {kpi.drillDown}</p>
                 </div>
-                <p className="mt-2 text-2xl font-semibold">{kpi.value.toLocaleString()}{kpi.unit}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{kpi.periodComparison} · {kpi.drillDown}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <Timeline records={[]} />
+          )}
         </Panel>
       </div>
       <div className="grid gap-5 xl:grid-cols-3">
@@ -418,27 +535,40 @@ function ReportsDashboard({
         </Panel>
       </div>
       <Panel action={<Button onClick={() => onOpenSection("dashboards")} size="sm" variant="secondary">Manage dashboards</Button>} title="Popular Dashboards">
-        <div className="grid gap-3 lg:grid-cols-3">
-          {dashboards.map((dashboard) => (
-            <DashboardCard dashboard={dashboard} key={dashboard.id} />
-          ))}
-        </div>
+        {dashboards.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-3">
+            {dashboards.map((dashboard) => (
+              <DashboardCard dashboard={dashboard} key={dashboard.id} />
+            ))}
+          </div>
+        ) : (
+          <Timeline records={[]} />
+        )}
       </Panel>
     </div>
   );
 }
 
 function StandardReports({
+  generatingId,
+  onExportData,
+  onGenerate,
   onOpenReport,
   onRunReport,
+  preview,
   reports,
   syncing,
 }: {
+  generatingId: string | null;
+  onExportData: (report: ReportRecord) => void;
+  onGenerate: (report: ReportRecord) => void;
   onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
   onRunReport: (report: ReportRecord) => void;
+  preview: boolean;
   reports: ReportRecord[];
   syncing: boolean;
 }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<ReportRecord>[] = [
     {
       header: "Report",
@@ -480,6 +610,14 @@ function StandardReports({
       render: (report) => (
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button onClick={() => onRunReport(report)} size="sm" variant="secondary"><Play aria-hidden="true" /> Run</Button>
+          {!preview ? (
+            <Button disabled={generatingId === report.id} onClick={() => onGenerate(report)} size="sm" variant="secondary">
+              <RefreshCw aria-hidden="true" /> {generatingId === report.id ? "Generating…" : "Generate"}
+            </Button>
+          ) : null}
+          {!preview ? (
+            <Button onClick={() => onExportData(report)} size="sm" variant="secondary"><Download aria-hidden="true" /> Export data</Button>
+          ) : null}
           <Button onClick={() => onOpenReport(report, "Exports")} size="sm" variant="secondary"><Download aria-hidden="true" /> Export</Button>
         </div>
       ),
@@ -490,7 +628,7 @@ function StandardReports({
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button type="button"><Plus aria-hidden="true" /> New standard report</Button>}
+        action={<Button onClick={() => pushToast({ description: "Creating new standard report templates is on our roadmap. Use Generate to refresh metrics on the existing reports below.", title: "Creating reports isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> New standard report</Button>}
         description="Prebuilt program, project, submission, indicator, data quality, coverage, field operations, beneficiary, and donor reports with run, export, schedule, and share actions."
         route="/reports/standard"
         title="Standard Reports"
@@ -501,11 +639,34 @@ function StandardReports({
 }
 
 function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: typeof previewBuilderSteps; onOpenReports: () => void }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const [dataSource, setDataSource] = useState("Submissions");
   const [visualization, setVisualization] = useState("KPI Card");
+  const [savedFilterName, setSavedFilterName] = useState("");
+  const [fieldQuery, setFieldQuery] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
   const dataSources = ["Projects", "Forms", "Submissions", "Indicators", "Beneficiaries", "Field Operations", "Data Quality"];
   const fields = ["Project", "Form", "Submission date", "Status", "Location", "Indicator", "Quality score", "Field officer", "Supervisor", "Approved value"];
   const filters = ["Project", "Country", "Region", "District", "Location", "Form", "Indicator", "Period", "Team", "Status"];
+
+  function toggleItem(setter: (updater: (current: string[]) => string[]) => void, item: string): void {
+    setter((current) => (current.includes(item) ? current.filter((entry) => entry !== item) : [...current, item]));
+  }
+
+  function exportBuilderConfig(): void {
+    downloadCsv("atlas-custom-report-config.csv", [
+      {
+        dataSource,
+        fields: selectedFields.join("; "),
+        filters: selectedFilters.join("; "),
+        savedFilterSet: savedFilterName || "Unsaved",
+        visualization,
+      },
+    ]);
+    pushToast({ description: "The custom report configuration CSV is ready.", title: "Report configuration exported", tone: "success" });
+  }
 
   return (
     <div className="space-y-3">
@@ -517,17 +678,21 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
       />
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Panel title="Report Builder Steps">
-          <div className="space-y-3">
-            {builderSteps.map((step, index) => (
-              <div className="rounded-xl border bg-background p-3" key={step.id}>
-                <div className="flex items-center gap-2">
-                  <Badge tone={step.status === "Complete" ? "success" : step.status === "Current" ? "accent" : "neutral"}>{index + 1}</Badge>
-                  <p className="text-sm font-semibold">{step.label}</p>
+          {builderSteps.length > 0 ? (
+            <div className="space-y-3">
+              {builderSteps.map((step, index) => (
+                <div className="rounded-xl border bg-background p-3" key={step.id}>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={step.status === "Complete" ? "success" : step.status === "Current" ? "accent" : "neutral"}>{index + 1}</Badge>
+                    <p className="text-sm font-semibold">{step.label}</p>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <Timeline records={[]} />
+          )}
         </Panel>
         <div className="space-y-3">
           <Panel title="Configure Report">
@@ -546,13 +711,13 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 Saved filter set
-                <Input placeholder="Q2 approved data" />
+                <Input onChange={(event) => setSavedFilterName(event.target.value)} placeholder="Q2 approved data" value={savedFilterName} />
               </label>
             </div>
           </Panel>
           <div className="grid gap-5 lg:grid-cols-2">
-            <BuilderPanel items={fields} title="Choose Fields" />
-            <BuilderPanel items={filters} title="Add Filters" />
+            <BuilderPanel items={fields} onQueryChange={setFieldQuery} onToggle={(item) => toggleItem(setSelectedFields, item)} query={fieldQuery} selected={selectedFields} title="Choose Fields" />
+            <BuilderPanel items={filters} onQueryChange={setFilterQuery} onToggle={(item) => toggleItem(setSelectedFilters, item)} query={filterQuery} selected={selectedFilters} title="Add Filters" />
           </div>
           <Panel title="Preview">
             <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -562,20 +727,27 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
                   <h3 className="text-sm font-semibold">{dataSource} report preview</h3>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {["Count", "Average", "Percentage"].map((metric, index) => (
-                    <div className="rounded-lg border bg-muted/20 p-3" key={metric}>
-                      <p className="text-xs text-muted-foreground">{metric}</p>
-                      <p className="mt-2 text-xl font-semibold">{[52890, 88, 91][index].toLocaleString()}{index ? "%" : ""}</p>
-                    </div>
-                  ))}
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Data source</p>
+                    <p className="mt-2 text-xl font-semibold">{dataSource}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Fields selected</p>
+                    <p className="mt-2 text-xl font-semibold">{selectedFields.length}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Filters applied</p>
+                    <p className="mt-2 text-xl font-semibold">{selectedFilters.length}</p>
+                  </div>
                 </div>
+                <p className="mt-3 text-xs text-muted-foreground">Live row counts and calculated values will appear here once this builder is connected to a reporting data source.</p>
               </div>
               <div className="rounded-xl border bg-background p-4">
                 <h3 className="text-sm font-semibold">Save or Export</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Save as a template, share with a role, schedule delivery, or send restricted exports to Governance for approval.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary"><Share2 aria-hidden="true" /> Share</Button>
-                  <Button size="sm"><Download aria-hidden="true" /> Export</Button>
+                  <Button onClick={() => pushToast({ description: "Connect a sharing service to share this report with a role or workspace. This control is a preview for now.", title: "Sharing isn't available yet", tone: "warning" })} size="sm" variant="secondary"><Share2 aria-hidden="true" /> Share</Button>
+                  <Button onClick={exportBuilderConfig} size="sm"><Download aria-hidden="true" /> Export</Button>
                 </div>
               </div>
             </div>
@@ -587,10 +759,11 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
 }
 
 function DashboardsSection({ dashboards, onOpenReports }: { dashboards: DashboardRecord[]; onOpenReports: () => void }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
+        action={<Button onClick={() => pushToast({ description: "Connect a dashboard-authoring service to create custom dashboards. This control is a preview for now.", title: "Creating dashboards isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
         description="Interactive analytics dashboards with KPI cards, tables, charts, maps, activity feeds, progress widgets, responsive layouts, and role-based visibility."
         route="/reports/dashboards"
         title="Dashboards"
@@ -610,6 +783,7 @@ function DashboardsSection({ dashboards, onOpenReports }: { dashboards: Dashboar
 }
 
 function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportRecord[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<ScheduledReportRecord>[] = [
     { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.id}</p></div>, value: (schedule) => schedule.reportTitle },
     { header: "Frequency", key: "frequency", render: (schedule) => `${schedule.frequency} · ${schedule.time} ${schedule.timezone}`, value: (schedule) => schedule.frequency },
@@ -621,7 +795,7 @@ function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportReco
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
+        action={<Button onClick={() => pushToast({ description: "Connect a report-scheduling service to automate report generation and delivery. This control is a preview for now.", title: "Creating schedules isn't available yet", tone: "warning" })} type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
         description="Automate report generation and delivery by daily, weekly, monthly, quarterly, or custom schedules with delivery tracking and failure logs."
         route="/reports/scheduled"
         title="Scheduled Reports"
@@ -635,6 +809,7 @@ function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportReco
 }
 
 function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<ExportJobRecord>[] = [
     { header: "Export", key: "name", render: (job) => <div><p className="font-medium">{job.name}</p><p className="text-xs text-muted-foreground">{job.id} · {job.source}</p></div>, value: (job) => `${job.name} ${job.source}` },
     { header: "Requested", key: "requested", render: (job) => <div><p>{job.requestedBy}</p><p className="text-xs text-muted-foreground">{new Date(job.requestedAt).toLocaleString()}</p></div>, value: (job) => `${job.requestedBy} ${job.requestedAt}` },
@@ -646,7 +821,7 @@ function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button type="button"><Download aria-hidden="true" /> Create Export</Button>}
+        action={<Button onClick={() => pushToast({ description: "Connect an export-job service to generate Excel, CSV, PDF, or JSON exports. This control is a preview for now.", title: "Creating export jobs isn't available yet", tone: "warning" })} type="button"><Download aria-hidden="true" /> Create Export</Button>}
         description="Manage Excel, CSV, PDF, and JSON export jobs from reports, indicators, submissions, projects, beneficiaries, and data quality with governance approval checks."
         route="/reports/exports"
         title="Exports"
@@ -659,7 +834,11 @@ function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
 function ReportDetail({
   auditEvents,
   exports,
+  generating,
   onBack,
+  onExportData,
+  onGenerate,
+  preview,
   report,
   schedules,
   selectedTab,
@@ -667,12 +846,39 @@ function ReportDetail({
 }: {
   auditEvents: ReportAuditEvent[];
   exports: ExportJobRecord[];
+  generating: boolean;
   onBack: () => void;
+  onExportData: (report: ReportRecord) => void;
+  onGenerate: (report: ReportRecord) => void;
+  preview: boolean;
   report: ReportRecord;
   schedules: ScheduledReportRecord[];
   selectedTab: ReportDetailTab;
   setSelectedTab: (tab: ReportDetailTab) => void;
 }) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+
+  function exportReportDefinition(): void {
+    downloadCsv(`atlas-report-${report.id}.csv`, [
+      {
+        category: report.category,
+        dataSources: report.dataSources.join("; "),
+        donor: report.donor,
+        filters: report.filters.join("; "),
+        formats: report.formats.join("; "),
+        governance: report.governance,
+        kpis: report.kpis.join("; "),
+        owner: report.owner,
+        period: report.period,
+        project: report.project,
+        status: report.status,
+        title: report.title,
+        visualizations: report.visualizations.join("; "),
+      },
+    ]);
+    pushToast({ description: `${report.title} is ready as a CSV definition export.`, title: "Report exported", tone: "success" });
+  }
+
   return (
     <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -687,10 +893,18 @@ function ReportDetail({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={onBack} type="button" variant="secondary">Back to Reports</Button>
-          <Button disabled={!canExportReport(report)} type="button"><Download aria-hidden="true" /> Export</Button>
+          {!preview ? (
+            <Button disabled={generating} onClick={() => onGenerate(report)} type="button" variant="secondary">
+              <RefreshCw aria-hidden="true" /> {generating ? "Generating…" : "Generate"}
+            </Button>
+          ) : null}
+          {!preview ? (
+            <Button onClick={() => onExportData(report)} type="button" variant="secondary"><Download aria-hidden="true" /> Export data (CSV)</Button>
+          ) : null}
+          <Button disabled={!canExportReport(report)} onClick={exportReportDefinition} type="button"><Download aria-hidden="true" /> Export</Button>
         </div>
       </div>
-      <div className="flex gap-2 overflow-x-auto border-b pb-2 product-scrollbar">
+      <div className="flex flex-wrap gap-2 border-b pb-2">
         {detailTabs.map((tab) => (
           <button
             className={cn("rounded-full px-2.5 py-1 text-xs transition", selectedTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground")}
@@ -708,7 +922,7 @@ function ReportDetail({
       {selectedTab === "Visualizations" ? <VisualizationGrid visualizations={report.visualizations} /> : null}
       {selectedTab === "Schedules" ? <Timeline records={schedules.map((schedule) => ({ badge: schedule.frequency, label: schedule.reportTitle, meta: `${schedule.nextRun} · ${schedule.status}`, tone: scheduleTone(schedule.status) }))} /> : null}
       {selectedTab === "Exports" ? <Timeline records={exports.filter((job) => job.name.toLowerCase().includes(report.title.split(" ")[0].toLowerCase()) || job.source === "Reports").map((job) => ({ badge: job.format, label: job.name, meta: `${job.status} · ${job.governance}`, tone: exportStatusTone(job.status) }))} /> : null}
-      {selectedTab === "History" ? <Timeline records={[{ badge: report.status, label: "Report refreshed", meta: `${new Date(report.lastGenerated).toLocaleString()} · ${report.owner}`, tone: reportStatusTone(report.status) }, { badge: "Viewed", label: `${report.views} report views`, meta: "Usage analytics captured for report prioritization.", tone: "neutral" }]} /> : null}
+      {selectedTab === "History" ? <Timeline records={[{ badge: report.status, label: "Report refreshed", meta: `${report.lastGenerated ? new Date(report.lastGenerated).toLocaleString() : "Not yet generated"} · ${report.owner}`, tone: reportStatusTone(report.status) }, { badge: "Viewed", label: `${report.views} report views`, meta: "Usage analytics captured for report prioritization.", tone: "neutral" }]} /> : null}
       {selectedTab === "Audit Trail" ? <Timeline records={auditEvents.map((event) => ({ badge: event.action, label: event.actor, meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} /> : null}
     </section>
   );
@@ -717,23 +931,26 @@ function ReportDetail({
 function DetailOverview({ report }: { report: ReportRecord }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-      <Panel title="Report definition">
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            ["Category", report.category],
-            ["Project", report.project],
-            ["Donor", report.donor],
-            ["Owner", report.owner],
-            ["Period", report.period],
-            ["Governance", report.governance],
-          ].map(([label, value]) => (
-            <div className="rounded-xl border bg-background p-3" key={label}>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-              <p className="mt-2 text-sm font-medium">{value}</p>
-            </div>
-          ))}
-        </div>
-      </Panel>
+      <div className="space-y-5">
+        <Panel title="Report definition">
+          <div className="grid gap-3 md:grid-cols-2">
+            {[
+              ["Category", report.category],
+              ["Project", report.project],
+              ["Donor", report.donor],
+              ["Owner", report.owner],
+              ["Period", report.period],
+              ["Governance", report.governance],
+            ].map(([label, value]) => (
+              <div className="rounded-xl border bg-background p-3" key={label}>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+                <p className="mt-2 text-sm font-medium">{value}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <ComputedMetricsPanel report={report} />
+      </div>
       <Panel title="Run readiness">
         <div className="space-y-3">
           {[
@@ -750,6 +967,74 @@ function DetailOverview({ report }: { report: ReportRecord }) {
         </div>
       </Panel>
     </div>
+  );
+}
+
+function formatMetricValue(value: number, unit: string): string {
+  const formatted = Number.isFinite(value) ? value.toLocaleString() : "—";
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function ComputedMetricsPanel({ report }: { report: ReportRecord }) {
+  const metrics = report.metrics;
+  if (!metrics) {
+    return (
+      <Panel title="Computed metrics">
+        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
+          Generate this report to compute metrics from approved submissions.
+        </div>
+      </Panel>
+    );
+  }
+
+  const counters: [string, string][] = [
+    ["Projects", metrics.projects.toLocaleString()],
+    ["Submissions (approved / total)", `${metrics.submissions_approved.toLocaleString()} / ${metrics.submissions_total.toLocaleString()}`],
+    ["Beneficiaries", metrics.beneficiaries.toLocaleString()],
+    ["Generated", metrics.generated_at ? new Date(metrics.generated_at).toLocaleString() : "—"],
+  ];
+
+  const columns: TableColumn<DonorReportIndicatorMetric>[] = [
+    {
+      header: "Indicator",
+      key: "name",
+      render: (indicator) => (
+        <div>
+          <p className="font-medium">{indicator.name}</p>
+          <p className="text-xs text-muted-foreground">{indicator.code}</p>
+        </div>
+      ),
+      value: (indicator) => `${indicator.name} ${indicator.code}`,
+    },
+    { header: "Baseline", key: "baseline", render: (indicator) => formatMetricValue(indicator.baseline_value, indicator.unit), value: (indicator) => String(indicator.baseline_value) },
+    { header: "Current", key: "current", render: (indicator) => formatMetricValue(indicator.current_value, indicator.unit), value: (indicator) => String(indicator.current_value) },
+    { header: "Target", key: "target", render: (indicator) => formatMetricValue(indicator.target_value, indicator.unit), value: (indicator) => String(indicator.target_value) },
+    {
+      header: "Progress",
+      key: "progress",
+      render: (indicator) => <Badge tone={progressTone(indicator.progress_percent)}>{indicator.progress_percent}%</Badge>,
+      value: (indicator) => String(indicator.progress_percent),
+    },
+  ];
+
+  return (
+    <Panel title="Computed metrics">
+      <div className="grid gap-3 md:grid-cols-4">
+        {counters.map(([label, value]) => (
+          <div className="rounded-xl border bg-background p-3" key={label}>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+            <p className="mt-2 text-sm font-medium">{value}</p>
+          </div>
+        ))}
+      </div>
+      {metrics.indicators.length > 0 ? (
+        <div className="mt-4">
+          <DataTable columns={columns} emptyLabel="No indicators linked to this report" rows={metrics.indicators} searchLabel="Search indicators" title="Indicator progress" />
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">No indicators are linked to this report&apos;s project yet.</p>
+      )}
+    </Panel>
   );
 }
 
@@ -818,6 +1103,20 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
   );
 }
 
+function ComingSoonSection({ action, sectionId }: { action?: ReactNode; sectionId: ReportsSection }) {
+  const meta = reportsSections.find((section) => section.id === sectionId);
+  if (!meta) return null;
+  return (
+    <div className="space-y-3">
+      <SectionHeader action={action} description={meta.description} route={meta.route} title={meta.label} />
+      <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">On our roadmap</p>
+        <p className="mt-2 leading-6">{meta.label} is planned for a future release and isn&apos;t available in this workspace yet. {meta.description}</p>
+      </div>
+    </div>
+  );
+}
+
 function Timeline({ records }: { records: { badge: string; label: string; meta: string; tone: BadgeProps["tone"] }[] }) {
   if (!records.length) {
     return <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">No records yet.</div>;
@@ -837,19 +1136,40 @@ function Timeline({ records }: { records: { badge: string; label: string; meta: 
   );
 }
 
-function BuilderPanel({ items, title }: { items: string[]; title: string }) {
+function BuilderPanel({
+  items,
+  onQueryChange,
+  onToggle,
+  query,
+  selected,
+  title,
+}: {
+  items: string[];
+  onQueryChange: (value: string) => void;
+  onToggle: (item: string) => void;
+  query: string;
+  selected: string[];
+  title: string;
+}) {
+  const visibleItems = items.filter((item) => item.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <Panel title={title}>
       <div className="mb-3 flex items-center gap-2">
         <Search aria-hidden="true" className="text-muted-foreground" size={15} />
-        <Input placeholder={`Search ${title.toLowerCase()}`} />
+        <Input onChange={(event) => onQueryChange(event.target.value)} placeholder={`Search ${title.toLowerCase()}`} value={query} />
       </div>
       <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
-          <button className="rounded-full border bg-background px-2.5 py-1 text-xs transition hover:border-primary/40 hover:bg-primary/5" key={item} type="button">
+        {visibleItems.map((item) => (
+          <button
+            className={cn("rounded-full border px-2.5 py-1 text-xs transition", selected.includes(item) ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/40 hover:bg-primary/5")}
+            key={item}
+            onClick={() => onToggle(item)}
+            type="button"
+          >
             {item}
           </button>
         ))}
+        {visibleItems.length === 0 ? <p className="text-xs text-muted-foreground">No matches found.</p> : null}
       </div>
     </Panel>
   );

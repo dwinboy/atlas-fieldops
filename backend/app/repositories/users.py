@@ -3,7 +3,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.identity import Membership, Organization, Role, User, UserAccessGrant
+from app.models.identity import Membership, Organization, Role, User, UserAccessGrant, UserRoleAssignment
+
+UserIdentity = tuple[User, Organization, Membership, Role, list[UserAccessGrant], list[tuple[UserRoleAssignment, Role]]]
 
 
 class UserRepository:
@@ -14,7 +16,7 @@ class UserRepository:
         self,
         email: str,
         organization_slug: str,
-    ) -> tuple[User, Organization, Membership, Role, list[UserAccessGrant]] | None:
+    ) -> UserIdentity | None:
         statement = (
             select(User, Organization, Membership, Role)
             .join(Membership, Membership.user_id == User.id)
@@ -37,20 +39,70 @@ class UserRepository:
         if row is None:
             return None
         user, organization, membership, role = row.tuple()
+        grants = await self._access_grants(organization_id=organization.id, user_id=user.id)
+        assignments = await self._role_assignments(organization_id=organization.id, user_id=user.id)
+        return user, organization, membership, role, grants, assignments
+
+    async def _access_grants(self, *, organization_id: UUID, user_id: UUID) -> list[UserAccessGrant]:
         grants_result = await self.session.execute(
             select(UserAccessGrant).where(
-                UserAccessGrant.organization_id == organization.id,
-                UserAccessGrant.user_id == user.id,
+                UserAccessGrant.organization_id == organization_id,
+                UserAccessGrant.user_id == user_id,
                 UserAccessGrant.deleted_at.is_(None),
             )
         )
-        grants = list(grants_result.scalars())
-        return user, organization, membership, role, grants
+        return list(grants_result.scalars())
+
+    async def _role_assignments(self, *, organization_id: UUID, user_id: UUID) -> list[tuple[UserRoleAssignment, Role]]:
+        assignment_result = await self.session.execute(
+            select(UserRoleAssignment, Role)
+            .join(Role, Role.id == UserRoleAssignment.role_id)
+            .where(
+                UserRoleAssignment.organization_id == organization_id,
+                UserRoleAssignment.user_id == user_id,
+                UserRoleAssignment.deleted_at.is_(None),
+                UserRoleAssignment.is_active.is_(True),
+                Role.deleted_at.is_(None),
+            )
+            .order_by(UserRoleAssignment.created_at)
+        )
+        return list(assignment_result.all())
+
+    async def find_for_token(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+    ) -> UserIdentity | None:
+        statement = (
+            select(User, Organization, Membership, Role)
+            .join(Membership, Membership.user_id == User.id)
+            .join(Organization, Organization.id == Membership.organization_id)
+            .join(Role, Role.id == Membership.role_id)
+            .where(
+                User.id == user_id,
+                Organization.id == organization_id,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                Organization.deleted_at.is_(None),
+                Organization.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                Membership.is_active.is_(True),
+                Role.deleted_at.is_(None),
+            )
+        )
+        result = await self.session.execute(statement)
+        row = result.first()
+        if row is None:
+            return None
+        user, organization, membership, role = row.tuple()
+        grants = await self._access_grants(organization_id=organization.id, user_id=user.id)
+        assignments = await self._role_assignments(organization_id=organization.id, user_id=user.id)
+        return user, organization, membership, role, grants, assignments
 
     async def find_platform_admin_for_user(
         self,
         user_id: UUID,
-    ) -> tuple[User, Organization, Membership, Role, list[UserAccessGrant]] | None:
+    ) -> UserIdentity | None:
         statement = (
             select(User, Organization, Membership, Role)
             .join(Membership, Membership.user_id == User.id)
@@ -70,12 +122,6 @@ class UserRepository:
         if row is None:
             return None
         user, organization, membership, role = row.tuple()
-        grants_result = await self.session.execute(
-            select(UserAccessGrant).where(
-                UserAccessGrant.organization_id == organization.id,
-                UserAccessGrant.user_id == user.id,
-                UserAccessGrant.deleted_at.is_(None),
-            )
-        )
-        grants = list(grants_result.scalars())
-        return user, organization, membership, role, grants
+        grants = await self._access_grants(organization_id=organization.id, user_id=user.id)
+        assignments = await self._role_assignments(organization_id=organization.id, user_id=user.id)
+        return user, organization, membership, role, grants, assignments

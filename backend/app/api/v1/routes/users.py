@@ -8,7 +8,15 @@ from app.api.v1.dependencies import require_permission
 from app.app_db import get_session
 from app.core.permissions import Permission
 from app.schemas.auth import CurrentPrincipal
-from app.schemas.identity import PasswordResetRead, UserCreate, UserImportResponse, UserRead, UserUpdate
+from app.schemas.identity import (
+    PasswordResetRead,
+    UserCreate,
+    UserImportResponse,
+    UserRead,
+    UserRoleAssignmentCreate,
+    UserRoleAssignmentUpdate,
+    UserUpdate,
+)
 from app.services.identity import IdentityConflictError, IdentityNotFoundError, IdentityPermissionError, UserManagementService
 
 router = APIRouter()
@@ -131,6 +139,88 @@ async def reset_user_password(
     except IdentityNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found") from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post("/{user_id}/role-assignments", response_model=UserRead, status_code=status.HTTP_201_CREATED, summary="Add a scoped role assignment to a user")
+async def add_user_role_assignment(
+    user_id: UUID,
+    payload: UserRoleAssignmentCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserRead:
+    try:
+        user = await UserManagementService(session).add_role_assignment(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            actor_roles=principal.roles,
+            user_id=user_id,
+            payload=payload,
+        )
+        await session.commit()
+        return user
+    except IdentityNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User, role, or assignment not found") from exc
+    except IdentityPermissionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.patch("/{user_id}/role-assignments/{assignment_id}", response_model=UserRead, summary="Update a scoped role assignment")
+async def update_user_role_assignment(
+    user_id: UUID,
+    assignment_id: UUID,
+    payload: UserRoleAssignmentUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserRead:
+    try:
+        user = await UserManagementService(session).update_role_assignment(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            actor_roles=principal.roles,
+            user_id=user_id,
+            assignment_id=assignment_id,
+            payload=payload,
+        )
+        await session.commit()
+        return user
+    except IdentityNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User, role, or assignment not found") from exc
+    except IdentityPermissionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.delete("/{user_id}/role-assignments/{assignment_id}", response_model=UserRead, summary="Deactivate a scoped role assignment")
+async def deactivate_user_role_assignment(
+    user_id: UUID,
+    assignment_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.USER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserRead:
+    try:
+        user = await UserManagementService(session).deactivate_role_assignment(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            user_id=user_id,
+            assignment_id=assignment_id,
+        )
+        await session.commit()
+        return user
+    except IdentityNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User or assignment not found") from exc
     except Exception:
         await session.rollback()
         raise

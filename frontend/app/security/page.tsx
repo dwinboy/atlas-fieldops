@@ -11,7 +11,7 @@ export const metadata: Metadata = marketingMetadata({
 });
 
 const controls = [
-  ["Data security", "Secure architecture for sensitive submissions, attachments, GPS evidence, and beneficiary records."],
+  ["Data security", "Secure architecture for sensitive submissions, attachments, GPS evidence, and entity records."],
   ["Access control", "Role-based and scope-aware permissions for projects, forms, submissions, maps, reports, users, and administration."],
   ["Audit trails", "Immutable records for publishing, approvals, exports, governance changes, and platform support actions."],
   ["Governance", "Consent, retention, approvals, data stewardship, export controls, and policy management."],
@@ -28,7 +28,7 @@ export default function SecurityPage() {
           {controls.map(([title, text]) => (
             <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={title}>
               <h2 className="text-xl font-semibold">{title}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#52615d]">{text}</p>
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{text}</p>
             </article>
           ))}
         </section>

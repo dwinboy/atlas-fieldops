@@ -6,10 +6,12 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
@@ -20,6 +22,9 @@ type HelpHintProps = {
   title?: string;
 };
 
+const POPOVER_WIDTH = 288;
+const VIEWPORT_GAP = 12;
+
 export function HelpHint({
   children,
   className,
@@ -29,6 +34,9 @@ export function HelpHint({
   const [open, setOpen] = useState(false);
   const id = useId();
   const wrapperRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
+
   function toggleHelp(event: ReactMouseEvent<HTMLSpanElement> | ReactKeyboardEvent<HTMLSpanElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -53,6 +61,41 @@ export function HelpHint({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    function updatePosition(): void {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - VIEWPORT_GAP * 2);
+      const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_GAP;
+      const spaceAbove = rect.top - VIEWPORT_GAP;
+      const openUp = spaceBelow < 140 && spaceAbove > spaceBelow;
+
+      let left = rect.right - width;
+      left = Math.min(Math.max(left, VIEWPORT_GAP), window.innerWidth - width - VIEWPORT_GAP);
+
+      setPopoverStyle({
+        bottom: openUp ? window.innerHeight - rect.top + 8 : undefined,
+        left,
+        maxHeight: Math.max(96, (openUp ? spaceAbove : spaceBelow) - 8),
+        position: "fixed",
+        top: openUp ? undefined : rect.bottom + 8,
+        width,
+        zIndex: 1000,
+      });
+    }
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
   return (
     <span className={cn("relative inline-flex align-middle", className)} ref={wrapperRef}>
       <span
@@ -66,23 +109,28 @@ export function HelpHint({
             toggleHelp(event);
           }
         }}
+        ref={triggerRef}
         role="button"
         tabIndex={0}
       >
         <HelpCircle aria-hidden="true" size={14} />
       </span>
-      {open ? (
-        <span
-          className="absolute left-1/2 top-8 z-40 block w-72 -translate-x-1/2 rounded-xl border bg-panel p-3 text-left shadow-elevated sm:left-auto sm:right-0 sm:translate-x-0"
-          id={id}
-          role="dialog"
-        >
-          {title ? <span className="block text-sm font-semibold text-foreground">{title}</span> : null}
-          <span className={cn("block text-xs leading-5 text-muted-foreground", title ? "mt-1" : "")}>
-            {children}
-          </span>
-        </span>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <span
+              className="block overflow-y-auto rounded-xl border bg-panel p-3 text-left shadow-elevated product-scrollbar"
+              id={id}
+              role="dialog"
+              style={popoverStyle}
+            >
+              {title ? <span className="block text-sm font-semibold text-foreground">{title}</span> : null}
+              <span className={cn("block text-xs leading-5 text-muted-foreground", title ? "mt-1" : "")}>
+                {children}
+              </span>
+            </span>,
+            document.body,
+          )
+        : null}
     </span>
   );
 }

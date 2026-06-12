@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -12,11 +12,12 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.api.v1.dependencies import require_role
 from app.app_db import get_session
 from app.core.config import settings
+from app.models.administration import FeatureFlag, Integration, SystemSetting
 from app.models.audit import AuditLog
-from app.models.collection import DataForm, FieldOfficerProfile, Submission
+from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
 from app.models.identity import Membership, Organization, Role, User
 from app.models.marketing import MarketingLead
-from app.models.operations import Beneficiary, DataExportJob, DataImportJob
+from app.models.operations import Beneficiary, DataExportJob, DataImportJob, EntityCategory
 from app.repositories.audit import AuditRepository
 from app.repositories.identity import OrganizationRepository
 from app.schemas.auth import CurrentPrincipal
@@ -24,24 +25,40 @@ from app.schemas.platform import (
     PlatformActionResult,
     PlatformAuditLogRead,
     PlatformBackupJobRead,
+    PlatformBackupPolicyRead,
+    PlatformBackupPolicyUpdate,
+    PlatformDataIsolationIssueRead,
     PlatformFeatureFlagUpdate,
     PlatformFeatureFlagRead,
     PlatformHealthServiceRead,
     PlatformIntegrationRead,
+    PlatformIntegrationUpdate,
     PlatformLeadRead,
+    PlatformMobileFleetDeviceRead,
+    PlatformMobileFleetSummaryRead,
     PlatformOrganizationPlanRead,
+    PlatformOrganizationPlanUpdate,
     PlatformOrganizationUsageRead,
+    PlatformReleaseRead,
+    PlatformReleaseUpdate,
     PlatformRoleTemplateRead,
     PlatformSecurityEventRead,
+    PlatformSecurityPolicyRead,
+    PlatformSecurityPolicyUpdate,
+    PlatformSectorPackRead,
     PlatformSettingsRead,
     PlatformSummaryRead,
     PlatformSupportSessionRead,
     PlatformSystemHealthRead,
+    PlatformTenantSupportQueueItemRead,
     PlatformUserSecurityAction,
     PlatformUserRead,
 )
+from app.services.sector_packs import list_sector_packs
 
 router = APIRouter()
+
+DEFAULT_TENANT_MODULES = ["projects", "forms", "field_operations", "submissions", "mapping", "indicators", "reports", "data_quality"]
 
 
 async def count_rows(
@@ -81,6 +98,84 @@ def feature_flag_catalog(now: datetime) -> list[PlatformFeatureFlagRead]:
         PlatformFeatureFlagRead(key="mobile_app", label="Mobile App", description="Offline mobile collection and sync workflows.", global_enabled=True, environment=settings.app_env, updated_at=now),
         PlatformFeatureFlagRead(key="ai_features", label="AI Features", description="AI-assisted review, scoring, fraud signals, and recommendations.", global_enabled=False, rollout_percentage=0, environment=settings.app_env, updated_at=now),
     ]
+
+
+def feature_flag_defaults(now: datetime) -> dict[str, PlatformFeatureFlagRead]:
+    return {flag.key: flag for flag in feature_flag_catalog(now)}
+
+
+def default_security_policy(updated_at: datetime | None = None) -> PlatformSecurityPolicyRead:
+    return PlatformSecurityPolicyRead(
+        mfa_required_for_admins=False,
+        mfa_required_for_all_users=False,
+        password_min_length=10,
+        password_rotation_days=180,
+        session_timeout_minutes=settings.access_token_expire_minutes,
+        failed_login_lock_threshold=5,
+        support_session_timeout_minutes=60,
+        ip_allowlist_enabled=False,
+        updated_at=updated_at,
+    )
+
+
+def default_backup_policy(updated_at: datetime | None = None) -> PlatformBackupPolicyRead:
+    return PlatformBackupPolicyRead(
+        backup_frequency="Daily",
+        retention_days=90,
+        configuration_retention_days=30,
+        tenant_export_enabled=True,
+        restore_requires_approval=True,
+        restore_approver_role="super_admin",
+        anonymize_archived_data=False,
+        updated_at=updated_at,
+    )
+
+
+def runtime_release_read(value: dict[str, object] | None = None, updated_at: datetime | None = None) -> PlatformReleaseRead:
+    stored = value or {}
+    backend_version = str(
+        stored.get("backend_version")
+        or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("VERCEL_GIT_COMMIT_SHA")
+        or os.environ.get("GIT_SHA")
+        or "local"
+    )
+    if len(backend_version) > 16 and backend_version != "local":
+        backend_version = backend_version[:12]
+    database_ready = bool(settings.database_url.strip())
+    jwt_ready = len(os.environ.get("JWT_SECRET", "").strip()) >= 32
+    redis_ready = bool(settings.redis_url.strip()) and "localhost" not in settings.redis_url
+    kafka_ready = bool(settings.kafka_bootstrap_servers.strip()) and "localhost" not in settings.kafka_bootstrap_servers
+    checklist = [
+        "Database configured" if database_ready else "Configure production database",
+        "JWT secret configured" if jwt_ready else "Set a strong JWT_SECRET",
+        "Redis configured" if redis_ready else "Configure production Redis before scale rollout",
+        "Kafka configured" if kafka_ready else "Configure Kafka/event stream before high-volume rollout",
+        "Mobile version recorded",
+    ]
+    return PlatformReleaseRead(
+        environment=settings.app_env,
+        backend_version=backend_version,
+        frontend_version=str(stored.get("frontend_version") or "managed-by-vercel"),
+        mobile_version=str(stored.get("mobile_version") or "1.0.0-test"),
+        release_status=str(stored.get("release_status") or "Ready for review"),
+        maintenance_mode=bool(stored.get("maintenance_mode", False)),
+        maintenance_message=str(stored.get("maintenance_message") or ""),
+        maintenance_starts_at=stored.get("maintenance_starts_at") if isinstance(stored.get("maintenance_starts_at"), str) else None,
+        maintenance_ends_at=stored.get("maintenance_ends_at") if isinstance(stored.get("maintenance_ends_at"), str) else None,
+        affected_services=[str(item) for item in stored.get("affected_services", [])] if isinstance(stored.get("affected_services"), list) else [],
+        announcement_enabled=bool(stored.get("announcement_enabled", False)),
+        announcement_title=str(stored.get("announcement_title") or ""),
+        announcement_body=str(stored.get("announcement_body") or ""),
+        announcement_tone=str(stored.get("announcement_tone") or "info"),
+        database_ready=database_ready,
+        jwt_ready=jwt_ready,
+        redis_ready=redis_ready,
+        kafka_ready=kafka_ready,
+        release_notes=str(stored.get("release_notes") or ""),
+        checklist=checklist,
+        updated_at=updated_at,
+    )
 
 
 @router.get("/summary", response_model=PlatformSummaryRead, summary="Platform operations summary")
@@ -182,8 +277,30 @@ async def platform_roles(
 @router.get("/feature-flags", response_model=list[PlatformFeatureFlagRead], summary="List platform feature flags")
 async def platform_feature_flags(
     _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[PlatformFeatureFlagRead]:
-    return feature_flag_catalog(datetime.now(UTC))
+    now = datetime.now(UTC)
+    defaults = feature_flag_defaults(now)
+    result = await session.execute(
+        select(FeatureFlag).where(
+            FeatureFlag.organization_id.is_(None),
+            FeatureFlag.environment == settings.app_env,
+            FeatureFlag.deleted_at.is_(None),
+        )
+    )
+    for row in result.scalars().all():
+        default = defaults.get(row.flag_key)
+        defaults[row.flag_key] = PlatformFeatureFlagRead(
+            key=row.flag_key,
+            label=row.label or (default.label if default else row.flag_key.replace("_", " ").title()),
+            description=row.description or (default.description if default else "Platform-managed feature flag."),
+            global_enabled=row.enabled,
+            rollout_percentage=row.rollout_percentage,
+            environment=row.environment,
+            organization_overrides=0,
+            updated_at=row.updated_at,
+        )
+    return list(defaults.values())
 
 
 @router.patch("/feature-flags/{flag_key}", response_model=PlatformFeatureFlagRead, summary="Audit a platform feature flag change")
@@ -193,19 +310,61 @@ async def update_platform_feature_flag(
     principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> PlatformFeatureFlagRead:
-    flags = {flag.key: flag for flag in feature_flag_catalog(datetime.now(UTC))}
-    flag = flags.get(flag_key)
-    if flag is None:
+    defaults = feature_flag_defaults(datetime.now(UTC))
+    default = defaults.get(flag_key)
+    if default is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feature flag not found")
-    old_state = flag.model_dump(mode="json")
-    if payload.global_enabled is not None:
-        flag.global_enabled = payload.global_enabled
-    if payload.rollout_percentage is not None:
-        flag.rollout_percentage = payload.rollout_percentage
-    flag.updated_at = datetime.now(UTC)
+    result = await session.execute(
+        select(FeatureFlag).where(
+            FeatureFlag.organization_id.is_(None),
+            FeatureFlag.environment == settings.app_env,
+            FeatureFlag.flag_key == flag_key,
+            FeatureFlag.deleted_at.is_(None),
+        )
+    )
+    row = result.scalar_one_or_none()
+    old_state = default.model_dump(mode="json")
+    actor_id = principal_user_uuid(principal)
+    next_enabled = payload.global_enabled if payload.global_enabled is not None else default.global_enabled
+    next_rollout = payload.rollout_percentage if payload.rollout_percentage is not None else default.rollout_percentage
+    if row is None:
+        row = FeatureFlag(
+            organization_id=None,
+            flag_key=flag_key,
+            label=default.label,
+            description=default.description,
+            enabled=next_enabled,
+            rollout_percentage=next_rollout,
+            environment=settings.app_env,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(row)
+    else:
+        old_state = PlatformFeatureFlagRead(
+            key=row.flag_key,
+            label=row.label,
+            description=row.description or default.description,
+            global_enabled=row.enabled,
+            rollout_percentage=row.rollout_percentage,
+            environment=row.environment,
+            updated_at=row.updated_at,
+        ).model_dump(mode="json")
+        row.enabled = next_enabled
+        row.rollout_percentage = next_rollout
+        row.updated_by_user_id = actor_id
+    flag = PlatformFeatureFlagRead(
+        key=flag_key,
+        label=row.label,
+        description=row.description or default.description,
+        global_enabled=row.enabled,
+        rollout_percentage=row.rollout_percentage,
+        environment=row.environment,
+        updated_at=datetime.now(UTC),
+    )
     await AuditRepository(session).append(
         organization_id=principal_platform_organization_uuid(principal),
-        actor_user_id=principal_user_uuid(principal),
+        actor_user_id=actor_id,
         action="platform.feature_flag_changed",
         resource_type="feature_flag",
         resource_id=flag.key,
@@ -245,6 +404,82 @@ async def platform_security_events(
         PlatformSecurityEventRead(id="sec-session-policy", event_type="Session policy review", severity="medium", actor="System", organization=None, ip_address=None, device="Policy engine", created_at=now, status="monitoring"),
         PlatformSecurityEventRead(id="sec-mfa-readiness", event_type="MFA readiness", severity="medium", actor="System", organization=None, ip_address=None, device="Identity service", created_at=now, status="open"),
     ]
+
+
+@router.get("/security-policy", response_model=PlatformSecurityPolicyRead, summary="Read platform security policy")
+async def platform_security_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformSecurityPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "security-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_security_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformSecurityPolicyRead(
+        mfa_required_for_admins=bool(value.get("mfa_required_for_admins", policy.mfa_required_for_admins)),
+        mfa_required_for_all_users=bool(value.get("mfa_required_for_all_users", policy.mfa_required_for_all_users)),
+        password_min_length=int(value.get("password_min_length", policy.password_min_length)),
+        password_rotation_days=int(value.get("password_rotation_days", policy.password_rotation_days)),
+        session_timeout_minutes=int(value.get("session_timeout_minutes", policy.session_timeout_minutes)),
+        failed_login_lock_threshold=int(value.get("failed_login_lock_threshold", policy.failed_login_lock_threshold)),
+        support_session_timeout_minutes=int(value.get("support_session_timeout_minutes", policy.support_session_timeout_minutes)),
+        ip_allowlist_enabled=bool(value.get("ip_allowlist_enabled", policy.ip_allowlist_enabled)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/security-policy", response_model=PlatformSecurityPolicyRead, summary="Update platform security policy")
+async def update_platform_security_policy(
+    payload: PlatformSecurityPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformSecurityPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "security-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_security_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Security",
+            setting_key="security-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.security_policy_updated",
+        resource_type="security_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformSecurityPolicyRead(**value, updated_at=datetime.now(UTC))
 
 
 @router.post("/users/{user_id}/security-action", response_model=PlatformActionResult, summary="Run a Super Admin user security action")
@@ -305,13 +540,196 @@ async def platform_user_security_action(
 @router.get("/integrations", response_model=list[PlatformIntegrationRead], summary="List platform-wide integrations")
 async def platform_integrations(
     _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[PlatformIntegrationRead]:
+    catalog = {
+        "email": PlatformIntegrationRead(key="email", name="Email provider", provider_type="Email", status="not_connected", health="warning"),
+        "sms": PlatformIntegrationRead(key="sms", name="SMS provider", provider_type="SMS", status="future_ready", health="warning"),
+        "storage": PlatformIntegrationRead(key="storage", name="Object storage", provider_type="Storage", status="not_connected", health="warning"),
+        "maps": PlatformIntegrationRead(key="maps", name="Map provider", provider_type="GIS", status="configured", health="healthy"),
+        "monitoring": PlatformIntegrationRead(key="monitoring", name="Monitoring provider", provider_type="Observability", status="future_ready", health="warning"),
+    }
+    result = await session.execute(
+        select(Integration).where(
+            Integration.organization_id.is_(None),
+            Integration.environment == settings.app_env,
+            Integration.deleted_at.is_(None),
+        )
+    )
+    for row in result.scalars().all():
+        metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+        key = str(metadata.get("key") or row.integration_type.lower())
+        catalog[key] = PlatformIntegrationRead(
+            key=key,
+            name=row.name,
+            provider_type=row.integration_type,
+            status=row.status,
+            health=str(metadata.get("health") or "warning"),
+            last_sync_at=row.last_sync_at,
+            secrets_visible=False,
+        )
+    return list(catalog.values())
+
+
+@router.patch("/integrations/{integration_key}", response_model=PlatformIntegrationRead, summary="Update platform integration status")
+async def update_platform_integration(
+    integration_key: str,
+    payload: PlatformIntegrationUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformIntegrationRead:
+    catalog = {item.key: item for item in await platform_integrations(principal, session)}
+    existing = catalog.get(integration_key)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Integration not found")
+    result = await session.execute(
+        select(Integration).where(
+            Integration.organization_id.is_(None),
+            Integration.environment == settings.app_env,
+            Integration.deleted_at.is_(None),
+        )
+    )
+    row = next(
+        (
+            integration
+            for integration in result.scalars().all()
+            if str((integration.metadata_json or {}).get("key") or integration.integration_type.lower()) == integration_key
+        ),
+        None,
+    )
+    actor_id = principal_user_uuid(principal)
+    old_value = existing.model_dump(mode="json")
+    metadata = {"key": integration_key, "health": payload.health, "notes": payload.notes}
+    if row is None:
+        row = Integration(
+            organization_id=None,
+            name=existing.name,
+            integration_type=existing.provider_type,
+            status=payload.status,
+            environment=settings.app_env,
+            owner=payload.owner,
+            metadata_json=metadata,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(row)
+    else:
+        row.status = payload.status
+        row.owner = payload.owner
+        row.metadata_json = {**(row.metadata_json or {}), **metadata}
+        row.updated_by_user_id = actor_id
+    updated = PlatformIntegrationRead(
+        key=integration_key,
+        name=row.name,
+        provider_type=row.integration_type,
+        status=row.status,
+        health=payload.health,
+        last_sync_at=row.last_sync_at,
+        secrets_visible=False,
+    )
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.integration_updated",
+        resource_type="integration",
+        resource_id=integration_key,
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": updated.model_dump(mode="json"), "notes": payload.notes},
+    )
+    await session.commit()
+    return updated
+
+
+@router.get("/mobile-fleet", response_model=PlatformMobileFleetSummaryRead, summary="Read platform mobile fleet")
+async def platform_mobile_fleet(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformMobileFleetSummaryRead:
+    now = datetime.now(UTC)
+    offline_before = now - timedelta(days=7)
+    version_result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "mobile-version-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    version_settings = version_result.scalar_one_or_none()
+    version_value = version_settings.setting_value_json if version_settings else {}
+    result = await session.execute(
+        select(FieldOfficerProfile, User, Organization)
+        .join(User, User.id == FieldOfficerProfile.user_id, isouter=True)
+        .join(Organization, Organization.id == FieldOfficerProfile.organization_id)
+        .where(
+            FieldOfficerProfile.deleted_at.is_(None),
+            FieldOfficerProfile.device_id.is_not(None),
+            Organization.deleted_at.is_(None),
+        )
+        .order_by(Organization.name, User.full_name)
+    )
+    devices: list[PlatformMobileFleetDeviceRead] = []
+    app_versions: dict[str, int] = {}
+    for profile, user, organization in result.all():
+        submission_count = await count_rows(
+            session,
+            Submission,
+            Submission.organization_id == profile.organization_id,
+            Submission.field_officer_id == profile.id,
+            Submission.deleted_at.is_(None),
+        )
+        app_version = "Unknown"
+        app_versions[app_version] = app_versions.get(app_version, 0) + 1
+        status = "Offline" if profile.last_sync_at and profile.last_sync_at < offline_before else "Active"
+        if not profile.is_active:
+            status = "Inactive"
+        devices.append(
+            PlatformMobileFleetDeviceRead(
+                organization_id=organization.id,
+                organization_name=organization.name,
+                organization_slug=organization.slug,
+                field_officer_id=profile.id,
+                officer_name=user.full_name if user else None,
+                device_id=profile.device_id or "unknown-device",
+                app_version=app_version,
+                last_sync_at=profile.last_sync_at,
+                last_seen_at=profile.last_seen_at,
+                submission_count=submission_count,
+                status=status,
+            )
+        )
+    return PlatformMobileFleetSummaryRead(
+        active_devices=sum(1 for device in devices if device.status == "Active"),
+        offline_devices=sum(1 for device in devices if device.status == "Offline"),
+        active_users=len({device.field_officer_id for device in devices}),
+        submission_throughput=sum(device.submission_count for device in devices),
+        current_production_version=str(version_value.get("current_production_version") or "1.0.0-test"),
+        minimum_supported_version=str(version_value.get("minimum_supported_version") or "1.0.0-test"),
+        app_versions=app_versions,
+        devices=devices,
+    )
+
+
+@router.get("/sector-packs", response_model=list[PlatformSectorPackRead], summary="List platform sector packs")
+async def platform_sector_packs(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+) -> list[PlatformSectorPackRead]:
     return [
-        PlatformIntegrationRead(key="email", name="Email provider", provider_type="Email", status="not_connected", health="warning"),
-        PlatformIntegrationRead(key="sms", name="SMS provider", provider_type="SMS", status="future_ready", health="warning"),
-        PlatformIntegrationRead(key="storage", name="Object storage", provider_type="Storage", status="not_connected", health="warning"),
-        PlatformIntegrationRead(key="maps", name="Map provider", provider_type="GIS", status="configured", health="healthy"),
-        PlatformIntegrationRead(key="monitoring", name="Monitoring provider", provider_type="Observability", status="future_ready", health="warning"),
+        PlatformSectorPackRead(
+            id=str(pack.get("id") or ""),
+            name=str(pack.get("name") or ""),
+            sector=str(pack.get("sector") or ""),
+            description=str(pack.get("description") or ""),
+            entity_types=[str(item) for item in pack.get("entity_types", [])],
+            form_templates=[str(item) for item in pack.get("form_templates", [])],
+            indicator_templates=[str(item) for item in pack.get("indicator_templates", [])],
+            report_templates=[str(item) for item in pack.get("report_templates", [])],
+            validation_rules=[str(item) for item in pack.get("validation_rules", [])],
+            data_quality_rules=[str(item) for item in pack.get("data_quality_rules", [])],
+            workflows=[str(item) for item in pack.get("workflows", [])],
+            mobile_guidance=[str(item) for item in pack.get("mobile_guidance", [])],
+            dashboard_widgets=[str(item) for item in pack.get("dashboard_widgets", [])],
+        )
+        for pack in list_sector_packs()
     ]
 
 
@@ -324,6 +742,159 @@ async def platform_backups(
         PlatformBackupJobRead(id="backup-config-daily", backup_type="Configuration Backup", status="scheduled", size="Pending first run", created_at=now, retention="30 days"),
         PlatformBackupJobRead(id="backup-database-daily", backup_type="Database Backup", status="architecture-ready", size="Provider managed", created_at=now, retention="90 days"),
     ]
+
+
+@router.get("/backup-policy", response_model=PlatformBackupPolicyRead, summary="Read platform backup and retention policy")
+async def platform_backup_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformBackupPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "backup-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_backup_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformBackupPolicyRead(
+        backup_frequency=str(value.get("backup_frequency", policy.backup_frequency)),
+        retention_days=int(value.get("retention_days", policy.retention_days)),
+        configuration_retention_days=int(value.get("configuration_retention_days", policy.configuration_retention_days)),
+        tenant_export_enabled=bool(value.get("tenant_export_enabled", policy.tenant_export_enabled)),
+        restore_requires_approval=bool(value.get("restore_requires_approval", policy.restore_requires_approval)),
+        restore_approver_role=str(value.get("restore_approver_role", policy.restore_approver_role)),
+        anonymize_archived_data=bool(value.get("anonymize_archived_data", policy.anonymize_archived_data)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/backup-policy", response_model=PlatformBackupPolicyRead, summary="Update platform backup and retention policy")
+async def update_platform_backup_policy(
+    payload: PlatformBackupPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformBackupPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "backup-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_backup_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Backup",
+            setting_key="backup-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.backup_policy_updated",
+        resource_type="backup_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformBackupPolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/release", response_model=PlatformReleaseRead, summary="Read platform release readiness")
+async def platform_release(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformReleaseRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "release-center",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    return runtime_release_read(setting.setting_value_json if setting else None, setting.updated_at if setting else None)
+
+
+@router.patch("/release", response_model=PlatformReleaseRead, summary="Update platform release readiness")
+async def update_platform_release(
+    payload: PlatformReleaseUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformReleaseRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "release-center",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"})
+    old_value = setting.setting_value_json if setting else runtime_release_read().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Release",
+            setting_key="release-center",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.release_updated",
+        resource_type="release_center",
+        resource_id=settings.app_env,
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return runtime_release_read(value, datetime.now(UTC))
+
+
+@router.get("/announcement", response_model=PlatformReleaseRead, summary="Read active platform announcement")
+async def platform_announcement(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformReleaseRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "release-center",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    return runtime_release_read(setting.setting_value_json if setting else None, setting.updated_at if setting else None)
 
 
 @router.get("/leads", response_model=list[PlatformLeadRead], summary="List public website leads for Super Admin review")
@@ -365,13 +936,25 @@ async def platform_organization_plans(
     repository = OrganizationRepository(session)
     organizations = await repository.list_all()
     rows: list[PlatformOrganizationPlanRead] = []
-    enabled_modules = ["projects", "forms", "field_operations", "submissions", "mapping", "indicators", "reports", "data_quality"]
     for organization in organizations:
         user_count = await repository.count_users(organization.id)
         submission_count = await count_rows(session, Submission, Submission.organization_id == organization.id, Submission.deleted_at.is_(None))
-        plan = "Enterprise" if user_count > 25 or submission_count > 10000 else "Professional"
-        user_limit = 250 if plan == "Enterprise" else 50
-        submission_limit = 1_000_000 if plan == "Enterprise" else 100_000
+        setting_result = await session.execute(
+            select(SystemSetting).where(
+                SystemSetting.organization_id == organization.id,
+                SystemSetting.environment == settings.app_env,
+                SystemSetting.setting_key == "tenant-plan",
+                SystemSetting.deleted_at.is_(None),
+            )
+        )
+        plan_settings = setting_result.scalar_one_or_none()
+        plan_value = plan_settings.setting_value_json if plan_settings else {}
+        derived_plan = "Enterprise" if user_count > 25 or submission_count > 10000 else "Professional"
+        plan = str(plan_value.get("plan") or derived_plan)
+        user_limit = int(plan_value.get("user_limit") or (250 if plan == "Enterprise" else 50))
+        submission_limit = int(plan_value.get("submission_limit") or (1_000_000 if plan == "Enterprise" else 100_000))
+        storage_limit_gb = int(plan_value.get("storage_limit_gb") or (500 if plan == "Enterprise" else 100))
+        enabled_modules = plan_value.get("enabled_modules") if isinstance(plan_value.get("enabled_modules"), list) else DEFAULT_TENANT_MODULES
         usage_percent = max(
             int((user_count / user_limit) * 100),
             int((submission_count / submission_limit) * 100),
@@ -382,15 +965,88 @@ async def platform_organization_plans(
                 organization_name=organization.name,
                 organization_slug=organization.slug,
                 plan=plan,
-                status="Active" if organization.is_active else "Suspended",
+                status=str(plan_value.get("status") or ("Active" if organization.is_active else "Suspended")),
                 user_limit=user_limit,
                 submission_limit=submission_limit,
-                storage_limit_gb=500 if plan == "Enterprise" else 100,
-                enabled_modules=enabled_modules,
+                storage_limit_gb=storage_limit_gb,
+                enabled_modules=[str(module) for module in enabled_modules],
                 usage_percent=min(usage_percent, 100),
             )
         )
     return rows
+
+
+@router.patch("/organization-plans/{organization_id}", response_model=PlatformOrganizationPlanRead, summary="Update tenant plan and platform limits")
+async def update_platform_organization_plan(
+    organization_id: UUID,
+    payload: PlatformOrganizationPlanUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformOrganizationPlanRead:
+    repository = OrganizationRepository(session)
+    organization = await repository.get(organization_id)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id == organization.id,
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "tenant-plan",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    plan_value = {
+        "plan": payload.plan,
+        "status": payload.status,
+        "user_limit": payload.user_limit,
+        "submission_limit": payload.submission_limit,
+        "storage_limit_gb": payload.storage_limit_gb,
+        "enabled_modules": payload.enabled_modules,
+    }
+    actor_id = principal_user_uuid(principal)
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=organization.id,
+            category="Tenant Plan",
+            setting_key="tenant-plan",
+            setting_value_json=plan_value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = plan_value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=organization.id,
+        actor_user_id=actor_id,
+        action="platform.organization_plan_updated",
+        resource_type="organization",
+        resource_id=str(organization.id),
+        metadata={"reason": payload.reason, "plan": plan_value},
+    )
+    await session.commit()
+    user_count = await repository.count_users(organization.id)
+    submission_count = await count_rows(session, Submission, Submission.organization_id == organization.id, Submission.deleted_at.is_(None))
+    usage_percent = max(
+        int((user_count / payload.user_limit) * 100),
+        int((submission_count / payload.submission_limit) * 100),
+    )
+    return PlatformOrganizationPlanRead(
+        organization_id=organization.id,
+        organization_name=organization.name,
+        organization_slug=organization.slug,
+        plan=payload.plan,
+        status=payload.status,
+        user_limit=payload.user_limit,
+        submission_limit=payload.submission_limit,
+        storage_limit_gb=payload.storage_limit_gb,
+        enabled_modules=payload.enabled_modules,
+        usage_percent=min(usage_percent, 100),
+    )
 
 
 @router.get("/support-sessions", response_model=list[PlatformSupportSessionRead], summary="List recent support access sessions")
@@ -424,6 +1080,68 @@ async def platform_support_sessions(
             )
         )
     return sessions
+
+
+@router.get("/support-queue", response_model=list[PlatformTenantSupportQueueItemRead], summary="List tenants needing Super Admin support")
+async def platform_support_queue(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[PlatformTenantSupportQueueItemRead]:
+    repository = OrganizationRepository(session)
+    organizations = await repository.list_all()
+    support_result = await session.execute(
+        select(AuditLog)
+        .where(AuditLog.action == "platform.support_session_opened")
+        .order_by(AuditLog.created_at.desc())
+    )
+    last_support: dict[UUID, datetime] = {}
+    for log in support_result.scalars().all():
+        last_support.setdefault(log.organization_id, log.created_at)
+    rows: list[PlatformTenantSupportQueueItemRead] = []
+    for organization in organizations:
+        user_count = await repository.count_users(organization.id)
+        owner_email = await repository.owner_email(organization.id)
+        submission_count = await count_rows(session, Submission, Submission.organization_id == organization.id, Submission.deleted_at.is_(None))
+        form_count = await count_rows(session, DataForm, DataForm.organization_id == organization.id, DataForm.deleted_at.is_(None))
+        device_count = await count_rows(
+            session,
+            FieldOfficerProfile,
+            FieldOfficerProfile.organization_id == organization.id,
+            FieldOfficerProfile.device_id.is_not(None),
+            FieldOfficerProfile.deleted_at.is_(None),
+        )
+        reasons: list[str] = []
+        if not organization.is_active:
+            reasons.append("Organization is suspended or inactive")
+        if not owner_email:
+            reasons.append("No organization owner is assigned")
+        if user_count == 0:
+            reasons.append("No tenant users found")
+        if form_count and not submission_count:
+            reasons.append("Forms exist but no submissions are recorded")
+        if form_count and device_count == 0:
+            reasons.append("No registered field devices for active form operations")
+        if last_support.get(organization.id):
+            reasons.append("Recent platform support access")
+        if not reasons:
+            continue
+        priority = "critical" if not organization.is_active or not owner_email else "warning"
+        rows.append(
+            PlatformTenantSupportQueueItemRead(
+                organization_id=organization.id,
+                organization_name=organization.name,
+                organization_slug=organization.slug,
+                priority=priority,
+                status="Needs support",
+                issue_count=len(reasons),
+                user_count=user_count,
+                submission_count=submission_count,
+                last_support_at=last_support.get(organization.id),
+                reasons=reasons,
+                recommended_action="Review tenant setup, owner account, mobile readiness, and recent support history.",
+            )
+        )
+    return sorted(rows, key=lambda row: (row.priority != "critical", row.organization_name))
 
 
 @router.get("/audit-logs", response_model=list[PlatformAuditLogRead], summary="List recent platform-visible audit logs")
@@ -489,6 +1207,179 @@ async def platform_usage(
             )
         )
     return rows
+
+
+@router.get("/data-isolation", response_model=list[PlatformDataIsolationIssueRead], summary="Audit tenant data isolation risks")
+async def platform_data_isolation(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[PlatformDataIsolationIssueRead]:
+    repository = OrganizationRepository(session)
+    organizations = {organization.id: organization for organization in await repository.list_all()}
+    issues: list[PlatformDataIsolationIssueRead] = []
+
+    def add_issue(
+        issue_id: str,
+        severity: str,
+        issue_type: str,
+        organization_id: UUID | None,
+        resource_type: str,
+        affected_records: int,
+        detail: str,
+        recommendation: str,
+    ) -> None:
+        if affected_records <= 0:
+            return
+        organization = organizations.get(organization_id) if organization_id else None
+        issues.append(
+            PlatformDataIsolationIssueRead(
+                id=issue_id,
+                severity=severity,
+                issue_type=issue_type,
+                organization_id=organization_id,
+                organization_name=organization.name if organization else None,
+                organization_slug=organization.slug if organization else None,
+                resource_type=resource_type,
+                affected_records=affected_records,
+                detail=detail,
+                recommendation=recommendation,
+            )
+        )
+
+    for organization in organizations.values():
+        if not await repository.owner_email(organization.id):
+            add_issue(
+                f"owner-missing-{organization.id}",
+                "warning",
+                "Missing organization owner",
+                organization.id,
+                "organization",
+                1,
+                "This organization has no owner account recorded.",
+                "Assign or create an Organization Owner before handover.",
+            )
+
+    checks = [
+        (
+            "form-project-org-mismatch",
+            DataForm,
+            Project,
+            DataForm.project_id == Project.id,
+            "data form",
+            "Forms linked to projects in another organization can expose data to the wrong tenant.",
+            "Open the affected forms and relink them to projects in the same organization.",
+        ),
+        (
+            "submission-project-org-mismatch",
+            Submission,
+            Project,
+            Submission.project_id == Project.id,
+            "submission",
+            "Submissions linked to projects in another organization can mix tenant datasets.",
+            "Move or relink affected submissions before they are approved or reported.",
+        ),
+        (
+            "beneficiary-project-org-mismatch",
+            Beneficiary,
+            Project,
+            Beneficiary.project_id == Project.id,
+            "beneficiary",
+            "Beneficiaries linked to projects in another organization can leak entity data.",
+            "Relink beneficiaries to the correct tenant project or quarantine them for review.",
+        ),
+        (
+            "entity-category-project-org-mismatch",
+            EntityCategory,
+            Project,
+            EntityCategory.project_id == Project.id,
+            "entity category",
+            "Entity categories linked to another tenant project can pollute form and beneficiary setup.",
+            "Relink or recreate the category under the correct organization and project.",
+        ),
+        (
+            "assignment-project-org-mismatch",
+            OfficerAssignment,
+            Project,
+            OfficerAssignment.project_id == Project.id,
+            "officer assignment",
+            "Assignments pointing across organizations can send forms to the wrong field officers.",
+            "Cancel and recreate the affected assignments in the correct organization.",
+        ),
+    ]
+    for issue_key, source_model, target_model, join_condition, resource_type, detail, recommendation in checks:
+        result = await session.execute(
+            select(source_model.organization_id, func.count())
+            .select_from(source_model)
+            .join(target_model, join_condition)
+            .where(
+                source_model.deleted_at.is_(None),
+                target_model.deleted_at.is_(None),
+                source_model.organization_id != target_model.organization_id,
+            )
+            .group_by(source_model.organization_id)
+        )
+        for organization_id, affected_records in result.all():
+            add_issue(
+                f"{issue_key}-{organization_id}",
+                "critical",
+                "Cross-organization relationship",
+                organization_id,
+                resource_type,
+                int(affected_records),
+                detail,
+                recommendation,
+            )
+
+    form_mismatch = await session.execute(
+        select(Submission.organization_id, func.count())
+        .select_from(Submission)
+        .join(DataForm, Submission.form_id == DataForm.id)
+        .where(
+            Submission.deleted_at.is_(None),
+            DataForm.deleted_at.is_(None),
+            Submission.organization_id != DataForm.organization_id,
+        )
+        .group_by(Submission.organization_id)
+    )
+    for organization_id, affected_records in form_mismatch.all():
+        add_issue(
+            f"submission-form-org-mismatch-{organization_id}",
+            "critical",
+            "Cross-organization relationship",
+            organization_id,
+            "submission",
+            int(affected_records),
+            "Submissions reference forms owned by another organization.",
+            "Relink submissions to same-tenant forms or quarantine them from reporting.",
+        )
+
+    beneficiary_mismatch = await session.execute(
+        select(Submission.organization_id, func.count())
+        .select_from(Submission)
+        .join(Beneficiary, Submission.entity_id == Beneficiary.id)
+        .where(
+            Submission.deleted_at.is_(None),
+            Beneficiary.deleted_at.is_(None),
+            Submission.organization_id != Beneficiary.organization_id,
+        )
+        .group_by(Submission.organization_id)
+    )
+    for organization_id, affected_records in beneficiary_mismatch.all():
+        add_issue(
+            f"submission-beneficiary-org-mismatch-{organization_id}",
+            "critical",
+            "Cross-organization relationship",
+            organization_id,
+            "submission",
+            int(affected_records),
+            "Submissions are linked to beneficiaries from another organization.",
+            "Unlink and reconcile the affected records before approval, reporting, or export.",
+        )
+
+    return sorted(
+        issues,
+        key=lambda issue: (issue.severity != "critical", issue.organization_name or "", issue.issue_type),
+    )
 
 
 @router.get("/settings", response_model=PlatformSettingsRead, summary="Read safe platform runtime settings")
