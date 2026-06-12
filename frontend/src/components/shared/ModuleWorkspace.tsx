@@ -37,7 +37,7 @@ export function ModuleWorkspace({
 
   return (
     <section className={cn("space-y-3", className)}>
-      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+      <div className="surface-hero rounded-2xl p-3.5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex min-w-0 gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">

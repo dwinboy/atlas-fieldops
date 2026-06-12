@@ -102,9 +102,9 @@ const config: Config = {
       },
       borderRadius: {
         lg: "var(--radius)",
-        xl: "var(--radius)",
-        "2xl": "var(--radius)",
-        "3xl": "calc(var(--radius) + 4px)",
+        xl: "calc(var(--radius) + 4px)",
+        "2xl": "calc(var(--radius) + 8px)",
+        "3xl": "calc(var(--radius) + 12px)",
       },
       boxShadow: {
         line: "inset 0 0 0 1px hsl(var(--border))",

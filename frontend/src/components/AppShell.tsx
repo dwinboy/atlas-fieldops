@@ -152,7 +152,7 @@ function OrganizationMark({
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-background shadow-sm">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
       <AtlasFieldOpsLogo alt={`${name} logo`} size={34} />
     </div>
   );
@@ -562,7 +562,10 @@ export function AppShell({
           </section>
         ) : null}
 
-        <main className="mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5">
+        <main
+          className="view-enter mx-auto w-full max-w-[1480px] overflow-x-hidden px-3 py-3 sm:px-4 lg:px-5"
+          key={pathname ?? "workspace"}
+        >
           {children}
         </main>
       </div>

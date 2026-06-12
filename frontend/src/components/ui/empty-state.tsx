@@ -36,7 +36,7 @@ export function EmptyState({
       )}
     >
       {Icon ? (
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl border bg-panel text-muted-foreground">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary shadow-[0_0_0_8px_hsl(var(--primary)/0.05)]">
           <Icon aria-hidden="true" size={20} />
         </span>
       ) : null}

@@ -1176,7 +1176,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
   return (
     <section aria-labelledby="dashboard-title" className="space-y-6">
       <section
-        className="surface-premium rounded-2xl p-5 md:p-6"
+        className="surface-hero rounded-2xl p-5 md:p-6"
         aria-labelledby="dashboard-title"
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

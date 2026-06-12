@@ -88,6 +88,35 @@ h3 {
     0 24px 60px -46px rgb(15 23 42 / 0.36);
 }
 
+.surface-hero {
+  border: 1px solid hsl(var(--border) / 0.82);
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      hsl(var(--primary) / 0.06),
+      transparent 62%
+    ),
+    hsl(var(--panel));
+  box-shadow:
+    0 1px 0 hsl(var(--panel-foreground) / 0.03),
+    0 24px 60px -46px rgb(15 23 42 / 0.36);
+}
+
+.view-enter {
+  animation: view-fade-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes view-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .section-icon {
   align-items: center;
   border-radius: var(--radius);
