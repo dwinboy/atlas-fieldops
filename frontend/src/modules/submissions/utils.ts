@@ -1,5 +1,6 @@
 import type { BadgeProps } from "@/components/ui/badge";
 import type { SubmissionRead, UserRead } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import {
   previewSubmissions,
   type SubmissionRecord,
@@ -18,12 +19,7 @@ export function formatSubmissionStatus(status: string): string {
 }
 
 export function statusTone(status: string): BadgeProps["tone"] {
-  if (["approved"].includes(status)) return "success";
-  if (["rejected"].includes(status)) return "danger";
-  if (["import_staged", "under_review", "submitted", "pending_review", "resubmitted"].includes(status)) return "warning";
-  if (["correction_requested", "needs_correction", "returned"].includes(status)) return "warning";
-  if (["archived"].includes(status)) return "neutral";
-  return "accent";
+  return canonicalStatusTone(status);
 }
 
 export function qualityTone(score: number): BadgeProps["tone"] {

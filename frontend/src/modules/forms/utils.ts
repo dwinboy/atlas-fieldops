@@ -1,12 +1,9 @@
 import type { BadgeProps } from "@/components/ui/badge";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type { FormListItem, FormsSection, FormsSummary } from "@/modules/forms/data";
 
 export function statusTone(status: string): BadgeProps["tone"] {
-  const normalized = status.toLowerCase();
-  if (normalized === "published" || normalized === "active") return "success";
-  if (normalized === "archived" || normalized === "suspended") return "neutral";
-  if (normalized === "testing" || normalized === "pending") return "warning";
-  return "accent";
+  return canonicalStatusTone(status);
 }
 
 export function qualityTone(score: number): BadgeProps["tone"] {

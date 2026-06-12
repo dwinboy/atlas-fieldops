@@ -20,6 +20,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -69,10 +70,7 @@ type BeneficiariesModuleProps = {
 };
 
 function statusTone(status: EntityStatus | BeneficiaryEntity["duplicateStatus"]) {
-  if (status === "Active" || status === "Clear") return "success";
-  if (status === "Duplicate" || status === "Likely Duplicate") return "danger";
-  if (status === "Possible Duplicate" || status === "Moved") return "warning";
-  return "neutral";
+  return canonicalStatusTone(status);
 }
 
 function canManage(principal?: CurrentPrincipal | null): boolean {

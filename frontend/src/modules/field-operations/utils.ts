@@ -1,5 +1,6 @@
 import type { BadgeProps } from "@/components/ui/badge";
 import type { FieldOfficerRead, FieldVisitRequestRead, OperationsSummary } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type {
   FieldActivity,
   FieldAssignment,
@@ -10,11 +11,7 @@ import type {
 } from "@/modules/field-operations/data";
 
 export function statusTone(status: string): BadgeProps["tone"] {
-  const normalized = status.toLowerCase();
-  if (["active", "assigned", "in progress", "completed", "healthy", "synced"].includes(normalized)) return "success";
-  if (["draft", "on leave", "warning", "attention"].includes(normalized)) return "warning";
-  if (["overdue", "cancelled", "suspended", "inactive", "critical"].includes(normalized)) return "danger";
-  return "neutral";
+  return canonicalStatusTone(status);
 }
 
 export function priorityTone(priority: string): BadgeProps["tone"] {

@@ -1,4 +1,5 @@
 import type { ProjectListItemRead, ProjectSummaryRead } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 
 export function healthTone(status: string | undefined): "success" | "warning" | "danger" | "neutral" {
   const normalized = (status ?? "").toLowerCase();
@@ -9,11 +10,10 @@ export function healthTone(status: string | undefined): "success" | "warning" | 
 }
 
 export function statusTone(status: string | undefined): "success" | "warning" | "danger" | "neutral" {
-  const normalized = (status ?? "").toLowerCase();
-  if (["active", "approved", "completed"].includes(normalized)) return "success";
-  if (["draft", "planning", "suspended"].includes(normalized)) return "warning";
-  if (["closed", "archived", "critical"].includes(normalized)) return "danger";
-  return "neutral";
+  const tone = canonicalStatusTone(status);
+  return tone === "success" || tone === "warning" || tone === "danger"
+    ? tone
+    : "neutral";
 }
 
 export function formatDate(value?: string | null): string {

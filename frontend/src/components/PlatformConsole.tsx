@@ -86,6 +86,7 @@ import {
   type PlatformSupportSessionRead,
   type PlatformUserRead,
 } from "@/lib/api";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -188,11 +189,10 @@ function slugify(value: string): string {
 }
 
 function statusTone(status: string): "success" | "warning" | "danger" | "neutral" | "platform" {
-  const normalized = status.toLowerCase();
-  if (["active", "healthy", "enabled", "configured", "success"].includes(normalized)) return "success";
-  if (["critical", "suspended", "failed", "locked"].includes(normalized)) return "danger";
-  if (["warning", "trial", "scheduled", "not_connected", "open"].includes(normalized)) return "warning";
-  return "neutral";
+  const tone = canonicalStatusTone(status);
+  return tone === "success" || tone === "warning" || tone === "danger"
+    ? tone
+    : "neutral";
 }
 
 function formatDate(value?: string | null): string {

@@ -1,4 +1,5 @@
 import type { BadgeProps } from "@/components/ui/badge";
+import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type {
   LayerVisibility,
   MapFeatureRecord,
@@ -12,10 +13,7 @@ import type {
 } from "@/modules/mapping/data";
 
 export function statusTone(status: SpatialStatus | SpatialValidationState): BadgeProps["tone"] {
-  if (status === "Healthy" || status === "Passed") return "success";
-  if (status === "Warning" || status === "Needs review") return "warning";
-  if (status === "Critical" || status === "Failed") return "danger";
-  return "neutral";
+  return canonicalStatusTone(status);
 }
 
 export function severityTone(severity: SpatialSeverity): BadgeProps["tone"] {
