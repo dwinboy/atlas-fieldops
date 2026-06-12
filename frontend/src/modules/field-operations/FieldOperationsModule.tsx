@@ -27,7 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ActionMenu } from "@/components/ui/dropdown-menu";
+import { ActionMenu, type ActionMenuItem } from "@/components/ui/dropdown-menu";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -1688,6 +1688,10 @@ export function FieldOperationsModule({
           >
             Edit assignment
           </Button>
+          <ActionMenu
+            items={assignmentStatusActions(assignment)}
+            label={`Status actions for ${assignment.name}`}
+          />
         </div>
       ),
     },
@@ -2115,14 +2119,17 @@ export function FieldOperationsModule({
       setAssignmentSaving(false);
       return;
     }
+    const editingAssignment = assignmentEditingId
+      ? assignments.find((assignment) => assignment.id === assignmentEditingId)
+      : null;
     const nextAssignment: FieldAssignment = {
       ...assignmentDraft,
-      completedCount: 0,
+      completedCount: editingAssignment?.completedCount ?? 0,
       fieldOfficers: assignmentDraft.fieldOfficers.length
         ? assignmentDraft.fieldOfficers
         : ["Unassigned"],
       id: assignmentEditingId ?? assignmentId,
-      status: "Assigned",
+      status: editingAssignment?.status ?? "Assigned",
     };
     setAssignments((current) => [
       nextAssignment,
@@ -2139,6 +2146,43 @@ export function FieldOperationsModule({
       tone: "success",
     });
     setAssignmentSaving(false);
+  }
+
+  function updateAssignmentStatus(
+    assignment: FieldAssignment,
+    status: AssignmentStatus,
+  ): void {
+    const next = { ...assignment, status };
+    setAssignments((current) =>
+      current.map((item) => (item.id === assignment.id ? next : item)),
+    );
+    upsertLocalAssignment(next);
+    pushToast({
+      title: `Assignment ${status.toLowerCase()}`,
+      description: `"${assignment.name}" is now ${status.toLowerCase()}. Field officers see the change on their next sync.`,
+      tone: status === "Cancelled" ? "warning" : "success",
+    });
+  }
+
+  function assignmentStatusActions(assignment: FieldAssignment): ActionMenuItem[] {
+    const transitions: { label: string; status: AssignmentStatus; tone?: "danger" }[] = [];
+    if (assignment.status === "Assigned" || assignment.status === "Draft") {
+      transitions.push({ label: "Start collection", status: "In Progress" });
+    }
+    if (["Assigned", "In Progress", "Overdue"].includes(assignment.status)) {
+      transitions.push({ label: "Mark completed", status: "Completed" });
+      transitions.push({ label: "Cancel assignment", status: "Cancelled", tone: "danger" });
+    }
+    if (assignment.status === "Completed" || assignment.status === "Cancelled") {
+      transitions.push({ label: "Reopen", status: "In Progress" });
+    }
+    return transitions.map((transition) => ({
+      disabled: !canManageFieldOperations,
+      key: transition.status + transition.label,
+      label: transition.label,
+      onSelect: () => updateAssignmentStatus(assignment, transition.status),
+      tone: transition.tone,
+    }));
   }
 
   function openAssignmentModal(assignment?: FieldAssignment): void {
@@ -2486,6 +2530,34 @@ export function FieldOperationsModule({
       {activeSection === "assignments" ? (
         <div className="space-y-4">
           <SectionHeader
+            action={
+              <Button
+                disabled={!assignments.length}
+                onClick={() =>
+                  downloadCsv(
+                    "atlas-field-assignments.csv",
+                    assignments.map((assignment) => ({
+                      name: assignment.name,
+                      project: assignment.project,
+                      form: assignment.form,
+                      status: assignment.status,
+                      priority: assignment.priority,
+                      field_officers: assignment.fieldOfficers.join("; "),
+                      supervisor: assignment.supervisor,
+                      location: assignment.location,
+                      start_date: assignment.startDate,
+                      end_date: assignment.endDate,
+                      target: assignment.targetCount,
+                      completed: assignment.completedCount,
+                    })),
+                  )
+                }
+                size="sm"
+                variant="secondary"
+              >
+                Export view
+              </Button>
+            }
             description={fieldOperationsSections.find((section) => section.id === "assignments")?.description ?? ""}
             title="Assignments management"
           />

@@ -642,6 +642,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [builderFormId, setBuilderFormId] = useState<string | null>(null);
+  const [duplicateSourceFormId, setDuplicateSourceFormId] = useState<string | null>(null);
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
@@ -950,6 +951,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
     return (
       <FormCreationWorkspace
         existingForms={forms}
+        initialDuplicateFormId={duplicateSourceFormId}
         initialForm={builderForm}
         onBack={() => {
           if (
@@ -960,6 +962,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           }
           setCreationOpen(false);
           setBuilderFormId(null);
+          setDuplicateSourceFormId(null);
         }}
         token={token}
       />
@@ -1136,6 +1139,11 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               onAssign={(form) => {
                 setActiveView("officers");
                 router.push(`/field-operations?formId=${encodeURIComponent(form.id)}`);
+              }}
+              onDuplicate={(form) => {
+                setBuilderFormId(null);
+                setDuplicateSourceFormId(form.id);
+                setCreationOpen(true);
               }}
               onEdit={(form) => {
                 openFormBuilder(form);
@@ -1515,6 +1523,7 @@ function FormStatusCards({
   canManageForms,
   forms,
   onAssign,
+  onDuplicate,
   onEdit,
   onOpenData,
   preview,
@@ -1524,6 +1533,7 @@ function FormStatusCards({
   canManageForms: boolean;
   forms: FormListItem[];
   onAssign: (form: FormListItem) => void;
+  onDuplicate: (form: FormListItem) => void;
   onEdit: (form: FormListItem) => void;
   onOpenData: (form: FormListItem, query?: string) => void;
   preview: boolean;
@@ -1773,6 +1783,9 @@ function FormStatusCards({
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="secondary">
                     New Version
                   </Button>
+                  <Button disabled={!canManageForms} onClick={() => onDuplicate(form)} size="sm" variant="secondary">
+                    Duplicate
+                  </Button>
                   <Button
                     disabled={!canManageForms || archiveMutation.isPending}
                     onClick={() => archiveMutation.mutate(form)}
@@ -1795,6 +1808,9 @@ function FormStatusCards({
                     variant="secondary"
                   >
                     {restoreMutation.isPending && restoreMutation.variables?.id === form.id ? "Restoring…" : "Restore"}
+                  </Button>
+                  <Button disabled={!canManageForms} onClick={() => onDuplicate(form)} size="sm" variant="secondary">
+                    Duplicate
                   </Button>
                   <Button onClick={() => handleExport(form)} size="sm" variant="secondary">
                     <Download aria-hidden="true" />

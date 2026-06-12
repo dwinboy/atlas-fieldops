@@ -299,6 +299,7 @@ export type FormSetupDraft = {
 
 type FormCreationWorkspaceProps = {
   existingForms: FormListItem[];
+  initialDuplicateFormId?: string | null;
   initialForm?: FormListItem | null;
   onBack: () => void;
   token: string | null;
@@ -4723,6 +4724,7 @@ function buildPublishAssistantAdvice({
 
 export function FormCreationWorkspace({
   existingForms,
+  initialDuplicateFormId,
   initialForm,
   onBack,
   token,
@@ -4813,12 +4815,14 @@ export function FormCreationWorkspace({
   const [stage, setStage] = useState<CreationStage>(
     initialForm ? "builder" : "setup",
   );
-  const [startMethod, setStartMethod] = useState<StartMethod>("blank");
+  const [startMethod, setStartMethod] = useState<StartMethod>(
+    initialDuplicateFormId ? "duplicate" : "blank",
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     starterTemplates[0]?.id ?? "",
   );
   const [selectedDuplicateFormId, setSelectedDuplicateFormId] = useState(
-    existingForms[0]?.id ?? "",
+    initialDuplicateFormId ?? existingForms[0]?.id ?? "",
   );
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [savedBackendFormId, setSavedBackendFormId] = useState<string | null>(
