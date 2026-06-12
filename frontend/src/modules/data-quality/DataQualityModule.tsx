@@ -31,6 +31,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
+import { Input } from "@/components/ui/input";
 import {
   bulkUpdateImportCleaningRows,
   confirmImportedFormDataRows,
@@ -237,6 +238,34 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
   const roleLabel = principal?.roles?.join(", ") || "Workspace user";
   const importCleaningRows = preview ? [] : (importCleaningQuery.data ?? []);
 
+  async function bulkSignalUpdate(
+    issueIds: string[],
+    status: "resolved" | "under_investigation",
+    comment: string,
+  ): Promise<void> {
+    if (!token) return;
+    let failed = 0;
+    for (const signalId of issueIds) {
+      try {
+        await updateDataQualitySignal(token, signalId, { comment, status });
+      } catch {
+        failed += 1;
+      }
+    }
+    await qualitySignalsQuery.refetch();
+    pushToast({
+      title: failed
+        ? `Bulk update: ${issueIds.length - failed} done, ${failed} failed`
+        : `Bulk update: ${issueIds.length} issue(s) marked ${titleCase(status)}`,
+      description: failed
+        ? "Failed issues kept their previous status. Check permissions and issue state."
+        : "Each issue kept its own audit trail entry.",
+      tone: failed ? "warning" : "success",
+    });
+  }
+
+  const bulkUpdateHandler = !preview && token ? bulkSignalUpdate : undefined;
+
   function openIssue(issue: QualityIssue, tab: IssueDetailTab = "Overview"): void {
     setSelectedIssueId(issue.id);
     setActiveIssueTab(tab);
@@ -404,9 +433,9 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
         />
       ) : null}
       {!selectedIssue && activeSection === "quality-dashboard" ? <QualityDashboard issues={qualityIssues} onOpenIssue={openIssue} scores={qualityScores} /> : null}
-      {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={duplicateGroups} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
+      {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={duplicateGroups} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
       {!selectedIssue && activeSection === "import-cleaning" ? (
         <ImportCleaningSection
           isLoading={importCleaningQuery.isLoading}
@@ -440,7 +469,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           rows={importCleaningRows}
         />
       ) : null}
-      {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
+      {!selectedIssue && activeSection === "missing-data" ? <IssueTable description="Track missing required fields, incomplete sections, missing consent, missing attachments, and missing GPS." issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} route="/data-quality/missing-data" title="Missing Data" /> : null}
       {!selectedIssue && activeSection === "reconciliation" ? (
         <ReconciliationSection
           isUpdating={updateSignalMutation.isPending}
@@ -452,8 +481,8 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
         />
       ) : null}
-      {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -623,7 +652,9 @@ function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssu
   );
 }
 
-function DuplicatesSection({ groups, issues, onOpenIssue }: { groups: DuplicateGroup[]; issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void }) {
+type BulkSignalUpdateHandler = (issueIds: string[], status: "resolved" | "under_investigation", comment: string) => Promise<void>;
+
+function DuplicatesSection({ groups, issues, onBulkUpdate, onOpenIssue }: { groups: DuplicateGroup[]; issues: QualityIssue[]; onBulkUpdate?: BulkSignalUpdateHandler; onOpenIssue: (issue: QualityIssue) => void }) {
   const columns: TableColumn<DuplicateGroup>[] = [
     { header: "Group", key: "id", render: (group) => <div><p className="font-medium">{group.id}</p><p className="text-xs text-muted-foreground">{group.records.join(", ")}</p></div>, value: (group) => group.id },
     { header: "Method", key: "method", render: (group) => group.matchingMethod, value: (group) => group.matchingMethod },
@@ -636,12 +667,12 @@ function DuplicatesSection({ groups, issues, onOpenIssue }: { groups: DuplicateG
     <div className="space-y-3">
       <SectionHeader description="Detect and manage exact, fuzzy, and rule-based duplicate records across entity IDs, household IDs, phone numbers, national IDs, GPS, and custom fields." route="/data-quality/duplicates" title="Duplicates" />
       {groups.length ? <DataTable columns={columns} emptyLabel="No duplicate groups yet" rows={groups} searchLabel="Search duplicate groups, fields, records" title="Duplicate groups" /> : null}
-      <IssueTable description="Duplicate issue workflow for compare, merge, mark valid, or flag for investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/duplicates" title="Duplicate Investigations" />
+      <IssueTable description="Duplicate issue workflow for compare, merge, mark valid, or flag for investigation." issues={issues} onBulkUpdate={onBulkUpdate} onOpenIssue={onOpenIssue} route="/data-quality/duplicates" title="Duplicate Investigations" />
     </div>
   );
 }
 
-function OutliersSection({ issues, onOpenIssue, outliers }: { issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; outliers: OutlierRecord[] }) {
+function OutliersSection({ issues, onBulkUpdate, onOpenIssue, outliers }: { issues: QualityIssue[]; onBulkUpdate?: BulkSignalUpdateHandler; onOpenIssue: (issue: QualityIssue) => void; outliers: OutlierRecord[] }) {
   const columns: TableColumn<OutlierRecord>[] = [
     { header: "Outlier", key: "outlier", render: (row) => <div><p className="font-medium">{row.field}</p><p className="text-xs text-muted-foreground">{row.outlierType}</p></div>, value: (row) => `${row.field} ${row.outlierType}` },
     { header: "Observed", key: "observed", render: (row) => row.observedValue, value: (row) => row.observedValue },
@@ -653,12 +684,12 @@ function OutliersSection({ issues, onOpenIssue, outliers }: { issues: QualityIss
     <div className="space-y-3">
       <SectionHeader description="Identify statistical, business-rule, location, and behavioral outliers such as impossible ages, extreme income, and unusually fast surveys." route="/data-quality/outliers" title="Outliers" />
       {outliers.length ? <DataTable columns={columns} emptyLabel="No outliers yet" rows={outliers} searchLabel="Search outliers, fields, submissions" title="Outlier records" /> : null}
-      <IssueTable description="Review outliers, mark valid, flag for correction, or assign investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/outliers" title="Outlier Investigations" />
+      <IssueTable description="Review outliers, mark valid, flag for correction, or assign investigation." issues={issues} onBulkUpdate={onBulkUpdate} onOpenIssue={onOpenIssue} route="/data-quality/outliers" title="Outlier Investigations" />
     </div>
   );
 }
 
-function GPSIssuesSection({ gpsIssues, issues, onOpenIssue, onOpenMapping }: { gpsIssues: GPSIssueRecord[]; issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; onOpenMapping: () => void }) {
+function GPSIssuesSection({ gpsIssues, issues, onBulkUpdate, onOpenIssue, onOpenMapping }: { gpsIssues: GPSIssueRecord[]; issues: QualityIssue[]; onBulkUpdate?: BulkSignalUpdateHandler; onOpenIssue: (issue: QualityIssue) => void; onOpenMapping: () => void }) {
   const columns: TableColumn<GPSIssueRecord>[] = [
     { header: "Issue", key: "issue", render: (row) => <div><p className="font-medium">{row.issueType}</p><p className="text-xs text-muted-foreground">{row.submissionId}</p></div>, value: (row) => `${row.issueType} ${row.submissionId}` },
     { header: "Coordinates", key: "coords", render: (row) => row.coordinates, value: (row) => row.coordinates },
@@ -670,12 +701,12 @@ function GPSIssuesSection({ gpsIssues, issues, onOpenIssue, onOpenMapping }: { g
     <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenMapping} variant="secondary"><MapPinned aria-hidden="true" /> Open Mapping</Button>} description="Monitor missing GPS, outside-boundary points, duplicate coordinates, low accuracy, suspicious locations, and invalid coordinates. GIS visualization remains in Mapping." route="/data-quality/gps-issues" title="GPS Issues" />
       {gpsIssues.length ? <DataTable columns={columns} emptyLabel="No GPS issues yet" rows={gpsIssues} searchLabel="Search GPS issues, submission, boundary" title="GPS issue records" /> : null}
-      <IssueTable description="Assign investigation, open map, resolve issue, or return affected submission for correction." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/gps-issues" title="GPS Investigations" />
+      <IssueTable description="Assign investigation, open map, resolve issue, or return affected submission for correction." issues={issues} onBulkUpdate={onBulkUpdate} onOpenIssue={onOpenIssue} route="/data-quality/gps-issues" title="GPS Investigations" />
     </div>
   );
 }
 
-function ValidationFailuresSection({ failures, issues, onOpenIssue }: { failures: ValidationFailureRecord[]; issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void }) {
+function ValidationFailuresSection({ failures, issues, onBulkUpdate, onOpenIssue }: { failures: ValidationFailureRecord[]; issues: QualityIssue[]; onBulkUpdate?: BulkSignalUpdateHandler; onOpenIssue: (issue: QualityIssue) => void }) {
   const columns: TableColumn<ValidationFailureRecord>[] = [
     { header: "Rule", key: "rule", render: (row) => <div><p className="font-medium">{row.ruleName}</p><p className="text-xs text-muted-foreground">{row.category}</p></div>, value: (row) => `${row.ruleName} ${row.category}` },
     { header: "Field", key: "field", render: (row) => row.field, value: (row) => row.field },
@@ -687,12 +718,12 @@ function ValidationFailuresSection({ failures, issues, onOpenIssue }: { failures
     <div className="space-y-3">
       <SectionHeader description="Track range, logic, cross-field, conditional logic, and reference data rule failures generated by forms and workflows." route="/data-quality/validation-failures" title="Validation Failures" />
       {failures.length ? <DataTable columns={columns} emptyLabel="No validation failures yet" rows={failures} searchLabel="Search validation failures, rules, fields" title="Validation failure records" /> : null}
-      <IssueTable description="Review failed rule, inspect submission, override with reason, or resolve the issue." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/validation-failures" title="Validation Investigations" />
+      <IssueTable description="Review failed rule, inspect submission, override with reason, or resolve the issue." issues={issues} onBulkUpdate={onBulkUpdate} onOpenIssue={onOpenIssue} route="/data-quality/validation-failures" title="Validation Investigations" />
     </div>
   );
 }
 
-function RiskAlertsSection({ alerts, issues, onOpenGovernance, onOpenIssue }: { alerts: RiskAlertRecord[]; issues: QualityIssue[]; onOpenGovernance: () => void; onOpenIssue: (issue: QualityIssue) => void }) {
+function RiskAlertsSection({ alerts, issues, onBulkUpdate, onOpenGovernance, onOpenIssue }: { alerts: RiskAlertRecord[]; issues: QualityIssue[]; onBulkUpdate?: BulkSignalUpdateHandler; onOpenGovernance: () => void; onOpenIssue: (issue: QualityIssue) => void }) {
   const columns: TableColumn<RiskAlertRecord>[] = [
     { header: "Alert", key: "alert", render: (alert) => <div><p className="font-medium">{alert.pattern}</p><p className="text-xs text-muted-foreground">{alert.category}</p></div>, value: (alert) => `${alert.pattern} ${alert.category}` },
     { header: "Owner", key: "owner", render: (alert) => alert.owner, value: (alert) => alert.owner },
@@ -704,7 +735,7 @@ function RiskAlertsSection({ alerts, issues, onOpenGovernance, onOpenIssue }: { 
     <div className="space-y-3">
       <SectionHeader action={<Button onClick={onOpenGovernance} variant="secondary"><ShieldCheck aria-hidden="true" /> Governance review</Button>} description="Investigate data fraud, enumerator fraud, submission manipulation, location fraud, mass duplicates, and abnormal activity." route="/data-quality/risk-alerts" title="Risk Alerts" />
       {alerts.length ? <DataTable columns={columns} emptyLabel="No risk alerts yet" rows={alerts} searchLabel="Search risk alerts, owners, patterns" title="Risk alert center" /> : null}
-      <IssueTable description="Escalate, assign reviewer, resolve, or send suspicious high-risk records to Governance Review." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/risk-alerts" title="High-Risk Investigations" />
+      <IssueTable description="Escalate, assign reviewer, resolve, or send suspicious high-risk records to Governance Review." issues={issues} onBulkUpdate={onBulkUpdate} onOpenIssue={onOpenIssue} route="/data-quality/risk-alerts" title="High-Risk Investigations" />
     </div>
   );
 }
@@ -1108,7 +1139,23 @@ function ReconciliationSection({
   );
 }
 
-function IssueTable({ description, issues, onOpenIssue, route, title }: { description: string; issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; route: string; title: string }) {
+function IssueTable({ description, issues, onBulkUpdate, onOpenIssue, route, title }: { description: string; issues: QualityIssue[]; onBulkUpdate?: (issueIds: string[], status: "resolved" | "under_investigation", comment: string) => Promise<void>; onOpenIssue: (issue: QualityIssue) => void; route: string; title: string }) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkComment, setBulkComment] = useState("");
+  const [bulkRunning, setBulkRunning] = useState(false);
+
+  async function runBulk(status: "resolved" | "under_investigation"): Promise<void> {
+    if (!onBulkUpdate || !selectedIds.size) return;
+    setBulkRunning(true);
+    try {
+      await onBulkUpdate(Array.from(selectedIds), status, bulkComment.trim());
+      setSelectedIds(new Set());
+      setBulkComment("");
+    } finally {
+      setBulkRunning(false);
+    }
+  }
+
   const columns: TableColumn<QualityIssue>[] = [
     {
       header: "Issue",
@@ -1129,7 +1176,59 @@ function IssueTable({ description, issues, onOpenIssue, route, title }: { descri
   return (
     <div className="space-y-3">
       <SectionHeader description={description} route={route} title={title} />
-      <DataTable columns={columns} emptyLabel={`No ${title.toLowerCase()} yet`} rows={issues} searchLabel={`Search ${title.toLowerCase()}, project, form, owner`} title={title} />
+      {onBulkUpdate && selectedIds.size ? (
+        <section className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 p-3">
+          <Badge tone="accent">{selectedIds.size} selected</Badge>
+          <Input
+            aria-label="Bulk resolution comment"
+            className="h-8 min-w-64 flex-1 text-xs"
+            disabled={bulkRunning}
+            onChange={(event) => setBulkComment(event.target.value)}
+            placeholder="Comment applied to every selected issue"
+            value={bulkComment}
+          />
+          <Button disabled={bulkRunning || !bulkComment.trim()} onClick={() => void runBulk("resolved")} size="sm" variant="primary">
+            {bulkRunning ? "Processing…" : "Resolve selected"}
+          </Button>
+          <Button disabled={bulkRunning || !bulkComment.trim()} onClick={() => void runBulk("under_investigation")} size="sm" variant="secondary">
+            Investigate selected
+          </Button>
+          <Button disabled={bulkRunning} onClick={() => setSelectedIds(new Set())} size="sm" variant="ghost">
+            Clear
+          </Button>
+        </section>
+      ) : null}
+      <DataTable
+        columns={columns}
+        emptyLabel={`No ${title.toLowerCase()} yet`}
+        rows={issues}
+        searchLabel={`Search ${title.toLowerCase()}, project, form, owner`}
+        selection={
+          onBulkUpdate
+            ? {
+                isSelectable: (issue) => !["Resolved", "Closed"].includes(issue.status),
+                isSelected: (issue) => selectedIds.has(issue.id),
+                onToggle: (issue, checked) =>
+                  setSelectedIds((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(issue.id);
+                    else next.delete(issue.id);
+                    return next;
+                  }),
+                onToggleAll: (rows, checked) =>
+                  setSelectedIds((current) => {
+                    const next = new Set(current);
+                    for (const row of rows) {
+                      if (checked) next.add(row.id);
+                      else next.delete(row.id);
+                    }
+                    return next;
+                  }),
+              }
+            : undefined
+        }
+        title={title}
+      />
     </div>
   );
 }
