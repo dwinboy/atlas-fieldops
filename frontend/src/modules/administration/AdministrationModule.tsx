@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { Tabs } from "@/components/ui/tabs";
 import {
   getHealth,
   getAdministrationSummary,
@@ -95,6 +96,7 @@ import type {
   AdministrationPageConfig,
   AdministrationSection,
   AdminStatus,
+  MobileManagementArea,
   ApiKeyRecord,
   BackupJob,
   ConfigurationChange,
@@ -208,20 +210,23 @@ function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const mobileReadinessSections: AdministrationSection[] = [
-  "mobile-devices",
-  "mobile-versions",
-  "mobile-pilots",
-  "mobile-monitoring",
-  "mobile-feedback",
-  "mobile-testing",
-];
+const legacyMobileRouteAreas: Record<string, MobileManagementArea> = {
+  "/administration/mobile-devices": "devices",
+  "/administration/mobile-versions": "versions",
+  "/administration/mobile-pilots": "pilots",
+  "/administration/mobile-monitoring": "monitoring",
+  "/administration/mobile-feedback": "feedback",
+  "/administration/mobile-testing": "testing",
+};
 
-function isMobileReadinessSection(
-  section: AdministrationSection,
-): boolean {
-  return mobileReadinessSections.includes(section);
-}
+const mobileManagementTabs: { value: MobileManagementArea; label: string; hint: string }[] = [
+  { value: "devices", label: "Devices", hint: "Registered Android devices, status, and remote logout controls" },
+  { value: "versions", label: "Versions", hint: "Production, staging, and minimum supported app versions" },
+  { value: "pilots", label: "Pilots", hint: "Pilot programs, field officers, devices, and rollout status" },
+  { value: "monitoring", label: "Monitoring", hint: "Sync health, crashes, offline devices, and version distribution" },
+  { value: "feedback", label: "Feedback", hint: "Field feedback and diagnostics from mobile users" },
+  { value: "testing", label: "Testing", hint: "Offline, GPS, attachment, sync, and large-form field tests" },
+];
 
 function formatApiDate(value?: string | null): string {
   if (!value) return "Never";
@@ -642,6 +647,7 @@ export function AdministrationModule({
   const router = useRouter();
   const [activeSection, setActiveSection] =
     useState<AdministrationSection>("dashboard");
+  const [mobileArea, setMobileArea] = useState<MobileManagementArea>("devices");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [locations, setLocations] = useState(initialLocations);
   const [referenceLists, setReferenceLists] = useState(initialReferenceLists);
@@ -776,6 +782,16 @@ export function AdministrationModule({
 
   useEffect(() => {
     const normalizedPath = (pathname ?? "").replace(/\/+$/, "") || "/administration";
+    const legacyMobileArea = Object.entries(legacyMobileRouteAreas).find(([route]) =>
+      normalizedPath.startsWith(route),
+    )?.[1];
+    if (legacyMobileArea) {
+      setMobileArea(legacyMobileArea);
+      if (activeSection !== "mobile") {
+        setActiveSection("mobile");
+      }
+      return;
+    }
     const nextSection = administrationPages.find((page) => page.route === normalizedPath)?.id;
     if (nextSection && nextSection !== activeSection) {
       setActiveSection(nextSection);
@@ -902,12 +918,7 @@ export function AdministrationModule({
       integrations: "integration",
       "imports-migration": null,
       "location-hierarchy": "location",
-      "mobile-devices": null,
-      "mobile-feedback": null,
-      "mobile-monitoring": null,
-      "mobile-pilots": null,
-      "mobile-testing": null,
-      "mobile-versions": null,
+      mobile: null,
       "notification-settings": "notification",
       "reference-data": "reference-list",
       "system-settings": null,
@@ -927,7 +938,7 @@ export function AdministrationModule({
       setActionResult("Start from Upload / Select Source below. You can upload a file or use sample migration data to test the assistant.");
       return;
     }
-    if (isMobileReadinessSection(activeSection)) {
+    if (activeSection === "mobile") {
       setActionResult(
         "Mobile pilot controls are ready. Use the readiness table below to review devices, releases, monitoring, feedback, and field test gates before deployment.",
       );
@@ -2230,8 +2241,8 @@ export function AdministrationModule({
         <ImportsMigrationModule token={token} />
       ) : null}
 
-      {isMobileReadinessSection(activeSection) ? (
-        <MobileReadinessView activeSection={activeSection} />
+      {activeSection === "mobile" ? (
+        <MobileReadinessView area={mobileArea} onAreaChange={setMobileArea} />
       ) : null}
 
       <AdministrationModal
@@ -2459,10 +2470,10 @@ type MobileReadinessRecord = {
   updatedAt: string;
 };
 
-function mobileReadinessRows(section: AdministrationSection): MobileReadinessRecord[] {
+function mobileReadinessRows(area: MobileManagementArea): MobileReadinessRecord[] {
   const updatedAt = formatTimestamp();
-  const rowsBySection: Partial<Record<AdministrationSection, MobileReadinessRecord[]>> = {
-    "mobile-devices": [
+  const rowsByArea: Record<MobileManagementArea, MobileReadinessRecord[]> = {
+    devices: [
       {
         detail: "Device registration endpoint, remote logout flag, and blocked/lost/retired statuses are available.",
         id: "mobile-device-registry",
@@ -2480,7 +2491,7 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
         updatedAt,
       },
     ],
-    "mobile-versions": [
+    versions: [
       {
         detail: "Production, staging, minimum supported version, optional update, and mandatory update policy are exposed.",
         id: "mobile-version-policy",
@@ -2498,7 +2509,7 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
         updatedAt,
       },
     ],
-    "mobile-pilots": [
+    pilots: [
       {
         detail: "Pilot records track project, dates, devices, field officers, supervisors, status, feedback, and issues.",
         id: "mobile-pilot-program",
@@ -2516,7 +2527,7 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
         updatedAt,
       },
     ],
-    "mobile-monitoring": [
+    monitoring: [
       {
         detail: "Monitoring summary covers active devices, sync failures, crashes, offline devices, app versions, and throughput.",
         id: "mobile-monitoring-summary",
@@ -2534,7 +2545,7 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
         updatedAt,
       },
     ],
-    "mobile-feedback": [
+    feedback: [
       {
         detail: "Field officers can submit bug, performance, sync, feature, or other feedback with diagnostics.",
         id: "mobile-feedback-channel",
@@ -2552,7 +2563,7 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
         updatedAt,
       },
     ],
-    "mobile-testing": [
+    testing: [
       {
         detail: "Offline, GPS, attachment, sync, and large-form testing records are ready for pilot evidence capture.",
         id: "mobile-field-tests",
@@ -2571,15 +2582,17 @@ function mobileReadinessRows(section: AdministrationSection): MobileReadinessRec
       },
     ],
   };
-  return rowsBySection[section] ?? [];
+  return rowsByArea[area];
 }
 
 function MobileReadinessView({
-  activeSection,
+  area,
+  onAreaChange,
 }: {
-  activeSection: AdministrationSection;
+  area: MobileManagementArea;
+  onAreaChange: (area: MobileManagementArea) => void;
 }) {
-  const rows = mobileReadinessRows(activeSection);
+  const rows = mobileReadinessRows(area);
   const columns: TableColumn<MobileReadinessRecord>[] = [
     {
       header: "Control",
@@ -2616,6 +2629,12 @@ function MobileReadinessView({
 
   return (
     <div className="space-y-3">
+      <Tabs
+        ariaLabel="Mobile management areas"
+        items={mobileManagementTabs}
+        onChange={onAreaChange}
+        value={area}
+      />
       <div className="grid gap-3 md:grid-cols-4">
         {[
           ["Pilot gate", "Ready for controlled field validation"],

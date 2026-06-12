@@ -335,7 +335,7 @@ type OfficerProfileTab =
 const officerProfileTabs: { id: OfficerProfileTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "work", label: "Work" },
-  { id: "submissions", label: "Submissions & Beneficiaries" },
+  { id: "submissions", label: "Submissions & Entities" },
   { id: "performance", label: "Performance & Quality" },
   { id: "devices-activity", label: "Devices & Activity" },
   { id: "permissions-security", label: "Permissions & Security" },
@@ -888,10 +888,10 @@ Password: ${temporaryPassword}`}
                 { key: "location", header: "Location", value: (row) => asText(row.location), render: (row) => asText(row.location) },
                 { key: "status", header: "Status", value: (row) => asText(row.status), render: (row) => <Badge tone={statusTone(asText(row.status))}>{asText(row.status)}</Badge> },
               ]}
-              emptyLabel="No beneficiary records linked through this officer's submissions yet."
+              emptyLabel="No entity records linked through this officer's submissions yet."
               rows={detail.beneficiaries}
-              searchLabel="Search beneficiaries"
-              title="Assigned and linked beneficiaries"
+              searchLabel="Search entities"
+              title="Assigned and linked entities"
             />
           </div>
         ) : null}
@@ -1173,7 +1173,7 @@ export function FieldOperationsModule({
       metrics: [
         { label: "Projects", value: "0", tone: "neutral" },
         { label: "Assignments", value: "0", tone: "neutral" },
-        { label: "Beneficiaries", value: "0", tone: "neutral" },
+        { label: "Entities", value: "0", tone: "neutral" },
         { label: "Submissions", value: "0", tone: "neutral" },
         { label: "Approval Rate", value: "0%", tone: "neutral" },
         { label: "Data Quality", value: "100%", tone: "success" },
@@ -2491,6 +2491,12 @@ export function FieldOperationsModule({
           />
           <DataTable
             columns={assignmentColumns}
+            emptyAction={
+              canManageFieldOperations
+                ? { label: "Create assignment", onClick: () => openAssignmentModal() }
+                : undefined
+            }
+            emptyDescription="Assignments connect a published form, field officers, and a location so teams know exactly what to collect."
             emptyLabel="No assignments yet. Create one to start coordinating field work."
             rows={assignments}
             searchLabel="Search assignments"
@@ -3349,7 +3355,7 @@ Password:          ${lastInviteCredentials.password}`}
                             className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
                             key={entityId}
                           >
-                            {entityId} · Not found in beneficiary registry
+                            {entityId} · Not found in entity registry
                           </div>
                         );
                       }
@@ -3385,7 +3391,7 @@ Password:          ${lastInviteCredentials.password}`}
                   size="sm"
                   variant="ghost"
                 >
-                  Open Beneficiaries registry
+                  Open Entities registry
                 </Button>
               </div>
             </>

@@ -19,7 +19,13 @@ export default function HomeScreen() {
 
   const assignments = localDatabase.assignments.list();
   const readyCount = assignments.filter((a) => a.formId && a.formVersionId).length;
-  const draftCount = localDatabase.draftSubmissions.list().filter((d) => d.status === "Draft").length;
+  const openDrafts = localDatabase.draftSubmissions.list().filter((d) => d.status === "Draft");
+  const draftCount = openDrafts.length;
+  const latestDraft =
+    [...openDrafts].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0] ?? null;
+  const latestDraftFormName = latestDraft
+    ? localDatabase.forms.list().find((form) => form.id === latestDraft.formId)?.name ?? "Saved draft"
+    : "";
   const queueCount = localDatabase.syncQueue.list().filter((q) => q.status === "Queued" || q.status === "Failed").length;
   const failedCount = localDatabase.syncQueue.list().filter((q) => q.status === "Failed").length;
   const entityCount = localDatabase.entities.list().length;
@@ -42,7 +48,7 @@ export default function HomeScreen() {
   }> = [
     { label: "Assignments", value: assignments.length, tone: "neutral", route: "/(tabs)/assignments", hint: "Open assigned work" },
     { label: "Ready forms", value: readyCount, tone: readyCount > 0 ? "ok" : "neutral", route: "/(tabs)/forms", hint: "View downloaded forms" },
-    { label: "Beneficiaries", value: entityCount, tone: "neutral", route: "/beneficiaries", hint: "View assigned records" },
+    { label: "Entities", value: entityCount, tone: "neutral", route: "/beneficiaries", hint: "View assigned records" },
     { label: "Drafts", value: draftCount, tone: draftCount > 0 ? "warn" : "neutral", route: "/(tabs)/submissions?filter=draft", hint: "Continue saved drafts" },
     { label: "Sync queue", value: queueCount, tone: queueCount > 0 ? "warn" : "ok", route: "/(tabs)/sync", hint: "Review uploads" },
     { label: "Synced today", value: syncedToday, tone: "ok", route: "/(tabs)/submissions?filter=synced", hint: "See synced records" },
@@ -104,6 +110,26 @@ export default function HomeScreen() {
             </View>
           )}
         </Card>
+
+        {latestDraft ? (
+          <Pressable
+            onPress={() => router.push(`/form-fill/${latestDraft.localId}` as never)}
+            style={({ pressed }) => [styles.continueCard, { opacity: pressed ? 0.78 : 1 }]}
+          >
+            <ClipboardList size={20} color={colors.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.continueLabel}>Continue collecting</Text>
+              <Text numberOfLines={1} style={styles.continueForm}>
+                {latestDraftFormName}
+              </Text>
+              <Text style={styles.continueHint}>
+                {draftCount > 1 ? `${draftCount} drafts in progress` : "1 draft in progress"} ·{" "}
+                {latestDraft.responses.length} answer(s) saved
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.primary} />
+          </Pressable>
+        ) : null}
 
         <View style={styles.statsGrid}>
           {stats.map(({ label, value, tone, route, hint }) => (
@@ -175,6 +201,31 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     padding: spacing.lg,
     paddingBottom: spacing["3xl"],
+  },
+  continueCard: {
+    alignItems: "center",
+    backgroundColor: colors.panel,
+    borderColor: colors.primary,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  continueForm: {
+    ...typography.body,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  continueHint: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+  },
+  continueLabel: {
+    ...typography.micro,
+    color: colors.primary,
+    fontFamily: fontFamily.semibold,
+    textTransform: "uppercase",
   },
   failedBanner: {
     alignItems: "center",

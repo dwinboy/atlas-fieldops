@@ -98,6 +98,22 @@ function downloadCsv(
   URL.revokeObjectURL(url);
 }
 
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Not recorded";
+  return parsed.toLocaleString();
+}
+
+function displaySubmissionId(submission: Pick<SubmissionRead, "client_submission_id" | "submitted_at" | "imported_at" | "is_imported">): string {
+  const raw = submission.client_submission_id;
+  if (/^(MOB|UPL|IMP|SUB|WEB)-\d{4}-[A-Z0-9-]+$/i.test(raw)) return raw.toUpperCase();
+  const year = new Date(submission.imported_at ?? submission.submitted_at).getFullYear();
+  const suffix = raw.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "000001";
+  const prefix = submission.is_imported ? "IMP" : raw.startsWith("draft_") || raw.startsWith("submission_") ? "MOB" : "SUB";
+  return `${prefix}-${Number.isFinite(year) ? year : new Date().getFullYear()}-${suffix}`;
+}
+
 function downloadJson(filename: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -155,6 +171,8 @@ type FormGridQuestion = {
   indicatorMapping?: string | null;
   key: string;
   label: string;
+  profileField?: string | null;
+  profileImpact?: string | null;
   sensitivityLevel?: string | null;
   sourceOfTruth?: string | null;
   type: string;
@@ -219,6 +237,15 @@ function submissionEntityCode(
       : "";
   if (!submission.entity_id) return processedCode || "Not linked";
   return beneficiaryCodes.get(submission.entity_id) ?? (processedCode || submission.entity_id);
+}
+
+function linkedBeneficiaryLabel(submission: SubmissionRead | SubmissionRecord): string {
+  const links = submission.linked_beneficiaries ?? [];
+  const participantLinks = links.filter((link) => link.link_type !== "primary");
+  if (!participantLinks.length) return "None";
+  const shown = participantLinks.slice(0, 3).map((link) => link.beneficiary_uid);
+  const remaining = participantLinks.length - shown.length;
+  return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
 }
 
 function submissionAnswerMap(submission: SubmissionRead | SubmissionRecord): Record<string, unknown> {
@@ -421,6 +448,10 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
       definition?: string | null;
       id?: string;
       indicator_mapping?: string | null;
+      beneficiary?: {
+        profileField?: string | null;
+        profileImpact?: string | null;
+      };
       variable_name?: string | null;
       label?: string;
       sensitivity_level?: string | null;
@@ -435,6 +466,8 @@ function questionsFromSchema(schema: DataFormSchemaRead | null): FormGridQuestio
       indicatorMapping: field.indicator_mapping ?? null,
       key: field.variable_name || field.id || "field",
       label: field.label || field.variable_name || field.id || "Field",
+      profileField: field.beneficiary?.profileField ?? null,
+      profileImpact: field.beneficiary?.profileImpact ?? null,
       sensitivityLevel: field.sensitivity_level ?? "standard",
       sourceOfTruth: field.source_of_truth ?? "form_response",
       section: section.title || "Form questions",
@@ -468,6 +501,7 @@ function questionDictionaryLines(question: FormGridQuestion): string[] {
     `Definition: ${question.definition || "No formal definition recorded yet."}`,
     `Allowed values: ${question.allowedValues || "Defined by the response type or reference list."}`,
     `Indicator mapping: ${question.indicatorMapping || "Not mapped to an indicator yet."}`,
+    `Entity profile field: ${question.profileField || "Not mapped to an entity profile field."}`,
     `Sensitivity: ${question.sensitivityLevel || "standard"}`,
     `Source of truth: ${question.sourceOfTruth || "form_response"}`,
   ];
@@ -476,8 +510,56 @@ function questionDictionaryLines(question: FormGridQuestion): string[] {
 function formatCell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  const gpsValue = formatGpsAnswer(value);
+  if (gpsValue) return gpsValue;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatGpsAnswer(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const latitude = numberFromUnknown(record.latitude);
+  const longitude = numberFromUnknown(record.longitude);
+  if (latitude === null || longitude === null) return null;
+  const accuracy = numberFromUnknown(record.accuracy);
+  const timestamp = typeof record.timestamp === "string" ? record.timestamp : null;
+  return [
+    `GPS captured: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+    accuracy !== null ? `accuracy ${Math.round(accuracy)}m` : null,
+    timestamp ? `at ${formatDate(timestamp)}` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+function submissionHasUsableGps(submission: SubmissionRead | SubmissionRecord): boolean {
+  const locationStatus = submission.payload_json?._mobile_location_status;
+  if (locationStatus === "not_required_or_missing") return false;
+  return Number.isFinite(submission.latitude) && Number.isFinite(submission.longitude) && !(submission.latitude === 0 && submission.longitude === 0);
+}
+
+function formatSubmissionGpsEvidence(submission: SubmissionRead | SubmissionRecord): string {
+  if (!submissionHasUsableGps(submission)) return "No GPS captured";
+  const accuracy = submission.accuracy == null ? "accuracy n/a" : `accuracy ${Math.round(submission.accuracy)}m`;
+  return `${submission.latitude.toFixed(5)}, ${submission.longitude.toFixed(5)} · ${accuracy}`;
+}
+
+function formatSubmissionDeviceEvidence(submission: SubmissionRead | SubmissionRecord): string {
+  if (isImportedSubmission(submission)) return "Uploaded/imported";
+  return submission.device_id || "Unknown device";
+}
+
+function approvalActorLabel(submission: SubmissionRead | SubmissionRecord): string {
+  return submission.approved_by_name || submission.approved_by_user_id || "Not approved yet";
+}
+
+function approvalCellLabel(submission: SubmissionRead | SubmissionRecord): string {
+  if (!submission.approved_at) return approvalActorLabel(submission);
+  return `${approvalActorLabel(submission)} · ${formatDateTime(submission.approved_at)}`;
 }
 
 function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): string[] {
@@ -494,7 +576,7 @@ function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): stri
     if (status === "processed" && action === "linked") warnings.add("Beneficiary linked");
     if (proposals > 0) warnings.add("Profile update review");
   }
-  if (submission.latitude === null || submission.latitude === undefined || submission.longitude === null || submission.longitude === undefined) warnings.add("Missing GPS");
+  if (!submissionHasUsableGps(submission)) warnings.add("Missing GPS");
   if (submission.accuracy && submission.accuracy > 20) warnings.add("Low GPS accuracy");
   if ("duplicate_risk" in submission && submission.duplicate_risk && submission.duplicate_risk !== "none") warnings.add("Duplicate risk");
   if ("quality_flags" in submission) {
@@ -1030,6 +1112,18 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           {activeSection === "all" ? (
             <DataTable
               columns={columns}
+              emptyAction={
+                canManageForms
+                  ? {
+                      label: "Create form",
+                      onClick: () => {
+                        setBuilderFormId(null);
+                        setCreationOpen(true);
+                      },
+                    }
+                  : undefined
+              }
+              emptyDescription="Create a data collection form, publish it, and assign it to field officers to start collecting."
               emptyLabel="No forms match this view yet"
               rows={filteredForms}
               searchLabel="Search forms, projects, owners, status"
@@ -1855,11 +1949,13 @@ function FormDataGridWorkspace({
       }
       if (!term) return true;
       return [
+        displaySubmissionId(submission),
         submission.client_submission_id,
         source,
         submissionActorLabel(submission),
         submission.status,
         entityCode,
+        linkedBeneficiaryLabel(submission),
         ...Object.values(submissionAnswerMap(submission)).map(formatCell),
       ].join(" ").toLowerCase().includes(term);
     });
@@ -1888,15 +1984,20 @@ function FormDataGridWorkspace({
     downloadCsv(
       `${form?.slug ?? formId}-data.csv`,
       filteredSubmissions.map((submission) => ({
-        submission_id: submission.client_submission_id,
+        submission_id: displaySubmissionId(submission),
         source: submissionSourceLabel(submission),
         quality_flags: rowQualityWarnings(submission).join("; "),
         submitted_or_uploaded_by: submissionActorLabel(submission),
-        date: submission.imported_at ?? submission.submitted_at,
+        submitted_or_uploaded_at: formatDateTime(submission.imported_at ?? submission.submitted_at),
         status: submission.status,
+        approved_by: approvalActorLabel(submission),
+        approved_at: submission.approved_at ? formatDateTime(submission.approved_at) : "",
         entity_code: submissionEntityCode(submission, beneficiaryCodes),
+        linked_participants: linkedBeneficiaryLabel(submission),
         project: form?.project_name ?? submission.project_id ?? "",
         form_version: submission.server_sequence,
+        gps_evidence: formatSubmissionGpsEvidence(submission),
+        device: formatSubmissionDeviceEvidence(submission),
         ...Object.fromEntries(
           questions.map((question) => [
             question.label,
@@ -1915,6 +2016,8 @@ function FormDataGridWorkspace({
         definition: question.definition || "",
         indicator_mapping: question.indicatorMapping || "",
         label: question.label,
+        profile_field: question.profileField || "",
+        profile_impact: question.profileImpact || "",
         section: question.section,
         sensitivity_level: question.sensitivityLevel || "standard",
         source_of_truth: question.sourceOfTruth || "form_response",
@@ -2052,6 +2155,7 @@ function FormDataGridWorkspace({
           ],
           captured_at: submittedAt,
           client_submission_id: `UPL-${new Date().getFullYear()}-${String(rowIndex + 1).padStart(4, "0")}`,
+          device_id: "web-form-upload",
           duplicate_risk: "none",
           entity_id: entityCode,
           field_officer_id: "Uploaded file",
@@ -2311,7 +2415,7 @@ function FormDataGridWorkspace({
           <table className="min-w-[1180px] border-separate border-spacing-0 text-xs">
             <thead>
               <tr className="bg-muted/70 text-left text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Date", "Status", "Entity Code", "Project", "Version", "Actions"].map((header, index) => (
+                {["Submission ID", "Source", "Quality Flags", "Submitted / Uploaded By", "Submitted / Uploaded At", "Status", "Approval", "Primary Entity", "Participants", "GPS Evidence", "Device", "Project", "Version", "Actions"].map((header, index) => (
                   <th
                     className={cn(
                       "sticky top-0 z-20 whitespace-nowrap border-b px-2.5 py-2 font-semibold",
@@ -2342,6 +2446,9 @@ function FormDataGridWorkspace({
                         {question.sensitivityLevel}
                       </Badge>
                     ) : null}
+                    {question.profileField ? (
+                      <Badge tone="success">Profile: {question.profileField}</Badge>
+                    ) : null}
                   </th>
                 ))}
               </tr>
@@ -2349,7 +2456,9 @@ function FormDataGridWorkspace({
             <tbody>
               {filteredSubmissions.map((submission) => (
                 <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
-                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2.5 py-2 font-medium">{submission.client_submission_id}</td>
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b bg-inherit px-2.5 py-2 font-medium">
+                    <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
+                  </td>
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={isImportedSubmission(submission) ? "warning" : "success"}>
                       {submissionSourceLabel(submission)}
@@ -2378,11 +2487,33 @@ function FormDataGridWorkspace({
                     </div>
                   </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionActorLabel(submission)}</td>
-                  <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDate(submission.imported_at ?? submission.submitted_at)}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDateTime(submission.imported_at ?? submission.submitted_at)}</td>
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>
                   </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <span className={!submission.approved_at ? "text-muted-foreground" : undefined}>
+                      {approvalCellLabel(submission)}
+                    </span>
+                  </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionEntityCode(submission, beneficiaryCodes)}</td>
+                  <td className="max-w-56 whitespace-nowrap border-b px-2.5 py-2">
+                    <span title={(submission.linked_beneficiaries ?? []).map((link) => `${link.beneficiary_uid} ${link.display_name}`).join(", ")}>
+                      {linkedBeneficiaryLabel(submission)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <span className={cn(!submissionHasUsableGps(submission) && "text-muted-foreground")}>
+                      {formatSubmissionGpsEvidence(submission)}
+                    </span>
+                    {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
+                      <p className="mt-1 text-[11px] text-warning">Poor accuracy; review location evidence.</p>
+                    ) : null}
+                  </td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2">
+                    <p className="max-w-44 truncate font-mono text-[11px]">{formatSubmissionDeviceEvidence(submission)}</p>
+                    {submission.offline_created ? <p className="text-[11px] text-muted-foreground">Mobile offline sync</p> : null}
+                  </td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{form?.project_name ?? submission.project_id ?? "Project missing"}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">v{submission.server_sequence}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">

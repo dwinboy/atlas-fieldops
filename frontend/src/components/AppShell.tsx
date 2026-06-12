@@ -248,9 +248,6 @@ export function AppShell({
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const collapsedSidebar = useWorkspaceStore((state) => state.collapsedSidebar);
   const toggleSidebar = useWorkspaceStore((state) => state.toggleSidebar);
-  const setSidebarCollapsed = useWorkspaceStore(
-    (state) => state.setSidebarCollapsed,
-  );
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen);
   const lastActionResult = useWorkspaceStore((state) => state.lastActionResult);
   const theme = useWorkspaceStore((state) => state.theme);
@@ -360,12 +357,7 @@ export function AppShell({
           : "lg:grid-cols-[248px_1fr]",
       )}
     >
-      <aside
-        className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col"
-        onMouseEnter={() => {
-          if (collapsedSidebar) setSidebarCollapsed(false);
-        }}
-      >
+      <aside className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col">
         <div className="shrink-0">
           <div
             className={cn(

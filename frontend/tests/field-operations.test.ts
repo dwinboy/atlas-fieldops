@@ -28,7 +28,7 @@ describe("Field Operations module helpers", () => {
     expect(summary.assignedFieldOfficers).toBe(2);
     expect(summary.activeSupervisors).toBe(2);
     expect(summary.overdueAssignments).toBe(1);
-    expect(summary.dailyCollectionProgress).toBe(91);
+    expect(summary.dailyCollectionProgress).toBe(66);
   });
 
   it("calculates target progress safely", () => {

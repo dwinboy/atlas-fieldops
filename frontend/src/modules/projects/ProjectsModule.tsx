@@ -32,7 +32,9 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
+  activatePredefinedEntityCategory,
   createProject,
+  createEntityCategory,
   getProjectDetail,
   getProjectsSummary,
   importOrganizationUnits,
@@ -42,6 +44,9 @@ import {
   listProjectSectorPacks,
   listProjectTemplates,
   listProjects,
+  listEntityCategories,
+  listPredefinedEntityCategories,
+  updateEntityCategory,
   updateProject,
   type CurrentPrincipal,
   type ProjectCreate,
@@ -51,6 +56,9 @@ import {
   type ProjectSectorPackRead,
   type ProjectSummaryRead,
   type ProjectUpdate,
+  type EntityAttributeCreate,
+  type EntityCategoryRead,
+  type PredefinedEntityCategoryRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
@@ -481,6 +489,56 @@ function settingStringList(
     : [];
 }
 
+type BeneficiaryCodeFormatParts = {
+  digits: number;
+  includeYear: boolean;
+  prefix: string;
+  separator: "-" | "/" | "_";
+};
+
+const entityCodePrefixes: Record<string, string> = {
+  Beneficiary: "BEN",
+  Farmer: "FRM",
+  Household: "HH",
+  Facility: "FAC",
+  School: "SCH",
+  Village: "VIL",
+  Group: "GRP",
+  "Health Worker": "HW",
+};
+
+function defaultEntityCodePrefix(entityType: string): string {
+  const configuredPrefix = entityCodePrefixes[entityType];
+  if (configuredPrefix) return configuredPrefix;
+  return entityType.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "BEN";
+}
+
+function parseBeneficiaryCodeFormat(value: string, entityType: string): BeneficiaryCodeFormatParts {
+  const cleaned = value.trim().toUpperCase();
+  const prefix = cleaned.match(/^([A-Z0-9]{2,12})/)?.[1] ?? defaultEntityCodePrefix(entityType);
+  const separator = cleaned.includes("/") ? "/" : cleaned.includes("_") ? "_" : "-";
+  const zeroRun = cleaned.match(/0{3,10}/)?.[0];
+  return {
+    digits: Math.min(10, Math.max(3, zeroRun?.length ?? 6)),
+    includeYear: /YYYY|YEAR|20\d{2}/.test(cleaned) || !cleaned,
+    prefix,
+    separator,
+  };
+}
+
+function buildBeneficiaryCodeFormat(parts: BeneficiaryCodeFormatParts): string {
+  return [parts.prefix, parts.includeYear ? "YYYY" : null, "0".repeat(parts.digits)]
+    .filter(Boolean)
+    .join(parts.separator);
+}
+
+function beneficiaryCodePreview(value: string, entityType: string): string {
+  const parts = parseBeneficiaryCodeFormat(value, entityType);
+  return buildBeneficiaryCodeFormat(parts)
+    .replace("YYYY", String(new Date().getFullYear()))
+    .replace(/0{3,10}/, (match) => "1".padStart(match.length, "0"));
+}
+
 function topLevelStringList(
   settingsJson: Record<string, unknown> | undefined,
   key: string,
@@ -650,7 +708,7 @@ function projectReadiness(draft: ProjectCreate): {
     },
     {
       critical: true,
-      label: "Primary beneficiary/entity type is selected",
+      label: "Primary entity type is selected",
       status:
         typeof beneficiary.primaryEntityType === "string" &&
         beneficiary.primaryEntityType.trim()
@@ -659,7 +717,7 @@ function projectReadiness(draft: ProjectCreate): {
       targetStep: 3,
     },
     {
-      label: "Beneficiary code format is configured",
+      label: "Entity code format is configured",
       status:
         typeof beneficiary.codeFormat === "string" &&
         beneficiary.codeFormat.trim()
@@ -1499,6 +1557,12 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           />
           <DataTable
             columns={projectColumns}
+            emptyAction={
+              canManageProjects
+                ? { label: "Create project", onClick: () => openProjectWizard() }
+                : undefined
+            }
+            emptyDescription="Projects hold your forms, field teams, entities, and indicators. Create one to set up the program context first."
             emptyLabel="No projects match this view yet"
             rows={filteredProjects}
             searchLabel="Search projects, donors, owners, countries"
@@ -1871,7 +1935,7 @@ function ProjectDetailWorkspace({
         <div className="space-y-4">
           <ProjectDataQuality detail={detail} />
           <SectionHeader
-            description="Default approval workflow, consent, retention, and beneficiary rules applied to this project."
+            description="Default approval workflow, consent, retention, and entity rules applied to this project."
             title="Governance"
           />
           <ProjectGovernance detail={detail} />
@@ -1889,6 +1953,7 @@ function ProjectDetailWorkspace({
             detail={detail}
             isSaving={isSavingSettings}
             onUpdateSettings={onUpdateSettings}
+            token={token}
           />
           <SectionHeader
             description="Bring external data into this project or migrate records between systems."
@@ -2186,7 +2251,7 @@ function ProjectOverview({
           onClick={() => onSelectTab("Forms & Indicators")}
         />
         <InfoPanel
-          title="Beneficiary Journey"
+          title="Entity Journey"
           lines={
             formJourney.length
               ? formJourney
@@ -2293,7 +2358,7 @@ function InfoPanel({
 function ProjectDataQuality({ detail }: { detail: ProjectDetailRead }) {
   const health = projectHealthSummary(detail);
   const items = [
-    ["Duplicate Review", detail.beneficiary_count > 0 ? "Tracked in Beneficiaries" : "No beneficiaries yet"],
+    ["Duplicate Review", detail.beneficiary_count > 0 ? "Tracked in Entities" : "No entities yet"],
     ["Missing data checks", detail.total_submissions ? "Active" : "Waiting for data"],
     ["GPS issues", detail.total_submissions ? "Tracked in Data Quality" : "No submissions yet"],
     ["Validation failures", detail.total_submissions ? "Review queue enabled" : "No issues yet"],
@@ -2332,7 +2397,7 @@ function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
     [
       "Approved Data Only",
       settingBoolean(settingsDraft, "governance", "approvedDataOnly", true)
-        ? "Beneficiaries, indicators, and reports use approved records"
+        ? "Entities, indicators, and reports use approved records"
         : "Draft policy allows unapproved data where configured",
     ],
   ];
@@ -2357,7 +2422,7 @@ function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
         </div>
       </div>
       <div className="rounded-2xl border bg-background/50 p-5">
-        <h3 className="font-semibold">Beneficiary Rules</h3>
+        <h3 className="font-semibold">Entity Rules</h3>
         <div className="mt-4 grid gap-3">
           {beneficiaryItems.map(([label, value]) => (
             <Signal key={label} label={label} value={value} />
@@ -2423,11 +2488,13 @@ function ProjectSettings({
   detail,
   isSaving,
   onUpdateSettings,
+  token,
 }: {
   canManageProjects: boolean;
   detail: ProjectDetailRead;
   isSaving: boolean;
   onUpdateSettings: (settings: Record<string, unknown>) => void;
+  token: string | null;
 }) {
   const [settings, setSettings] = useState<Record<string, unknown>>(() =>
     sanitizeProjectSettings(detail.settings_json),
@@ -2474,6 +2541,16 @@ function ProjectSettings({
     setSector({ [key]: splitLines(value) });
   const setBeneficiary = (patch: Record<string, unknown>): void =>
     setSection("beneficiary", patch);
+  const categoriesQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token"),
+    queryFn: () => listEntityCategories(token ?? "", { include_archived: true, project_id: detail.id }),
+    queryKey: ["entity-categories", token, detail.id],
+  });
+  const libraryQuery = useQuery({
+    enabled: Boolean(token && token !== "preview-token"),
+    queryFn: () => listPredefinedEntityCategories(token ?? ""),
+    queryKey: ["entity-category-library", token],
+  });
 
   return (
     <div className="space-y-4">
@@ -2512,6 +2589,11 @@ function ProjectSettings({
           <div className="space-y-3">
             <div className="rounded-xl border bg-panel p-3">
               <h4 className="text-sm font-semibold">Terminology</h4>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Set the words this project uses so agriculture, health, education,
+                infrastructure, protection, and custom projects do not all have to
+                sound like beneficiary-only programs.
+              </p>
               <div className="mt-3 grid gap-2">
                 <FieldInput
                   disabled={!canManageProjects}
@@ -2545,6 +2627,49 @@ function ProjectSettings({
                   }
                   value={String(terminology.submission ?? "")}
                 />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Registry label"
+                  onChange={(event) =>
+                    setTerminology("registry", event.target.value)
+                  }
+                  value={String(terminology.registry ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Form label"
+                  onChange={(event) =>
+                    setTerminology("form", event.target.value)
+                  }
+                  value={String(terminology.form ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Approval label"
+                  onChange={(event) =>
+                    setTerminology("approval", event.target.value)
+                  }
+                  value={String(terminology.approval ?? "")}
+                />
+                <FieldInput
+                  disabled={!canManageProjects}
+                  label="Report label"
+                  onChange={(event) =>
+                    setTerminology("report", event.target.value)
+                  }
+                  value={String(terminology.report ?? "")}
+                />
+              </div>
+              <div className="mt-3 rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+                <p className="font-semibold text-foreground">Preview</p>
+                <p className="mt-1">
+                  {String(terminology.registry || "Registry")} tracks{" "}
+                  {String(terminology.primary_entity || beneficiarySettings.primaryEntityType || "entities")}.
+                  Field teams submit {String(terminology.submission || "records")} using{" "}
+                  {String(terminology.form || "forms")}; managers complete{" "}
+                  {String(terminology.approval || "review")} before data appears in{" "}
+                  {String(terminology.report || "reports")}.
+                </p>
               </div>
             </div>
 
@@ -2559,12 +2684,10 @@ function ProjectSettings({
                   }
                   value={String(beneficiarySettings.primaryEntityType ?? "")}
                 />
-                <FieldInput
+                <BeneficiaryCodeFormatDesigner
                   disabled={!canManageProjects}
-                  label="Beneficiary code format"
-                  onChange={(event) =>
-                    setBeneficiary({ codeFormat: event.target.value })
-                  }
+                  entityType={String(beneficiarySettings.primaryEntityType ?? "Beneficiary")}
+                  onChange={(codeFormat) => setBeneficiary({ codeFormat })}
                   value={String(beneficiarySettings.codeFormat ?? "")}
                 />
                 <ListEditor
@@ -2575,6 +2698,15 @@ function ProjectSettings({
                 />
               </div>
             </div>
+
+            <EntityCategoryManager
+              canManage={canManageProjects}
+              categories={categoriesQuery.data ?? []}
+              detail={detail}
+              isLoading={categoriesQuery.isLoading || libraryQuery.isLoading}
+              library={libraryQuery.data ?? []}
+              token={token}
+            />
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -2645,6 +2777,248 @@ function FieldInput({
       <span>{label}</span>
       <Input disabled={disabled} onChange={onChange} value={value} />
     </label>
+  );
+}
+
+function BeneficiaryCodeFormatDesigner({
+  disabled,
+  entityType,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  entityType: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const parts = parseBeneficiaryCodeFormat(value, entityType);
+  const setParts = (patch: Partial<BeneficiaryCodeFormatParts>): void =>
+    onChange(buildBeneficiaryCodeFormat({ ...parts, ...patch }));
+  const preview = beneficiaryCodePreview(value, entityType);
+
+  return (
+    <div className="rounded-xl border bg-background/60 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-foreground">Entity code format</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Controls new entity codes created from approved submissions and imports.
+          </p>
+        </div>
+        <Badge tone="support">{preview}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Prefix
+          <Input
+            disabled={disabled}
+            maxLength={12}
+            onChange={(event) =>
+              setParts({
+                prefix:
+                  event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase() ||
+                  defaultEntityCodePrefix(entityType),
+              })
+            }
+            value={parts.prefix}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Separator
+          <Select
+            disabled={disabled}
+            onChange={(event) =>
+              setParts({ separator: event.target.value as BeneficiaryCodeFormatParts["separator"] })
+            }
+            value={parts.separator}
+          >
+            <option value="-">Dash (-)</option>
+            <option value="/">Slash (/)</option>
+            <option value="_">Underscore (_)</option>
+          </Select>
+        </label>
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Sequence length
+          <Select
+            disabled={disabled}
+            onChange={(event) => setParts({ digits: Number(event.target.value) })}
+            value={String(parts.digits)}
+          >
+            {[4, 5, 6, 7, 8].map((digits) => (
+              <option key={digits} value={digits}>
+                {digits} digits
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-xs font-medium text-muted-foreground">
+          <input
+            checked={parts.includeYear}
+            disabled={disabled}
+            onChange={(event) => setParts({ includeYear: event.target.checked })}
+            type="checkbox"
+          />
+          Include year
+        </label>
+      </div>
+      <label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
+        Advanced pattern
+        <Input
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+          placeholder="BEN-YYYY-000001"
+          value={value}
+        />
+      </label>
+      <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+        Existing codes stay unchanged. Imports can keep a legacy ID separately while Atlas assigns this official ID.
+      </p>
+    </div>
+  );
+}
+
+function EntityCategoryManager({
+  canManage,
+  categories,
+  detail,
+  isLoading,
+  library,
+  token,
+}: {
+  canManage: boolean;
+  categories: EntityCategoryRead[];
+  detail: ProjectDetailRead;
+  isLoading: boolean;
+  library: PredefinedEntityCategoryRead[];
+  token: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const [customName, setCustomName] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
+  const activeCategoryNames = new Set(categories.filter((category) => category.status !== "archived").map((category) => category.slug));
+  const availablePresets = library.filter((category) => !activeCategoryNames.has(category.slug)).slice(0, 80);
+  const invalidate = async (): Promise<void> => {
+    await queryClient.invalidateQueries({ queryKey: ["entity-categories", token, detail.id] });
+  };
+  const activateMutation = useMutation({
+    mutationFn: (slug: string) => activatePredefinedEntityCategory(token ?? "", detail.id, slug),
+    onSuccess: () => void invalidate(),
+  });
+  const createMutation = useMutation({
+    mutationFn: (name: string) =>
+      createEntityCategory(token ?? "", {
+        attributes: [
+          { field_key: "name", field_type: "text", label: "Name", required: true },
+          { field_key: "status", field_type: "dropdown", label: "Status", options_json: ["active", "inactive", "archived"] },
+          { field_key: "location", field_type: "text", label: "Location" },
+        ],
+        color: "#0f8a4b",
+        description: `Custom ${name} entity category for ${detail.name}.`,
+        icon: "layers",
+        name,
+        project_id: detail.id,
+        statuses_json: ["active", "inactive", "archived"],
+      }),
+    onSuccess: () => {
+      setCustomName("");
+      void invalidate();
+    },
+  });
+  const archiveMutation = useMutation({
+    mutationFn: (category: EntityCategoryRead) =>
+      updateEntityCategory(token ?? "", category.id, { status: category.status === "archived" ? "active" : "archived" }),
+    onSuccess: () => void invalidate(),
+  });
+
+  return (
+    <div className="rounded-xl border bg-panel p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold">Entity Category Manager</h4>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Define what this project tracks: people, institutions, assets, locations, groups, cases, or any custom record type.
+          </p>
+        </div>
+        <Badge tone="support">{categories.filter((category) => category.status !== "archived").length} active</Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {isLoading ? <p className="text-xs text-muted-foreground">Loading entity categories...</p> : null}
+        {categories.slice(0, 6).map((category) => (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-background/70 px-3 py-2" key={category.id}>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color }} />
+                <p className="truncate text-sm font-medium">{category.name}</p>
+                <Badge tone={category.status === "archived" ? "neutral" : "success"}>{category.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {category.attributes.length} field(s) · {category.sector ?? "custom"} · {category.statuses_json.join(", ") || "standard workflow"}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                New record code example: <span className="font-medium text-foreground">{beneficiaryCodePreview("", category.name)}</span>
+              </p>
+            </div>
+            <Button
+              disabled={!canManage || archiveMutation.isPending}
+              onClick={() => archiveMutation.mutate(category)}
+              size="sm"
+              variant="ghost"
+            >
+              {category.status === "archived" ? "Restore" : "Archive"}
+            </Button>
+          </div>
+        ))}
+        {!categories.length && !isLoading ? (
+          <div className="rounded-lg border border-dashed bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+            No entity categories configured yet. Activate a sector preset or create a custom category before building entity-linked forms.
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-2">
+        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+          Activate sector preset
+          <Select
+            disabled={!canManage || activateMutation.isPending}
+            onChange={(event) => setSelectedPreset(event.target.value)}
+            value={selectedPreset}
+          >
+            <option value="">Choose predefined category</option>
+            {availablePresets.map((category) => (
+              <option key={`${category.sector}-${category.slug}`} value={category.slug}>
+                {category.name} · {category.sector}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button
+          disabled={!canManage || !selectedPreset || activateMutation.isPending}
+          onClick={() => {
+            activateMutation.mutate(selectedPreset);
+            setSelectedPreset("");
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          Activate preset
+        </Button>
+        <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <Input
+            disabled={!canManage || createMutation.isPending}
+            onChange={(event) => setCustomName(event.target.value)}
+            placeholder="Create custom category, e.g. Innovation Hub"
+            value={customName}
+          />
+          <Button
+            disabled={!canManage || customName.trim().length < 2 || createMutation.isPending}
+            onClick={() => createMutation.mutate(customName.trim())}
+            size="sm"
+            variant="primary"
+          >
+            Create category
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3319,13 +3693,13 @@ function ProjectWizardStepContent({
               })
             }
           />
-          <Input
-            placeholder="Code format, e.g. FRM-YYYY-000001"
-            value={settingText(draft, "beneficiary", "codeFormat")}
-            onChange={(event) =>
-              updateSettings("beneficiary", { codeFormat: event.target.value })
-            }
-          />
+          <div className="md:col-span-2">
+            <BeneficiaryCodeFormatDesigner
+              entityType={settingText(draft, "beneficiary", "primaryEntityType", "Beneficiary")}
+              onChange={(codeFormat) => updateSettings("beneficiary", { codeFormat })}
+              value={settingText(draft, "beneficiary", "codeFormat")}
+            />
+          </div>
           <Select
             value={settingText(
               draft,

@@ -173,12 +173,26 @@ Initial supported packs:
 - Humanitarian Response and Protection
 - Custom Sector
 
+## Dynamic Entity Category Architecture
+
+Projects must track any sector record type through configuration, not through hardcoded tables. Entity categories represent the type of record a project manages, such as Farmer, Household, School, Health Facility, Water Point, Business, Asset, Case Record, Road, Partner, or a custom organization-defined type.
+
+Core rules:
+
+- Use `EntityCategory`, `EntityAttribute`, `EntityAttributeValue`, and the existing entity/beneficiary registry for flexible records.
+- Do not add sector-specific tables such as `schools`, `farmers`, `clinics`, or `water_points`.
+- Project Settings owns category activation, custom category creation, category attributes, category status/workflow metadata, colors, icons, and code examples.
+- Forms may link to a project entity category and may create, update, or require existing records according to form controls.
+- Mobile sync must download assigned entity categories and use them when displaying forms, assignments, entity selection, duplicate warnings, and submission context.
+- Approved submissions create or update official entity records only through the governed entity processing flow.
+- Generated entity codes should use the project code format when configured; otherwise derive a readable prefix from the entity category name.
+
 Rules:
 
 - Do not create separate top-level modules for each industry.
 - Sector packs must remain editable by M&E managers because donor requirements, local terminology, project designs, locations, and reporting rules differ.
 - Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed indicators, beneficiary/entity linkage, data quality review, and audit history.
-- Custom sectors must use the same project, form, beneficiary, assignment, submission, indicator, report, governance, and mobile sync architecture.
+- Custom sectors must use the same project, form, entity registry, assignment, submission, indicator, report, governance, and mobile sync architecture.
 
 Implementation guidance:
 
@@ -327,7 +341,7 @@ Form publishing rule:
 
 - A form may be saved as draft while incomplete, but it must pass Field Readiness / Publish Controls before it can be published or assigned to field officers.
 - The form lifecycle is Draft -> Testing -> Review -> Approved -> Published, with Suspended and Archived for operational control. Direct Draft -> Published should be blocked unless an explicit bypass permission is implemented and audited.
-- Publish readiness must verify form information, project linkage, entity rules, beneficiary profile mappings, frequency rules, duplicate prevention, question validation, logic, structure, reference data, GPS, media, consent, data quality, workflow, reviewer roles, permissions, assignment rules, offline settings, risk classification, version number, and change summary.
+- Publish readiness must verify form information, project linkage, entity rules, entity profile mappings, frequency rules, duplicate prevention, question validation, logic, structure, reference data, GPS, media, consent, data quality, workflow, reviewer roles, permissions, assignment rules, offline settings, risk classification, version number, and change summary.
 - Advanced M&E instrument metadata belongs in Forms controls, not in a duplicate module. This includes form objective, business purpose, result area, linked outcome/output, indicator mappings, form-level data dictionary, question dependencies, profile impact rules, tracking series, survey waves, seasonal rules, sampling metadata, event settings, related forms, trigger rules, localization, accessibility, and AI-ready metadata.
 - Indicator mappings stored on a form must remain traceable from question -> variable -> indicator component -> approved submission -> beneficiary/project -> report.
 - Publishing creates or updates an immutable published version; editing a published form must create a new draft/version and must not silently overwrite historical form versions or submissions.
@@ -723,7 +737,7 @@ Required mobile API namespace:
 Mobile pilot administration:
 
 - Organization-level mobile deployment controls belong in Administration, not Platform Console, because they manage an organization field rollout.
-- Approved routes are `/administration/mobile-devices`, `/administration/mobile-versions`, `/administration/mobile-pilots`, `/administration/mobile-monitoring`, `/administration/mobile-monitoring/crashes`, `/administration/mobile-feedback`, and `/administration/mobile-testing`.
+- The canonical route is the `/administration/mobile` hub with Devices, Versions, Pilots, Monitoring, Feedback, and Testing tabs. Legacy routes `/administration/mobile-devices`, `/administration/mobile-devices/:deviceId`, `/administration/mobile-versions`, `/administration/mobile-pilots`, `/administration/mobile-monitoring`, `/administration/mobile-monitoring/crashes`, `/administration/mobile-feedback`, and `/administration/mobile-testing` remain valid and resolve to the matching hub tab.
 - Mobile device records track device ID, device name, user, organization, Android version, app version, registration date, last sync, last login, status, remote logout readiness, and future remote wipe readiness.
 - Version management must define current production version, staging version, minimum supported version, optional update state, mandatory update state, and release notes.
 - Pilot records must track pilot name, project, dates, devices, field officers, supervisors, status, submissions, sync failures, crashes, issues, and feedback.

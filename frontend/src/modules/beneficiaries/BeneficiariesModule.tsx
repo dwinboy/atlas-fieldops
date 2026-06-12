@@ -29,6 +29,7 @@ import {
   createBeneficiary,
   getProjectEntities,
   governExport,
+  listEntityCategories,
   listBeneficiaries,
   listFieldOfficers,
   listProjects,
@@ -37,6 +38,7 @@ import {
   type BeneficiaryCreate,
   type CurrentPrincipal,
   type FieldOfficerRead,
+  type EntityCategoryRead,
   type ProjectListItemRead,
   type SubmissionRead,
 } from "@/lib/api";
@@ -84,6 +86,7 @@ const emptyRegistrationDraft: EntityRegistrationDraft = {
   consentStatus: "Missing",
   continuationReason: "",
   country: "",
+  customProfile: {},
   community: "",
   dateOfBirth: "",
   district: "",
@@ -114,6 +117,30 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
+function exportableProfileFields(entity: BeneficiaryEntity): Record<string, string | number | boolean | null | undefined> {
+  const skip = new Set([
+    "assignedOfficer",
+    "country",
+    "formsCompleted",
+    "householdId",
+    "nationalId",
+    "projectName",
+    "registrationDate",
+    "fieldLineage",
+    "profileFieldLineage",
+    "profileLineage",
+    "profileUpdateProposals",
+  ]);
+  return Object.fromEntries(
+    Object.entries(entity.profileJson ?? {})
+      .filter(([key, value]) => value !== null && value !== undefined && value !== "" && !key.startsWith("_") && !skip.has(key))
+      .map(([key, value]) => [
+        `profile_${key.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase()}`,
+        typeof value === "object" ? JSON.stringify(value) : String(value),
+      ]),
+  );
+}
+
 export function BeneficiariesModule({
   principal,
   token,
@@ -131,6 +158,8 @@ export function BeneficiariesModule({
   });
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerDraft, setRegisterDraft] = useState<EntityRegistrationDraft>(emptyRegistrationDraft);
+  const [entityTypeFilter, setEntityTypeFilter] = useState("all");
+  const [projectFilter, setProjectFilter] = useState("all");
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
@@ -158,6 +187,11 @@ export function BeneficiariesModule({
     enabled: Boolean(token && !preview),
     queryFn: () => listFieldOfficers(token ?? ""),
     queryKey: ["beneficiaries", "field-officers", token],
+  });
+  const entityCategoriesQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listEntityCategories(token ?? "", { include_archived: false }),
+    queryKey: ["beneficiaries", "entity-categories", token],
   });
 
   const linkedSubmissionRows = useMemo<SubmissionRead[]>(
@@ -197,7 +231,30 @@ export function BeneficiariesModule({
   const duplicates = entities.filter(
     (entity) => entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0,
   );
-  const activeEntities = entities.filter((entity) => entity.status === "Active");
+  const entityTypeOptions = useMemo(
+    () => Array.from(new Set(entities.map((entity) => entity.entityType))).sort(),
+    [entities],
+  );
+  const registrationEntityTypes = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...entityTypes,
+          ...(entityCategoriesQuery.data ?? []).map((category) => category.name),
+          ...entityTypeOptions,
+        ]),
+      ).sort(),
+    [entityCategoriesQuery.data, entityTypeOptions],
+  );
+  const filteredEntities = useMemo(
+    () =>
+      entities.filter(
+        (entity) =>
+          (entityTypeFilter === "all" || entity.entityType === entityTypeFilter) &&
+          (projectFilter === "all" || entity.projectId === projectFilter),
+      ),
+    [entities, entityTypeFilter, projectFilter],
+  );
   const managerAccess = canManage(principal);
   const projectOptions = useMemo(() => {
     if (preview) {
@@ -221,7 +278,7 @@ export function BeneficiariesModule({
       setMergeOpen(false);
       setMergeDraft({ duplicateId: "", masterId: "", reason: "" });
       pushToast({
-        title: "Beneficiaries merged",
+        title: "Entities merged",
         description: `${result.moved_submissions} submissions and ${result.moved_quality_signals} quality signals now point to the master record.`,
         tone: "success",
       });
@@ -259,13 +316,13 @@ export function BeneficiariesModule({
     label: string;
     value: string | number;
   }[] = [
-    { icon: UsersRound, label: "Total Entities", value: entities.length },
-    { icon: CheckCircle2, label: "Active Entities", value: activeEntities.length },
-    { icon: AlertTriangle, label: "Duplicates Flagged", value: duplicates.length },
+    { icon: UsersRound, label: "Total Entities", value: filteredEntities.length },
+    { icon: CheckCircle2, label: "Active Entities", value: filteredEntities.filter((entity) => entity.status === "Active").length },
+    { icon: AlertTriangle, label: "Duplicates Flagged", value: filteredEntities.filter((entity) => entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0).length },
     {
       icon: Smartphone,
       label: "Pending Profile Updates",
-      value: entities.reduce((total, entity) => total + profileUpdateProposals(entity).length, 0),
+      value: filteredEntities.reduce((total, entity) => total + profileUpdateProposals(entity).length, 0),
     },
   ];
 
@@ -296,7 +353,7 @@ export function BeneficiariesModule({
 
   function submitMerge(): void {
     if (preview || !token || !managerAccess) {
-      pushToast({ title: "Merge unavailable", description: "Sign in with beneficiary management permission to merge duplicate records.", tone: "warning" });
+      pushToast({ title: "Merge unavailable", description: "Sign in with entity management permission to merge duplicate records.", tone: "warning" });
       return;
     }
     if (!mergeDraft.duplicateId || !mergeDraft.masterId || mergeDraft.duplicateId === mergeDraft.masterId) {
@@ -322,7 +379,7 @@ export function BeneficiariesModule({
 
   function submitRegistration(): void {
     if (preview || !token || !managerAccess) {
-      pushToast({ title: "Registration unavailable", description: "Sign in with beneficiary management permission to register new entities.", tone: "warning" });
+      pushToast({ title: "Registration unavailable", description: "Sign in with entity management permission to register new entities.", tone: "warning" });
       return;
     }
     if (!registerDraft.projectId) {
@@ -358,6 +415,7 @@ export function BeneficiariesModule({
       longitude: Number.isFinite(longitude) ? longitude : null,
       phone_number: registerDraft.phoneNumber || null,
       profile_json: {
+        ...registerDraft.customProfile,
         consentStatus: registerDraft.consentStatus,
         country: registerDraft.country,
         householdId: registerDraft.householdId,
@@ -380,13 +438,14 @@ export function BeneficiariesModule({
         dataset_type: "beneficiaries",
         export_format: "csv",
         anonymized: false,
-        record_count: entities.length,
-        filters_json: {},
+        record_count: filteredEntities.length,
+        filters_json: { entity_type: entityTypeFilter, project_id: projectFilter },
       }).catch(() => undefined);
     }
     downloadCsv(
-      "atlas-beneficiaries.csv",
-      entities.map((entity) => ({
+      "atlas-entities.csv",
+      filteredEntities.map((entity) => ({
+        ...exportableProfileFields(entity),
         entity_id: entity.entityId,
         full_name: entity.fullName,
         entity_type: entity.entityType,
@@ -412,12 +471,12 @@ export function BeneficiariesModule({
         <div className="rounded-xl border bg-panel p-3.5 shadow-line">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <Badge tone="collect">BENEFICIARIES</Badge>
+              <Badge tone="collect">ENTITIES</Badge>
               <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-                Import beneficiaries
+                Import entities
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Import farmer, household, beneficiary, facility, school, or
+                Import farmer, household, entity, facility, school, or
                 custom entity registries into a selected project with duplicate
                 review and audit tracking.
               </p>
@@ -452,6 +511,16 @@ export function BeneficiariesModule({
         </button>
       ),
       value: (entity) => `${entity.fullName} ${entity.entityId}`,
+    },
+    {
+      header: "Entity ID",
+      key: "beneficiary_id",
+      render: (entity) => (
+        <span className="font-mono text-xs" title="Readable system code. Prefix shows entity type, year shows creation year, number is the organization sequence.">
+          {entity.entityId}
+        </span>
+      ),
+      value: (entity) => entity.entityId,
     },
     {
       header: "Project",
@@ -532,9 +601,9 @@ export function BeneficiariesModule({
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Beneficiaries
+                Entities
               </h1>
-              <HelpHint label="About Beneficiaries" title="Beneficiaries">
+              <HelpHint label="About Entities" title="Entities">
                 Register each farmer, household, facility, school, group, or
                 custom entity once, then link forms and submissions to that
                 record over time.
@@ -548,7 +617,7 @@ export function BeneficiariesModule({
               variant="primary"
             >
               <FileUp aria-hidden="true" />
-              Import beneficiaries
+              Import entities
             </Button>
             <Button
               disabled={!managerAccess}
@@ -592,19 +661,71 @@ export function BeneficiariesModule({
         ))}
       </div>
 
+      <div className="flex flex-col gap-2 rounded-xl border bg-panel p-3 shadow-line md:flex-row md:items-end">
+        <label className="text-sm font-medium md:w-64">
+          Entity category
+          <Select
+            className="mt-1"
+            onChange={(event) => setEntityTypeFilter(event.target.value)}
+            value={entityTypeFilter}
+          >
+            <option value="all">All categories</option>
+            {entityTypeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="text-sm font-medium md:w-72">
+          Project
+          <Select
+            className="mt-1"
+            onChange={(event) => setProjectFilter(event.target.value)}
+            value={projectFilter}
+          >
+            <option value="all">All projects</option>
+            {projectOptions.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button
+          disabled={entityTypeFilter === "all" && projectFilter === "all"}
+          onClick={() => {
+            setEntityTypeFilter("all");
+            setProjectFilter("all");
+          }}
+          variant="secondary"
+        >
+          Clear filters
+        </Button>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <DataTable
           columns={columns}
-          emptyLabel="No beneficiary or entity records match this view"
-          rows={entities}
+          emptyAction={
+            managerAccess
+              ? {
+                  label: "Import entities",
+                  onClick: () => openWorkspace("beneficiaries", "/beneficiaries/import"),
+                }
+              : undefined
+          }
+          emptyDescription="Import entities from CSV or Excel into a project, or register them through a published mobile form."
+          emptyLabel="No entity records match this view"
+          rows={filteredEntities}
           searchLabel="Search entity ID, name, phone, project, location"
           title={entitiesQuery.isFetching ? "Registry syncing" : "Entity registry"}
         />
         <EntitySidePanel
           duplicates={duplicates}
-          entity={selectedEntity ?? entities[0] ?? null}
+          entity={selectedEntity ?? filteredEntities[0] ?? null}
           linkedSubmissions={
-            submissionsByEntity.get((selectedEntity ?? entities[0])?.id ?? "") ?? []
+            submissionsByEntity.get((selectedEntity ?? filteredEntities[0])?.id ?? "") ?? []
           }
           managerAccess={managerAccess}
           onMerge={openMergeReview}
@@ -626,6 +747,8 @@ export function BeneficiariesModule({
         canSubmit={managerAccess && !preview && !createMutation.isPending}
         draft={registerDraft}
         entities={entities}
+        entityCategories={entityCategoriesQuery.data ?? []}
+        entityTypeOptions={registrationEntityTypes}
         onChange={setRegisterDraft}
         onOpenChange={setRegisterOpen}
         onSubmit={submitRegistration}
@@ -657,7 +780,7 @@ function EntitySidePanel({
   if (!entity) {
     return (
       <aside className="rounded-xl border border-dashed bg-panel p-4 text-sm text-muted-foreground">
-        Import beneficiaries into a project or collect them through a
+        Import entities into a project or collect them through a
         project-linked mobile registration form to see profile, records,
         duplicate status, map readiness, and mobile sync context.
       </aside>
@@ -813,6 +936,31 @@ function BeneficiaryOverview({
 function BeneficiaryProfile({ entity }: { entity: BeneficiaryEntity }) {
   const lineage = fieldLineage(entity);
   const proposals = profileUpdateProposals(entity);
+  const customProfileRows = Object.entries(entity.profileJson ?? {})
+    .filter(([key, value]) => {
+      const normalized = key.toLowerCase();
+      return (
+        value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        !normalized.startsWith("_") &&
+        ![
+          "assignedofficer",
+          "country",
+          "formsccompleted",
+          "formscompleted",
+          "householdid",
+          "nationalid",
+          "projectname",
+          "registrationdate",
+          "fieldlineage",
+          "profilefieldlineage",
+          "profilelineage",
+          "profileupdateproposals",
+        ].includes(normalized)
+      );
+    })
+    .slice(0, 24);
   const rows = [
     ["Name", entity.fullName, "display_name"],
     ["Phone", entity.phoneNumber ?? "Not recorded", "phone_number"],
@@ -862,6 +1010,31 @@ function BeneficiaryProfile({ entity }: { entity: BeneficiaryEntity }) {
           </div>
         </div>
       ) : null}
+      {customProfileRows.length ? (
+        <div className="rounded-lg border bg-background p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Custom profile fields</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Dynamic values captured from this entity category or approved form submissions.
+              </p>
+            </div>
+            <Badge tone="neutral">{customProfileRows.length}</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {customProfileRows.map(([key, value]) => (
+              <div className="rounded-md border bg-panel/60 p-2" key={key}>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {humanizeProfileKey(key)}
+                </p>
+                <p className="mt-1 truncate text-sm font-medium" title={formatProfileValue(value)}>
+                  {formatProfileValue(value)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -874,7 +1047,7 @@ function BeneficiaryRecords({
   if (!linkedSubmissions.length) {
     return (
       <p className="mt-4 rounded-lg border border-dashed bg-background p-3 text-sm text-muted-foreground">
-        No approved or pending submissions are linked to this beneficiary yet.
+        No approved or pending submissions are linked to this entity yet.
       </p>
     );
   }
@@ -912,7 +1085,7 @@ function BeneficiaryTimeline({
 }) {
   const events = [
     {
-      label: "Beneficiary Created",
+      label: "Entity Created",
       meta: `${entity.registrationSource} · ${entity.entityId}`,
       time: entity.registrationDate,
     },
@@ -945,6 +1118,20 @@ function fieldLineage(entity: BeneficiaryEntity): Record<string, Record<string, 
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, Record<string, unknown>>)
     : {};
+}
+
+function humanizeProfileKey(key: string): string {
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatProfileValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(formatProfileValue).join(", ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value ?? "Not recorded");
 }
 
 function profileUpdateProposals(entity: BeneficiaryEntity): {
@@ -1023,15 +1210,15 @@ function MergeBeneficiariesModal({
   return (
     <Modal
       contentClassName="max-w-4xl"
-      description="Compare duplicate beneficiary records, choose the master, provide a reason, and preserve linked submissions."
+      description="Compare duplicate entity records, choose the master, provide a reason, and preserve linked submissions."
       onOpenChange={onOpenChange}
       open={open}
-      title="Merge duplicate beneficiaries"
+      title="Merge duplicate entities"
     >
       <div className="space-y-4">
         {preview ? (
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-            Preview data can show the workflow, but merging requires a signed-in tenant account with beneficiary management permission.
+            Preview data can show the workflow, but merging requires a signed-in tenant account with entity management permission.
           </div>
         ) : null}
         <div className="grid gap-3 md:grid-cols-2">
@@ -1080,7 +1267,7 @@ function MergeBeneficiariesModal({
           />
         </label>
         <div className="rounded-xl border bg-muted/40 p-3 text-sm text-muted-foreground">
-          Merging never hard-deletes a beneficiary. Linked submissions and quality signals move to the master record, the duplicate remains traceable, and the reason is stored for audit.
+          Merging never hard-deletes an entity. Linked submissions and quality signals move to the master record, the duplicate remains traceable, and the reason is stored for audit.
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
@@ -1125,6 +1312,8 @@ function RegisterEntityModal({
   canSubmit,
   draft,
   entities,
+  entityCategories,
+  entityTypeOptions,
   onChange,
   onOpenChange,
   onSubmit,
@@ -1136,6 +1325,8 @@ function RegisterEntityModal({
   canSubmit: boolean;
   draft: EntityRegistrationDraft;
   entities: BeneficiaryEntity[];
+  entityCategories: EntityCategoryRead[];
+  entityTypeOptions: string[];
   onChange: (draft: EntityRegistrationDraft) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
@@ -1144,6 +1335,27 @@ function RegisterEntityModal({
   projectOptions: { id: string; name: string }[];
   saving: boolean;
 }) {
+  const projectCategoryOptions = useMemo(
+    () =>
+      entityCategories.filter(
+        (category) => !draft.projectId || !category.project_id || category.project_id === draft.projectId,
+      ),
+    [draft.projectId, entityCategories],
+  );
+  const selectedCategory = useMemo(
+    () =>
+      projectCategoryOptions.find((category) => category.name === draft.entityType) ??
+      entityCategories.find((category) => category.name === draft.entityType) ??
+      null,
+    [draft.entityType, entityCategories, projectCategoryOptions],
+  );
+  const customAttributes = useMemo(
+    () =>
+      (selectedCategory?.attributes ?? [])
+        .filter((attribute) => attribute.status !== "archived")
+        .sort((first, second) => (first.order_index ?? 0) - (second.order_index ?? 0)),
+    [selectedCategory],
+  );
   const isInstitution = draft.entityType === "Facility" || draft.entityType === "School";
   const duplicates = useMemo(
     () =>
@@ -1157,10 +1369,14 @@ function RegisterEntityModal({
     onChange({ ...draft, [key]: value });
   }
 
+  function updateCustomProfile(key: string, value: string): void {
+    onChange({ ...draft, customProfile: { ...draft.customProfile, [key]: value } });
+  }
+
   return (
     <Modal
       contentClassName="max-w-4xl"
-      description="Register a new farmer, household, beneficiary, facility, school, or other entity in this registry, with a live duplicate check before saving."
+      description="Register a new farmer, household, entity, facility, school, or other entity in this registry, with a live duplicate check before saving."
       onOpenChange={onOpenChange}
       open={open}
       title="Register entity"
@@ -1168,7 +1384,7 @@ function RegisterEntityModal({
       <div className="max-h-[70vh] space-y-4 overflow-y-auto product-scrollbar pr-1">
         {preview ? (
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-            Preview data can show the workflow, but registering a new entity requires a signed-in tenant account with beneficiary management permission.
+            Preview data can show the workflow, but registering a new entity requires a signed-in tenant account with entity management permission.
           </div>
         ) : null}
         <div className="grid gap-3 md:grid-cols-2">
@@ -1179,12 +1395,17 @@ function RegisterEntityModal({
               onChange={(event) => update("entityType", event.target.value as EntityType)}
               value={draft.entityType}
             >
-              {entityTypes.map((type) => (
+              {entityTypeOptions.map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>
               ))}
             </Select>
+            {projectCategoryOptions.length ? (
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Project categories available: {projectCategoryOptions.map((category) => category.name).slice(0, 4).join(", ")}
+              </span>
+            ) : null}
           </label>
           <label className="text-sm font-medium">
             Project
@@ -1192,7 +1413,15 @@ function RegisterEntityModal({
               className="mt-2"
               onChange={(event) => {
                 const project = projectOptions.find((option) => option.id === event.target.value);
-                onChange({ ...draft, projectId: event.target.value, projectName: project?.name ?? "" });
+                const category = entityCategories.find(
+                  (item) => item.project_id === event.target.value,
+                );
+                onChange({
+                  ...draft,
+                  entityType: (category?.name ?? draft.entityType) as EntityType,
+                  projectId: event.target.value,
+                  projectName: project?.name ?? "",
+                });
               }}
               value={draft.projectId}
             >
@@ -1205,6 +1434,48 @@ function RegisterEntityModal({
             </Select>
           </label>
         </div>
+        {customAttributes.length ? (
+          <div className="rounded-xl border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">{draft.entityType} fields</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Fields configured for this project entity category.
+                </p>
+              </div>
+              <Badge tone="neutral">{customAttributes.length}</Badge>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {customAttributes.slice(0, 12).map((attribute) => (
+                <label className="text-sm font-medium" key={attribute.field_key}>
+                  {attribute.label}
+                  {attribute.required ? <span className="text-danger"> *</span> : null}
+                  {attribute.options_json?.length ? (
+                    <Select
+                      className="mt-2"
+                      onChange={(event) => updateCustomProfile(attribute.field_key, event.target.value)}
+                      value={draft.customProfile[attribute.field_key] ?? ""}
+                    >
+                      <option value="">Select</option>
+                      {attribute.options_json.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Input
+                      className="mt-2"
+                      onChange={(event) => updateCustomProfile(attribute.field_key, event.target.value)}
+                      type={attribute.field_type === "number" ? "number" : attribute.field_type === "date" ? "date" : "text"}
+                      value={draft.customProfile[attribute.field_key] ?? ""}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {isInstitution ? (
           <label className="block text-sm font-medium">
             Name
@@ -1330,6 +1601,7 @@ function RegisterEntityModal({
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               Review these records before saving to avoid creating a duplicate entity. This warning does not block registration.
+              {customAttributes.length ? " Category fields such as IDs, codes, names, phones, and locations are included in this check." : ""}
             </p>
           </div>
         ) : null}
@@ -1404,10 +1676,10 @@ export function ProjectBeneficiariesPanel({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">Project Beneficiaries</h3>
-            <HelpHint label="About Project Beneficiaries" title="Project Beneficiaries">
+            <h3 className="font-semibold">Project Entities</h3>
+            <HelpHint label="About Project Entities" title="Project Entities">
               This tab shows the entities enrolled in the project. The
-              Beneficiaries module owns the registry, duplicate checks,
+              Entities module owns the registry, duplicate checks,
               assignment, and longitudinal profile history.
             </HelpHint>
           </div>
@@ -1451,12 +1723,12 @@ export function ProjectBeneficiariesPanel({
           </div>
         )) : (
           <div className="rounded-xl border border-dashed bg-panel p-4 text-sm text-muted-foreground xl:col-span-3">
-            No beneficiaries are enrolled in this project yet. Import project beneficiaries or collect them with a project-linked mobile registration form.
+            No entities are enrolled in this project yet. Import project entities or collect them with a project-linked mobile registration form.
           </div>
         )}
       </div>
       {!preview && projectEntitiesQuery.isFetching ? (
-        <p className="text-xs text-muted-foreground">Loading project beneficiary records...</p>
+        <p className="text-xs text-muted-foreground">Loading project entity records...</p>
       ) : null}
     </div>
   );

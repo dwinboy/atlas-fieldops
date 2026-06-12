@@ -176,6 +176,36 @@ function formatDateTime(value: string | null | undefined): string {
   return parsed.toLocaleString();
 }
 
+function displaySubmissionId(submission: Pick<SubmissionRecord, "client_submission_id" | "submitted_at" | "imported_at" | "is_imported">): string {
+  const raw = submission.client_submission_id;
+  if (/^(MOB|UPL|IMP|SUB|WEB)-\d{4}-[A-Z0-9-]+$/i.test(raw)) return raw.toUpperCase();
+  const year = new Date(submission.imported_at ?? submission.submitted_at).getFullYear();
+  const suffix = raw.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "000001";
+  const prefix = submission.is_imported ? "IMP" : raw.startsWith("draft_") || raw.startsWith("submission_") ? "MOB" : "SUB";
+  return `${prefix}-${Number.isFinite(year) ? year : new Date().getFullYear()}-${suffix}`;
+}
+
+function submissionHasUsableGps(submission: SubmissionRecord): boolean {
+  const locationStatus = submission.payload_json?._mobile_location_status;
+  if (locationStatus === "not_required_or_missing") return false;
+  return Number.isFinite(submission.latitude) && Number.isFinite(submission.longitude) && !(submission.latitude === 0 && submission.longitude === 0);
+}
+
+function formatGpsEvidence(submission: SubmissionRecord): string {
+  if (!submissionHasUsableGps(submission)) return "No GPS captured";
+  const accuracy = submission.accuracy == null ? "accuracy n/a" : `accuracy ${Math.round(submission.accuracy)}m`;
+  return `${submission.latitude.toFixed(5)}, ${submission.longitude.toFixed(5)} · ${accuracy}`;
+}
+
+function formatDeviceEvidence(submission: SubmissionRecord): string {
+  if (submission.is_imported) return "Uploaded/imported";
+  return submission.device_id || "Unknown device";
+}
+
+function approvalActorLabel(submission: SubmissionRecord): string {
+  return submission.approved_by_name || submission.approved_by_user_id || "Not approved yet";
+}
+
 function severityTone(severity: string): BadgeProps["tone"] {
   const normalized = severity.toLowerCase();
   if (normalized === "critical") return "danger";
@@ -288,6 +318,15 @@ function mobileIntegrityLabel(integrity: MobileIntegrityPayload | null): string 
   if (integrity.riskLevel === "high") return "High risk";
   if (integrity.riskLevel === "medium") return "Review";
   return "Clear";
+}
+
+function linkedBeneficiaryLabel(submission: SubmissionRecord): string {
+  const links = submission.linked_beneficiaries ?? [];
+  const participantLinks = links.filter((link) => link.link_type !== "primary");
+  if (!participantLinks.length) return "None";
+  const shown = participantLinks.slice(0, 2).map((link) => link.beneficiary_uid);
+  const remaining = participantLinks.length - shown.length;
+  return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
 }
 
 function submissionSourceLabel(submission: SubmissionRecord): string {
@@ -718,7 +757,7 @@ export function SubmissionsModule({
     downloadCsv(
       filename,
       rows.map((submission) => ({
-        id: submission.client_submission_id,
+        id: displaySubmissionId(submission),
         project: submission.project_name,
         form: submission.form_name,
         source: submissionSourceLabel(submission),
@@ -735,7 +774,7 @@ export function SubmissionsModule({
       key: "submission",
       header: "Submission ID",
       value: (submission) =>
-        `${submission.client_submission_id} ${submission.project_name} ${submission.form_name}`,
+        `${displaySubmissionId(submission)} ${submission.client_submission_id} ${submission.project_name} ${submission.form_name}`,
       render: (submission) => (
         <button
           className="text-left"
@@ -743,7 +782,7 @@ export function SubmissionsModule({
           type="button"
         >
           <p className="font-medium text-foreground">
-            {submission.client_submission_id}
+            <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
           </p>
           <p className="text-xs text-muted-foreground">
             {submission.project_name}
@@ -753,10 +792,20 @@ export function SubmissionsModule({
     },
     {
       key: "beneficiary_code",
-      header: "Beneficiary Code",
+      header: "Primary Entity",
       value: (submission) => submission.beneficiary_code ?? "",
       render: (submission) =>
         submission.beneficiary_code ?? <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "linked_beneficiaries",
+      header: "Participants",
+      value: (submission) => linkedBeneficiaryLabel(submission),
+      render: (submission) => (
+        <span title={(submission.linked_beneficiaries ?? []).map((link) => `${link.beneficiary_uid} ${link.display_name}`).join(", ")}>
+          {linkedBeneficiaryLabel(submission)}
+        </span>
+      ),
     },
     {
       key: "source",
@@ -783,8 +832,28 @@ export function SubmissionsModule({
     {
       key: "location",
       header: "Location",
-      value: (submission) => submission.location_name,
-      render: (submission) => submission.location_name,
+      value: (submission) => formatGpsEvidence(submission),
+      render: (submission) => (
+        <div className="whitespace-nowrap">
+          <p className={cn(!submissionHasUsableGps(submission) && "text-muted-foreground")}>
+            {formatGpsEvidence(submission)}
+          </p>
+          {submissionHasUsableGps(submission) && submission.accuracy && submission.accuracy > 20 ? (
+            <p className="text-xs text-warning">Poor accuracy</p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "device",
+      header: "Device",
+      value: (submission) => formatDeviceEvidence(submission),
+      render: (submission) => (
+        <div className="max-w-44">
+          <p className="truncate font-mono text-[11px]">{formatDeviceEvidence(submission)}</p>
+          {submission.offline_created ? <p className="text-xs text-muted-foreground">Mobile offline sync</p> : null}
+        </div>
+      ),
     },
     {
       key: "submitted",
@@ -837,8 +906,12 @@ export function SubmissionsModule({
     {
       key: "approved_by",
       header: "Approved By",
-      value: (submission) => submission.approved_by_user_id ?? "",
-      render: (submission) => submission.approved_by_user_id ?? <span className="text-muted-foreground">—</span>,
+      value: (submission) => approvalActorLabel(submission),
+      render: (submission) => (
+        <span className={!submission.approved_by_name && !submission.approved_by_user_id ? "text-muted-foreground" : undefined}>
+          {approvalActorLabel(submission)}
+        </span>
+      ),
     },
     {
       key: "approved_at",
@@ -875,7 +948,7 @@ export function SubmissionsModule({
             <Eye aria-hidden="true" />
             View
           </Button>
-          {submission.latitude && submission.longitude ? (
+          {submissionHasUsableGps(submission) ? (
             <Button
               onClick={() => {
                 setPendingMapFeatureId(`submission-${submission.id}`);
@@ -1060,6 +1133,19 @@ export function SubmissionsModule({
           />
           <DataTable
             columns={columns}
+            emptyAction={
+              !visibleSubmissions.length
+                ? {
+                    label: "Open Forms",
+                    onClick: () => setActiveView("forms"),
+                  }
+                : undefined
+            }
+            emptyDescription={
+              visibleSubmissions.length
+                ? "Adjust the filters above to see records from other statuses or projects."
+                : "Submissions appear here after a published form is assigned and field officers sync collected data."
+            }
             emptyLabel="No submissions match this view yet"
             rows={filteredSubmissions}
             searchLabel="Search submissions, forms, projects, officers, location"
@@ -1392,7 +1478,7 @@ function SubmissionDetailWorkspace({
             </Badge>
           </div>
           <h2 className="mt-3 text-xl font-semibold">
-            {submission.client_submission_id}
+            <span title={submission.client_submission_id}>{displaySubmissionId(submission)}</span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {submission.project_name} · {submission.form_name} · v
@@ -1485,7 +1571,7 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
           <div className="grid gap-3 md:grid-cols-2">
             <Signal
               label="Submission ID"
-              value={submission.client_submission_id}
+              value={displaySubmissionId(submission)}
             />
             <Signal label="Project" value={submission.project_name} />
             <Signal label="Form" value={submission.form_name} />
@@ -1592,6 +1678,32 @@ function OverviewTab({ submission }: { submission: SubmissionRecord }) {
             </p>
           </div>
         )}
+        <div className="mt-3 rounded-xl border bg-background/60 p-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Other linked participants</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Project-level forms such as trainings, distributions, meetings, and incidents can link to multiple beneficiaries when their answers contain beneficiary codes.
+              </p>
+            </div>
+            <Badge tone={(submission.linked_beneficiaries ?? []).some((link) => link.link_type !== "primary") ? "success" : "neutral"}>
+              {linkedBeneficiaryLabel(submission)}
+            </Badge>
+          </div>
+          {(submission.linked_beneficiaries ?? []).filter((link) => link.link_type !== "primary").length ? (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {(submission.linked_beneficiaries ?? [])
+                .filter((link) => link.link_type !== "primary")
+                .slice(0, 8)
+                .map((link) => (
+                  <div className="rounded-lg border bg-panel px-3 py-2 text-xs" key={link.id}>
+                    <p className="font-mono font-semibold">{link.beneficiary_uid}</p>
+                    <p className="mt-1 text-muted-foreground">{link.display_name} · {link.beneficiary_type}</p>
+                  </div>
+                ))}
+            </div>
+          ) : null}
+        </div>
       </Panel>
       <MobileIntegrityPanel integrity={integrity} submission={submission} />
     </div>
@@ -2169,7 +2281,7 @@ function DataExplorerSection({
       const answers = normalizedSubmissionAnswers(submission.payload_json);
       const redacted = new Set(submission.redacted_fields ?? []);
       const row: Record<string, string | number | boolean | null> = {
-        "Submission ID": submission.client_submission_id,
+        "Submission ID": displaySubmissionId(submission),
         Status: formatSubmissionStatus(submission.status),
         Submitted: formatDateTime(submission.submitted_at),
       };
@@ -2786,32 +2898,35 @@ function AttachmentsTab({ submission }: { submission: SubmissionRecord }) {
 }
 
 function LocationTab({ submission }: { submission: SubmissionRecord }) {
+  const hasGps = submissionHasUsableGps(submission);
   return (
     <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
       <Panel title="Location Summary">
         <div className="grid gap-3 md:grid-cols-2">
           <Signal
             label="Coordinates"
-            value={`${submission.latitude.toFixed(5)}, ${submission.longitude.toFixed(5)}`}
+            value={hasGps ? `${submission.latitude.toFixed(5)}, ${submission.longitude.toFixed(5)}` : "No GPS captured"}
+            tone={hasGps ? "success" : "warning"}
           />
           <Signal
             label="GPS Accuracy"
-            value={`${submission.accuracy ?? "n/a"}m`}
-            tone={submission.gps_status === "valid" ? "success" : "warning"}
+            value={hasGps ? `${submission.accuracy ?? "n/a"}m` : "Not captured"}
+            tone={hasGps && submission.gps_status === "valid" ? "success" : "warning"}
           />
           <Signal
             label="Administrative Location"
             value={submission.location_name}
           />
+          <Signal label="Device" value={formatDeviceEvidence(submission)} />
           <Signal label="Assigned Area" value={submission.project_name} />
           <Signal
             label="Boundary Validation"
             value={
-              submission.gps_status === "valid"
+              hasGps && submission.gps_status === "valid"
                 ? "Inside assigned area"
                 : "Needs spatial review"
             }
-            tone={submission.gps_status === "valid" ? "success" : "warning"}
+            tone={hasGps && submission.gps_status === "valid" ? "success" : "warning"}
           />
         </div>
       </Panel>
@@ -2823,11 +2938,8 @@ function LocationTab({ submission }: { submission: SubmissionRecord }) {
               className="mx-auto text-primary"
               size={28}
             />
-            <p className="mt-3 font-semibold">{submission.location_name}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {submission.latitude.toFixed(5)},{" "}
-              {submission.longitude.toFixed(5)}
-            </p>
+            <p className="mt-3 font-semibold">{hasGps ? "GPS evidence captured" : "No GPS evidence captured"}</p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">{formatGpsEvidence(submission)}</p>
           </div>
         </div>
       </Panel>

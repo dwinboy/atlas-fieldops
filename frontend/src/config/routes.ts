@@ -134,6 +134,7 @@ export const canonicalRoutes = {
     "/administration/system-settings",
     "/administration/backup-recovery",
     "/administration/imports-migration",
+    "/administration/mobile",
     "/administration/mobile-devices",
     "/administration/mobile-devices/:deviceId",
     "/administration/mobile-versions",

@@ -184,6 +184,17 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   grid: Grid3X3,
 };
 
+const frequentFieldTypes: { type: FieldType; label: string }[] = [
+  { type: "text", label: "Short text" },
+  { type: "number", label: "Number" },
+  { type: "date", label: "Date" },
+  { type: "radio", label: "Radio" },
+  { type: "dropdown", label: "Dropdown" },
+  { type: "checkbox", label: "Checkboxes" },
+  { type: "gps", label: "GPS" },
+  { type: "photo", label: "Photo" },
+];
+
 function templateToForm(template: FormTemplateCard): DynamicForm {
   const pageId = `${template.id}-page-1`;
   const sectionId = `${template.id}-main`;
@@ -191,7 +202,7 @@ function templateToForm(template: FormTemplateCard): DynamicForm {
   const fields: FormField[] = [
     {
       id: `${template.id}-beneficiary`,
-      label: "Beneficiary or respondent name",
+      label: "Entity or respondent name",
       type: "text",
       required: true,
       pageId,
@@ -470,7 +481,7 @@ const quickFieldPresets: FieldPreset[] = [
     id: "person-name",
     label: "Person name",
     type: "text",
-    hint: "Full name of respondent or beneficiary.",
+    hint: "Full name of respondent or entity.",
     required: true,
   },
   {
@@ -539,9 +550,9 @@ const quickFieldPresets: FieldPreset[] = [
   },
   {
     id: "beneficiary-id",
-    label: "Beneficiary ID",
+    label: "Entity ID",
     type: "barcode",
-    hint: "Scan or enter the beneficiary registration code.",
+    hint: "Scan or enter the entity registration code.",
     required: true,
   },
   {
@@ -757,7 +768,7 @@ const templateCategoryDescriptions: Record<string, string> = {
   Surveys:
     "General-purpose questionnaires for research, feedback, assessments, and interviews.",
   "Registration Workflows":
-    "Beneficiary, household, farmer, group, facility, and participant onboarding.",
+    "Entity, household, farmer, group, facility, and participant onboarding.",
   "Case Management":
     "Complaints, referrals, incident follow-up, corrections, and resolution tracking.",
 };
@@ -1542,6 +1553,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       submitted_at: new Date(now - 75 * 60 * 1000).toISOString(),
       sync_received_at: new Date(now - 70 * 60 * 1000).toISOString(),
       offline_created: true,
+      device_id: "preview-android-001",
       latitude: 5.9631,
       longitude: 10.1591,
       accuracy: 8.4,
@@ -1566,6 +1578,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       submitted_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       sync_received_at: new Date(now - 110 * 60 * 1000).toISOString(),
       offline_created: false,
+      device_id: "preview-web-entry-002",
       latitude: 4.0511,
       longitude: 9.7679,
       accuracy: 18.2,
@@ -3162,7 +3175,13 @@ export function DynamicForms({
   const [builderFocusMode, setBuilderFocusMode] = useState(true);
   const [collapsedLibraryGroups, setCollapsedLibraryGroups] = useState<
     Record<string, boolean>
-  >({});
+  >({
+    "Survey questions": true,
+    Advanced: true,
+    Media: true,
+    Location: true,
+  });
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<
     Record<string, boolean>
   >({});
@@ -5291,7 +5310,7 @@ export function DynamicForms({
     if (!fields.length || !hasIdentity) {
       return {
         description:
-          "Collect the person, beneficiary, or respondent identity first.",
+          "Collect the person, entity, or respondent identity first.",
         label: "Add respondent details",
         mode: "question" as BuilderAssistantMode,
         query: "name",
@@ -7266,7 +7285,7 @@ export function DynamicForms({
                   </p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     Attach districts, schools, facilities, communities,
-                    beneficiaries, donor codes, or custom master data to form
+                    entities, donor codes, or custom master data to form
                     questions.
                   </p>
                 </button>
@@ -7317,8 +7336,8 @@ export function DynamicForms({
                       Entity & duplicate controls
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Decide whether this form creates, updates, or requires a
-                      beneficiary/entity record before collection starts.
+                      Decide whether this form creates, updates, or requires an
+                      entity record before collection starts.
                     </p>
                   </div>
                   <Badge
@@ -7352,7 +7371,7 @@ export function DynamicForms({
                     {[
                       "Farmer",
                       "Household",
-                      "Beneficiary",
+                      "Entity",
                       "Facility",
                       "School",
                       "Village",
@@ -7752,7 +7771,7 @@ export function DynamicForms({
                           title="No reference lists attached yet"
                         >
                           Select a district, community, school, facility,
-                          beneficiary, or donor-code question, then bind it to
+                          entity, or donor-code question, then bind it to
                           an official list.
                         </HelpHint>
                       </div>
@@ -8998,8 +9017,60 @@ export function DynamicForms({
                     </Button>
                   </div>
                 </div>
+                <div className="mb-4 rounded-md border bg-background p-2">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Frequently used
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {frequentFieldTypes.map(({ type, label }) => {
+                      const Icon = fieldTypeIcons[type];
+                      return (
+                        <button
+                          className="flex items-center gap-1.5 rounded-md border bg-panel px-2 py-1.5 text-xs font-medium transition hover:border-primary/35 hover:bg-primary/5"
+                          key={type}
+                          onClick={() => addCatalogField(type)}
+                          type="button"
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            className="text-muted-foreground"
+                            size={13}
+                          />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label className="relative mb-3 block">
+                  <span className="sr-only">Search question types</span>
+                  <Search
+                    aria-hidden="true"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={14}
+                  />
+                  <Input
+                    className="h-8 pl-9 text-xs"
+                    onChange={(event) => setLibraryQuery(event.target.value)}
+                    placeholder="Search question types"
+                    value={libraryQuery}
+                  />
+                </label>
                 <div className="space-y-2">
-                  {fieldCatalog.map((group) => (
+                  {fieldCatalog.map((group) => {
+                    const normalizedQuery = libraryQuery.trim().toLowerCase();
+                    const fields = normalizedQuery
+                      ? group.fields.filter((field) =>
+                          `${field.label} ${field.description} ${field.type}`
+                            .toLowerCase()
+                            .includes(normalizedQuery),
+                        )
+                      : group.fields;
+                    if (normalizedQuery && !fields.length) return null;
+                    const expanded =
+                      Boolean(normalizedQuery) ||
+                      !collapsedLibraryGroups[group.group];
+                    return (
                     <div
                       className="rounded-md border bg-background"
                       key={group.group}
@@ -9017,11 +9088,11 @@ export function DynamicForms({
                         <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           {group.group}
                         </span>
-                        <Badge tone="neutral">{group.fields.length}</Badge>
+                        <Badge tone="neutral">{fields.length}</Badge>
                       </button>
-                      {!collapsedLibraryGroups[group.group] ? (
+                      {expanded ? (
                         <div className="space-y-1.5 border-t p-2">
-                          {group.fields.map((field) => {
+                          {fields.map((field) => {
                             const Icon = fieldTypeIcons[field.type];
                             return (
                               <button
@@ -9049,7 +9120,8 @@ export function DynamicForms({
                         </div>
                       ) : null}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ) : null}
@@ -10466,7 +10538,7 @@ export function DynamicForms({
                                 ["validation", Check, "Validation"],
                                 ["logic", Workflow, "Logic"],
                                 ["indicator", Sigma, "Indicator"],
-                                ["beneficiary", Fingerprint, "Beneficiary"],
+                                ["beneficiary", Fingerprint, "Entity"],
                                 ["reference", Database, "Reference"],
                                 ["evidence", Camera, "Evidence"],
                                 ["privacy", ShieldCheck, "Privacy"],
@@ -12102,12 +12174,12 @@ export function DynamicForms({
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <Fingerprint aria-hidden="true" className="text-primary" size={16} />
-                                  <h3 className="text-sm font-semibold">Beneficiary and profile mapping</h3>
+                                  <h3 className="text-sm font-semibold">Entity and profile mapping</h3>
                                 </div>
                                 <Badge tone="admin">Entity data</Badge>
                               </div>
                               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                                Control whether this answer creates, updates, or only supports the beneficiary profile.
+                                Control whether this answer creates, updates, or only supports the entity profile.
                               </p>
                               <div className="mt-4 grid gap-3 lg:grid-cols-3">
                                 <label className="text-sm font-semibold">
@@ -12131,7 +12203,7 @@ export function DynamicForms({
                                   </Select>
                                 </label>
                                 <label className="text-sm font-semibold">
-                                  Beneficiary field
+                                  Entity field
                                   <Select
                                     className="mt-2"
                                     onChange={(event) =>

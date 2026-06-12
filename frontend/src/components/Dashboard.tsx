@@ -5,6 +5,7 @@ import {
   BarChart3,
   BookOpenCheck,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Clock,
@@ -349,6 +350,9 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
 export function Dashboard({ token, principal }: DashboardProps) {
   const [dashboardResult, setDashboardResult] = useState("");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
+  const [learnOpenOverride, setLearnOpenOverride] = useState<boolean | null>(
+    null,
+  );
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setLastActionResult = useWorkspaceStore(
     (state) => state.setLastActionResult,
@@ -432,7 +436,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const summaryMetrics = summaryQuery.data
     ? [
         {
-          label: "Beneficiaries",
+          label: "Entities",
           value: summaryQuery.data.beneficiaries.toLocaleString(),
           delta: "live",
           tone: "good" as const,
@@ -460,7 +464,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       ]
     : [
         {
-          label: "Beneficiaries",
+          label: "Entities",
           value: "0",
           delta: summaryQuery.isLoading ? "loading" : "not started",
           tone: "neutral" as const,
@@ -499,6 +503,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         summaryQuery.data.open_cases ||
         summaryQuery.data.quality_flags)),
   );
+  const learnExpanded = learnOpenOverride ?? !hasOperationalData;
   const setupSteps: ManagementStep[] = [
     {
       title: "Create team access",
@@ -541,7 +546,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     {
       title: "Import existing data",
       description:
-        "Bring beneficiaries, regions, officers, indicators, or historical records into the system.",
+        "Bring entities, regions, officers, indicators, or historical records into the system.",
       view: "data",
       action: "Open Data tools",
       complete: Boolean(summaryQuery.data?.beneficiaries),
@@ -1002,7 +1007,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       detail: `${coverageOverview.coveragePercent}% GPS coverage across ${coverageOverview.totalSubmissions.toLocaleString()} submitted record(s).`,
       icon: Gauge,
       label: "Project coverage",
-      result: "Opening Mapping so managers can inspect project coverage, beneficiary locations, GPS evidence, and collection gaps.",
+      result: "Opening Mapping so managers can inspect project coverage, entity locations, GPS evidence, and collection gaps.",
       tone: coverageOverview.coveragePercent >= 80 ? "success" : coverageOverview.coveragePercent ? "warning" : "neutral",
       value: `${coverageOverview.coveragePercent}%`,
       view: "map",
@@ -1057,6 +1062,65 @@ export function Dashboard({ token, principal }: DashboardProps) {
   ];
   const recentAlerts = possibleAlerts.filter((alert): alert is DashboardAlert =>
     Boolean(alert),
+  );
+  const possibleActionQueueItems: {
+    count: number;
+    label: string;
+    result: string;
+    tone: "danger" | "warning" | "neutral";
+    view: WorkspaceView;
+  }[] = [
+    {
+      count: approvalOverview.pending,
+      label: "submissions awaiting review",
+      result:
+        "Opening the review queue so you can approve, return, or reject waiting records.",
+      tone: "warning",
+      view: "submissions",
+    },
+    {
+      count: openQualitySignalCount,
+      label: "open data quality issues",
+      result:
+        "Opening Data Quality so duplicates, GPS issues, and validation failures can be resolved.",
+      tone: "danger",
+      view: "dataQuality",
+    },
+    {
+      count: pendingVisitRequests,
+      label: "visit requests need supervisor action",
+      result:
+        "Opening Field Operations so supervisors can approve or reschedule visit requests.",
+      tone: "warning",
+      view: "officers",
+    },
+    {
+      count: staleSyncCount,
+      label: "officers with stale or missing sync",
+      result:
+        "Opening sync monitoring so pending uploads and offline devices can be checked.",
+      tone: "warning",
+      view: "connectivity",
+    },
+    {
+      count: summaryQuery.data?.open_cases ?? 0,
+      label: "open cases need follow-up",
+      result:
+        "Opening cases so follow-ups can be assigned, progressed, or closed.",
+      tone: "warning",
+      view: "cases",
+    },
+    {
+      count: draftForms.length,
+      label: "draft forms waiting to publish",
+      result:
+        "Opening Forms so drafts can be tested and published for field collection.",
+      tone: "neutral",
+      view: "forms",
+    },
+  ];
+  const actionQueueItems = possibleActionQueueItems.filter(
+    (item) => item.count > 0,
   );
 
   function openView(action: {
@@ -1157,7 +1221,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                 openView({
                   label: "Open map overview",
                   result:
-                    "Opening Mapping so managers can inspect project, submission, beneficiary, coverage, and quality maps.",
+                    "Opening Mapping so managers can inspect project, submission, entity, coverage, and quality maps.",
                   view: "map",
                 })
               }
@@ -1168,6 +1232,51 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </Button>
           </div>
         </div>
+
+        {!dashboardLoading ? (
+          <section
+            aria-label="Needs your attention today"
+            className="mt-5 rounded-2xl border bg-background/80 p-4 shadow-line"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Needs you today
+              </p>
+              <Badge tone={actionQueueItems.length ? "warning" : "success"}>
+                {actionQueueItems.length
+                  ? `${actionQueueItems.reduce((total, item) => total + item.count, 0).toLocaleString()} item(s)`
+                  : "All caught up"}
+              </Badge>
+            </div>
+            {actionQueueItems.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {actionQueueItems.map((item) => (
+                  <button
+                    className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-left text-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:shadow-elevated"
+                    key={item.label}
+                    onClick={() =>
+                      handleAttention(item.label, item.view, item.result)
+                    }
+                    type="button"
+                  >
+                    <Badge tone={item.tone}>{item.count.toLocaleString()}</Badge>
+                    <span className="font-medium">{item.label}</span>
+                    <ArrowUpRight
+                      aria-hidden="true"
+                      className="text-muted-foreground"
+                      size={14}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                No reviews, quality issues, visit requests, or sync problems are
+                waiting on you right now.
+              </p>
+            )}
+          </section>
+        ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {dashboardLoading
@@ -1983,6 +2092,41 @@ export function Dashboard({ token, principal }: DashboardProps) {
       ) : null}
 
       <section
+        aria-label="Setup guide and learning"
+        className="surface-premium rounded-2xl"
+      >
+        <button
+          aria-expanded={learnExpanded}
+          className="flex w-full items-center justify-between gap-3 p-5 text-left"
+          onClick={() => setLearnOpenOverride(!learnExpanded)}
+          type="button"
+        >
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Setup guide &amp; learning
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Role guidance, setup readiness, manager questions, and the data
+              quality workflow.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={setupProgress >= 80 ? "success" : "warning"}>
+              Setup {setupProgress}%
+            </Badge>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "text-muted-foreground transition-transform",
+                learnExpanded && "rotate-180",
+              )}
+              size={18}
+            />
+          </div>
+        </button>
+        {learnExpanded ? (
+          <div className="space-y-6 px-5 pb-5">
+      <section
         className="surface-premium rounded-2xl p-5"
         aria-labelledby="role-focus-title"
       >
@@ -2315,6 +2459,9 @@ export function Dashboard({ token, principal }: DashboardProps) {
             );
           })}
         </div>
+      </section>
+          </div>
+        ) : null}
       </section>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

@@ -19,14 +19,23 @@ export type TableColumn<T> = {
 
 const PAGE_SIZE = 25;
 
+export type TableEmptyAction = {
+  label: string;
+  onClick: () => void;
+};
+
 export function DataTable<T>({
   columns,
+  emptyAction,
+  emptyDescription,
   emptyLabel,
   rows,
   searchLabel,
   title,
 }: {
   columns: TableColumn<T>[];
+  emptyAction?: TableEmptyAction;
+  emptyDescription?: string;
   emptyLabel: string;
   rows: T[];
   searchLabel: string;
@@ -76,6 +85,30 @@ export function DataTable<T>({
   useEffect(() => {
     setPage(0);
   }, [query, sortKey, sortDirection]);
+
+  const emptyContent = (
+    <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
+      <p className="font-medium text-foreground">
+        {query ? "No matches found" : emptyLabel}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {query
+          ? "Try a different search term or clear the search."
+          : emptyDescription ??
+            "New records will appear here when they are available."}
+      </p>
+      {!query && emptyAction ? (
+        <Button
+          className="mt-3"
+          onClick={emptyAction.onClick}
+          size="sm"
+          type="button"
+        >
+          {emptyAction.label}
+        </Button>
+      ) : null}
+    </div>
+  );
 
   return (
     <section
@@ -132,16 +165,7 @@ export function DataTable<T>({
         ))}
         {filteredRows.length === 0 ? (
           <div className="px-4 py-10 text-center text-muted-foreground">
-            <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
-              <p className="font-medium text-foreground">
-                {query ? "No matches found" : emptyLabel}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {query
-                  ? "Try a different search term or clear the search."
-                  : "New records will appear here when they are available."}
-              </p>
-            </div>
+            {emptyContent}
           </div>
         ) : null}
       </div>
@@ -222,16 +246,7 @@ export function DataTable<T>({
                   className="px-4 py-12 text-center text-muted-foreground"
                   colSpan={columns.length}
                 >
-                  <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
-                    <p className="font-medium text-foreground">
-                      {query ? "No matches found" : emptyLabel}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {query
-                        ? "Try a different search term or clear the search."
-                        : "New records will appear here when they are available."}
-                    </p>
-                  </div>
+                  {emptyContent}
                 </td>
               </tr>
             ) : null}
