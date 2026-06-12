@@ -554,6 +554,9 @@ class OperationalTargetRecord(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMix
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    indicator_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("monitoring_indicators.id"), index=True, nullable=True
+    )
     name: Mapped[str] = mapped_column(String(220), nullable=False)
     target_type: Mapped[str] = mapped_column(String(20), default="Project", index=True)
     project: Mapped[str | None] = mapped_column(String(200), nullable=True)

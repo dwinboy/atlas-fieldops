@@ -3750,7 +3750,12 @@ class FieldPlanningService:
         )
 
     @staticmethod
-    def _target_to_read(record: OperationalTargetRecord) -> OperationalTargetRead:
+    def _target_to_read(
+        record: OperationalTargetRecord,
+        *,
+        achieved_value: int | None = None,
+        achieved_source: str = "manual",
+    ) -> OperationalTargetRead:
         return OperationalTargetRead(
             id=record.id,
             created_by_user_id=record.created_by_user_id,
@@ -3758,13 +3763,45 @@ class FieldPlanningService:
             target_type=record.target_type,
             project=record.project,
             indicator=record.indicator,
+            indicator_id=record.indicator_id,
             team=record.team,
             assigned_staff=list(record.assigned_staff_json),
             target_value=record.target_value,
-            achieved_value=record.achieved_value,
+            achieved_value=achieved_value if achieved_value is not None else record.achieved_value,
+            achieved_source=achieved_source,
             deadline=record.deadline,
             created_at=record.created_at,
             updated_at=record.updated_at,
+        )
+
+    async def _get_indicator(
+        self, organization_id: UUID, indicator_id: UUID
+    ) -> MonitoringIndicator | None:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.id == indicator_id,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _target_with_live_achievement(
+        self, organization_id: UUID, record: OperationalTargetRecord
+    ) -> OperationalTargetRead:
+        if record.indicator_id is None:
+            return self._target_to_read(record)
+        indicator = await self._get_indicator(organization_id, record.indicator_id)
+        if indicator is None:
+            return self._target_to_read(record)
+        calculated = await OperationsService(self.session).calculate_indicator_current_value(
+            organization_id, indicator
+        )
+        value = calculated if calculated is not None else indicator.current_value
+        return self._target_to_read(
+            record,
+            achieved_value=int(round(value)),
+            achieved_source="indicator",
         )
 
     async def list_work_plans(self, organization_id: UUID) -> list[FieldWorkPlanRead]:
@@ -3860,18 +3897,28 @@ class FieldPlanningService:
             )
             .order_by(OperationalTargetRecord.created_at.desc())
         )
-        return [self._target_to_read(record) for record in result.scalars()]
+        return [
+            await self._target_with_live_achievement(organization_id, record)
+            for record in result.scalars()
+        ]
 
     async def create_target(
         self, *, organization_id: UUID, actor_user_id: UUID, payload: OperationalTargetCreate
     ) -> OperationalTargetRead:
+        indicator_name = payload.indicator
+        if payload.indicator_id is not None:
+            linked = await self._get_indicator(organization_id, payload.indicator_id)
+            if linked is None:
+                raise LookupError("Linked indicator not found")
+            indicator_name = indicator_name or linked.name
         record = OperationalTargetRecord(
             organization_id=organization_id,
             created_by_user_id=actor_user_id,
+            indicator_id=payload.indicator_id,
             name=payload.name,
             target_type=payload.target_type,
             project=payload.project,
-            indicator=payload.indicator,
+            indicator=indicator_name,
             team=payload.team,
             assigned_staff_json=list(payload.assigned_staff),
             target_value=payload.target_value,
@@ -3886,9 +3933,13 @@ class FieldPlanningService:
             action="operational_target.created",
             resource_type="operational_target",
             resource_id=str(record.id),
-            metadata={"name": record.name, "target_value": record.target_value},
+            metadata={
+                "name": record.name,
+                "target_value": record.target_value,
+                "indicator_id": str(record.indicator_id) if record.indicator_id else None,
+            },
         )
-        return self._target_to_read(record)
+        return await self._target_with_live_achievement(organization_id, record)
 
     async def update_target(
         self,
@@ -3909,6 +3960,12 @@ class FieldPlanningService:
         if record is None:
             raise LookupError("Operational target not found")
         changed: list[str] = []
+        if payload.indicator_id is not None:
+            if await self._get_indicator(organization_id, payload.indicator_id) is None:
+                raise LookupError("Linked indicator not found")
+            if record.indicator_id != payload.indicator_id:
+                record.indicator_id = payload.indicator_id
+                changed.append("indicator_id")
         for field in (
             "name",
             "target_type",
@@ -3935,4 +3992,4 @@ class FieldPlanningService:
             resource_id=str(record.id),
             metadata={"changed_fields": changed},
         )
-        return self._target_to_read(record)
+        return await self._target_with_live_achievement(organization_id, record)

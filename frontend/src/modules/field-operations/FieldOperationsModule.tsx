@@ -39,6 +39,7 @@ import {
   createOperationalTarget,
   listFieldWorkAssignments,
   listFieldWorkPlans,
+  listIndicators,
   listOperationalTargets,
   setFieldWorkAssignmentStatus,
   updateFieldWorkAssignment,
@@ -174,6 +175,7 @@ const defaultTargetDraft: Omit<OperationalTarget, "achieved" | "id"> = {
   assignedStaff: [],
   deadline: "",
   indicator: "",
+  indicatorId: "",
   name: "",
   project: "",
   team: "",
@@ -1165,6 +1167,11 @@ export function FieldOperationsModule({
     queryFn: () => listOperationalTargets(token ?? ""),
     enabled,
   });
+  const indicatorsQuery = useQuery({
+    queryKey: ["field-operations", "indicators", token],
+    queryFn: () => listIndicators(token ?? ""),
+    enabled,
+  });
   const entitiesQuery = useQuery({
     queryKey: ["field-operations", "beneficiaries", token],
     queryFn: () => listBeneficiaries(token ?? ""),
@@ -1353,10 +1360,12 @@ export function FieldOperationsModule({
         type: (record.target_type as OperationalTarget["type"]) ?? "Project",
         project: record.project ?? "",
         indicator: record.indicator ?? "",
+        indicatorId: record.indicator_id,
         team: record.team ?? "",
         assignedStaff: record.assigned_staff,
         value: record.target_value,
         achieved: record.achieved_value,
+        achievedSource: record.achieved_source === "indicator" ? "indicator" : "manual",
         deadline: record.deadline ?? "",
       })),
     );
@@ -1392,6 +1401,11 @@ export function FieldOperationsModule({
       })),
     );
   }, [availableForms, availableProjects, officers, preview, usersQuery.data, workAssignmentsQuery.data]);
+
+  const availableIndicators = useMemo(
+    () => (preview ? [] : (indicatorsQuery.data ?? [])),
+    [indicatorsQuery.data, preview],
+  );
 
   const caseEntities = useMemo<BeneficiaryEntity[]>(
     () =>
@@ -2041,13 +2055,18 @@ export function FieldOperationsModule({
       key: "record",
       header: "Record progress",
       align: "right",
-      render: (target) => (
-        <TargetProgressEditor
-          disabled={!canManageFieldOperations}
-          onSave={(value) => void recordTargetProgress(target, value)}
-          target={target}
-        />
-      ),
+      render: (target) =>
+        target.achievedSource === "indicator" ? (
+          <div className="flex justify-end">
+            <Badge tone="success">Auto from indicator</Badge>
+          </div>
+        ) : (
+          <TargetProgressEditor
+            disabled={!canManageFieldOperations}
+            onSave={(value) => void recordTargetProgress(target, value)}
+            target={target}
+          />
+        ),
     },
   ];
 
@@ -2468,6 +2487,7 @@ export function FieldOperationsModule({
           target_type: targetDraft.type,
           project: targetDraft.project || null,
           indicator: targetDraft.indicator || null,
+          indicator_id: targetDraft.indicatorId || null,
           team: targetDraft.team || null,
           assigned_staff: targetDraft.assignedStaff,
           target_value: targetDraft.value,
@@ -4063,19 +4083,50 @@ Password:          ${lastInviteCredentials.password}`}
               />
             </label>
             <label className="text-sm font-medium">
-              Indicator
-              <Input
+              Linked indicator
+              <Select
                 className="mt-2"
-                required
-                value={targetDraft.indicator}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const indicatorId = event.target.value;
+                  const linked = availableIndicators.find(
+                    (indicator) => indicator.id === indicatorId,
+                  );
                   setTargetDraft((current) => ({
                     ...current,
-                    indicator: event.target.value,
-                  }))
-                }
-              />
+                    indicatorId: indicatorId || "",
+                    indicator: linked?.name ?? current.indicator,
+                  }));
+                }}
+                value={targetDraft.indicatorId ?? ""}
+              >
+                <option value="">Manual progress (no linked indicator)</option>
+                {availableIndicators.map((indicator) => (
+                  <option key={indicator.id} value={indicator.id}>
+                    {indicator.code} · {indicator.name}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs font-normal text-muted-foreground">
+                Linking an indicator computes achievement automatically from
+                approved submissions.
+              </p>
             </label>
+            {!targetDraft.indicatorId ? (
+              <label className="text-sm font-medium">
+                Indicator label
+                <Input
+                  className="mt-2"
+                  required
+                  value={targetDraft.indicator}
+                  onChange={(event) =>
+                    setTargetDraft((current) => ({
+                      ...current,
+                      indicator: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
             <label className="text-sm font-medium">
               Team
               <Input

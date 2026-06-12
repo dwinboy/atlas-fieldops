@@ -67,10 +67,12 @@ export type OperationalTarget = {
   type: "Daily" | "Weekly" | "Monthly" | "Project";
   project: string;
   indicator: string;
+  indicatorId?: string | null;
   team: string;
   assignedStaff: string[];
   value: number;
   achieved: number;
+  achievedSource?: "manual" | "indicator";
   deadline: string;
 };
 

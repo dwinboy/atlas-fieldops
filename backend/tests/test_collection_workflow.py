@@ -13,7 +13,7 @@ from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, User
 from app.repositories.collection import FormRepository
 from app.schemas.auth import CurrentPrincipal
-from app.models.operations import Beneficiary, DataQualitySignal
+from app.models.operations import Beneficiary, DataQualitySignal, MonitoringIndicator
 from app.schemas.collection import (
     DataFormCreate,
     DeviceMetadata,
@@ -1394,6 +1394,42 @@ async def test_work_plans_and_targets_persist_with_audit() -> None:
                 payload=OperationalTargetUpdate(achieved_value=1),
             )
 
+        indicator = MonitoringIndicator(
+            organization_id=organization_id,
+            code="HH.REG",
+            name="Households Registered",
+            current_value=86,
+            target_value=120,
+        )
+        session.add(indicator)
+        await session.flush()
+
+        linked = await service.create_target(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalTargetCreate(
+                name="Linked household target",
+                target_type="Project",
+                indicator_id=indicator.id,
+                target_value=120,
+            ),
+        )
+        assert linked.indicator == "Households Registered"
+        assert linked.achieved_source == "indicator"
+        assert linked.achieved_value == 86
+
+        listed_targets = {item.id: item for item in await service.list_targets(organization_id)}
+        assert listed_targets[linked.id].achieved_value == 86
+        assert listed_targets[linked.id].achieved_source == "indicator"
+        assert listed_targets[target.id].achieved_source == "manual"
+
+        with pytest.raises(LookupError):
+            await service.create_target(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                payload=OperationalTargetCreate(name="Bad link", indicator_id=uuid4()),
+            )
+
         audit_result = await session.execute(
             select(AuditLog).where(AuditLog.organization_id == organization_id)
         )
@@ -1401,6 +1437,7 @@ async def test_work_plans_and_targets_persist_with_audit() -> None:
         assert actions == [
             "field_work_plan.created",
             "field_work_plan.updated",
+            "operational_target.created",
             "operational_target.created",
             "operational_target.updated",
         ]

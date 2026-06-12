@@ -1259,6 +1259,7 @@ class OperationalTargetCreate(BaseModel):
     target_type: str = "Project"
     project: str | None = Field(default=None, max_length=200)
     indicator: str | None = Field(default=None, max_length=220)
+    indicator_id: UUID | None = None
     team: str | None = Field(default=None, max_length=160)
     assigned_staff: list[str] = Field(default_factory=list)
     target_value: int = Field(default=0, ge=0)
@@ -1276,6 +1277,7 @@ class OperationalTargetUpdate(BaseModel):
     target_type: str | None = None
     project: str | None = Field(default=None, max_length=200)
     indicator: str | None = Field(default=None, max_length=220)
+    indicator_id: UUID | None = None
     team: str | None = Field(default=None, max_length=160)
     assigned_staff: list[str] | None = None
     target_value: int | None = Field(default=None, ge=0)
@@ -1296,10 +1298,12 @@ class OperationalTargetRead(BaseModel):
     target_type: str
     project: str | None = None
     indicator: str | None = None
+    indicator_id: UUID | None = None
     team: str | None = None
     assigned_staff: list[str] = Field(default_factory=list)
     target_value: int
     achieved_value: int
+    achieved_source: str = "manual"
     deadline: date | None = None
     created_at: datetime
     updated_at: datetime

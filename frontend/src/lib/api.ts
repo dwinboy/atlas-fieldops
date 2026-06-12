@@ -3418,10 +3418,12 @@ export type OperationalTargetRecordRead = {
   target_type: string;
   project: string | null;
   indicator: string | null;
+  indicator_id: string | null;
   team: string | null;
   assigned_staff: string[];
   target_value: number;
   achieved_value: number;
+  achieved_source: string;
   deadline: string | null;
   created_at: string;
   updated_at: string;
@@ -3432,6 +3434,7 @@ export type OperationalTargetRecordCreate = {
   target_type?: string;
   project?: string | null;
   indicator?: string | null;
+  indicator_id?: string | null;
   team?: string | null;
   assigned_staff?: string[];
   target_value?: number;
