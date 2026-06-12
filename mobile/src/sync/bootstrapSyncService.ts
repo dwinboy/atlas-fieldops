@@ -1,5 +1,6 @@
 import { createMobileApis } from "@/api/mobileApis";
-import type { MobileSyncPackage } from "@/models/contracts";
+import type { MobileEntityCategory, MobileSyncPackage } from "@/models/contracts";
+import { normalizeEntityCategoryRecord } from "@/entities/entityCategoryUtils";
 import { AuditEventService } from "@/services/auditEventService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { ConflictService } from "@/sync/conflictService";
@@ -55,6 +56,9 @@ export class BootstrapSyncService {
     for (const entity of syncPackage.entities) {
       this.database.entities.upsert(this.database.importServerRecord(entity));
     }
+    for (const entityCategory of syncPackage.entityCategories) {
+      this.database.entityCategories.upsert(this.database.importServerRecord(normalizeEntityCategoryRecord(entityCategory)));
+    }
     for (const form of syncPackage.forms) {
       this.database.forms.upsert(this.database.importServerRecord(form));
     }
@@ -101,6 +105,7 @@ export class BootstrapSyncService {
       assignments: syncPackage.assignments.length,
       forms: syncPackage.forms.length,
       entities: syncPackage.entities.length,
+      entityCategories: syncPackage.entityCategories.length,
       locations: syncPackage.locations.length,
       returnedSubmissions: syncPackage.returnedSubmissions.length,
     });

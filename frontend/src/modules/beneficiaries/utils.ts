@@ -87,6 +87,27 @@ export function scoreDuplicate(
     matchedFields.push(`GPS within ${Math.max(1, Math.round(distance))}m`);
   }
 
+  for (const [key, draftValue] of Object.entries(draft.customProfile ?? {})) {
+    if (!draftValue) continue;
+    const entityValue = entity.profileJson[key];
+    if (entityValue === undefined || entityValue === null || entityValue === "") continue;
+    const normalizedKey = key.toLowerCase();
+    const entityText = String(entityValue);
+    if (/phone|mobile|contact/.test(normalizedKey) && digits(draftValue) === digits(entityText)) {
+      score += 80;
+      matchedFields.push(`${key} match`);
+    } else if (/(^|_)id$|code|number|registration|license|licence/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 90;
+      matchedFields.push(`${key} match`);
+    } else if (/name|title/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 45;
+      matchedFields.push(`${key} match`);
+    } else if (/village|community|district|location|site/.test(normalizedKey) && compact(draftValue) === compact(entityText)) {
+      score += 30;
+      matchedFields.push(`${key} match`);
+    }
+  }
+
   const cappedScore = Math.min(score, 100);
   return {
     entity,

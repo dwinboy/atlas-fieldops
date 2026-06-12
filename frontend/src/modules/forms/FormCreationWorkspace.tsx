@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
   ClipboardList,
   FileSpreadsheet,
@@ -39,6 +41,7 @@ import {
   createForm,
   createSurvey,
   getFormSchema,
+  listEntityCategories,
   listFieldOfficers,
   listProjects,
   listSurveys,
@@ -47,6 +50,7 @@ import {
   updateFormControls,
   type FieldOfficerRead,
   type FormControlsSettings,
+  type EntityCategoryRead,
   type TeamRead,
 } from "@/lib/api";
 import {
@@ -145,6 +149,7 @@ type FormControlsDraft = {
   duplicateSeverity: "low" | "medium" | "high" | "critical";
   duplicateThreshold: number;
   enumeratorTrainingRequired: boolean;
+  entityCategoryId: string;
   entityType: string;
   eventMode: "none" | "creates_event" | "selects_event" | "attendance";
   expectedUse: string;
@@ -812,7 +817,8 @@ const defaultControlsDraft: FormControlsDraft = {
   duplicateSeverity: "high",
   duplicateThreshold: 85,
   enumeratorTrainingRequired: false,
-  entityType: "Farmer",
+  entityCategoryId: "",
+  entityType: "Beneficiary",
   eventMode: "none",
   expectedUse: "Approved records feed beneficiary history, dashboards, indicators, and reports.",
   exportApprovalMode: "manager_approval",
@@ -995,6 +1001,11 @@ function slugFromText(value: string, fallback: string): string {
   );
 }
 
+function entityCodeExample(entityType: string): string {
+  const compact = entityType.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "ENT";
+  return `${compact.padEnd(3, "X")}-${new Date().getFullYear()}-000001`;
+}
+
 function messageFromUnknownError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "The request could not be completed.";
@@ -1013,6 +1024,36 @@ function attachStarterField(
     required,
     variableName: variableNameFromLabel(label, field.id),
   };
+}
+
+function fieldTypeFromEntityAttribute(type: string): FieldType {
+  const normalized = type.toLowerCase().replace(/[_\s-]+/g, "_");
+  const map: Record<string, FieldType> = {
+    barcode: "barcode",
+    boolean: "checkbox",
+    calculated_field: "calculated",
+    checkbox: "checkbox",
+    currency: "decimal",
+    date: "date",
+    datetime: "datetime",
+    dropdown: "select",
+    email: "email",
+    file_upload: "file",
+    gps_location: "gps",
+    image_upload: "photo",
+    long_text: "textarea",
+    multi_select: "multiselect",
+    number: "number",
+    percentage: "decimal",
+    phone_number: "phone",
+    qr_code: "qr",
+    radio_button: "radio",
+    signature: "signature",
+    text: "text",
+    time: "time",
+    url: "url",
+  };
+  return map[normalized] ?? "text";
 }
 
 function formOperationalFamily(formType: string): "registration" | "baseline" | "monitoring" | "attendance" | "custom" {
@@ -1056,7 +1097,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "baseline") {
     return [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
       { label: "Consent confirmed", options: ["Yes", "No"], required: controls.requireConsent, type: "radio" },
       { label: "Baseline interview date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Enumerator notes", type: "textarea" },
@@ -1066,7 +1107,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "monitoring") {
     return [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
       { label: "Monitoring visit date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Service or activity received", required: true, type: "select", options: ["Training", "Input distribution", "Follow-up visit", "Other"] },
       { label: "Follow-up needed", required: true, type: "radio", options: ["Yes", "No"] },
@@ -1076,7 +1117,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "attendance") {
     return [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
       { label: "Event or activity date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Item or service received", required: true, type: "select", options: ["Training", "Input", "Cash", "Service", "Other"] },
       { label: "Quantity received", type: "number", validation: { min: 0 } },
@@ -1599,6 +1640,7 @@ function controlsDraftToApiControls(
         controls.profileUpdateMode !== "never" ||
         controls.respondentIdentification !== "anonymous_allowed" ||
         Object.values(controls.profileMappings).some(Boolean),
+      entity_category_id: controls.entityCategoryId || null,
       entity_type: controls.entityType,
       creates_new_entity:
         /registration/i.test(form.name) || controls.profileUpdateMode === "after_submission",
@@ -2455,6 +2497,7 @@ function controlsDraftFromApiControls(
       fieldGuidance.training_required_before_assignment,
       defaultControlsDraft.enumeratorTrainingRequired,
     ),
+    entityCategoryId: stringValue(entity.entity_category_id, defaultControlsDraft.entityCategoryId),
     entityType: stringValue(entity.entity_type, defaultControlsDraft.entityType),
     eventMode: stringValue(
       eventSettings.mode,
@@ -3888,6 +3931,8 @@ function buildPublishAssistantAdvice({
       Boolean(value) &&
       !controls.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
   );
+  const entityLabel = controls.entityType.trim() || "Beneficiary";
+  const entityLabelLower = entityLabel.toLowerCase();
   const advice: PublishAssistantAdvice[] = [];
 
   if (!form) {
@@ -3942,7 +3987,12 @@ function buildPublishAssistantAdvice({
       .map(([key]) => humanizeControlValue(key));
     const base: PublishAssistantAdvice = {
       actionLabel: item.jumpTo === "builder" ? "Open Builder" : "Open this setting",
-      fix: item.description,
+      fix:
+        item.jumpTo === "builder"
+          ? `Open Builder and resolve: ${item.label}.`
+          : item.jumpTo === "setup"
+            ? `Open Basic Information and resolve: ${item.label}.`
+            : `Open Controls > ${controlSteps.find((step) => step.id === controlStepForReadinessCategory(item.category))?.label ?? "settings"} and resolve: ${item.label}.`,
       id: item.id,
       item,
       jumpTo: item.jumpTo,
@@ -3964,9 +4014,9 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Go to Basic Information and enter a clear form name such as Farmer Registration, Baseline Survey, Monitoring Visit, or Training Attendance.",
+            `Go to Basic Information and enter a clear form name such as ${entityLabel} Registration, Baseline Survey, Monitoring Visit, or Training Attendance.`,
           mneTip:
-            "Expert recommendation: use a short operational name that includes the activity or survey stage, for example Farmer Registration, Baseline Survey, Monitoring Visit, or Distribution Record.",
+            `Expert recommendation: use a short operational name that includes the activity or survey stage, for example ${entityLabel} Registration, Baseline Survey, Monitoring Visit, or Distribution Record.`,
           platformAction:
             "Manager decision needed: the platform can open Basic Information, but the form owner should choose the correct operational name.",
           why:
@@ -4191,24 +4241,24 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set entity behavior for this form type. Then confirm the entity type and whether the form creates a new entity, updates an existing entity, requires an existing entity, or allows anonymous collection.",
+            `Use Apply platform fix to set entity behavior for this form type. Then confirm the entity type (currently ${entityLabel}) and whether the form creates a new entity, updates an existing entity, requires an existing entity, or allows anonymous collection.`,
           mneTip:
-            "Registration forms usually create a beneficiary. Baseline, monitoring, endline, training, and distribution forms usually require an existing beneficiary.",
+            `Registration forms usually create a new ${entityLabelLower} record. Baseline, monitoring, endline, training, and distribution forms usually require an existing ${entityLabelLower} record.`,
           platformAction:
-            "The platform can apply recommended beneficiary rules for this form type, then you can fine-tune the entity type and mappings.",
+            `The platform can apply recommended ${entityLabelLower} record rules for this form type, then you can fine-tune the entity type and mappings.`,
           quickFixId: formTypeQuickFix,
           targetControlStep: "beneficiaries",
           why:
-            "The beneficiary/entity rule is incomplete, so the system cannot know whether approved submissions should create, update, or link to beneficiary records.",
+            `The ${entityLabelLower}/entity rule is incomplete, so the system cannot know whether approved submissions should create, update, or link to ${entityLabelLower} records.`,
         });
         break;
       case "respondent-identity":
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set respondent identification from the form type. Registration should create a new beneficiary; baseline and monitoring should normally require an existing beneficiary.",
+            `Use Apply platform fix to set respondent identification from the form type. Registration should create a new ${entityLabelLower} record; baseline and monitoring should normally require an existing ${entityLabelLower} record.`,
           mneTip:
-            "This prevents disconnected submissions and reduces duplicate beneficiary records.",
+            `This prevents disconnected submissions and reduces duplicate ${entityLabelLower} records.`,
           platformAction:
             "The platform can set the respondent identification rule based on whether this is registration, baseline, monitoring, or follow-up.",
           quickFixId: formTypeQuickFix,
@@ -4223,12 +4273,12 @@ function buildPublishAssistantAdvice({
           fix:
             mappedProfileFields.length > 0
               ? `Add more profile mappings now. You already mapped: ${mappedProfileFields.join(", ")}. At minimum map Full Name plus one strong identifier such as Phone, Household ID, Village, DOB, or GPS.`
-              : "Map form questions to beneficiary profile fields now: Full Name, Phone, Village, Gender, DOB, and GPS where those questions exist.",
+              : `Map form questions to ${entityLabelLower} profile fields now: Full Name, Phone, Village, Gender, DOB, and GPS where those questions exist.`,
           mneTip:
-            "Approved registration submissions should create one clean beneficiary profile with traceable source fields.",
+            `Approved registration submissions should create one clean ${entityLabelLower} profile with traceable source fields.`,
           targetControlStep: "beneficiaries",
           why:
-            "This entity-linked form does not have enough beneficiary profile mappings for safe creation or update.",
+            `This entity-linked form does not have enough ${entityLabelLower} profile mappings for safe creation or update.`,
         });
         break;
       case "mapping-suggestions":
@@ -4240,9 +4290,9 @@ function buildPublishAssistantAdvice({
                 .join(", ")}. Then verify the mappings in Controls > Beneficiaries.`
             : "No unmapped profile suggestions remain. No action is required.",
           mneTip:
-            "Profile mappings let approved submissions update beneficiary records with traceable data lineage.",
+            `Profile mappings let approved submissions update ${entityLabelLower} records with traceable data lineage.`,
           platformAction:
-            "The platform can map obvious question labels to beneficiary profile fields now.",
+            `The platform can map obvious question labels to ${entityLabelLower} profile fields now.`,
           quickFixId: "apply_profile_mapping",
           targetControlStep: "beneficiaries",
           why:
@@ -4803,6 +4853,51 @@ export function FormCreationWorkspace({
     [localProjects, preview, setup.projectName, tenantProjects],
   );
   const selectedProjectId = selectedProject?.id ?? null;
+  const entityCategoriesQuery = useQuery({
+    enabled: Boolean(token && !preview && selectedProjectId),
+    queryFn: () =>
+      listEntityCategories(token ?? "", {
+        include_archived: false,
+        project_id: selectedProjectId ?? undefined,
+      }),
+    queryKey: ["form-builder-entity-categories", token, selectedProjectId],
+  });
+  const entityTypeOptions = useMemo(() => {
+    const activeCategories = (entityCategoriesQuery.data ?? [])
+      .filter((category) => category.status !== "archived")
+      .sort((first, second) => first.name.localeCompare(second.name));
+    const names = activeCategories.map((category) => category.name);
+    const fallback = ["Farmer", "Household", "Beneficiary", "Facility", "School", "Group", "Custom Entity"];
+    const current = controlsDraft.entityType.trim();
+    return Array.from(new Set([...(names.length ? names : fallback), ...(current ? [current] : [])]));
+  }, [controlsDraft.entityType, entityCategoriesQuery.data]);
+  const selectedEntityCategory = useMemo<EntityCategoryRead | null>(
+    () =>
+      (entityCategoriesQuery.data ?? []).find(
+        (category) =>
+          category.status !== "archived" &&
+          (category.id === controlsDraft.entityCategoryId ||
+            category.name.toLowerCase() === controlsDraft.entityType.trim().toLowerCase()),
+      ) ?? null,
+    [controlsDraft.entityCategoryId, controlsDraft.entityType, entityCategoriesQuery.data],
+  );
+  useEffect(() => {
+    const activeCategories = (entityCategoriesQuery.data ?? []).filter(
+      (category) => category.status !== "archived",
+    );
+    if (!activeCategories.length) return;
+    const current = controlsDraft.entityType.trim().toLowerCase();
+    const currentExists = activeCategories.some(
+      (category) => category.name.toLowerCase() === current,
+    );
+    if (currentExists) return;
+    if (current && current !== defaultControlsDraft.entityType.toLowerCase()) return;
+    const firstCategory = activeCategories[0];
+    updateControlsDraft({
+      entityCategoryId: firstCategory?.id ?? "",
+      entityType: firstCategory?.name ?? controlsDraft.entityType,
+    });
+  }, [controlsDraft.entityType, entityCategoriesQuery.data]);
   const selectedSurvey =
     !preview && selectedProjectId
       ? tenantSurveys.find((survey) => survey.project_id === selectedProjectId)
@@ -4892,11 +4987,12 @@ export function FormCreationWorkspace({
         const failures = items.filter((item) => item.required && !item.complete).length;
         const warnings = items.filter((item) => item.status === "warning").length;
         const passed = items.filter((item) => item.status === "passed").length;
-        return [step.id, { failures, items: items.length, passed, warnings }];
+        const required = items.some((item) => item.required);
+        return [step.id, { failures, items: items.length, passed, required, warnings }];
       }),
     ) as Record<
       ControlStep,
-      { failures: number; items: number; passed: number; warnings: number }
+      { failures: number; items: number; passed: number; required: boolean; warnings: number }
     >;
   }, [checklist]);
   const questionMappingOptions = useMemo(
@@ -4961,6 +5057,27 @@ export function FormCreationWorkspace({
       controlsDraft.lifecycleStatus === "approved" ||
       Boolean(publishedForm),
   } satisfies Record<(typeof lifecycleSteps)[number]["id"], boolean>;
+  const completedLifecycleCount = Object.values(lifecycleCompletion).filter(Boolean).length;
+  const lifecycleProgressPercent = Math.round(
+    (completedLifecycleCount / lifecycleSteps.length) * 100,
+  );
+  const nextControlStepConfig = controlSteps[activeControlStepIndex + 1];
+  const nextActionHint =
+    stage === "setup"
+      ? "Next: choose how to start this form (blank, template, duplicate, or import)."
+      : stage === "start"
+        ? "Next: the Builder opens so you can add and arrange questions."
+        : stage === "builder"
+          ? "Next: Controls sets who can collect this form, beneficiary rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
+          : stage === "controls"
+            ? nextControlStepConfig
+              ? `Next control step: "${nextControlStepConfig.label}" — ${nextControlStepConfig.mustDo}`
+              : "Next: Preview & Test lets you try the form as a field officer would before requesting review."
+            : stage === "preview"
+              ? "Next: Submit for Review locks this draft for reviewer sign-off before approval and publishing."
+              : controlsDraft.lifecycleStatus !== "approved"
+                ? "Next: Approve this form to confirm it is ready, then publish it to field officers."
+                : "This version is approved. Publish makes it available to field officers immediately.";
 
   function updateSetup(patch: Partial<FormSetupDraft>): void {
     setSetup((current) => ({ ...current, ...patch }));
@@ -4968,6 +5085,70 @@ export function FormCreationWorkspace({
 
   function updateControlsDraft(patch: Partial<FormControlsDraft>): void {
     setControlsDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function addEntityCategoryQuestions(): void {
+    if (!selectedEntityCategory) {
+      setPublishMessage("Select a project entity category first, then Atlas can add its fields as questions.");
+      return;
+    }
+    if (!draftForm) {
+      setPublishMessage("Start a draft first, then add entity category fields to the Builder.");
+      setStage("start");
+      return;
+    }
+    const activeAttributes = selectedEntityCategory.attributes
+      .filter((attribute) => attribute.status !== "archived")
+      .sort((first, second) => (first.order_index ?? 0) - (second.order_index ?? 0));
+    if (!activeAttributes.length) {
+      setPublishMessage(`${selectedEntityCategory.name} has no active fields to add.`);
+      return;
+    }
+    const existingVariables = new Set(
+      draftForm.fields
+        .map((field) => field.variableName)
+        .filter((value): value is string => Boolean(value)),
+    );
+    const existingPages = draftForm.pages ?? [];
+    const page = existingPages[0] ?? createPage("Page 1");
+    const section = createSection(page.id, `${selectedEntityCategory.name} profile fields`);
+    const addedFields = activeAttributes
+      .filter((attribute) => !existingVariables.has(attribute.field_key))
+      .map((attribute) => {
+        const field = createField(fieldTypeFromEntityAttribute(attribute.field_type), section.id, page.id);
+        existingVariables.add(attribute.field_key);
+        return {
+          ...field,
+          beneficiary: {
+            profileField: attribute.field_key,
+            profileImpact: "updates_profile" as const,
+          },
+          appearance: {
+            ...field.appearance,
+            helpText: `${field.appearance?.helpText ?? ""} [profile-impact:updates_profile] [beneficiary-field:${attribute.field_key}] [lineage-required]`.trim(),
+          },
+          hint: attribute.description || `Configured field from ${selectedEntityCategory.name}.`,
+          label: attribute.label,
+          options: attribute.options_json?.length ? attribute.options_json : field.options,
+          required: Boolean(attribute.required),
+          variableName: attribute.field_key,
+        };
+      });
+    if (!addedFields.length) {
+      setPublishMessage("All active entity category fields already exist in this form.");
+      return;
+    }
+    const nextForm: DynamicForm = {
+      ...draftForm,
+      fields: [...draftForm.fields, ...addedFields],
+      pages: existingPages.length ? existingPages : [page],
+      sections: [...draftForm.sections, section],
+      updatedAt: new Date().toISOString(),
+    };
+    setDraftForm(nextForm);
+    upsertLocalForm(workspaceFormFromDraft(nextForm, setup, selectedProjectId));
+    setPublishMessage(`${addedFields.length} ${selectedEntityCategory.name} field${addedFields.length === 1 ? "" : "s"} added to the Builder.`);
+    setStage("builder");
   }
 
   function toggleAssignedFieldOfficer(officerId: string): void {
@@ -5257,12 +5438,13 @@ export function FormCreationWorkspace({
       };
 
       switch (quickFixId) {
-        case "mne_context_defaults":
+        case "mne_context_defaults": {
+          const contextEntityLabel = (current.entityType.trim() || "Beneficiary").toLowerCase();
           return {
             ...current,
             businessPurpose:
               current.businessPurpose ||
-              "Support project monitoring, beneficiary management, evidence review, and donor-ready reporting.",
+              `Support project monitoring, ${contextEntityLabel} record management, evidence review, and donor-ready reporting.`,
             decisionUse:
               /donor|report/i.test(current.expectedUse)
                 ? "donor_reporting"
@@ -5277,7 +5459,7 @@ export function FormCreationWorkspace({
                 : current.dontKnowPolicy,
             expectedUse:
               current.expectedUse ||
-              "Approved submissions will feed beneficiary history, data quality review, dashboards, indicators, and reports.",
+              `Approved submissions will feed ${contextEntityLabel} history, data quality review, dashboards, indicators, and reports.`,
             formObjective:
               current.formObjective ||
               `Collect reliable ${setup.formType || "field"} data for ${setup.projectName || "the selected project"}.`,
@@ -5291,6 +5473,7 @@ export function FormCreationWorkspace({
               current.reportingPeriod === "none" ? "quarterly" : current.reportingPeriod,
             resultArea: current.resultArea || setup.formType || "Program Monitoring",
           };
+        }
         case "registration_defaults":
           return {
             ...current,
@@ -5511,6 +5694,47 @@ export function FormCreationWorkspace({
         controlsDraft.approvalNotes || "Reviewed and approved for publishing.",
       lifecycleStatus: "approved",
     });
+  }
+
+  function applyQuickSetup(): void {
+    if (!draftForm) {
+      setPublishMessage("Add at least one question in the Builder before using Quick setup.");
+      return;
+    }
+    setControlsDraft((current) => {
+      const suggestedMappings = suggestedProfileMappingsFromFields(draftForm.fields);
+      const profileMappings = {
+        ...current.profileMappings,
+        ...Object.fromEntries(
+          Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
+        ),
+      } as FormControlsDraft["profileMappings"];
+      const mappedCount = Object.values(profileMappings).filter(Boolean).length;
+      const needsAssignedOfficers =
+        current.assignmentMode === "assigned_only" &&
+        current.assignedFieldOfficerIds.length === 0 &&
+        current.assignedTeamIds.length === 0;
+      return {
+        ...current,
+        approvalDate: current.approvalDate || new Date().toISOString().slice(0, 10),
+        approvalNotes: current.approvalNotes || "Reviewed and approved for publishing.",
+        assignmentMode: needsAssignedOfficers ? "project_team" : current.assignmentMode,
+        changeSummary: current.changeSummary.trim() || "Initial published version.",
+        lifecycleStatus: "approved",
+        profileMappings,
+        profileUpdateMode:
+          current.profileUpdateMode !== "never" && mappedCount < 2
+            ? "never"
+            : current.profileUpdateMode,
+      };
+    });
+    setStage("review");
+    setPublishMessage(
+      "Quick setup applied recommended defaults and approved the form. Review the checklist below, fix any remaining items, then publish.",
+    );
+    window.setTimeout(() => {
+      window.scrollTo({ behavior: "smooth", top: 0 });
+    }, 0);
   }
 
   useEffect(() => {
@@ -5981,6 +6205,12 @@ export function FormCreationWorkspace({
 
   const status = publishedForm?.status ?? draftForm?.status ?? "draft";
   const compactBuilderMode = stage === "builder" && Boolean(draftForm);
+  const editingPublishedForm = initialForm?.status === "published" && !publishedForm;
+  const workspaceTitle = initialForm
+    ? editingPublishedForm
+      ? "Create New Version"
+      : "Edit Form"
+    : "Create Form";
 
   return (
     <section className={cn("space-y-3", compactBuilderMode && "space-y-1.5")}>
@@ -6000,9 +6230,12 @@ export function FormCreationWorkspace({
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="collect">FORMS</Badge>
               {compactBuilderMode ? (
-                <span className="text-sm font-semibold">Create Form</span>
+                <span className="text-sm font-semibold">{workspaceTitle}</span>
               ) : null}
               <Badge tone={statusTone(status)}>{status}</Badge>
+              {editingPublishedForm ? (
+                <Badge tone="info">Live v{initialForm.version} protected</Badge>
+              ) : null}
               <span className="text-xs text-muted-foreground">
                 Autosave: Saved
               </span>
@@ -6019,13 +6252,13 @@ export function FormCreationWorkspace({
                   compactBuilderMode ? "text-base" : "text-2xl",
                 )}
               >
-                Create Form
+                {workspaceTitle}
               </h1>
               {!compactBuilderMode ? (
-                <HelpHint label="About create form" title="Create Form">
-                  Create the draft shell first, then build questions, configure
-                  controls, test the form, review readiness, and publish a
-                  governed version for field operations.
+                <HelpHint label="About this workflow" title={workspaceTitle}>
+                  {editingPublishedForm
+                    ? "You are editing the next draft version. The current published version stays available to field officers until you publish this revision."
+                    : "Create the draft shell first, then build questions, configure controls, test the form, review readiness, and publish a governed version for field operations."}
                 </HelpHint>
               ) : null}
             </div>
@@ -6056,6 +6289,9 @@ export function FormCreationWorkspace({
                 >
                   Setup
                 </Button>
+                <Button onClick={applyQuickSetup} size="sm" variant="secondary">
+                  Quick setup
+                </Button>
                 <Button
                   onClick={() => setStage("controls")}
                   size="sm"
@@ -6079,7 +6315,7 @@ export function FormCreationWorkspace({
 
       <section className="rounded-xl border bg-panel p-3 shadow-line">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold">Form lifecycle</h2>
               <Badge tone={publishedForm ? "success" : readinessTone}>
@@ -6089,12 +6325,11 @@ export function FormCreationWorkspace({
                     ? "Approved"
                     : readinessLabel}
               </Badge>
+              <span className="text-xs text-muted-foreground">
+                {completedLifecycleCount} of {lifecycleSteps.length} steps complete ({lifecycleProgressPercent}%)
+              </span>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Build questions first, then configure controls, test, review,
-              approve, and publish. Publishing is only available at the final
-              review gate.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{nextActionHint}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {stage === "setup" ? (
@@ -6122,9 +6357,14 @@ export function FormCreationWorkspace({
               </Button>
             ) : null}
             {stage === "builder" ? (
-              <Button onClick={() => setStage("controls")} size="sm" variant="primary">
-                Next: Configure Controls
-              </Button>
+              <>
+                <Button onClick={applyQuickSetup} size="sm" variant="secondary">
+                  Quick setup &amp; review
+                </Button>
+                <Button onClick={() => setStage("controls")} size="sm" variant="primary">
+                  Next: Configure Controls
+                </Button>
+              </>
             ) : null}
             {stage === "controls" ? (
               <Button
@@ -6191,54 +6431,71 @@ export function FormCreationWorkspace({
             ) : null}
           </div>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-7">
-          {lifecycleSteps.map((step, index) => {
-            const isActive = step.id === activeLifecycleId;
-            const isComplete = lifecycleCompletion[step.id];
-            const isFuture = index > activeLifecycleIndex && !isComplete;
-            return (
-              <button
-                className={cn(
-                  "rounded-lg border px-2.5 py-2 text-left transition",
-                  isActive
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : isComplete
-                      ? "border-success/30 bg-success/10 text-foreground"
-                      : "bg-background/60 hover:bg-muted/60",
-                  isFuture && "text-muted-foreground",
-                )}
-                disabled={step.id !== "setup" && !draftForm}
-                key={step.id}
-                onClick={() => openLifecycleStep(step.id)}
-                type="button"
-              >
-                <span className="flex items-center gap-1.5 text-xs font-semibold">
-                  {isComplete ? (
-                    <CheckCircle2 aria-hidden="true" size={13} />
-                  ) : isActive ? (
-                    <Play aria-hidden="true" size={13} />
-                  ) : (
-                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px]">
-                      {index + 1}
-                    </span>
-                  )}
-                  {step.label}
+        <div className="mt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-1.5 rounded-full bg-primary transition-all"
+              style={{ width: `${lifecycleProgressPercent}%` }}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            {lifecycleSteps.map((step, index) => {
+              const isActive = step.id === activeLifecycleId;
+              const isComplete = lifecycleCompletion[step.id];
+              const isFuture = index > activeLifecycleIndex && !isComplete;
+              return (
+                <span className="flex items-center gap-1" key={step.id}>
+                  <button
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : isComplete
+                          ? "border-success/30 bg-success/10 text-foreground hover:bg-success/15"
+                          : "border-transparent bg-background/60 text-muted-foreground hover:bg-muted/60",
+                      isFuture && "text-muted-foreground",
+                    )}
+                    disabled={step.id !== "setup" && !draftForm}
+                    onClick={() => openLifecycleStep(step.id)}
+                    title={step.helper}
+                    type="button"
+                  >
+                    {isComplete ? (
+                      <CheckCircle2 aria-hidden="true" size={13} />
+                    ) : isActive ? (
+                      <Play aria-hidden="true" size={13} />
+                    ) : (
+                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px]">
+                        {index + 1}
+                      </span>
+                    )}
+                    {step.label}
+                  </button>
+                  {index < lifecycleSteps.length - 1 ? (
+                    <ChevronRight aria-hidden="true" className="shrink-0 text-muted-foreground/30" size={14} />
+                  ) : null}
                 </span>
-                <span
-                  className={cn(
-                    "mt-1 block truncate text-[11px]",
-                    isActive
-                      ? "text-primary-foreground/75"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {step.helper}
-                </span>
-              </button>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </section>
+
+      {editingPublishedForm ? (
+        <section className="rounded-lg border border-info/25 bg-info/12 p-3 text-sm text-info">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold">You are editing the next draft version.</p>
+              <p className="mt-1 text-xs">
+                Field officers continue using v{initialForm.version}. Save Draft keeps this revision unfinished; Publish Form promotes it to v{initialForm.version + 1} and sends the updated form to selected field officers.
+              </p>
+            </div>
+            <Button onClick={() => setStage("review")} size="sm" variant="secondary">
+              Review version readiness
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {stage === "setup" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
@@ -6877,6 +7134,14 @@ export function FormCreationWorkspace({
                               : "Later"}
                       </Badge>
                     </div>
+                    <p
+                      className={cn(
+                        "mt-1 text-[10px] font-semibold uppercase tracking-wide",
+                        stepReadiness.required ? "text-danger/70" : "text-muted-foreground/60",
+                      )}
+                    >
+                      {stepReadiness.required ? "Required for publish" : "Optional"}
+                    </p>
                     <p className="mt-1 min-h-[2.5rem] text-xs text-muted-foreground">
                       {step.helper}
                     </p>
@@ -8275,7 +8540,7 @@ export function FormCreationWorkspace({
                     }
                     type="checkbox"
                   />
-                  Require beneficiary/entity
+                  Require existing entity record
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
@@ -8291,16 +8556,57 @@ export function FormCreationWorkspace({
                   Entity type
                   <Select
                     className="mt-2"
-                    onChange={(event) =>
-                      updateControlsDraft({ entityType: event.target.value })
-                    }
+                    onChange={(event) => {
+                      const category = (entityCategoriesQuery.data ?? []).find(
+                        (item) => item.name === event.target.value,
+                      );
+                      updateControlsDraft({
+                        entityCategoryId: category?.id ?? "",
+                        entityType: event.target.value,
+                      });
+                    }}
                     value={controlsDraft.entityType}
                   >
-                    {["Farmer", "Household", "Beneficiary", "Facility", "School", "Group", "Custom Entity"].map((type) => (
+                    {entityTypeOptions.map((type) => (
                       <option key={type} value={type}>{type}</option>
                     ))}
                   </Select>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    {selectedEntityCategory
+                      ? `Linked to the project category “${selectedEntityCategory.name}”.`
+                      : selectedProjectId
+                        ? "No matching active project category found; add one in Project settings if this should be tracked as an entity."
+                        : "Select a project first to use its sector or custom entity categories."}
+                  </span>
                 </label>
+                <div className="rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground">
+                  <p className="font-semibold text-foreground">Official entity code</p>
+                  <p className="mt-1">
+                    Atlas uses the selected project&apos;s entity code format when approved submissions create new records.
+                    Set it in Projects → Entity Configuration; keep this form focused on whether it creates, updates, or requires a record.
+                  </p>
+                  <p className="mt-2">
+                    Example for this form: <span className="font-semibold text-foreground">{entityCodeExample(selectedEntityCategory?.name ?? controlsDraft.entityType)}</span>
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-background/70 p-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-foreground">Entity profile questions</p>
+                      <p className="mt-1">
+                        Add the selected category&apos;s configured fields as editable Builder questions.
+                      </p>
+                    </div>
+                    <Button
+                      disabled={!selectedEntityCategory || !selectedEntityCategory.attributes.length}
+                      onClick={addEntityCategoryQuestions}
+                      type="button"
+                      variant="secondary"
+                    >
+                      Add category fields
+                    </Button>
+                  </div>
+                </div>
                 <label className="text-sm font-medium">
                   Respondent identity rule
                   <Select
@@ -9278,34 +9584,52 @@ export function FormCreationWorkspace({
                   key={`${advice.id}-${index}`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">{advice.label}</p>
-                      <div className="mt-2 grid gap-2 text-xs text-muted-foreground lg:grid-cols-4">
-                        <div>
-                          <p className="font-semibold text-foreground">Why</p>
-                          <p className="mt-1">{advice.why}</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">Direct fix</p>
-                          <p className="mt-1">{advice.fix}</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">M&E expert recommendation</p>
-                          <p className="mt-1">{advice.mneTip}</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {advice.quickFixId
-                              ? "What the platform will do"
-                              : "Project-specific decision"}
-                          </p>
-                          <p className="mt-1">{advice.platformAction}</p>
-                        </div>
+                    <div className="flex min-w-0 items-start gap-2">
+                      {advice.severity === "Required" ? (
+                        <AlertTriangle
+                          aria-hidden="true"
+                          className="mt-0.5 shrink-0 text-danger"
+                          size={16}
+                        />
+                      ) : (
+                        <ClipboardCheck
+                          aria-hidden="true"
+                          className="mt-0.5 shrink-0 text-warning"
+                          size={16}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Item {index + 1} of {Math.min(publishAssistantAdvice.length, 10)}
+                        </p>
+                        <p className="text-sm font-semibold">{advice.label}</p>
                       </div>
                     </div>
                     <Badge tone={advice.severity === "Required" ? "danger" : "warning"}>
                       {advice.severity}
                     </Badge>
+                  </div>
+                  <div className="mt-2 grid gap-3 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <p className="font-semibold text-foreground">Why</p>
+                      <p className="mt-1">{advice.why}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">Direct fix</p>
+                      <p className="mt-1">{advice.fix}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">M&amp;E expert recommendation</p>
+                      <p className="mt-1">{advice.mneTip}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {advice.quickFixId
+                          ? "What the platform will do"
+                          : "Project-specific decision"}
+                      </p>
+                      <p className="mt-1">{advice.platformAction}</p>
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button

@@ -22,18 +22,18 @@ const functionalityGuide = [
   },
   {
     title: "Field operations and assignments",
-    text: "Managers assign field officers to projects, forms, locations, beneficiaries, visits, and operational activities. Supervisors can approve movement requests and monitor field progress.",
+    text: "Managers assign field officers to projects, forms, locations, entities, visits, and operational activities. Supervisors can approve movement requests and monitor field progress.",
     worksBy: "The field officer profile shows assignments, supervisor relationship, devices, permissions, submissions, performance, and activity history.",
   },
   {
     title: "Mobile field app",
     text: "Field officers sign in, sync assigned work, collect data offline, save drafts, capture GPS and media evidence, queue submissions, and sync when connected.",
-    worksBy: "Mobile bootstrap downloads profile, permissions, assignments, projects, forms, locations, beneficiaries, rules, and returned submissions.",
+    worksBy: "Mobile bootstrap downloads profile, permissions, assignments, projects, forms, locations, entities, rules, and returned submissions.",
   },
   {
     title: "Submissions and approval",
     text: "Submitted records arrive in the web app for review. Reviewers approve, return, reject, or archive records based on quality, evidence, and governance rules.",
-    worksBy: "Approved data can feed beneficiaries, indicators, reports, dashboards, maps, and audit history. Unapproved records stay visible but should not count as official results.",
+    worksBy: "Approved data can feed entities, indicators, reports, dashboards, maps, and audit history. Unapproved records stay visible but should not count as official results.",
   },
   {
     title: "Data import and cleaning",
@@ -41,24 +41,24 @@ const functionalityGuide = [
     worksBy: "Uploaded and imported records keep source labels, import batch context, row issues, and cleaning status so they are not confused with live field submissions.",
   },
   {
-    title: "Beneficiaries and entities",
-    text: "Beneficiaries, farmers, households, facilities, schools, groups, and other entities are the long-term records connected to approved submissions.",
-    worksBy: "Approved entity-linked forms can create or update beneficiaries, generate stable codes, preserve profile lineage, and send conflicts to reconciliation.",
+    title: "Entities and records",
+    text: "Entities such as farmers, households, facilities, schools, groups, and other records are the long-term records connected to approved submissions.",
+    worksBy: "Approved entity-linked forms can create or update entities, generate stable codes, preserve profile lineage, and send conflicts to reconciliation.",
   },
   {
     title: "Data quality and reconciliation",
     text: "Data Quality helps teams investigate duplicates, missing values, outliers, invalid GPS, profile conflicts, suspicious activity, and unlinked records.",
-    worksBy: "Quality issues are reviewed before records are used in reports, indicators, beneficiary profiles, or donor outputs.",
+    worksBy: "Quality issues are reviewed before records are used in reports, indicators, entity profiles, or donor outputs.",
   },
   {
     title: "Mapping and GPS evidence",
-    text: "Mapping shows project areas, beneficiary locations, submission points, facilities, coverage gaps, GPS quality issues, and operational movement evidence.",
+    text: "Mapping shows project areas, entity locations, submission points, facilities, coverage gaps, GPS quality issues, and operational movement evidence.",
     worksBy: "GPS capture stores coordinates, accuracy, source, timestamp, and quality signals where forms or activity rules require location evidence.",
   },
   {
     title: "Indicators, dashboards, and reports",
     text: "Indicators track baselines, targets, actual progress, disaggregation, and reporting periods. Reports turn approved data into dashboards, exports, and donor-ready outputs.",
-    worksBy: "Reports should use approved, traceable data linked to forms, projects, beneficiaries, indicators, and quality checks.",
+    worksBy: "Reports should use approved, traceable data linked to forms, projects, entities, indicators, and quality checks.",
   },
   {
     title: "Users, teams, roles, and governance",
@@ -89,7 +89,7 @@ export default function DocumentationPage() {
   return (
     <MarketingShell>
       <main>
-        <SimplePageHero eyebrow="Documentation" title="Atlas FieldOps functionality guide" text="A public guide explaining how the main platform features work across projects, forms, mobile collection, submissions, beneficiaries, quality, maps, reports, governance, and administration." />
+        <SimplePageHero eyebrow="Documentation" title="Atlas FieldOps functionality guide" text="A public guide explaining how the main platform features work across projects, forms, mobile collection, submissions, entities, quality, maps, reports, governance, and administration." />
         <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
           <div className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Documentation maintenance rule</p>

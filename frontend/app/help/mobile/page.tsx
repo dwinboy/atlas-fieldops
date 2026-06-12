@@ -7,7 +7,7 @@ import { faqSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 const mobileFaqs = [
   {
     answer:
-      "Open the mobile app while online, sign in, run Sync Now, and confirm your assignments, forms, and assigned beneficiaries are visible before leaving for the field.",
+      "Open the mobile app while online, sign in, run Sync Now, and confirm your assignments, forms, and assigned entities are visible before leaving for the field.",
     question: "What should field officers do before going offline?",
   },
   {
@@ -37,8 +37,8 @@ const sections = [
     items: [
       "Charge the device and confirm the correct app version.",
       "Sign in while online with password or approved QR login.",
-      "Run Sync Now to download your profile, permissions, projects, forms, locations, beneficiaries, supervisor, mobile rules, and returned submissions.",
-      "Open Assignments and confirm the project, form, beneficiary list, location scope, and supervisor instructions.",
+      "Run Sync Now to download your profile, permissions, projects, forms, locations, entities, supervisor, mobile rules, and returned submissions.",
+      "Open Assignments and confirm the project, form, entity list, location scope, and supervisor instructions.",
       "Confirm any visit request or operational activity has been approved before travel when your supervisor requires it.",
       "Open Sync Center and confirm there are no failed items before travel.",
     ],
@@ -46,7 +46,7 @@ const sections = [
   },
   {
     items: [
-      "Open the assigned work, select or create the beneficiary, and start the form.",
+      "Open the assigned work, select or create the entity, and start the form.",
       "Use the help text shown under a question when a date, number, GPS, attachment, barcode, QR code, signature, or required field needs a specific format.",
       "Save drafts whenever fieldwork is interrupted.",
       "Use GPS and attachment questions when the form asks for evidence, and recapture GPS if accuracy is poor.",

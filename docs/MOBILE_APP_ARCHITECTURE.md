@@ -177,6 +177,8 @@ The backend mobile contract maps validation, simple builder logic expressions, c
 
 Reference data remains owned by Administration. Mobile downloads active organization/global reference lists through `/api/v1/mobile/reference-data` and the bootstrap sync package so field officers can select approved site codes, beneficiary categories, and other controlled values while offline.
 
+Entity categories remain owned by Project Settings. Mobile bootstrap sync downloads assigned project `EntityCategory` records and their attributes so field officers see the correct project language, such as Farmer, School, Health Facility, Water Point, Asset, Case Record, or a custom category. The local database stores these categories with the same offline snapshot pattern as forms, entities, assignments, and reference lists.
+
 ## GPS Quality
 
 Mobile GPS validation is advisory and offline-capable.
@@ -299,15 +301,15 @@ Login -> Bootstrap Sync -> View Assignments -> Select Entity -> Open Form -> Sav
 Current backend behavior:
 
 - Web Field Operations assignments must persist the field officer profile, project ID, and published form ID on the backend. Mobile bootstrap sync downloads only those form-specific assignments for new records, with project-wide published forms used only for older project-only assignments.
-- `/api/v1/mobile/sync` returns assigned projects, project assignments, published forms, current form versions, assigned beneficiaries, and derived location/reference placeholders for the authenticated field officer.
+- `/api/v1/mobile/sync` returns assigned projects, project assignments, published forms, current form versions, assigned entities, entity categories, and derived location/reference placeholders for the authenticated field officer.
 - `/api/v1/mobile/submissions` validates the downloaded form version, reuses the existing Submissions service, stores mobile metadata, and returns the server submission ID.
-- When a published form is configured to create a new entity, mobile registration sync creates a beneficiary/entity record and links the submission to it.
-- Same-phone duplicate beneficiary registration is blocked with a clear conflict response.
+- When a published form is configured to create a new entity, mobile registration sync creates the correct category of entity record and links the submission to it.
+- Same-phone duplicate entity registration is blocked with a clear conflict response where duplicate rules apply.
 
 Current mobile behavior:
 
-- The first screen after login is a field-officer home screen, not an administration dashboard. It shows the signed-in user, organization, a manual "Sync assigned work" action, assignment readiness, downloaded forms, assigned beneficiaries, drafts, and queued sync items in plain field language.
-- Field officers can tap an assigned work card, select an assigned beneficiary when the form requires one, answer downloaded questions, record the submission GPS location, save the draft, queue the submission, and manually sync queued submissions.
+- The first screen after login is a field-officer home screen, not an administration dashboard. It shows the signed-in user, organization, a manual "Sync assigned work" action, assignment readiness, downloaded forms, assigned entities, drafts, and queued sync items in plain field language.
+- Field officers can tap an assigned work card, select an assigned entity when the form requires one, answer downloaded questions, record the submission GPS location, save the draft, queue the submission, and manually sync queued submissions.
 - Successful login loads the current user and runs assigned work sync.
 - Assigned work is stored locally with sync metadata.
 - Drafts are created from assignment, form version, and selected entity context.

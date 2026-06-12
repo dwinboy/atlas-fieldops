@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies import require_permission
@@ -24,6 +24,9 @@ from app.schemas.operations import (
     DataQualitySignalUpdate,
     DonorReportCreate,
     DonorReportRead,
+    EntityCategoryCreate,
+    EntityCategoryRead,
+    EntityCategoryUpdate,
     EntityDuplicateCandidateRead,
     EntityDuplicateCheckRequest,
     EntityPrefillRead,
@@ -49,6 +52,8 @@ from app.schemas.operations import (
     ImportSupportedSourceRead,
     ImportUploadResponse,
     IndicatorCreate,
+    IndicatorDisaggregationsRead,
+    IndicatorLinkedSubmissionsRead,
     IndicatorRead,
     InterventionCreate,
     InterventionRead,
@@ -72,6 +77,7 @@ from app.schemas.operations import (
     OperationsSummary,
     ProgramCreate,
     ProgramRead,
+    PredefinedEntityCategoryRead,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
     PublicCollectionLinkCreate,
@@ -458,6 +464,113 @@ async def list_beneficiaries(
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
 
 
+@router.get(
+    "/entity-categories/library",
+    response_model=list[PredefinedEntityCategoryRead],
+    summary="List predefined entity categories by sector",
+)
+async def predefined_entity_categories(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    sector: Annotated[str | None, Query()] = None,
+) -> list[PredefinedEntityCategoryRead]:
+    _ = principal
+    return OperationsService(session).predefined_entity_categories(sector)
+
+
+@router.get(
+    "/entity-categories",
+    response_model=list[EntityCategoryRead],
+    summary="List configured entity categories",
+)
+async def list_entity_categories(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    project_id: Annotated[UUID | None, Query()] = None,
+    include_archived: Annotated[bool, Query()] = False,
+) -> list[EntityCategoryRead]:
+    return await OperationsService(session).list_entity_categories(
+        organization_uuid(principal),
+        project_id=project_id,
+        include_archived=include_archived,
+    )
+
+
+@router.post(
+    "/entity-categories",
+    response_model=EntityCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create custom entity category",
+)
+async def create_entity_category(
+    payload: EntityCategoryCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).create_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/entity-categories/activate-predefined",
+    response_model=EntityCategoryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Activate predefined entity category for a project",
+)
+async def activate_predefined_entity_category(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    project_id: Annotated[UUID, Query()],
+    slug: Annotated[str, Query(max_length=120)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).activate_predefined_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            project_id,
+            slug,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/entity-categories/{category_id}",
+    response_model=EntityCategoryRead,
+    summary="Update, archive, or restore entity category",
+)
+async def update_entity_category(
+    category_id: UUID,
+    payload: EntityCategoryUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> EntityCategoryRead:
+    try:
+        result = await OperationsService(session).update_entity_category(
+            organization_uuid(principal),
+            user_uuid(principal),
+            category_id,
+            payload,
+        )
+        await session.commit()
+        return result
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.get("/data-quality/signals", response_model=list[DataQualitySignalRead], summary="List data cleaning and reconciliation signals")
 async def list_quality_signals(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
@@ -628,6 +741,42 @@ async def create_indicator(
     return await OperationsService(session).create_indicator(organization_uuid(principal), payload, user_uuid(principal))
 
 
+@router.get(
+    "/indicators/{indicator_id}/disaggregation",
+    response_model=IndicatorDisaggregationsRead,
+    summary="Get indicator disaggregation breakdown",
+)
+async def get_indicator_disaggregation(
+    indicator_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorDisaggregationsRead:
+    service = OperationsService(session)
+    organization_id = organization_uuid(principal)
+    indicator = await service.repository.get_indicator_by_id(organization_id=organization_id, indicator_id=indicator_id)
+    if indicator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Indicator not found")
+    return await service.calculate_indicator_disaggregation(organization_id, indicator)
+
+
+@router.get(
+    "/indicators/{indicator_id}/linked-submissions",
+    response_model=IndicatorLinkedSubmissionsRead,
+    summary="Get submissions linked to an indicator's formula",
+)
+async def get_indicator_linked_submissions(
+    indicator_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorLinkedSubmissionsRead:
+    service = OperationsService(session)
+    organization_id = organization_uuid(principal)
+    indicator = await service.repository.get_indicator_by_id(organization_id=organization_id, indicator_id=indicator_id)
+    if indicator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Indicator not found")
+    return await service.list_indicator_linked_submissions(organization_id, indicator)
+
+
 @router.get("/cases", response_model=list[CaseRead], summary="List cases")
 async def list_cases(
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.CASE_READ))],
@@ -664,6 +813,36 @@ async def create_report(
 ) -> DonorReportRead:
     report = await OperationsService(session).create_report(organization_uuid(principal), payload)
     return DonorReportRead.model_validate(report)
+
+
+@router.post("/reports/{report_id}/generate", response_model=DonorReportRead, summary="Generate computed metrics for a donor report")
+async def generate_report(
+    report_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DonorReportRead:
+    try:
+        report = await OperationsService(session).generate_report(organization_uuid(principal), report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return DonorReportRead.model_validate(report)
+
+
+@router.get("/reports/{report_id}/export.csv", summary="Export donor report metrics as CSV")
+async def export_report_csv(
+    report_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        csv_text, filename = await OperationsService(session).export_report_csv(organization_uuid(principal), report_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/data/imports/preview", response_model=ImportPreviewResponse, summary="Preview and validate imported data")

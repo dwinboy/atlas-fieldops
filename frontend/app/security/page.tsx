@@ -11,7 +11,7 @@ export const metadata: Metadata = marketingMetadata({
 });
 
 const controls = [
-  ["Data security", "Secure architecture for sensitive submissions, attachments, GPS evidence, and beneficiary records."],
+  ["Data security", "Secure architecture for sensitive submissions, attachments, GPS evidence, and entity records."],
   ["Access control", "Role-based and scope-aware permissions for projects, forms, submissions, maps, reports, users, and administration."],
   ["Audit trails", "Immutable records for publishing, approvals, exports, governance changes, and platform support actions."],
   ["Governance", "Consent, retention, approvals, data stewardship, export controls, and policy management."],

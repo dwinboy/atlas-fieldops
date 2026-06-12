@@ -8,13 +8,13 @@ import { site } from "@/lib/marketing/content";
 export const metadata: Metadata = marketingMetadata({
   title: "Demo Workspace",
   description:
-    "Explore a safe Atlas FieldOps demo workspace for projects, forms, beneficiaries, submissions, indicators, maps, data quality, and reports.",
+    "Explore a safe Atlas FieldOps demo workspace for projects, forms, entities, submissions, indicators, maps, data quality, and reports.",
   path: "/demo",
 });
 
 const demoModules = [
   ["Demo Project", "Rice Resilience Program with locations, targets, teams, and donor reporting readiness."],
-  ["Demo Beneficiaries", "Farmers, households, groups, and facilities with longitudinal records and duplicate checks."],
+  ["Demo Entities", "Farmers, households, groups, and facilities with longitudinal records and duplicate checks."],
   ["Demo Forms", "Registration, baseline, monitoring visit, training attendance, and endline forms."],
   ["Demo Dashboards", "Operational KPIs, data quality alerts, indicator progress, maps, and review queues."],
 ];
@@ -31,7 +31,7 @@ export default function DemoPage() {
               Try the platform with safe sample data.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-[#5b6a65]">
-              The demo workspace shows how a real M&E team can create a project, build forms, register beneficiaries, review submissions, monitor quality, and report impact without exposing customer data.
+              The demo workspace shows how a real M&E team can create a project, build forms, register entities, review submissions, monitor quality, and report impact without exposing customer data.
             </p>
             <div className="mt-7 flex flex-wrap justify-center gap-3">
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white hover:bg-[#0b7a70]" href="/login">

@@ -18,7 +18,7 @@ export default function FeaturesPage() {
         <SimplePageHero
           eyebrow="Features"
           title="A complete operating system for field data and M&E teams"
-          text="Atlas FieldOps connects every feature to the operational workflow: forms, beneficiaries, field teams, approvals, maps, indicators, analytics, and reports."
+          text="Atlas FieldOps connects every feature to the operational workflow: forms, entities, field teams, approvals, maps, indicators, analytics, and reports."
         />
         <FeatureGrid />
         <section className="bg-white py-20">

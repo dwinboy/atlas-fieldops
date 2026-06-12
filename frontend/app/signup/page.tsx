@@ -8,7 +8,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 export const metadata: Metadata = marketingMetadata({
   title: "Start Free Trial",
   description:
-    "Request an Atlas FieldOps trial workspace for monitoring and evaluation, offline data collection, beneficiary management, imports, and donor reporting.",
+    "Request an Atlas FieldOps trial workspace for monitoring and evaluation, offline data collection, entity management, imports, and donor reporting.",
   path: "/signup",
 });
 
@@ -23,7 +23,7 @@ export default function SignupPage() {
               Create a startup-ready M&E workspace.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-[#5b6a65]">
-              Share your organization details and we will prepare a secure onboarding path for projects, imports, forms, beneficiaries, teams, reports, and integrations.
+              Share your organization details and we will prepare a secure onboarding path for projects, imports, forms, entities, teams, reports, and integrations.
             </p>
             <div className="mt-8 grid gap-3 text-sm text-[#5b6a65]">
               {["Organization workspace setup", "First admin and team invitation readiness", "Migration assistant for historical data", "Templates for projects, forms, dashboards, and indicators"].map((item) => (

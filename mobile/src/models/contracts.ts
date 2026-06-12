@@ -22,6 +22,8 @@ export type {
   MobileDeviceRegistration,
   MobileDeviceStatus,
   MobileEntity,
+  MobileEntityCategory,
+  MobileEntityCategoryAttribute,
   MobileForm,
   MobileFormEntitySettings,
   MobileFormSection,

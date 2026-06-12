@@ -206,6 +206,7 @@ export class SubmissionsApi {
         formId: submission.formId,
         formVersionId: submission.formVersionId,
         entityId: submission.entityId,
+        linkedEntityIds: submission.linkedEntityIds,
         entityType: submission.entityType,
         frequencyPeriod: submission.frequencyPeriod,
         eventId: submission.eventId,

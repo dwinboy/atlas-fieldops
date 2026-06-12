@@ -15,7 +15,7 @@ export type SpatialSeverity = "Low" | "Medium" | "High" | "Critical";
 export type GeometryType = "Point" | "Polygon" | "LineString" | "MultiPolygon";
 export type LayerVisibility = "Public" | "Internal" | "Restricted" | "Aggregated";
 export type MapBasemap = "Streets" | "Satellite" | "Terrain" | "Light";
-export type SpatialValidationState = "Passed" | "Warning" | "Failed";
+export type SpatialValidationState = "Passed" | "Warning" | "Failed" | "Needs review";
 
 export type MappingSummary = {
   activeMapLayers: number;
@@ -117,22 +117,34 @@ export type IndicatorGeography = {
   period: string;
 };
 
+export type ProjectExtent = {
+  project: string;
+  pointCount: number;
+  centroidLat: number;
+  centroidLng: number;
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+};
+
 export const mappingSections: {
   id: MappingSection;
   label: string;
   route: string;
   description: string;
+  status?: "planned";
 }[] = [
   { id: "dashboard", label: "Overview", route: "/mapping", description: "Spatial activity, GPS evidence, layers, boundaries, coverage gaps, and high-priority geographic alerts." },
-  { id: "project-maps", label: "Project Maps", route: "/mapping/project-maps", description: "Project boundaries, active areas, assigned districts, donor scope, and coverage progress." },
+  { id: "project-maps", label: "Project Maps", route: "/mapping/project-maps", description: "Project extent computed from GPS-tagged submissions and records, with point counts and coverage centroid." },
   { id: "submission-maps", label: "Submission Maps", route: "/mapping/submission-maps", description: "Submission GPS points, density, review status, approval state, and quality scores." },
   { id: "beneficiary-maps", label: "Beneficiary Maps", route: "/mapping/beneficiary-maps", description: "Beneficiary and household geography with privacy masking and aggregated role-based views." },
-  { id: "facility-maps", label: "Facility Maps", route: "/mapping/facility-maps", description: "Schools, clinics, water points, offices, warehouses, catchments, and service availability." },
-  { id: "coverage-maps", label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Covered, under-covered, no-data, and over-sampled areas by assignment, form, target, and location." },
-  { id: "indicator-maps", label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Indicator values, baselines, targets, achievement, and hotspots by location." },
-  { id: "data-quality-maps", label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS mismatches, duplicate coordinates, outliers, boundary violations, and suspicious clusters." },
-  { id: "layers", label: "Map Layers", route: "/mapping/layers", description: "Upload, version, permission, activate, deactivate, and archive reusable spatial layers." },
-  { id: "boundaries", label: "Boundaries", route: "/mapping/boundaries", description: "Validate and manage country, region, district, community, village, and project boundary geometry." },
+  { id: "data-quality-maps", label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS accuracy issues and duplicate-risk records flagged from your real submission and beneficiary data." },
+  { id: "facility-maps", label: "Facility Maps", route: "/mapping/facility-maps", description: "Schools, clinics, water points, offices, warehouses, catchments, and service availability.", status: "planned" },
+  { id: "coverage-maps", label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Covered, under-covered, no-data, and over-sampled areas by assignment, form, target, and location.", status: "planned" },
+  { id: "indicator-maps", label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Indicator values, baselines, targets, achievement, and hotspots by location.", status: "planned" },
+  { id: "layers", label: "Map Layers", route: "/mapping/layers", description: "Upload, version, permission, activate, deactivate, and archive reusable spatial layers.", status: "planned" },
+  { id: "boundaries", label: "Boundaries", route: "/mapping/boundaries", description: "Validate and manage country, region, district, community, village, and project boundary geometry.", status: "planned" },
 ];
 
 export const previewMapLayers: MapLayerRecord[] = [

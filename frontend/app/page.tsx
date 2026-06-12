@@ -48,7 +48,7 @@ export default function HomePage() {
               Field data, M&E, and operations in one connected platform.
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#5b6a65] md:text-lg md:leading-8">
-              Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage beneficiaries, monitor indicators, approve submissions, map coverage, and report impact.
+              Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage entities, monitor indicators, approve submissions, map coverage, and report impact.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#0b7a70]" href="/book-demo">

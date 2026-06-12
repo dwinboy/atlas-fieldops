@@ -1,3 +1,5 @@
+import type { DonorReportMetrics } from "@/lib/api";
+
 export type ReportsSection = "dashboard" | "standard" | "custom" | "dashboards" | "scheduled" | "exports";
 
 export type ReportCategory =
@@ -39,7 +41,7 @@ export type ReportRecord = {
   donor: string;
   period: string;
   status: ReportStatus;
-  lastGenerated: string;
+  lastGenerated: string | null;
   views: number;
   formats: ReportFormat[];
   dataSources: string[];
@@ -47,6 +49,7 @@ export type ReportRecord = {
   visualizations: VisualizationType[];
   kpis: string[];
   governance: "Approved" | "Pending approval" | "Restricted export" | "Internal only";
+  metrics?: DonorReportMetrics;
 };
 
 export type DashboardRecord = {
@@ -125,13 +128,14 @@ export const reportsSections: {
   label: string;
   route: string;
   description: string;
+  status?: "planned";
 }[] = [
   { id: "dashboard", label: "Overview", route: "/reports", description: "Reporting hub, executive KPIs, recent reports, schedules, exports, and usage analytics." },
   { id: "standard", label: "Standard Reports", route: "/reports/standard", description: "Prebuilt program, project, submission, indicator, quality, coverage, field operations, beneficiary, and donor reports." },
-  { id: "custom", label: "Custom Reports", route: "/reports/custom", description: "Build ad hoc reports by selecting data sources, fields, filters, groups, visualizations, preview, and export options." },
-  { id: "dashboards", label: "Dashboards", route: "/reports/dashboards", description: "Create and manage interactive dashboards with cards, tables, charts, maps, feeds, and progress widgets." },
-  { id: "scheduled", label: "Scheduled Reports", route: "/reports/scheduled", description: "Automate report generation and delivery by email, download center, or API delivery." },
-  { id: "exports", label: "Exports", route: "/reports/exports", description: "Track authorized CSV, Excel, PDF, and JSON exports under governance controls." },
+  { id: "custom", label: "Custom Reports", route: "/reports/custom", description: "Build ad hoc reports by selecting data sources, fields, filters, groups, visualizations, preview, and export options.", status: "planned" },
+  { id: "dashboards", label: "Dashboards", route: "/reports/dashboards", description: "Create and manage interactive dashboards with cards, tables, charts, maps, feeds, and progress widgets.", status: "planned" },
+  { id: "scheduled", label: "Scheduled Reports", route: "/reports/scheduled", description: "Automate report generation and delivery by email, download center, or API delivery.", status: "planned" },
+  { id: "exports", label: "Exports", route: "/reports/exports", description: "Track authorized CSV, Excel, PDF, and JSON exports under governance controls.", status: "planned" },
 ];
 
 const todayIso = new Date().toISOString();

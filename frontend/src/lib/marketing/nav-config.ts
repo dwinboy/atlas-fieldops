@@ -149,7 +149,7 @@ export const NAV_CONFIG: NavMenu[] = [
           },
           {
             title: "Humanitarian & NGOs",
-            description: "Manage beneficiary registries, distributions, and donor reporting",
+            description: "Manage entity registries, distributions, and donor reporting",
             href: "/solutions/ngos",
           },
         ],

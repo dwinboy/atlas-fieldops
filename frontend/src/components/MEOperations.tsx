@@ -555,9 +555,9 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
         </section>
 
         <aside className="rounded-lg border bg-panel p-4 shadow-line">
-          <h2 className="text-sm font-semibold">Living beneficiary profile</h2>
+          <h2 className="text-sm font-semibold">Living entity profile</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Beneficiaries aggregate every operational signal: projects, visits, submissions, GPS, cases, indicators, and reports.
+            Entities aggregate every operational signal: projects, visits, submissions, GPS, cases, indicators, and reports.
           </p>
           <div className="mt-4 space-y-3">
             {beneficiaryProfileConnections.map((item) => (
@@ -566,7 +566,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
                 key={item.label}
                 onClick={() =>
                   setEcosystemResult(
-                    `${item.label}: ${item.value}. ${item.note}. This profile signal helps teams understand the complete beneficiary history before approving data, resolving cases, or reporting outcomes.`
+                    `${item.label}: ${item.value}. ${item.note}. This profile signal helps teams understand the complete entity history before approving data, resolving cases, or reporting outcomes.`
                   )
                 }
                 type="button"
@@ -584,7 +584,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          ["Project-driven", "Projects control assigned forms, officers, beneficiaries, geography, indicators, and reports."],
+          ["Project-driven", "Projects control assigned forms, officers, entities, geography, indicators, and reports."],
           ["Approval-aware", "Quality flags, GPS anomalies, duplicate risks, and corrections all feed supervisor queues."],
           ["Report-ready", "Dashboards and donor reports read live trusted operational data instead of disconnected exports."]
         ].map(([title, text]) => (
@@ -605,7 +605,7 @@ export function OperationalEcosystem({ token }: TokenAwareProps) {
           title="No connected operational chain exists yet"
           description="A new organization starts empty. Once programs, forms, field officers, submissions, review queues, cases, and reports are created, this page will summarize the real workflow chain for this organization."
           steps={[
-            "Create or import programs and beneficiaries.",
+            "Create or import programs and entities.",
             "Build forms and assign field officers.",
             "Collect submissions and review them so dashboards and reports use live approved data."
           ]}
@@ -656,7 +656,7 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
       label: "Visited this month",
       value: visitedCount.toLocaleString(),
       icon: BadgeCheck,
-      result: "Recent visits show which beneficiaries have fresh field evidence. Review last visit dates before reporting results, assigning follow-ups, or closing cases."
+      result: "Recent visits show which entities have fresh field evidence. Review last visit dates before reporting results, assigning follow-ups, or closing cases."
     },
     {
       label: "Possible duplicates",
@@ -681,7 +681,7 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
   const columns: TableColumn<Beneficiary>[] = [
     {
       key: "name",
-      header: "Beneficiary",
+      header: "Entity",
       value: (row) => `${row.name} ${row.uid} ${row.type}`,
       render: (row) => (
         <div>
@@ -706,10 +706,10 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
   return (
     <section className="space-y-5" aria-labelledby="beneficiaries-title">
       <PageHeader
-        eyebrow="Beneficiaries"
-        title="Beneficiary registry"
+        eyebrow="Entities"
+        title="Entity registry"
         description="Search households, farmers, cooperatives, schools, clinics, and groups with simple quality signals and visit history."
-        action={<ActionButton title="Register beneficiaries from Data tools" description="Use Data tools to import existing beneficiary files, or build a registration form from Templates for field collection." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add beneficiaries</ActionButton>}
+        action={<ActionButton title="Register entities from Data tools" description="Use Data tools to import existing entity files, or build a registration form from Templates for field collection." nextView="data" nextLabel="Open Data tools"><Plus aria-hidden="true" /> Add entities</ActionButton>}
       />
       {beneficiaryResult ? (
         <section className="rounded-2xl border border-success/30 bg-success/10 p-4" aria-live="polite">
@@ -738,7 +738,7 @@ export function BeneficiaryRegistry({ token }: TokenAwareProps) {
           </button>
         ))}
       </div>
-      <DataTable columns={columns} emptyLabel="No beneficiaries yet" rows={beneficiaryRows} searchLabel="Search people, IDs, villages, or programs" title={beneficiariesQuery.isFetching ? "Registry syncing" : "Registry"} />
+      <DataTable columns={columns} emptyLabel="No entities yet" rows={beneficiaryRows} searchLabel="Search people, IDs, villages, or programs" title={beneficiariesQuery.isFetching ? "Registry syncing" : "Registry"} />
     </section>
   );
 }
@@ -780,7 +780,7 @@ export function ProgramManagement({ token }: TokenAwareProps) {
       )
     },
     { key: "coverage", header: "Coverage", value: (row) => row.coverage, render: (row) => row.coverage },
-    { key: "beneficiaries", header: "Beneficiaries", value: (row) => String(row.beneficiaries), render: (row) => row.beneficiaries.toLocaleString() },
+    { key: "beneficiaries", header: "Entities", value: (row) => String(row.beneficiaries), render: (row) => row.beneficiaries.toLocaleString() },
     { key: "budget", header: "Budget", value: (row) => row.budget, render: (row) => row.budget },
     {
       key: "progress",
@@ -929,7 +929,7 @@ function mapCase(row: CaseRead): CaseItem {
     id: row.case_number,
     title: row.title,
     type: titleCase(row.case_type),
-    beneficiary: row.beneficiary_id ? `Beneficiary ${row.beneficiary_id.slice(0, 8)}` : "Unlinked beneficiary",
+    beneficiary: row.beneficiary_id ? `Entity ${row.beneficiary_id.slice(0, 8)}` : "Unlinked entity",
     priority: titleCase(row.priority),
     status: titleCase(row.status),
     due: row.due_at ? new Date(row.due_at).toLocaleDateString() : "No due date"
@@ -1080,7 +1080,7 @@ export function GeospatialIntelligence({ token }: TokenAwareProps) {
       ) : (
         <SetupEmptyState
           title="No map evidence has been collected yet"
-          description="This organization does not have live GPS submissions, mapped beneficiaries, facilities, routes, or coverage layers yet. Atlas will show real geographic coverage after field records with coordinates are collected or imported."
+          description="This organization does not have live GPS submissions, mapped entities, facilities, routes, or coverage layers yet. Atlas will show real geographic coverage after field records with coordinates are collected or imported."
           steps={[
             "Enable GPS questions in forms or import records with latitude and longitude.",
             "Assign field officers to regions and collect submissions.",
@@ -1320,7 +1320,7 @@ export function ConnectivityCenter({ token }: TokenAwareProps) {
 }
 
 export function DataInteroperabilityCenter({ token }: DataInteroperabilityCenterProps) {
-  const [datasetType, setDatasetType] = useState("beneficiaries");
+  const [datasetType, setDatasetType] = useState("entities");
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [lastUploadName, setLastUploadName] = useState("");
   const [dataResult, setDataResult] = useState("");

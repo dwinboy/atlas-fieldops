@@ -195,6 +195,7 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
       ],
       captured_at: submittedAt,
       client_submission_id: responseReference,
+      device_id: "public-web-form",
       duplicate_risk: "none",
       field_officer_id: "Public web collector",
       form_id: slug,

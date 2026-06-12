@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   BarChart3,
@@ -17,6 +17,7 @@ import {
   PieChart,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Settings2,
   Share2,
@@ -32,9 +33,19 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
-import type { CurrentPrincipal, DonorReportRead } from "@/lib/api";
-import { listReports } from "@/lib/api";
+import {
+  ApiError,
+  exportReportCsv,
+  generateReport,
+  listReports,
+  type CurrentPrincipal,
+  type DonorReportIndicatorMetric,
+  type DonorReportMetrics,
+  type DonorReportRead,
+} from "@/lib/api";
+import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
+import { progressTone } from "@/modules/indicators/utils";
 import {
   previewAuditEvents,
   previewBuilderSteps,
@@ -109,7 +120,7 @@ function formatDateRange(start: string | null, end: string | null): string {
   return new Date(start ?? end ?? "").toLocaleDateString();
 }
 
-function mapApiReport(row: DonorReportRead): ReportRecord {
+function mapApiReport(row: DonorReportRead, ownerRole: string): ReportRecord {
   const rawStatus = titleCase(row.status || "Draft");
   const normalizedStatus: ReportRecord["status"] = rawStatus.includes("Ready")
     ? "Ready"
@@ -118,18 +129,25 @@ function mapApiReport(row: DonorReportRead): ReportRecord {
       : rawStatus.includes("Fail")
         ? "Failed"
         : "Draft";
+  const metrics = row.metrics_json && Object.keys(row.metrics_json).length > 0 ? (row.metrics_json as DonorReportMetrics) : undefined;
+  const dataSources = [row.project_id ? "Project" : "Organization", "Approved submissions"];
+  if (metrics && metrics.indicators.length > 0) dataSources.push("Indicators");
+  const kpis = metrics && metrics.indicators.length > 0
+    ? metrics.indicators.map((indicator) => `${indicator.code} achievement`)
+    : ["Generate this report to compute KPIs"];
   return {
     category: row.donor ? "Donor Reports" : "Project Reports",
-    dataSources: ["Projects", "Indicators", "Approved submissions"],
+    dataSources,
     description: row.summary ?? "Imported report package generated from approved Atlas FieldOps evidence.",
     donor: row.donor ?? "Internal",
     filters: [row.project_id ? "Project linked" : "All assigned projects", row.survey_id ? "Survey linked" : "Organization-level", "Approved data default"],
     formats: row.export_formats.map((format) => titleCase(format) as ReportRecord["formats"][number]).filter((format) => ["Excel", "CSV", "PDF", "JSON"].includes(format)),
     governance: normalizedStatus === "Ready" ? "Approved" : "Pending approval",
     id: row.id,
-    kpis: ["Indicator achievement", "Data quality score"],
-    lastGenerated: new Date().toISOString(),
-    owner: "M&E Manager",
+    kpis,
+    lastGenerated: row.generated_at,
+    metrics,
+    owner: ownerRole,
     period: formatDateRange(row.period_start, row.period_end),
     project: row.project_id ? "Linked project" : "Organization-wide",
     status: normalizedStatus,
@@ -139,9 +157,26 @@ function mapApiReport(row: DonorReportRead): ReportRecord {
   };
 }
 
+function messageFromError(error: unknown): string {
+  if (error instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(error.message) as { detail?: unknown };
+      if (typeof parsed.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed.detail)) return parsed.detail.map((item) => item?.msg ?? "Invalid field").join(" ");
+    } catch {
+      return error.message;
+    }
+  }
+  return "Check your reporting permission and try again.";
+}
+
 function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
   const csv = toCsv(rows);
   if (!csv) return;
+  downloadCsvText(filename, csv);
+}
+
+function downloadCsvText(filename: string, csv: string): void {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -158,7 +193,9 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const [actionResult, setActionResult] = useState("");
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const queryClient = useQueryClient();
   const preview = isPreview(token);
+  const terminology = useSectorTerminology(token);
 
   const reportsQuery = useQuery({
     queryKey: ["reports-module", token],
@@ -167,9 +204,32 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   });
 
   const reports = useMemo(
-    () => (preview ? previewReports : (reportsQuery.data ?? []).map(mapApiReport)),
-    [preview, reportsQuery.data],
+    () => (preview ? previewReports : (reportsQuery.data ?? []).map((row) => mapApiReport(row, terminology.reportOwnerRole))),
+    [preview, reportsQuery.data, terminology.reportOwnerRole],
   );
+
+  const generateReportMutation = useMutation({
+    mutationFn: (reportId: string) => generateReport(token ?? "", reportId),
+    onSuccess: async (report) => {
+      await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
+      setActionResult(`${report.name} metrics were recalculated from approved submissions.`);
+      pushToast({ title: "Report generated", description: `${report.name} is up to date.`, tone: "success" });
+    },
+    onError: (error) => {
+      const description = messageFromError(error);
+      pushToast({ title: "Could not generate report", description, tone: "danger" });
+    },
+  });
+
+  async function exportReportData(report: ReportRecord): Promise<void> {
+    try {
+      const csv = await exportReportCsv(token ?? "", report.id);
+      downloadCsvText(`atlas-report-${report.id}-data.csv`, csv);
+      pushToast({ title: "Report data exported", description: `${report.title} computed metrics CSV is ready.`, tone: "success" });
+    } catch (error) {
+      pushToast({ title: "Could not export report data", description: messageFromError(error), tone: "danger" });
+    }
+  }
   const dashboards = useMemo(() => (preview ? previewDashboards : []), [preview]);
   const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
   const scheduledReports = useMemo(() => (preview ? previewScheduledReports : []), [preview]);
@@ -263,7 +323,10 @@ export function ReportsModule({ token }: ReportsModuleProps) {
               }}
               type="button"
             >
-              <span className="text-xs font-semibold">{section.label}</span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold">
+                {section.label}
+                {section.status === "planned" ? <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge> : null}
+              </span>
               <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
           ))}
@@ -286,7 +349,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         <ReportDetail
           auditEvents={reportAuditEvents.filter((event) => event.reportId === selectedReport.id)}
           exports={exportJobs}
+          generating={generateReportMutation.isPending && generateReportMutation.variables === selectedReport.id}
           onBack={() => setSelectedReportId(null)}
+          onExportData={exportReportData}
+          onGenerate={(report) => generateReportMutation.mutate(report.id)}
+          preview={preview}
           report={selectedReport}
           schedules={scheduledReports.filter((schedule) => schedule.reportId === selectedReport.id)}
           selectedTab={activeDetailTab}
@@ -306,8 +373,28 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           summary={summary}
         />
       ) : null}
-      {!selectedReport && activeSection === "standard" ? <StandardReports onOpenReport={openReport} onRunReport={runReport} reports={visibleReports} syncing={reportsQuery.isFetching} /> : null}
-      {!selectedReport && activeSection === "custom" ? <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} /> : null}
+      {!selectedReport && activeSection === "standard" ? (
+        <StandardReports
+          generatingId={generateReportMutation.isPending ? generateReportMutation.variables ?? null : null}
+          onExportData={exportReportData}
+          onGenerate={(report) => generateReportMutation.mutate(report.id)}
+          onOpenReport={openReport}
+          onRunReport={runReport}
+          preview={preview}
+          reports={visibleReports}
+          syncing={reportsQuery.isFetching}
+        />
+      ) : null}
+      {!selectedReport && activeSection === "custom" ? (
+        preview ? (
+          <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
+            sectionId="custom"
+          />
+        )
+      ) : null}
       {!selectedReport && activeSection === "dashboards" ? (
         preview ? (
           <DashboardsSection dashboards={dashboards} onOpenReports={() => setActiveSection("standard")} />
@@ -318,8 +405,26 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           />
         )
       ) : null}
-      {!selectedReport && activeSection === "scheduled" ? <ScheduledReportsSection schedules={scheduledReports} /> : null}
-      {!selectedReport && activeSection === "exports" ? <ExportsSection exports={exportJobs} /> : null}
+      {!selectedReport && activeSection === "scheduled" ? (
+        preview ? (
+          <ScheduledReportsSection schedules={scheduledReports} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
+            sectionId="scheduled"
+          />
+        )
+      ) : null}
+      {!selectedReport && activeSection === "exports" ? (
+        preview ? (
+          <ExportsSection exports={exportJobs} />
+        ) : (
+          <ComingSoonSection
+            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><RefreshCw aria-hidden="true" /> Generate &amp; export reports</Button>}
+            sectionId="exports"
+          />
+        )
+      ) : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -445,13 +550,21 @@ function ReportsDashboard({
 }
 
 function StandardReports({
+  generatingId,
+  onExportData,
+  onGenerate,
   onOpenReport,
   onRunReport,
+  preview,
   reports,
   syncing,
 }: {
+  generatingId: string | null;
+  onExportData: (report: ReportRecord) => void;
+  onGenerate: (report: ReportRecord) => void;
   onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
   onRunReport: (report: ReportRecord) => void;
+  preview: boolean;
   reports: ReportRecord[];
   syncing: boolean;
 }) {
@@ -497,6 +610,14 @@ function StandardReports({
       render: (report) => (
         <div className="flex flex-wrap justify-end gap-1.5">
           <Button onClick={() => onRunReport(report)} size="sm" variant="secondary"><Play aria-hidden="true" /> Run</Button>
+          {!preview ? (
+            <Button disabled={generatingId === report.id} onClick={() => onGenerate(report)} size="sm" variant="secondary">
+              <RefreshCw aria-hidden="true" /> {generatingId === report.id ? "Generating…" : "Generate"}
+            </Button>
+          ) : null}
+          {!preview ? (
+            <Button onClick={() => onExportData(report)} size="sm" variant="secondary"><Download aria-hidden="true" /> Export data</Button>
+          ) : null}
           <Button onClick={() => onOpenReport(report, "Exports")} size="sm" variant="secondary"><Download aria-hidden="true" /> Export</Button>
         </div>
       ),
@@ -507,7 +628,7 @@ function StandardReports({
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect a report-authoring service to create new standard reports. This control is a preview for now.", title: "Creating reports isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> New standard report</Button>}
+        action={<Button onClick={() => pushToast({ description: "Creating new standard report templates is on our roadmap. Use Generate to refresh metrics on the existing reports below.", title: "Creating reports isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> New standard report</Button>}
         description="Prebuilt program, project, submission, indicator, data quality, coverage, field operations, beneficiary, and donor reports with run, export, schedule, and share actions."
         route="/reports/standard"
         title="Standard Reports"
@@ -713,7 +834,11 @@ function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
 function ReportDetail({
   auditEvents,
   exports,
+  generating,
   onBack,
+  onExportData,
+  onGenerate,
+  preview,
   report,
   schedules,
   selectedTab,
@@ -721,7 +846,11 @@ function ReportDetail({
 }: {
   auditEvents: ReportAuditEvent[];
   exports: ExportJobRecord[];
+  generating: boolean;
   onBack: () => void;
+  onExportData: (report: ReportRecord) => void;
+  onGenerate: (report: ReportRecord) => void;
+  preview: boolean;
   report: ReportRecord;
   schedules: ScheduledReportRecord[];
   selectedTab: ReportDetailTab;
@@ -764,6 +893,14 @@ function ReportDetail({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={onBack} type="button" variant="secondary">Back to Reports</Button>
+          {!preview ? (
+            <Button disabled={generating} onClick={() => onGenerate(report)} type="button" variant="secondary">
+              <RefreshCw aria-hidden="true" /> {generating ? "Generating…" : "Generate"}
+            </Button>
+          ) : null}
+          {!preview ? (
+            <Button onClick={() => onExportData(report)} type="button" variant="secondary"><Download aria-hidden="true" /> Export data (CSV)</Button>
+          ) : null}
           <Button disabled={!canExportReport(report)} onClick={exportReportDefinition} type="button"><Download aria-hidden="true" /> Export</Button>
         </div>
       </div>
@@ -785,7 +922,7 @@ function ReportDetail({
       {selectedTab === "Visualizations" ? <VisualizationGrid visualizations={report.visualizations} /> : null}
       {selectedTab === "Schedules" ? <Timeline records={schedules.map((schedule) => ({ badge: schedule.frequency, label: schedule.reportTitle, meta: `${schedule.nextRun} · ${schedule.status}`, tone: scheduleTone(schedule.status) }))} /> : null}
       {selectedTab === "Exports" ? <Timeline records={exports.filter((job) => job.name.toLowerCase().includes(report.title.split(" ")[0].toLowerCase()) || job.source === "Reports").map((job) => ({ badge: job.format, label: job.name, meta: `${job.status} · ${job.governance}`, tone: exportStatusTone(job.status) }))} /> : null}
-      {selectedTab === "History" ? <Timeline records={[{ badge: report.status, label: "Report refreshed", meta: `${new Date(report.lastGenerated).toLocaleString()} · ${report.owner}`, tone: reportStatusTone(report.status) }, { badge: "Viewed", label: `${report.views} report views`, meta: "Usage analytics captured for report prioritization.", tone: "neutral" }]} /> : null}
+      {selectedTab === "History" ? <Timeline records={[{ badge: report.status, label: "Report refreshed", meta: `${report.lastGenerated ? new Date(report.lastGenerated).toLocaleString() : "Not yet generated"} · ${report.owner}`, tone: reportStatusTone(report.status) }, { badge: "Viewed", label: `${report.views} report views`, meta: "Usage analytics captured for report prioritization.", tone: "neutral" }]} /> : null}
       {selectedTab === "Audit Trail" ? <Timeline records={auditEvents.map((event) => ({ badge: event.action, label: event.actor, meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} /> : null}
     </section>
   );
@@ -794,23 +931,26 @@ function ReportDetail({
 function DetailOverview({ report }: { report: ReportRecord }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-      <Panel title="Report definition">
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            ["Category", report.category],
-            ["Project", report.project],
-            ["Donor", report.donor],
-            ["Owner", report.owner],
-            ["Period", report.period],
-            ["Governance", report.governance],
-          ].map(([label, value]) => (
-            <div className="rounded-xl border bg-background p-3" key={label}>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-              <p className="mt-2 text-sm font-medium">{value}</p>
-            </div>
-          ))}
-        </div>
-      </Panel>
+      <div className="space-y-5">
+        <Panel title="Report definition">
+          <div className="grid gap-3 md:grid-cols-2">
+            {[
+              ["Category", report.category],
+              ["Project", report.project],
+              ["Donor", report.donor],
+              ["Owner", report.owner],
+              ["Period", report.period],
+              ["Governance", report.governance],
+            ].map(([label, value]) => (
+              <div className="rounded-xl border bg-background p-3" key={label}>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+                <p className="mt-2 text-sm font-medium">{value}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <ComputedMetricsPanel report={report} />
+      </div>
       <Panel title="Run readiness">
         <div className="space-y-3">
           {[
@@ -827,6 +967,74 @@ function DetailOverview({ report }: { report: ReportRecord }) {
         </div>
       </Panel>
     </div>
+  );
+}
+
+function formatMetricValue(value: number, unit: string): string {
+  const formatted = Number.isFinite(value) ? value.toLocaleString() : "—";
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function ComputedMetricsPanel({ report }: { report: ReportRecord }) {
+  const metrics = report.metrics;
+  if (!metrics) {
+    return (
+      <Panel title="Computed metrics">
+        <div className="rounded-xl border border-dashed bg-muted/20 p-5 text-sm text-muted-foreground">
+          Generate this report to compute metrics from approved submissions.
+        </div>
+      </Panel>
+    );
+  }
+
+  const counters: [string, string][] = [
+    ["Projects", metrics.projects.toLocaleString()],
+    ["Submissions (approved / total)", `${metrics.submissions_approved.toLocaleString()} / ${metrics.submissions_total.toLocaleString()}`],
+    ["Beneficiaries", metrics.beneficiaries.toLocaleString()],
+    ["Generated", metrics.generated_at ? new Date(metrics.generated_at).toLocaleString() : "—"],
+  ];
+
+  const columns: TableColumn<DonorReportIndicatorMetric>[] = [
+    {
+      header: "Indicator",
+      key: "name",
+      render: (indicator) => (
+        <div>
+          <p className="font-medium">{indicator.name}</p>
+          <p className="text-xs text-muted-foreground">{indicator.code}</p>
+        </div>
+      ),
+      value: (indicator) => `${indicator.name} ${indicator.code}`,
+    },
+    { header: "Baseline", key: "baseline", render: (indicator) => formatMetricValue(indicator.baseline_value, indicator.unit), value: (indicator) => String(indicator.baseline_value) },
+    { header: "Current", key: "current", render: (indicator) => formatMetricValue(indicator.current_value, indicator.unit), value: (indicator) => String(indicator.current_value) },
+    { header: "Target", key: "target", render: (indicator) => formatMetricValue(indicator.target_value, indicator.unit), value: (indicator) => String(indicator.target_value) },
+    {
+      header: "Progress",
+      key: "progress",
+      render: (indicator) => <Badge tone={progressTone(indicator.progress_percent)}>{indicator.progress_percent}%</Badge>,
+      value: (indicator) => String(indicator.progress_percent),
+    },
+  ];
+
+  return (
+    <Panel title="Computed metrics">
+      <div className="grid gap-3 md:grid-cols-4">
+        {counters.map(([label, value]) => (
+          <div className="rounded-xl border bg-background p-3" key={label}>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+            <p className="mt-2 text-sm font-medium">{value}</p>
+          </div>
+        ))}
+      </div>
+      {metrics.indicators.length > 0 ? (
+        <div className="mt-4">
+          <DataTable columns={columns} emptyLabel="No indicators linked to this report" rows={metrics.indicators} searchLabel="Search indicators" title="Indicator progress" />
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">No indicators are linked to this report&apos;s project yet.</p>
+      )}
+    </Panel>
   );
 }
 
@@ -902,8 +1110,8 @@ function ComingSoonSection({ action, sectionId }: { action?: ReactNode; sectionI
     <div className="space-y-3">
       <SectionHeader action={action} description={meta.description} route={meta.route} title={meta.label} />
       <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Coming soon</p>
-        <p className="mt-2 leading-6">{meta.description} This workspace isn&apos;t connected to a live data source yet — it will populate once that capability ships.</p>
+        <p className="font-medium text-foreground">On our roadmap</p>
+        <p className="mt-2 leading-6">{meta.label} is planned for a future release and isn&apos;t available in this workspace yet. {meta.description}</p>
       </div>
     </div>
   );

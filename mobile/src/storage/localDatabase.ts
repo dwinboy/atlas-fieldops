@@ -7,6 +7,7 @@ import type {
   MobileConflictRecord,
   MobileDeviceRecord,
   MobileEntity,
+  MobileEntityCategory,
   MobileForm,
   MobileFormVersion,
   MobileLocation,
@@ -22,6 +23,7 @@ import type {
   MobileSyncQueueItem,
   MobileVisitRequest,
 } from "@/models/contracts";
+import { normalizeEntityCategoryRecord } from "@/entities/entityCategoryUtils";
 import { nowIso } from "@/utils/ids";
 
 type LocalCollectionMap = {
@@ -31,6 +33,7 @@ type LocalCollectionMap = {
   conflicts: MobileConflictRecord;
   deviceRecords: MobileDeviceRecord;
   entities: MobileEntity;
+  entityCategories: MobileEntityCategory;
   forms: MobileForm;
   formVersions: MobileFormVersion;
   locations: MobileLocation;
@@ -101,6 +104,7 @@ export class LocalDatabase {
   readonly conflicts = new LocalRepository<LocalCollectionMap["conflicts"]>(() => this.persistSnapshot());
   readonly deviceRecords = new LocalRepository<LocalCollectionMap["deviceRecords"]>(() => this.persistSnapshot());
   readonly entities = new LocalRepository<LocalCollectionMap["entities"]>(() => this.persistSnapshot());
+  readonly entityCategories = new LocalRepository<LocalCollectionMap["entityCategories"]>(() => this.persistSnapshot());
   readonly forms = new LocalRepository<LocalCollectionMap["forms"]>(() => this.persistSnapshot());
   readonly formVersions = new LocalRepository<LocalCollectionMap["formVersions"]>(() => this.persistSnapshot());
   readonly locations = new LocalRepository<LocalCollectionMap["locations"]>(() => this.persistSnapshot());
@@ -158,6 +162,7 @@ export class LocalDatabase {
       conflicts: this.conflicts.list(),
       deviceRecords: this.deviceRecords.list(),
       entities: this.entities.list(),
+      entityCategories: this.entityCategories.list(),
       forms: this.forms.list(),
       formVersions: this.formVersions.list(),
       locations: this.locations.list(),
@@ -184,6 +189,7 @@ export class LocalDatabase {
       this.conflicts.replaceAll(snapshot.conflicts ?? []);
       this.deviceRecords.replaceAll(snapshot.deviceRecords ?? []);
       this.entities.replaceAll(snapshot.entities ?? []);
+      this.entityCategories.replaceAll((snapshot.entityCategories ?? []).map(normalizeEntityCategoryRecord));
       this.forms.replaceAll(snapshot.forms ?? []);
       this.formVersions.replaceAll(snapshot.formVersions ?? []);
       this.locations.replaceAll(snapshot.locations ?? []);
@@ -214,6 +220,7 @@ export class LocalDatabase {
         "conflicts",
         "deviceRecords",
         "entities",
+        "entityCategories",
         "forms",
         "formVersions",
         "locations",

@@ -90,10 +90,10 @@ export default function FormsScreen() {
                   <Text style={styles.metaText}>{versionCount(form.id)} version(s) stored</Text>
                 </View>
 
-                {version?.entitySettings.requiresExistingEntity && (
+                {version?.entitySettings.linkedToEntity && (
                   <View style={styles.requiresEntityRow}>
                     <User size={14} color={colors.mutedForeground} />
-                    <Text style={styles.metaText}>Requires beneficiary selection</Text>
+                    <Text style={styles.metaText}>{entityPurpose(version)}</Text>
                   </View>
                 )}
 
@@ -127,14 +127,30 @@ function mobileReadiness(version: MobileFormVersion | null): { score: number; to
   const mediaCount = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type)).length;
   const complexCount = questions.filter((question) => ["RepeatGroup", "Matrix", "Ranking", "CalculatedField"].includes(question.type)).length;
   const requiredCount = questions.filter((question) => question.required).length;
+  const category = version.entitySettings.entityCategoryId
+    ? localDatabase.entityCategories.list().find((item) => item.id === version.entitySettings.entityCategoryId)
+    : null;
   const notes = [
     `${questions.length} question(s), ${requiredCount} required`,
+    category ? `${category.name} category: ${category.attributes.length} configured profile field(s)` : null,
     gpsCount ? `${gpsCount} GPS question(s): capture outside when possible` : "No GPS question required by this form",
     mediaCount ? `${mediaCount} evidence question(s): check camera/storage before field work` : "No media evidence question required",
     complexCount ? `${complexCount} advanced question(s): review before submit` : "Standard question flow",
-  ];
+  ].filter((note): note is string => Boolean(note));
   const score = version.offlineCompatible ? 100 : 85;
   return { score, tone: score >= 95 ? "ok" : "warn", notes };
+}
+
+function entityPurpose(version: MobileFormVersion): string {
+  const settings = version.entitySettings;
+  const category = settings.entityCategoryId
+    ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
+    : null;
+  const label = category?.name ?? settings.entityType ?? "entity";
+  if (settings.createsNewEntity) return `Creates new ${label} records`;
+  if (settings.requiresExistingEntity) return `Requires existing ${label} selection`;
+  if (settings.updatesExistingEntity) return `Updates existing ${label} records`;
+  return `Linked to ${label} records`;
 }
 
 const styles = StyleSheet.create({

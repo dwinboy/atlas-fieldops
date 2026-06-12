@@ -34,7 +34,7 @@ function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssig
     const formVersion = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
     if (!formVersion) continue;
     const settings = formVersion.entitySettings;
-    if (!settings.linkedToEntity || settings.entityType !== entity.entityType) continue;
+    if (!settings.linkedToEntity || !matchesEntityCategory(entity, settings.entityType, settings.entityCategoryId)) continue;
     if (!settings.updatesExistingEntity && !settings.requiresExistingEntity) continue;
     seenForms.add(assignment.formId);
     const form = localDatabase.forms.list().find((f) => f.id === assignment.formId);
@@ -43,16 +43,37 @@ function eligibleAssignmentsFor(entity: MobileEntity): { assignment: MobileAssig
   return results;
 }
 
+function displayEntityType(entity: MobileEntity): string {
+  return displayEntityTypeValue(entity.entityType);
+}
+
+function displayEntityTypeValue(entityType: string): string {
+  return localDatabase.entityCategories.list().find((category) => category.slug === entityType || category.name === entityType)?.name
+    ?? entityType
+    ?? "Entity";
+}
+
+function matchesEntityCategory(entity: MobileEntity, entityType: string | null, categoryId?: string | null): boolean {
+  if (entityType && entity.entityType === entityType) return true;
+  const category = categoryId
+    ? localDatabase.entityCategories.list().find((item) => item.id === categoryId)
+    : null;
+  if (!category) return false;
+  return entity.entityType === category.id || entity.entityType === category.slug || entity.entityType === category.name;
+}
+
 export default function BeneficiariesScreen() {
   const router = useRouter();
   const { refreshKey, isSyncing, syncWork, refresh } = useAppContext();
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const beneficiaries = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = localDatabase.entities.list();
-    if (!q) return all;
     return all.filter((entity) => {
+      if (categoryFilter !== "all" && entity.entityType !== categoryFilter) return false;
+      if (!q) return true;
       const village = entity.location.village ?? entity.location.community ?? entity.location.district ?? "";
       return [
         entity.entityUid,
@@ -62,9 +83,15 @@ export default function BeneficiariesScreen() {
         entity.nationalId,
         village,
         entity.entityType,
+        ...Object.values(entity.profile ?? {}),
       ].some((value) => String(value ?? "").toLowerCase().includes(q));
     });
-  }, [search, refreshKey]);
+  }, [categoryFilter, search, refreshKey]);
+
+  const categories = useMemo(() => {
+    const values = new Set(localDatabase.entities.list().map((entity) => entity.entityType).filter(Boolean));
+    return [...values].sort((a, b) => displayEntityTypeValue(a).localeCompare(displayEntityTypeValue(b)));
+  }, [refreshKey]);
 
   function startDraft(entity: MobileEntity, assignment: MobileAssignment) {
     try {
@@ -83,9 +110,9 @@ export default function BeneficiariesScreen() {
         refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncWork} tintColor={colors.primary} />}
       >
         <View style={{ gap: spacing.xs }}>
-          <Text style={styles.headerTitle}>Beneficiaries</Text>
+          <Text style={styles.headerTitle}>Entities</Text>
           <Text style={styles.headerSubtitle}>
-            Search the beneficiary records synced to this device, and continue data collection on any linked form.
+            Search the entity records synced to this device, and continue data collection on any linked form.
           </Text>
         </View>
 
@@ -100,11 +127,24 @@ export default function BeneficiariesScreen() {
           />
         </View>
 
+        {categories.length > 1 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            <Pressable onPress={() => setCategoryFilter("all")}>
+              <Badge label="All" tone={categoryFilter === "all" ? "success" : "neutral"} />
+            </Pressable>
+            {categories.map((category) => (
+              <Pressable key={category} onPress={() => setCategoryFilter(category)}>
+                <Badge label={displayEntityTypeValue(category)} tone={categoryFilter === category ? "success" : "neutral"} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
+
         {beneficiaries.length === 0 ? (
           <EmptyState
             icon={Users}
             title="No assigned beneficiaries on this device"
-            description="Sync assigned work. If this remains empty, ask your supervisor to assign beneficiaries or use a registration form that creates new beneficiaries."
+            description="Sync assigned work. If this remains empty, ask your supervisor to assign entities or use a registration form that creates new records."
           />
         ) : (
           beneficiaries.map((entity) => {
@@ -114,6 +154,7 @@ export default function BeneficiariesScreen() {
               entity.location.district,
             ].filter(Boolean).join(", ");
             const actions = entity.status === "Active" ? eligibleAssignmentsFor(entity) : [];
+            const profileFields = categoryProfilePreview(entity);
 
             return (
               <Card key={entity.localId} padding="lg" style={{ gap: spacing.sm }}>
@@ -121,7 +162,7 @@ export default function BeneficiariesScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{entity.name || "Unnamed beneficiary"}</Text>
                     <Text style={styles.meta}>
-                      {entity.entityUid} · {entity.entityType}
+                      {entity.entityUid} · {displayEntityType(entity)}
                     </Text>
                   </View>
                   <Badge label={entity.status} tone={STATUS_TONE[entity.status] ?? "neutral"} />
@@ -131,6 +172,9 @@ export default function BeneficiariesScreen() {
                   {entity.phone ? <Text style={styles.meta}>Phone: {entity.phone}</Text> : null}
                   {entity.householdId ? <Text style={styles.meta}>Household: {entity.householdId}</Text> : null}
                   {location ? <Text style={styles.meta}>Location: {location}</Text> : null}
+                  {profileFields.map(({ label, value }) => (
+                    <Text key={label} style={styles.meta}>{label}: {value}</Text>
+                  ))}
                   {entity.assignedFormIds.length > 0 ? (
                     <Text style={styles.meta}>{entity.assignedFormIds.length} assigned form(s)</Text>
                   ) : null}
@@ -161,12 +205,27 @@ export default function BeneficiariesScreen() {
 
         {beneficiaries.length > 0 ? (
           <Text style={styles.footer}>
-            {beneficiaries.length} beneficiary record(s) on this device
+            {beneficiaries.length} entity record(s) on this device
           </Text>
         ) : null}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function categoryProfilePreview(entity: MobileEntity): Array<{ label: string; value: string }> {
+  const category = localDatabase.entityCategories.list().find(
+    (item) => item.id === entity.entityType || item.slug === entity.entityType || item.name === entity.entityType,
+  );
+  if (!category) return [];
+  return category.attributes
+    .filter((attribute) => !["name", "phone", "phone_number", "household_id", "location"].includes(attribute.fieldKey))
+    .map((attribute) => {
+      const raw = entity.profile?.[attribute.fieldKey];
+      return raw === undefined || raw === null || raw === "" ? null : { label: attribute.label, value: String(raw) };
+    })
+    .filter((item): item is { label: string; value: string } => Boolean(item))
+    .slice(0, 3);
 }
 
 const styles = StyleSheet.create({
@@ -221,6 +280,10 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.mutedForeground,
     textAlign: "center",
+  },
+  filterRow: {
+    gap: spacing.sm,
+    paddingRight: spacing.lg,
   },
   headerSubtitle: {
     ...typography.small,

@@ -34,17 +34,31 @@ export function progressTone(value: number): BadgeProps["tone"] {
 }
 
 export function computeIndicatorSummary(indicators: IndicatorRecord[]): IndicatorSummary {
+  const counts = new Map<string, number>();
+  for (const indicator of indicators) {
+    const label = indicator.type || "Indicator";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const topCategories = Array.from(counts.entries())
+    .map(([label, count]) => ({ count, label }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
   return {
     behindTarget: indicators.filter((indicator) => indicator.status === "Behind Target").length,
-    impactIndicators: indicators.filter((indicator) => indicator.type === "Impact").length,
     onTrack: indicators.filter((indicator) => indicator.status === "On Track").length,
-    outcomeIndicators: indicators.filter((indicator) => indicator.type === "Outcome").length,
-    outputIndicators: indicators.filter((indicator) => indicator.type === "Output").length,
     reportingPeriodsDue: indicators.filter((indicator) => indicator.frequency === "Monthly" || indicator.frequency === "Quarterly").length,
+    topCategories,
     totalIndicators: indicators.length,
     withoutBaseline: indicators.filter((indicator) => indicator.baseline === null).length,
     withoutDataSource: indicators.filter((indicator) => !indicator.dataSource).length,
   };
+}
+
+export function prettifyFieldName(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function filterIndicatorsBySection(indicators: IndicatorRecord[], section: IndicatorSection): IndicatorRecord[] {

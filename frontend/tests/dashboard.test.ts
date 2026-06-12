@@ -38,6 +38,7 @@ function makeSubmission(
     accuracy: 6,
     captured_at: "2026-06-01T09:00:00.000Z",
     client_submission_id: `client-${id}`,
+    device_id: "device-1",
     field_officer_id: "officer-1",
     form_id: formId,
     id,

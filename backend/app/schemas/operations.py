@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -108,6 +108,121 @@ class BeneficiaryMergeRead(BaseModel):
     reason: str
 
 
+SUPPORTED_ENTITY_FIELD_TYPES = {
+    "text",
+    "long_text",
+    "number",
+    "currency",
+    "percentage",
+    "date",
+    "time",
+    "datetime",
+    "boolean",
+    "dropdown",
+    "multi_select",
+    "radio",
+    "checkbox",
+    "gps",
+    "image",
+    "file",
+    "signature",
+    "email",
+    "phone",
+    "url",
+    "barcode",
+    "qr_code",
+    "calculated",
+}
+
+
+class EntityAttributeCreate(BaseModel):
+    label: str = Field(min_length=2, max_length=160)
+    field_key: str = Field(min_length=2, max_length=120, pattern=r"^[a-z][a-z0-9_]*$")
+    field_type: str = Field(max_length=40)
+    description: str | None = Field(default=None, max_length=1000)
+    required: bool = False
+    order_index: int = Field(default=0, ge=0)
+    options_json: list[str] = Field(default_factory=list)
+    validation_json: dict[str, object] = Field(default_factory=dict)
+    default_value: str | None = None
+    status: str = Field(default="active", pattern=r"^(active|archived)$")
+
+    @model_validator(mode="after")
+    def validate_field_type(self) -> "EntityAttributeCreate":
+        if self.field_type not in SUPPORTED_ENTITY_FIELD_TYPES:
+            raise ValueError("Unsupported entity attribute field type")
+        return self
+
+
+class EntityAttributeRead(EntityAttributeCreate):
+    id: UUID
+    category_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EntityCategoryCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    slug: str | None = Field(default=None, max_length=120, pattern=r"^[a-z0-9-]+$")
+    project_id: UUID | None = None
+    sector: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    icon: str = Field(default="users", max_length=80)
+    color: str = Field(default="#0f8a4b", max_length=20)
+    status: str = Field(default="active", pattern=r"^(active|inactive|archived)$")
+    is_predefined: bool = False
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    statuses_json: list[str] = Field(default_factory=lambda: ["active", "inactive", "archived"])
+    workflow_json: dict[str, object] = Field(default_factory=dict)
+    attributes: list[EntityAttributeCreate] = Field(default_factory=list)
+
+
+class EntityCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    sector: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    icon: str | None = Field(default=None, max_length=80)
+    color: str | None = Field(default=None, max_length=20)
+    status: str | None = Field(default=None, pattern=r"^(active|inactive|archived)$")
+    metadata_json: dict[str, object] | None = None
+    statuses_json: list[str] | None = None
+    workflow_json: dict[str, object] | None = None
+    attributes: list[EntityAttributeCreate] | None = None
+
+
+class EntityCategoryRead(BaseModel):
+    id: UUID
+    project_id: UUID | None
+    name: str
+    slug: str
+    sector: str | None
+    description: str | None
+    icon: str
+    color: str
+    status: str
+    is_predefined: bool
+    metadata_json: dict[str, object] = Field(default_factory=dict)
+    statuses_json: list[str] = Field(default_factory=list)
+    workflow_json: dict[str, object] = Field(default_factory=dict)
+    attributes: list[EntityAttributeRead] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PredefinedEntityCategoryRead(BaseModel):
+    sector: str
+    name: str
+    slug: str
+    description: str
+    icon: str
+    color: str
+    attributes: list[EntityAttributeCreate] = Field(default_factory=list)
+
+
 class EntityDuplicateCheckRequest(BaseModel):
     entity_id: str | None = Field(default=None, max_length=120)
     entity_type: str | None = Field(default=None, max_length=80)
@@ -182,6 +297,8 @@ class IndicatorCreate(BaseModel):
     current_value: float = 0
     sdg_code: str | None = Field(default=None, max_length=40)
     formula: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, max_length=60)
+    disaggregation_fields: list[str] = Field(default_factory=list, max_length=6)
 
 
 class IndicatorRead(BaseModel):
@@ -198,8 +315,37 @@ class IndicatorRead(BaseModel):
     current_value: float
     sdg_code: str | None
     formula: str | None
+    category: str | None
+    disaggregation_fields: list[str]
     is_active: bool
     progress_percent: float
+    calculated_at: datetime | None = None
+
+
+class IndicatorLinkedSubmissionRead(BaseModel):
+    submission_id: UUID
+    client_submission_id: str | None
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    field_value: Any | None
+    project_id: UUID | None
+
+
+class IndicatorLinkedSubmissionsRead(BaseModel):
+    field_name: str | None
+    operation: str | None
+    total_count: int
+    items: list[IndicatorLinkedSubmissionRead]
+
+
+class IndicatorDisaggregationRead(BaseModel):
+    field_name: str
+    operation: str | None
+    breakdown: dict[str, float]
+
+
+class IndicatorDisaggregationsRead(BaseModel):
+    items: list[IndicatorDisaggregationRead]
 
 
 class FieldVisitRequestCreate(BaseModel):
@@ -358,6 +504,27 @@ class DonorReportCreate(BaseModel):
     export_formats: list[str] = Field(default_factory=lambda: ["pdf", "xlsx"])
 
 
+class DonorReportIndicatorMetric(BaseModel):
+    code: str
+    name: str
+    unit: str
+    baseline_value: float
+    target_value: float
+    current_value: float
+    progress_percent: float
+
+
+class DonorReportMetrics(BaseModel):
+    projects: int
+    submissions_total: int
+    submissions_approved: int
+    beneficiaries: int
+    indicators: list[DonorReportIndicatorMetric] = Field(default_factory=list)
+    period_start: date | None = None
+    period_end: date | None = None
+    generated_at: datetime
+
+
 class DonorReportRead(BaseModel):
     id: UUID
     project_id: UUID | None
@@ -370,6 +537,8 @@ class DonorReportRead(BaseModel):
     status: str
     summary: str | None
     export_formats: list[str]
+    metrics_json: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

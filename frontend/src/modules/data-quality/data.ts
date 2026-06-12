@@ -148,9 +148,9 @@ export const dataQualitySections: {
   { id: "duplicates", label: "Duplicates", route: "/data-quality/duplicates", description: "View duplicate groups, compare records, merge, mark valid, or flag for investigation." },
   { id: "outliers", label: "Outliers", route: "/data-quality/outliers", description: "Review statistical, business-rule, location, and behavioral outliers." },
   { id: "gps-issues", label: "GPS Issues", route: "/data-quality/gps-issues", description: "Monitor missing GPS, boundary violations, duplicate coordinates, low accuracy, and suspicious locations." },
-  { id: "import-cleaning", label: "Import Cleaning", route: "/data-quality/import-cleaning", description: "Clean uploaded form rows, resolve missing fields, and confirm records before they power beneficiaries, indicators, dashboards, and reports." },
+  { id: "import-cleaning", label: "Import Cleaning", route: "/data-quality/import-cleaning", description: "Clean uploaded form rows, resolve missing fields, and confirm records before they power entities, indicators, dashboards, and reports." },
   { id: "missing-data", label: "Missing Data", route: "/data-quality/missing-data", description: "Track missing required fields, consent, attachments, GPS, and incomplete sections." },
-  { id: "reconciliation", label: "Reconciliation", route: "/data-quality/reconciliation", description: "Resolve unlinked submissions, duplicate beneficiaries, profile conflicts, imported unmatched records, and repeated collection issues." },
+  { id: "reconciliation", label: "Reconciliation", route: "/data-quality/reconciliation", description: "Resolve unlinked submissions, duplicate entities, profile conflicts, imported unmatched records, and repeated collection issues." },
   { id: "validation-failures", label: "Validation Failures", route: "/data-quality/validation-failures", description: "Review range, logic, cross-field, conditional, and reference-data rule failures." },
   { id: "risk-alerts", label: "Risk Alerts", route: "/data-quality/risk-alerts", description: "Investigate suspicious patterns, fraud signals, manipulation, mass duplicates, and abnormal activity." },
   { id: "rules", label: "Quality Rules", route: "/data-quality/rules", description: "Manage reusable completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules." },
@@ -172,10 +172,10 @@ export const previewQualityScores: Record<QualityScope, QualityScore> = {
 export const previewQualityIssues: QualityIssue[] = [
   {
     assignedTo: "Data Quality Officer",
-    description: "Two household registration submissions share beneficiary ID, phone number, and GPS coordinates within 8 meters.",
+    description: "Two household registration submissions share entity ID, phone number, and GPS coordinates within 8 meters.",
     detectedAt: nowIso,
     enumerator: "Amina D.",
-    evidence: ["Beneficiary ID HH-2409 appears twice", "Phone number exact match", "GPS distance 8m"],
+    evidence: ["Entity ID HH-2409 appears twice", "Phone number exact match", "GPS distance 8m"],
     form: "Farmer Registration Survey",
     id: "quality-duplicate-household",
     location: "Northwest / Bamenda II",
@@ -233,7 +233,7 @@ export const previewQualityIssues: QualityIssue[] = [
     detectedAt: yesterdayIso,
     enumerator: "Carine N.",
     evidence: ["Missing consent signature", "Household size = 5 but repeat rows = 3"],
-    form: "Beneficiary Registration Form",
+    form: "Entity Registration Form",
     id: "quality-missing-consent",
     location: "Littoral / Dibombari",
     project: "Social Protection Response",
@@ -288,7 +288,7 @@ export const previewQualityIssues: QualityIssue[] = [
 
 export const previewDuplicateGroups: DuplicateGroup[] = [
   { confidence: 96, fields: ["Phone Number", "Household ID", "Name + Village", "GPS within 50m"], id: "dup-entity-frm-2026-000001", matchingMethod: "Rule-Based Match", records: ["FRM-2026-000001", "FRM-2026-000137"], severity: "Critical", status: "Assigned" },
-  { confidence: 94, fields: ["Beneficiary ID", "Phone Number", "GPS Coordinates"], id: "dup-hh-2409", matchingMethod: "Rule-Based Match", records: ["SUB-2409", "SUB-2411"], severity: "High", status: "Assigned" },
+  { confidence: 94, fields: ["Entity ID", "Phone Number", "GPS Coordinates"], id: "dup-hh-2409", matchingMethod: "Rule-Based Match", records: ["SUB-2409", "SUB-2411"], severity: "High", status: "Assigned" },
   { confidence: 88, fields: ["Household ID", "National ID"], id: "dup-hh-1981", matchingMethod: "Exact Match", records: ["SUB-1981", "SUB-1984"], severity: "Medium", status: "Detected" },
   { confidence: 76, fields: ["Custom Fields", "Phone Number"], id: "dup-beneficiary-55", matchingMethod: "Fuzzy Match", records: ["SUB-1660", "SUB-1668", "SUB-1672"], severity: "Low", status: "Under Investigation" },
 ];
@@ -318,9 +318,9 @@ export const previewRiskAlerts: RiskAlertRecord[] = [
 ];
 
 export const previewQualityRules: QualityRuleRecord[] = [
-  { active: true, description: "Block formal approval when consent is missing on forms that require consent.", form: "Beneficiary Registration Form", id: "rule-consent", lastTestedAt: nowIso, name: "Consent must be present", project: "Social Protection Response", scope: "Form", severity: "Critical", type: "Completeness" },
+  { active: true, description: "Block formal approval when consent is missing on forms that require consent.", form: "Entity Registration Form", id: "rule-consent", lastTestedAt: nowIso, name: "Consent must be present", project: "Social Protection Response", scope: "Form", severity: "Critical", type: "Completeness" },
   { active: true, description: "Flag records outside assigned project or selected administrative boundary.", form: "Household Verification Form", id: "rule-gps-boundary", lastTestedAt: nowIso, name: "GPS inside allowed boundary", project: "All active projects", scope: "Project", severity: "High", type: "GPS" },
-  { active: true, description: "Detect exact and fuzzy duplicate beneficiaries using ID, phone, national ID, and GPS.", form: "Farmer Registration Survey", id: "rule-duplicate", lastTestedAt: yesterdayIso, name: "Beneficiary duplicate detection", project: "Agricultural Resilience Program", scope: "Organization", severity: "High", type: "Duplicate" },
+  { active: true, description: "Detect exact and fuzzy duplicate entities using ID, phone, national ID, and GPS.", form: "Farmer Registration Survey", id: "rule-duplicate", lastTestedAt: yesterdayIso, name: "Entity duplicate detection", project: "Agricultural Resilience Program", scope: "Organization", severity: "High", type: "Duplicate" },
   { active: false, description: "Flag suspicious submission bursts below minimum interview duration.", form: "All mobile forms", id: "rule-duration", lastTestedAt: twoDaysAgoIso, name: "Minimum interview duration", project: "All active projects", scope: "Enumerator", severity: "Medium", type: "Timeliness" },
 ];
 

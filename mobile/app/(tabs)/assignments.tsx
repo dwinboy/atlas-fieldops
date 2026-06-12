@@ -88,9 +88,10 @@ export default function AssignmentsScreen() {
         ) : (
           assignments.map((assignment) => {
             const isReady = Boolean(assignment.formId && assignment.formVersionId);
+            const label = assignmentEntityLabel(assignment);
             const progress = assignment.targetCount
-              ? `${assignment.completedCount} / ${assignment.targetCount} records`
-              : `${assignment.completedCount} record(s) collected`;
+              ? `${assignment.completedCount} / ${assignment.targetCount} ${pluralize(label)}`
+              : `${assignment.completedCount} ${pluralize(label)} collected`;
 
             return (
               <Pressable key={assignment.localId} onPress={() => openAssignment(assignment)}>
@@ -132,6 +133,22 @@ export default function AssignmentsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function assignmentEntityLabel(assignment: MobileAssignment): string {
+  if (!assignment.formVersionId) return "record";
+  const version = localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId);
+  const settings = version?.entitySettings;
+  const category = settings?.entityCategoryId
+    ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
+    : null;
+  return category?.name ?? settings?.entityType ?? "record";
+}
+
+function pluralize(label: string): string {
+  if (label.toLowerCase().endsWith("y")) return `${label.slice(0, -1)}ies`;
+  if (label.toLowerCase().endsWith("s")) return label;
+  return `${label}s`;
 }
 
 const styles = StyleSheet.create({

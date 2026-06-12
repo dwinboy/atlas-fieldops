@@ -8,6 +8,7 @@ export type DraftSubmissionInput = {
   formId: string;
   formVersionId: string;
   entityId: string | null;
+  linkedEntityIds?: string[];
   entityType?: string | null;
   deviceId?: string | null;
   appVersion?: string | null;
@@ -30,6 +31,7 @@ export class DraftSubmissionService {
       formId: input.formId,
       formVersionId: input.formVersionId,
       entityId: input.entityId,
+      linkedEntityIds: input.linkedEntityIds ?? [],
       entityType: input.entityType ?? null,
       status: "Draft",
       frequencyPeriod: input.frequencyPeriod ?? null,

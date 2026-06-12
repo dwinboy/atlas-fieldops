@@ -209,7 +209,7 @@ export const previewAssignments: FieldAssignment[] = [
   },
   {
     completedCount: 60,
-    description: "Verify beneficiary household status before transfer release.",
+    description: "Verify entity household status before transfer release.",
     endDate: nextWeekIso,
     assignedEntityIds: ["HH-2026-000001", "BEN-2026-000044"],
     assignmentType: "Form + Entity list",
@@ -240,7 +240,7 @@ export const previewWorkPlans: WorkPlan[] = [
 export const previewTargets: OperationalTarget[] = [
   { achieved: 86, assignedStaff: ["Amina Diallo", "Joseph Mbarga"], deadline: nextWeekIso, id: "target-households", indicator: "Households Registered", name: "120 farmer households", project: "Agricultural Resilience Program", team: "Survey Team A", type: "Weekly", value: 120 },
   { achieved: 42, assignedStaff: ["Nora Talla"], deadline: tomorrowIso, id: "target-schools", indicator: "Schools Assessed", name: "75 school assessments", project: "Education Access Program", team: "Enumerator Team B", type: "Daily", value: 75 },
-  { achieved: 60, assignedStaff: ["Amina Diallo"], deadline: nextWeekIso, id: "target-beneficiaries", indicator: "Beneficiaries Verified", name: "90 household verifications", project: "Social Protection Response", team: "Survey Team A", type: "Project", value: 90 },
+  { achieved: 60, assignedStaff: ["Amina Diallo"], deadline: nextWeekIso, id: "target-beneficiaries", indicator: "Entities Verified", name: "90 household verifications", project: "Social Protection Response", team: "Survey Team A", type: "Project", value: 90 },
 ];
 
 export const previewActivities: FieldActivity[] = [

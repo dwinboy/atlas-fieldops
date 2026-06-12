@@ -43,6 +43,54 @@ class Beneficiary(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     imported_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
+class EntityCategory(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "entity_categories"
+    __table_args__ = (UniqueConstraint("organization_id", "project_id", "slug"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False)
+    sector: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(80), default="users")
+    color: Mapped[str] = mapped_column(String(20), default="#0f8a4b")
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    is_predefined: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    statuses_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    workflow_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+
+
+class EntityAttribute(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "entity_attributes"
+    __table_args__ = (UniqueConstraint("category_id", "field_key"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    category_id: Mapped[UUID] = mapped_column(ForeignKey("entity_categories.id"), index=True)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    options_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    validation_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    default_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+
+
+class EntityAttributeValue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "entity_attribute_values"
+    __table_args__ = (UniqueConstraint("entity_id", "attribute_id"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    entity_id: Mapped[UUID] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
+    attribute_id: Mapped[UUID] = mapped_column(ForeignKey("entity_attributes.id"), index=True)
+    value_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    source_submission_id: Mapped[UUID | None] = mapped_column(ForeignKey("submissions.id"), index=True, nullable=True)
+
+
 class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "monitoring_indicators"
     __table_args__ = (UniqueConstraint("organization_id", "code"),)
@@ -60,6 +108,8 @@ class MonitoringIndicator(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, 
     current_value: Mapped[float] = mapped_column(Float, default=0)
     sdg_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     formula: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    disaggregation_json: Mapped[list[str]] = mapped_column(JsonType, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_imported: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     source_system: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
@@ -496,6 +546,8 @@ class DonorReport(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     export_formats: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OrganizationBranding(UUIDPrimaryKeyMixin, TimestampMixin, Base):

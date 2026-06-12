@@ -7,16 +7,18 @@ export type IndicatorSection =
   | "baselines"
   | "reports";
 
-export type IndicatorType = "Output" | "Outcome" | "Impact";
 export type IndicatorStatus = "On Track" | "Behind Target" | "Needs Baseline" | "No Data Source" | "Archived";
 export type CalculationType = "Count" | "Sum" | "Average" | "Percentage" | "Ratio" | "Custom formula";
 export type Frequency = "Monthly" | "Quarterly" | "Semiannual" | "Annual" | "Project lifetime";
 
+export type IndicatorCategoryCount = {
+  label: string;
+  count: number;
+};
+
 export type IndicatorSummary = {
   totalIndicators: number;
-  outputIndicators: number;
-  outcomeIndicators: number;
-  impactIndicators: number;
+  topCategories: IndicatorCategoryCount[];
   onTrack: number;
   behindTarget: number;
   withoutBaseline: number;
@@ -28,7 +30,7 @@ export type IndicatorRecord = {
   id: string;
   name: string;
   code: string;
-  type: IndicatorType;
+  type: string;
   definition: string;
   unit: string;
   calculationType: CalculationType;
@@ -147,14 +149,15 @@ export const indicatorSections: {
   label: string;
   route: string;
   description: string;
+  status?: "planned";
 }[] = [
-  { id: "dashboard", label: "Overview", route: "/indicators", description: "Performance overview, target achievement, framework progress, deadlines, and indicators requiring attention." },
+  { id: "dashboard", label: "Overview", route: "/indicators", description: "Performance overview, category breakdown, target achievement, deadlines, and indicators requiring attention." },
   { id: "library", label: "Indicator Library", route: "/indicators/library", description: "Create, edit, archive, import, export, and link reusable indicators to projects and form questions." },
-  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "Manage Goal -> Impact -> Outcomes -> Outputs -> Activities -> Indicators with progress by result level." },
-  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Manage donor logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, and targets." },
   { id: "targets", label: "Targets", route: "/indicators/targets", description: "Set annual, quarterly, monthly, lifetime, location-specific, and disaggregated indicator targets." },
   { id: "baselines", label: "Baselines", route: "/indicators/baselines", description: "Add, import, version, compare, and lock approved baseline values." },
   { id: "reports", label: "Indicator Reports", route: "/indicators/reports", description: "Prepare indicator-specific reporting and link formal outputs to the Reports module." },
+  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "Manage Goal -> Impact -> Outcomes -> Outputs -> Activities -> Indicators with progress by result level.", status: "planned" },
+  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Manage donor logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, and targets.", status: "planned" },
 ];
 
 const nowIso = new Date().toISOString();

@@ -208,6 +208,32 @@ export type MobileEntity = LocalRecord & {
   profile: Record<string, unknown>;
 };
 
+export type MobileEntityCategoryAttribute = {
+  id: UUID;
+  label: string;
+  fieldKey: string;
+  fieldType: string;
+  description: string | null;
+  required: boolean;
+  orderIndex: number;
+  options: string[];
+  validation: Record<string, unknown>;
+  defaultValue: string | null;
+};
+
+export type MobileEntityCategory = LocalRecord & {
+  id: UUID;
+  projectId: UUID | null;
+  name: string;
+  slug: string;
+  sector: string | null;
+  icon: string;
+  color: string;
+  statuses: string[];
+  workflow: Record<string, unknown>;
+  attributes: MobileEntityCategoryAttribute[];
+};
+
 export type MobileLocation = LocalRecord & {
   id: string;
   organizationId: UUID;
@@ -404,6 +430,7 @@ export type PrefillMapping = {
 export type MobileFormEntitySettings = {
   linkedToEntity: boolean;
   entityType: string | null;
+  entityCategoryId?: UUID | null;
   createsNewEntity: boolean;
   updatesExistingEntity: boolean;
   requiresExistingEntity: boolean;
@@ -507,6 +534,7 @@ export type MobileSubmission = LocalRecord & {
   formId: UUID;
   formVersionId: UUID;
   entityId: UUID | null;
+  linkedEntityIds: UUID[];
   entityType: string | null;
   status: DraftSubmissionStatus;
   frequencyPeriod: string | null;
@@ -808,6 +836,7 @@ export type DuplicateCheckInput = {
   name?: string;
   village?: string;
   householdId?: string;
+  customIdentifiers?: Array<{ fieldKey: string; label: string; value: string }>;
 };
 
 export type DuplicateCheckResult = {
@@ -841,6 +870,7 @@ export type MobileSyncPackage = {
   assignments: MobileAssignment[];
   forms: MobileForm[];
   formVersions: MobileFormVersion[];
+  entityCategories: MobileEntityCategory[];
   entities: MobileEntity[];
   locations: MobileLocation[];
   referenceLists: MobileReferenceList[];

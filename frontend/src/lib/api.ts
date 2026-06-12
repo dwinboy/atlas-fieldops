@@ -126,6 +126,19 @@ export type PlatformOrganizationUsageRead = {
   audit_event_count: number;
 };
 
+export type PlatformDataIsolationIssueRead = {
+  id: string;
+  severity: string;
+  issue_type: string;
+  organization_id?: string | null;
+  organization_name?: string | null;
+  organization_slug?: string | null;
+  resource_type: string;
+  affected_records: number;
+  detail: string;
+  recommendation: string;
+};
+
 export type PlatformSettingsRead = {
   app_name: string;
   app_env: string;
@@ -183,6 +196,22 @@ export type PlatformSecurityEventRead = {
   status: string;
 };
 
+export type PlatformSecurityPolicyRead = {
+  mfa_required_for_admins: boolean;
+  mfa_required_for_all_users: boolean;
+  password_min_length: number;
+  password_rotation_days: number;
+  session_timeout_minutes: number;
+  failed_login_lock_threshold: number;
+  support_session_timeout_minutes: number;
+  ip_allowlist_enabled: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformSecurityPolicyUpdate = PlatformSecurityPolicyRead & {
+  reason: string;
+};
+
 export type PlatformIntegrationRead = {
   key: string;
   name: string;
@@ -193,6 +222,55 @@ export type PlatformIntegrationRead = {
   secrets_visible: boolean;
 };
 
+export type PlatformIntegrationUpdate = {
+  status: string;
+  health: string;
+  owner: string;
+  notes: string;
+  reason: string;
+};
+
+export type PlatformMobileFleetDeviceRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  field_officer_id: string;
+  officer_name?: string | null;
+  device_id: string;
+  app_version: string;
+  last_sync_at?: string | null;
+  last_seen_at?: string | null;
+  submission_count: number;
+  status: string;
+};
+
+export type PlatformMobileFleetSummaryRead = {
+  active_devices: number;
+  offline_devices: number;
+  active_users: number;
+  submission_throughput: number;
+  current_production_version: string;
+  minimum_supported_version: string;
+  app_versions: Record<string, number>;
+  devices: PlatformMobileFleetDeviceRead[];
+};
+
+export type PlatformSectorPackRead = {
+  id: string;
+  name: string;
+  sector: string;
+  description: string;
+  entity_types: string[];
+  form_templates: string[];
+  indicator_templates: string[];
+  report_templates: string[];
+  validation_rules: string[];
+  data_quality_rules: string[];
+  workflows: string[];
+  mobile_guidance: string[];
+  dashboard_widgets: string[];
+};
+
 export type PlatformBackupJobRead = {
   id: string;
   backup_type: string;
@@ -201,6 +279,21 @@ export type PlatformBackupJobRead = {
   created_at: string;
   retention: string;
   restore_requires_elevation: boolean;
+};
+
+export type PlatformBackupPolicyRead = {
+  backup_frequency: string;
+  retention_days: number;
+  configuration_retention_days: number;
+  tenant_export_enabled: boolean;
+  restore_requires_approval: boolean;
+  restore_approver_role: string;
+  anonymize_archived_data: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformBackupPolicyUpdate = PlatformBackupPolicyRead & {
+  reason: string;
 };
 
 export type PlatformLeadRead = {
@@ -229,6 +322,16 @@ export type PlatformOrganizationPlanRead = {
   storage_limit_gb: number;
   enabled_modules: string[];
   usage_percent: number;
+};
+
+export type PlatformOrganizationPlanUpdate = {
+  plan: string;
+  status: string;
+  user_limit: number;
+  submission_limit: number;
+  storage_limit_gb: number;
+  enabled_modules: string[];
+  reason: string;
 };
 
 export type PlatformActionResult = {
@@ -1128,6 +1231,7 @@ export type SubmissionRead = {
   submitted_at: string;
   sync_received_at: string;
   offline_created: boolean;
+  device_id: string;
   latitude: number;
   longitude: number;
   accuracy: number | null;
@@ -1148,6 +1252,18 @@ export type SubmissionRead = {
   approved_at?: string | null;
   beneficiary_code?: string | null;
   submitted_by_name?: string | null;
+  approved_by_name?: string | null;
+  linked_beneficiaries?: {
+    id: string;
+    beneficiary_id: string;
+    beneficiary_uid: string;
+    display_name: string;
+    beneficiary_type: string;
+    link_type: string;
+    source: string;
+    source_field?: string | null;
+    created_at: string;
+  }[];
   review_quality?: number | null;
   redacted_fields?: string[];
 };
@@ -1287,6 +1403,59 @@ export type BeneficiaryMergeRead = {
   moved_submissions: number;
   moved_quality_signals: number;
   reason: string;
+};
+
+export type EntityAttributeCreate = {
+  label: string;
+  field_key: string;
+  field_type: string;
+  description?: string | null;
+  required?: boolean;
+  order_index?: number;
+  options_json?: string[];
+  validation_json?: Record<string, unknown>;
+  default_value?: string | null;
+  status?: string;
+};
+
+export type EntityCategoryCreate = {
+  name: string;
+  slug?: string | null;
+  project_id?: string | null;
+  sector?: string | null;
+  description?: string | null;
+  icon?: string;
+  color?: string;
+  status?: string;
+  is_predefined?: boolean;
+  metadata_json?: Record<string, unknown>;
+  statuses_json?: string[];
+  workflow_json?: Record<string, unknown>;
+  attributes?: EntityAttributeCreate[];
+};
+
+export type EntityCategoryRead = Required<Omit<EntityCategoryCreate, "attributes" | "slug">> & {
+  id: string;
+  slug: string;
+  project_id: string | null;
+  attributes: (EntityAttributeCreate & {
+    id: string;
+    category_id: string;
+    created_at: string;
+    updated_at: string;
+  })[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PredefinedEntityCategoryRead = {
+  sector: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  attributes: EntityAttributeCreate[];
 };
 
 export type DuplicateCheckRequest = {
@@ -1525,8 +1694,11 @@ export type IndicatorRead = {
   current_value: number;
   sdg_code: string | null;
   formula: string | null;
+  category: string | null;
+  disaggregation_fields: string[];
   is_active: boolean;
   progress_percent: number;
+  calculated_at: string | null;
 };
 
 export type IndicatorCreate = {
@@ -1542,6 +1714,34 @@ export type IndicatorCreate = {
   current_value?: number;
   sdg_code?: string | null;
   formula?: string | null;
+  category?: string | null;
+  disaggregation_fields?: string[];
+};
+
+export type IndicatorLinkedSubmissionRead = {
+  submission_id: string;
+  client_submission_id: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  field_value: unknown;
+  project_id: string | null;
+};
+
+export type IndicatorLinkedSubmissionsRead = {
+  field_name: string | null;
+  operation: string | null;
+  total_count: number;
+  items: IndicatorLinkedSubmissionRead[];
+};
+
+export type IndicatorDisaggregationRead = {
+  field_name: string;
+  operation: string | null;
+  breakdown: Record<string, number>;
+};
+
+export type IndicatorDisaggregationsRead = {
+  items: IndicatorDisaggregationRead[];
 };
 
 export type CaseRead = {
@@ -1559,6 +1759,27 @@ export type CaseRead = {
   notes: string | null;
 };
 
+export type DonorReportIndicatorMetric = {
+  code: string;
+  name: string;
+  unit: string;
+  baseline_value: number;
+  target_value: number;
+  current_value: number;
+  progress_percent: number;
+};
+
+export type DonorReportMetrics = {
+  projects: number;
+  submissions_total: number;
+  submissions_approved: number;
+  beneficiaries: number;
+  indicators: DonorReportIndicatorMetric[];
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string;
+};
+
 export type DonorReportRead = {
   id: string;
   project_id: string | null;
@@ -1571,6 +1792,8 @@ export type DonorReportRead = {
   status: string;
   summary: string | null;
   export_formats: string[];
+  metrics_json: Partial<DonorReportMetrics>;
+  generated_at: string | null;
 };
 
 export type ImportPreviewRequest = {
@@ -2045,6 +2268,7 @@ export type FormVersioningSettings = {
 
 export type FormEntityControlSettings = {
   linked_to_entity: boolean;
+  entity_category_id?: string | null;
   entity_type: string;
   creates_new_entity: boolean;
   updates_existing_entity: boolean;
@@ -2393,12 +2617,24 @@ export async function listPlatformUsage(token: string): Promise<PlatformOrganiza
   return request<PlatformOrganizationUsageRead[]>("/platform/usage", { token });
 }
 
+export async function listPlatformDataIsolationIssues(token: string): Promise<PlatformDataIsolationIssueRead[]> {
+  return request<PlatformDataIsolationIssueRead[]>("/platform/data-isolation", { token });
+}
+
 export async function listPlatformLeads(token: string): Promise<PlatformLeadRead[]> {
   return request<PlatformLeadRead[]>("/platform/leads", { token });
 }
 
 export async function listPlatformOrganizationPlans(token: string): Promise<PlatformOrganizationPlanRead[]> {
   return request<PlatformOrganizationPlanRead[]>("/platform/organization-plans", { token });
+}
+
+export async function updatePlatformOrganizationPlan(
+  token: string,
+  organizationId: string,
+  payload: PlatformOrganizationPlanUpdate,
+): Promise<PlatformOrganizationPlanRead> {
+  return request<PlatformOrganizationPlanRead>(`/platform/organization-plans/${organizationId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function listPlatformSupportSessions(token: string): Promise<PlatformSupportSessionRead[]> {
@@ -2429,12 +2665,40 @@ export async function listPlatformSecurityEvents(token: string): Promise<Platfor
   return request<PlatformSecurityEventRead[]>("/platform/security", { token });
 }
 
+export async function getPlatformSecurityPolicy(token: string): Promise<PlatformSecurityPolicyRead> {
+  return request<PlatformSecurityPolicyRead>("/platform/security-policy", { token });
+}
+
+export async function updatePlatformSecurityPolicy(token: string, payload: PlatformSecurityPolicyUpdate): Promise<PlatformSecurityPolicyRead> {
+  return request<PlatformSecurityPolicyRead>("/platform/security-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function listPlatformIntegrations(token: string): Promise<PlatformIntegrationRead[]> {
   return request<PlatformIntegrationRead[]>("/platform/integrations", { token });
 }
 
+export async function updatePlatformIntegration(token: string, integrationKey: string, payload: PlatformIntegrationUpdate): Promise<PlatformIntegrationRead> {
+  return request<PlatformIntegrationRead>(`/platform/integrations/${integrationKey}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformMobileFleet(token: string): Promise<PlatformMobileFleetSummaryRead> {
+  return request<PlatformMobileFleetSummaryRead>("/platform/mobile-fleet", { token });
+}
+
+export async function listPlatformSectorPacks(token: string): Promise<PlatformSectorPackRead[]> {
+  return request<PlatformSectorPackRead[]>("/platform/sector-packs", { token });
+}
+
 export async function listPlatformBackups(token: string): Promise<PlatformBackupJobRead[]> {
   return request<PlatformBackupJobRead[]>("/platform/backups", { token });
+}
+
+export async function getPlatformBackupPolicy(token: string): Promise<PlatformBackupPolicyRead> {
+  return request<PlatformBackupPolicyRead>("/platform/backup-policy", { token });
+}
+
+export async function updatePlatformBackupPolicy(token: string, payload: PlatformBackupPolicyUpdate): Promise<PlatformBackupPolicyRead> {
+  return request<PlatformBackupPolicyRead>("/platform/backup-policy", { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function createPublicLead(payload: PublicLeadCreate): Promise<PublicLeadRead> {
@@ -3116,6 +3380,45 @@ export async function listBeneficiaries(token: string): Promise<BeneficiaryRead[
   return request<BeneficiaryRead[]>("/operations/beneficiaries", { token });
 }
 
+export async function listPredefinedEntityCategories(token: string, sector?: string): Promise<PredefinedEntityCategoryRead[]> {
+  const query = sector ? `?sector=${encodeURIComponent(sector)}` : "";
+  return request<PredefinedEntityCategoryRead[]>(`/operations/entity-categories/library${query}`, { token });
+}
+
+export async function listEntityCategories(
+  token: string,
+  filters: { project_id?: string; include_archived?: boolean } = {},
+): Promise<EntityCategoryRead[]> {
+  const params = new URLSearchParams();
+  if (filters.project_id) params.set("project_id", filters.project_id);
+  if (filters.include_archived) params.set("include_archived", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<EntityCategoryRead[]>(`/operations/entity-categories${query}`, { token });
+}
+
+export async function createEntityCategory(token: string, payload: EntityCategoryCreate): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>("/operations/entity-categories", { method: "POST", token, bodyJson: payload });
+}
+
+export async function activatePredefinedEntityCategory(
+  token: string,
+  projectId: string,
+  slug: string,
+): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>(
+    `/operations/entity-categories/activate-predefined?project_id=${encodeURIComponent(projectId)}&slug=${encodeURIComponent(slug)}`,
+    { method: "POST", token },
+  );
+}
+
+export async function updateEntityCategory(
+  token: string,
+  categoryId: string,
+  payload: Partial<EntityCategoryCreate>,
+): Promise<EntityCategoryRead> {
+  return request<EntityCategoryRead>(`/operations/entity-categories/${categoryId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function createBeneficiary(token: string, payload: BeneficiaryCreate): Promise<BeneficiaryRead> {
   return request<BeneficiaryRead>("/operations/beneficiaries", { method: "POST", token, bodyJson: payload });
 }
@@ -3256,12 +3559,35 @@ export async function createIndicator(token: string, payload: IndicatorCreate): 
   return request<IndicatorRead>("/operations/indicators", { method: "POST", token, bodyJson: payload });
 }
 
+export async function getIndicatorDisaggregation(token: string, indicatorId: string): Promise<IndicatorDisaggregationsRead> {
+  return request<IndicatorDisaggregationsRead>(`/operations/indicators/${indicatorId}/disaggregation`, { token });
+}
+
+export async function getIndicatorLinkedSubmissions(token: string, indicatorId: string): Promise<IndicatorLinkedSubmissionsRead> {
+  return request<IndicatorLinkedSubmissionsRead>(`/operations/indicators/${indicatorId}/linked-submissions`, { token });
+}
+
 export async function listCases(token: string): Promise<CaseRead[]> {
   return request<CaseRead[]>("/operations/cases", { token });
 }
 
 export async function listReports(token: string): Promise<DonorReportRead[]> {
   return request<DonorReportRead[]>("/operations/reports", { token });
+}
+
+export async function generateReport(token: string, reportId: string): Promise<DonorReportRead> {
+  return request<DonorReportRead>(`/operations/reports/${reportId}/generate`, { method: "POST", token });
+}
+
+export async function exportReportCsv(token: string, reportId: string): Promise<string> {
+  const response = await fetch(`${getApiBaseUrl()}/operations/reports/${reportId}/export.csv`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+  return response.text();
 }
 
 export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
@@ -3525,6 +3851,9 @@ export const api = {
   getFormControls,
   getImportErrorReport,
   getImportMigrationOverview,
+  getPlatformBackupPolicy,
+  getPlatformMobileFleet,
+  getPlatformSecurityPolicy,
   createGovernancePolicy,
   createImportJob,
   createSurvey,
@@ -3599,12 +3928,14 @@ export const api = {
   listOperationalZones,
   listPlatformAuditLogs,
   listPlatformBackups,
+  listPlatformDataIsolationIssues,
   listPlatformFeatureFlags,
   listPlatformIntegrations,
   listPlatformLeads,
   listPlatformOrganizationPlans,
   listPlatformRoles,
   listPlatformSecurityEvents,
+  listPlatformSectorPacks,
   listPlatformSupportSessions,
   listPrograms,
   listProjectImportJobs,
@@ -3646,6 +3977,10 @@ export const api = {
   updateAdministrationNotificationRule,
   updateAdministrationReferenceValue,
   updatePlatformFeatureFlag,
+  updatePlatformIntegration,
+  updatePlatformOrganizationPlan,
+  updatePlatformSecurityPolicy,
+  updatePlatformBackupPolicy,
   updateImportRow,
   updateForm,
   updateFormControls,

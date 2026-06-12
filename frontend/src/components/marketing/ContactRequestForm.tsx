@@ -176,7 +176,7 @@ export function ContactRequestForm({
         <textarea
           className="mt-2 min-h-32 w-full rounded-md border border-black/10 p-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
           onChange={(event) => updateField("message", event.target.value)}
-          placeholder="Field data collection, beneficiary tracking, reporting, offline sync..."
+          placeholder="Field data collection, entity tracking, reporting, offline sync..."
           value={request.message}
         />
       </label>

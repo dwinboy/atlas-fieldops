@@ -212,7 +212,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       pushToast({ title: "Reconciliation updated", description: signal.summary, tone: "success" });
     },
     onError: () => {
-      pushToast({ title: "Could not update issue", description: "Check your permission to manage beneficiary and data-quality records.", tone: "danger" });
+      pushToast({ title: "Could not update issue", description: "Check your permission to manage entity and data-quality records.", tone: "danger" });
     },
   });
   const qualityIssues = useMemo(
@@ -358,7 +358,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             <div>
               <h2 className="text-sm font-semibold">Quality signals could not load</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                The dashboard is available, but live data cleaning signals did not load. Check your connection or permission to view beneficiary and submission quality issues.
+                The dashboard is available, but live data cleaning signals did not load. Check your connection or permission to view entity and submission quality issues.
               </p>
             </div>
           </div>
@@ -434,7 +434,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             }
             await importCleaningQuery.refetch();
             setActionResult(`${rows.length} cleaned imported row(s) confirmed and released for approved-data processing.`);
-            pushToast({ title: "Imported rows confirmed", description: "Cleaned rows are now approved for beneficiary/entity processing and reporting.", tone: "success" });
+            pushToast({ title: "Imported rows confirmed", description: "Cleaned rows are now approved for entity processing and reporting.", tone: "success" });
           }}
           onOpenRow={(row) => router.push(`/submissions/all?submissionId=${row.id}&tab=Responses`)}
           rows={importCleaningRows}
@@ -634,7 +634,7 @@ function DuplicatesSection({ groups, issues, onOpenIssue }: { groups: DuplicateG
   ];
   return (
     <div className="space-y-3">
-      <SectionHeader description="Detect and manage exact, fuzzy, and rule-based duplicate records across beneficiary IDs, household IDs, phone numbers, national IDs, GPS, and custom fields." route="/data-quality/duplicates" title="Duplicates" />
+      <SectionHeader description="Detect and manage exact, fuzzy, and rule-based duplicate records across entity IDs, household IDs, phone numbers, national IDs, GPS, and custom fields." route="/data-quality/duplicates" title="Duplicates" />
       {groups.length ? <DataTable columns={columns} emptyLabel="No duplicate groups yet" rows={groups} searchLabel="Search duplicate groups, fields, records" title="Duplicate groups" /> : null}
       <IssueTable description="Duplicate issue workflow for compare, merge, mark valid, or flag for investigation." issues={issues} onOpenIssue={onOpenIssue} route="/data-quality/duplicates" title="Duplicate Investigations" />
     </div>
@@ -1043,7 +1043,7 @@ function ReconciliationSection({
   return (
     <div className="space-y-3">
       <SectionHeader
-        description="Resolve unlinked approved submissions, possible duplicate beneficiaries, profile conflicts, and imported records that need a human data-manager decision before they enter official results."
+        description="Resolve unlinked approved submissions, possible duplicate entities, profile conflicts, and imported records that need a human data-manager decision before they enter official results."
         route="/data-quality/reconciliation"
         title="Reconciliation Queue"
       />

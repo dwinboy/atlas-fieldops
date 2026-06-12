@@ -18,7 +18,7 @@ export default function ResourcesPage() {
         <SimplePageHero
           eyebrow="Resources"
           title="Practical resources for better field operations"
-          text="Use guides, templates, and checklists to design stronger data collection, beneficiary management, and reporting workflows."
+          text="Use guides, templates, and checklists to design stronger data collection, entity management, and reporting workflows."
         />
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 md:grid-cols-3 lg:px-8">
           {resourceCards.map((resource) => (

@@ -141,6 +141,32 @@ class MobileEntityRead(MobileSchema):
     profile: dict[str, Any] = Field(default_factory=dict)
 
 
+class MobileEntityCategoryAttributeRead(MobileSchema):
+    id: str
+    label: str
+    field_key: str
+    field_type: str
+    description: str | None = None
+    required: bool = False
+    order_index: int = 0
+    options: list[str] = Field(default_factory=list)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    default_value: str | None = None
+
+
+class MobileEntityCategoryRead(MobileSchema):
+    id: str
+    project_id: str | None = None
+    name: str
+    slug: str
+    sector: str | None = None
+    icon: str = "layers"
+    color: str = "#0f8a4b"
+    statuses: list[str] = Field(default_factory=list)
+    workflow: dict[str, Any] = Field(default_factory=dict)
+    attributes: list[MobileEntityCategoryAttributeRead] = Field(default_factory=list)
+
+
 class MobileLocationRead(MobileSchema):
     id: str
     organization_id: str
@@ -222,6 +248,7 @@ class MobileSubmissionUpload(MobileSchema):
     form_id: str
     form_version_id: str
     entity_id: str | None = None
+    linked_entity_ids: list[str] = Field(default_factory=list)
     entity_type: str | None = None
     frequency_period: str | None = None
     event_id: str | None = None
@@ -310,6 +337,7 @@ class MobileSyncPackageRead(MobileSchema):
     assignments: list[MobileAssignmentRead] = Field(default_factory=list)
     forms: list[MobileFormRead] = Field(default_factory=list)
     form_versions: list[MobileFormVersionRead] = Field(default_factory=list)
+    entity_categories: list[MobileEntityCategoryRead] = Field(default_factory=list)
     entities: list[MobileEntityRead] = Field(default_factory=list)
     locations: list[MobileLocationRead] = Field(default_factory=list)
     reference_lists: list[MobileReferenceListRead] = Field(default_factory=list)

@@ -13,7 +13,7 @@ from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
 from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project
 from app.models.collection import Submission
-from app.models.operations import Beneficiary, MediaEvidence, WorkforceProfile
+from app.models.operations import Beneficiary, EntityCategory, MediaEvidence, WorkforceProfile
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import SubmissionRepository
 from app.repositories.operations import OperationsRepository
@@ -31,6 +31,8 @@ from app.schemas.mobile import (
     MobileDeviceRegistrationCreate,
     MobileDeviceRegistrationRead,
     MobileDeviceRecordRead,
+    MobileEntityCategoryRead,
+    MobileEntityCategoryAttributeRead,
     MobileEntityRead,
     MobileFormRead,
     MobileFormVersionRead,
@@ -249,10 +251,11 @@ def _field_indicator_mapping(field: dict[str, Any]) -> dict[str, Any]:
 
 
 def _field_beneficiary_mapping(field: dict[str, Any]) -> dict[str, Any]:
+    typed_mapping = field.get("beneficiary") if isinstance(field.get("beneficiary"), dict) else {}
     return {
-        "profileImpact": _field_metadata_value(field, "profile-impact"),
-        "beneficiaryField": _field_metadata_value(field, "beneficiary-field"),
-        "profileUpdateRule": _field_metadata_value(field, "profile-update-rule"),
+        "profileImpact": _field_metadata_value(field, "profile-impact") or typed_mapping.get("profileImpact"),
+        "beneficiaryField": _field_metadata_value(field, "beneficiary-field") or typed_mapping.get("profileField"),
+        "profileUpdateRule": _field_metadata_value(field, "profile-update-rule") or typed_mapping.get("profileUpdateRule"),
         "duplicateKey": _field_has_tag(field, "duplicate-key"),
         "sourceOfTruth": _field_has_tag(field, "source-of-truth"),
         "lineageRequired": _field_has_tag(field, "lineage-required"),
@@ -662,6 +665,7 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
     return {
         "linkedToEntity": bool(entity_controls.get("is_entity_linked", False)),
         "entityType": entity_controls.get("entity_type"),
+        "entityCategoryId": str(entity_controls.get("entity_category_id")) if entity_controls.get("entity_category_id") else None,
         "createsNewEntity": bool(entity_controls.get("creates_new_entity", False)),
         "updatesExistingEntity": bool(entity_controls.get("updates_existing_entity", False)),
         "requiresExistingEntity": bool(entity_controls.get("requires_existing_entity", False)),
@@ -672,6 +676,13 @@ def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
         "duplicateThreshold": duplicate_threshold,
         "duplicateAction": duplicate_action,
     }
+
+
+def _entity_type_prefix(entity_type: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]", "", entity_type.upper())
+    if len(compact) >= 3:
+        return compact[:3]
+    return (compact or "ENT").ljust(3, "X")
 
 
 class MobileService:
@@ -1193,6 +1204,48 @@ class MobileService:
             )
             for entity in entities
         ]
+        project_ids = {project.id for project in projects}
+        active_categories = await self.operations_repo.list_entity_categories(
+            organization_id=organization_id,
+            include_archived=False,
+        )
+        category_attributes = await self.operations_repo.list_entity_attributes(
+            organization_id=organization_id,
+            category_ids={category.id for category in active_categories},
+        )
+        category_reads: list[MobileEntityCategoryRead] = []
+        for category in active_categories:
+            if category.project_id is not None and category.project_id not in project_ids:
+                continue
+            attributes = category_attributes.get(category.id, [])
+            category_reads.append(
+                MobileEntityCategoryRead(
+                    id=str(category.id),
+                    project_id=str(category.project_id) if category.project_id else None,
+                    name=category.name,
+                    slug=category.slug,
+                    sector=category.sector,
+                    icon=category.icon,
+                    color=category.color,
+                    statuses=list(category.statuses_json or []),
+                    workflow=dict(category.workflow_json or {}),
+                    attributes=[
+                        MobileEntityCategoryAttributeRead(
+                            id=str(attribute.id),
+                            label=attribute.label,
+                            field_key=attribute.field_key,
+                            field_type=attribute.field_type,
+                            description=attribute.description,
+                            required=attribute.required,
+                            order_index=attribute.order_index,
+                            options=list(attribute.options_json or []),
+                            validation=dict(attribute.validation_json or {}),
+                            default_value=attribute.default_value,
+                        )
+                        for attribute in attributes
+                    ],
+                )
+            )
         location_reads = self._locations_from_entities(organization_id, projects, entities)
         officer_submissions = await self._officer_submissions(organization_id, officer.id)
         returned_submissions = [
@@ -1216,6 +1269,7 @@ class MobileService:
             assignments=assignment_reads,
             forms=form_reads,
             form_versions=version_reads,
+            entity_categories=category_reads,
             entities=entity_reads,
             locations=location_reads,
             reference_lists=reference_lists,
@@ -1377,7 +1431,7 @@ class MobileService:
         entity_type = payload.entity_type
         entity_settings = _entity_settings(form.controls_json or {})
         if entity_id is None and bool(entity_settings.get("createsNewEntity")):
-            entity_type = str(entity_settings.get("entityType") or payload.entity_type or "Farmer")
+            entity_type = await self._entity_type_from_settings(organization_id, entity_settings, payload.entity_type)
         now = datetime.now(UTC)
         response_payload = [response.model_dump(mode="json", by_alias=True) for response in payload.responses]
         derived_location = self._location_from_responses(response_payload)
@@ -1411,6 +1465,7 @@ class MobileService:
             payload={
                 **flattened_responses,
                 "_mobile_responses": response_payload,
+                "_linked_entity_ids": payload.linked_entity_ids,
                 "_mobile_location_status": "captured" if payload.location or derived_location else "not_required_or_missing",
                 "_mobile_integrity": payload.integrity_signals or {},
                 "_mobile_integrity_status": self._integrity_status(payload.integrity_signals),
@@ -1459,6 +1514,29 @@ class MobileService:
             synced_at=submission.sync_received_at,
             message="Submission synced to the web platform.",
         )
+
+    async def _entity_type_from_settings(
+        self,
+        organization_id: UUID,
+        entity_settings: dict[str, Any],
+        fallback: str | None,
+    ) -> str:
+        category_id = entity_settings.get("entityCategoryId")
+        if category_id:
+            try:
+                result = await self.session.execute(
+                    select(EntityCategory.name).where(
+                        EntityCategory.organization_id == organization_id,
+                        EntityCategory.id == UUID(str(category_id)),
+                        EntityCategory.deleted_at.is_(None),
+                    )
+                )
+                category_name = result.scalar_one_or_none()
+                if category_name:
+                    return str(category_name)
+            except (TypeError, ValueError):
+                pass
+        return str(entity_settings.get("entityType") or fallback or "Entity")
 
     async def upload_attachment(
         self,
@@ -1797,17 +1875,21 @@ class MobileService:
             raise ValueError(
                 f"Possible duplicate beneficiary found: {duplicate.display_name}. Select the existing record or send the duplicate for review."
             )
-        now = datetime.now(UTC)
-        prefix = {
-            "farmer": "FRM",
-            "household": "HH",
-            "beneficiary": "BEN",
-            "facility": "FAC",
-        }.get(entity_type.lower(), "BEN")
+        prefix, include_year, separator, width = await self._entity_uid_format_parts(
+            organization_id=organization_id,
+            entity_type=entity_type,
+            project_id=project_id,
+        )
         entity = Beneficiary(
             organization_id=organization_id,
             project_id=project_id,
-            beneficiary_uid=f"{prefix}-{now.year}-{int(now.timestamp())}",
+            beneficiary_uid=await self._next_entity_uid(
+                organization_id=organization_id,
+                include_year=include_year,
+                prefix=prefix,
+                separator=separator,
+                width=width,
+            ),
             beneficiary_type=entity_type,
             display_name=display_name,
             sex=self._string_value(values, "gender", "sex"),
@@ -1829,6 +1911,77 @@ class MobileService:
         self.session.add(entity)
         await self.session.flush()
         return entity
+
+    async def _next_entity_uid(
+        self,
+        *,
+        organization_id: UUID,
+        include_year: bool,
+        prefix: str,
+        separator: str,
+        width: int,
+    ) -> str:
+        year = datetime.now(UTC).year
+        static_prefix = f"{prefix}{separator}{year}{separator}" if include_year else f"{prefix}{separator}"
+        result = await self.session.execute(
+            select(Beneficiary.beneficiary_uid).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.beneficiary_uid.like(f"{static_prefix}%"),
+            )
+        )
+        existing = set(result.scalars())
+        existing_numbers = [
+            int(match.group(1))
+            for uid in existing
+            if (match := re.match(rf"^{re.escape(static_prefix)}(\d+)$", uid))
+        ]
+        next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+        while True:
+            candidate = f"{static_prefix}{next_number:0{width}d}"
+            if candidate not in existing:
+                return candidate
+            next_number += 1
+
+    async def _entity_uid_format_parts(
+        self,
+        *,
+        organization_id: UUID,
+        entity_type: str,
+        project_id: UUID,
+    ) -> tuple[str, bool, str, int]:
+        result = await self.session.execute(
+            select(Project.settings_json).where(
+                Project.organization_id == organization_id,
+                Project.id == project_id,
+                Project.deleted_at.is_(None),
+            )
+        )
+        settings_json = result.scalar_one_or_none()
+        beneficiary_settings = (
+            settings_json.get("beneficiary") if isinstance(settings_json, dict) else None
+        )
+        code_format = (
+            beneficiary_settings.get("codeFormat")
+            if isinstance(beneficiary_settings, dict)
+            else None
+        )
+        cleaned = code_format.strip().upper() if isinstance(code_format, str) else ""
+        default_prefix = {
+            "farmer": "FRM",
+            "household": "HH",
+            "beneficiary": "BEN",
+            "facility": "FAC",
+            "school": "SCH",
+            "village": "VIL",
+            "group": "GRP",
+        }.get(entity_type.strip().lower(), _entity_type_prefix(entity_type))
+        prefix_match = re.match(r"^([A-Z0-9]{2,12})", cleaned)
+        prefix = prefix_match.group(1) if prefix_match else default_prefix
+        separator = "/" if "/" in cleaned else "_" if "_" in cleaned else "-"
+        width_match = re.search(r"0{3,10}", cleaned)
+        width = len(width_match.group(0)) if width_match else 6
+        include_year = bool(re.search(r"YYYY|YEAR|20\d{2}", cleaned)) or not cleaned
+        return prefix, include_year, separator, width
 
     def _display_name(self, values: dict[str, Any]) -> str:
         full_name = self._string_value(values, "full_name", "farmer_name", "name", "beneficiary_name")

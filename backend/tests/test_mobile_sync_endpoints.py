@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, Project, Survey
+from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project, Survey
 from app.models.identity import Organization, User
-from app.models.operations import MediaEvidence
+from app.models.operations import EntityAttribute, EntityCategory, MediaEvidence
+from app.repositories.collection import FormRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.mobile import (
     MobileAttachmentRead,
@@ -38,6 +39,7 @@ async def _seed_org_and_form(session):
     form_id = uuid4()
     version_id = uuid4()
     officer_id = uuid4()
+    category_id = uuid4()
     now = datetime.now(UTC)
     session.add_all(
         [
@@ -87,6 +89,27 @@ async def _seed_org_and_form(session):
                 offline_compatible=True,
                 published_at=now,
             ),
+            EntityCategory(
+                id=category_id,
+                organization_id=organization_id,
+                project_id=project_id,
+                name="Water Point",
+                slug="water-point",
+                sector="wash",
+                status="active",
+                is_predefined=False,
+                statuses_json=["active", "inactive"],
+                workflow_json={"review": "standard"},
+            ),
+            EntityAttribute(
+                organization_id=organization_id,
+                category_id=category_id,
+                label="Water Point Name",
+                field_key="water_point_name",
+                field_type="text",
+                required=True,
+                order_index=1,
+            ),
         ]
     )
     await session.commit()
@@ -96,6 +119,8 @@ async def _seed_org_and_form(session):
         "project_id": project_id,
         "form_id": form_id,
         "version_id": version_id,
+        "officer_id": officer_id,
+        "category_id": category_id,
         "now": now,
     }
 
@@ -112,6 +137,73 @@ def _principal_for(organization_id, user_id) -> CurrentPrincipal:
         permissions=["submission.create", "sync.mobile"],
         scope_type="own",
     )
+
+
+async def test_mobile_sync_keeps_published_version_until_new_version_is_published() -> None:
+    session = await _build_session()
+    async with session as db:
+        seed = await _seed_org_and_form(db)
+        db.add(
+            OfficerAssignment(
+                organization_id=seed["organization_id"],
+                officer_id=seed["officer_id"],
+                project_id=seed["project_id"],
+                form_id=seed["form_id"],
+                is_active=True,
+            )
+        )
+        await db.commit()
+
+        form = await db.get(DataForm, seed["form_id"])
+        assert form is not None
+        repository = FormRepository(db)
+        draft_schema = {
+            "sections": [
+                {
+                    "id": "main",
+                    "title": "Main",
+                    "fields": [
+                        {"id": "q_new", "variable_name": "new_question", "type": "text", "label": "New question"},
+                    ],
+                }
+            ]
+        }
+        await repository.save_schema_revision(
+            form=form,
+            actor_user_id=seed["officer_user_id"],
+            name="Sync Form",
+            description=None,
+            schema_json=draft_schema,
+            publish=False,
+        )
+        await db.commit()
+
+        principal = _principal_for(seed["organization_id"], seed["officer_user_id"])
+        package = await MobileService(db).sync_package(principal)
+
+        assert [version.version for version in package.form_versions] == [1]
+        assert package.assignments[0].form_version_id == str(seed["version_id"])
+        assert package.form_versions[0].sections[0]["questions"][0]["id"] == "q_name"
+        assert package.entity_categories[0].id == str(seed["category_id"])
+        assert package.entity_categories[0].name == "Water Point"
+        serialized_category = package.entity_categories[0].model_dump(mode="json", by_alias=True)
+        assert serialized_category["attributes"][0]["fieldKey"] == "water_point_name"
+
+        await repository.save_schema_revision(
+            form=form,
+            actor_user_id=seed["officer_user_id"],
+            name="Sync Form",
+            description=None,
+            schema_json=draft_schema,
+            publish=True,
+        )
+        await db.commit()
+
+        promoted_package = await MobileService(db).sync_package(principal)
+
+        assert [version.version for version in promoted_package.form_versions] == [2]
+        assert promoted_package.assignments[0].form_version_id == promoted_package.form_versions[0].id
+        assert promoted_package.form_versions[0].sections[0]["questions"][0]["id"] == "q_new"
 
 
 async def test_upload_audit_events_persists_audit_log() -> None:

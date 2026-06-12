@@ -4,6 +4,13 @@ function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function customIdentifierMatches(
+  identifier: { fieldKey: string; value: string },
+  entity: MobileEntity,
+): boolean {
+  return Boolean(normalize(identifier.value)) && normalize(identifier.value) === normalize(String(entity.profile?.[identifier.fieldKey] ?? ""));
+}
+
 export class DuplicateCheckService {
   check(input: DuplicateCheckInput, candidates: MobileEntity[], threshold = 60): DuplicateCheckResult[] {
     return candidates
@@ -29,6 +36,12 @@ export class DuplicateCheckService {
         if (input.name && input.village && normalize(input.name) === normalize(entity.name) && normalize(input.village) === normalize(entity.location.village)) {
           score += 60;
           matchedFields.push("Name + Village");
+        }
+        for (const identifier of input.customIdentifiers ?? []) {
+          if (customIdentifierMatches(identifier, entity)) {
+            score += 80;
+            matchedFields.push(identifier.label);
+          }
         }
         return {
           entity,

@@ -38,6 +38,7 @@ import {
   listSubmissions,
   type CurrentPrincipal,
 } from "@/lib/api";
+import { useSectorTerminology, type SectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
   mappingSections,
@@ -56,11 +57,14 @@ import {
   type MapLayerRecord,
   type MappingSection,
   type MappingSummary,
+  type ProjectExtent,
   type SpatialQualityIssue,
 } from "@/modules/mapping/data";
 import {
   computeMappingSummary,
+  computeProjectExtents,
   coverageTone,
+  deriveQualityIssues,
   filterFeaturesBySection,
   isFeatureInBounds,
   maskCoordinate,
@@ -92,12 +96,13 @@ type MapViewerProps = {
   onFeatureSelect: (feature: MapFeatureRecord) => void;
   onMapQueryChange: (query: string) => void;
   privacyVisibility: LayerVisibility;
+  sectionInfo: { label: string; description: string };
   selectedFeature: MapFeatureRecord | null;
 };
 
 const basemaps: MapBasemap[] = ["Light", "Streets", "Terrain", "Satellite"];
 
-const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "submission-maps", "beneficiary-maps"];
+const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "data-quality-maps"];
 
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
   loading: () => (
@@ -139,6 +144,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const pendingMapFeatureId = useWorkspaceStore((state) => state.pendingMapFeatureId);
   const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const preview = !token || token === "preview-token";
+  const terminology = useSectorTerminology(token);
 
   const submissionsQuery = useQuery({
     enabled: Boolean(token && !preview),
@@ -207,7 +213,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         location: [beneficiary.community, beneficiary.district, beneficiary.region].filter(Boolean).join(", ") || "Location not recorded",
         longitude,
         popup: {
-          "Beneficiary ID": beneficiary.beneficiary_uid,
+          [`${terminology.primaryEntity} ID`]: beneficiary.beneficiary_uid,
           Enrollment: beneficiary.enrollment_status,
           Type: beneficiary.beneficiary_type,
           "Vulnerability score": beneficiary.vulnerability_score,
@@ -221,7 +227,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     });
 
     return [...submissionFeatures, ...beneficiaryFeatures];
-  }, [beneficiariesQuery.data, projectsQuery.data, submissionsQuery.data]);
+  }, [beneficiariesQuery.data, projectsQuery.data, submissionsQuery.data, terminology]);
 
   const latestSubmissionFeature = useMemo(
     () => realMapFeatures.find((feature) => feature.category === "Submission") ?? null,
@@ -233,10 +239,23 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const boundaries = useMemo(() => (preview ? previewBoundaries : []), [preview]);
   const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
   const indicatorGeography = useMemo(() => (preview ? previewIndicatorGeography : []), [preview]);
-  const spatialIssues = useMemo(() => (preview ? previewSpatialIssues : []), [preview]);
+  const spatialIssues = useMemo(
+    () => (preview ? previewSpatialIssues : deriveQualityIssues(realMapFeatures)),
+    [preview, realMapFeatures],
+  );
+  const projectExtents = useMemo(() => computeProjectExtents(realMapFeatures), [realMapFeatures]);
   const restricted = isRestrictedMapViewer(principal);
   const privacyVisibility: LayerVisibility = restricted ? "Aggregated" : "Internal";
-  const activeInfo = mappingSections.find((section) => section.id === activeSection) ?? mappingSections[0];
+  const sections = useMemo(
+    () =>
+      mappingSections.map((section) =>
+        section.id === "beneficiary-maps"
+          ? { ...section, label: `${terminology.primaryEntityPlural} Maps`, description: `${terminology.primaryEntityPlural} and household geography with privacy masking and aggregated role-based views.` }
+          : section,
+      ),
+    [terminology],
+  );
+  const activeInfo = sections.find((section) => section.id === activeSection) ?? sections[0];
 
   const visibleFeatures = useMemo(
     () => filterFeaturesBySection(mapFeatures, activeSection),
@@ -314,6 +333,19 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     setDrawMode(false);
   }
 
+  function viewProjectExtentOnMap(extent: ProjectExtent): void {
+    const padLat = Math.max((extent.maxLat - extent.minLat) * 0.1, 0.01);
+    const padLng = Math.max((extent.maxLng - extent.minLng) * 0.1, 0.01);
+    setAreaBounds({
+      east: extent.maxLng + padLng,
+      north: extent.maxLat + padLat,
+      south: extent.minLat - padLat,
+      west: extent.minLng - padLng,
+    });
+    setActiveSection("submission-maps");
+    setDrawMode(false);
+  }
+
   function exportCurrentView(): void {
     downloadCsv(
       "atlas-mapping-view.csv",
@@ -365,10 +397,10 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           </div>
         </div>
         <div className="mt-3 flex gap-1.5 overflow-x-auto product-scrollbar" aria-label="Mapping sections">
-          {mappingSections.map((section) => (
+          {sections.map((section) => (
             <button
               className={cn(
-                "shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                "shrink-0 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
                 activeSection === section.id
                   ? "border-primary bg-primary text-primary-foreground"
                   : "bg-panel hover:bg-muted",
@@ -378,6 +410,9 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
               type="button"
             >
               {section.label}
+              {section.status === "planned" ? (
+                <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge>
+              ) : null}
             </button>
           ))}
         </div>
@@ -402,6 +437,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           onOpenSubmissions={() => setActiveView("submissions")}
           preview={preview}
           summary={summary}
+          terminology={terminology}
         />
       ) : null}
 
@@ -421,6 +457,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onFeatureSelect={setSelectedFeature}
             onMapQueryChange={setMapQuery}
             privacyVisibility={privacyVisibility}
+            sectionInfo={activeInfo}
             selectedFeature={selectedFeature}
           />
 
@@ -432,7 +469,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             mapFeatures={spatiallyFilteredFeatures}
             mapLayers={mapLayers}
             onOpenDataQuality={() => setActiveView("dataQuality")}
+            onViewProjectExtent={viewProjectExtentOnMap}
+            preview={preview}
             privacyVisibility={privacyVisibility}
+            projectExtents={projectExtents}
+            sectionInfo={activeInfo}
             selectedFeature={selectedFeature}
             setActiveSection={setActiveSection}
             spatialIssues={spatialIssues}
@@ -451,18 +492,20 @@ function MappingDashboard({
   onOpenSubmissions,
   preview,
   summary,
+  terminology,
 }: {
   latestSubmissionFeature: MapFeatureRecord | null;
   onOpenQuality: () => void;
   onOpenSubmissions: () => void;
   preview: boolean;
   summary: MappingSummary;
+  terminology: SectorTerminology;
 }) {
   const cards: { icon: LucideIcon; label: string; tone?: BadgeProps["tone"]; value: string | number }[] = [
     { icon: Layers, label: "Active Map Layers", value: summary.activeMapLayers },
     { icon: MapPinned, label: "Project Locations", value: summary.projectLocations },
     { icon: LocateFixed, label: "Submission Points", value: summary.submissionPoints.toLocaleString() },
-    { icon: Shield, label: "Beneficiary Points", value: summary.beneficiaryPoints.toLocaleString() },
+    { icon: Shield, label: `${terminology.primaryEntityPlural} Points`, value: summary.beneficiaryPoints.toLocaleString() },
     { icon: CircleDot, label: "Facility Points", value: summary.facilityPoints },
     { icon: Map, label: "Uploaded Boundaries", value: summary.uploadedBoundaries },
     { icon: FileWarning, label: "GPS Issues", tone: summary.gpsIssues ? "warning" : "success", value: summary.gpsIssues },
@@ -548,9 +591,10 @@ function EnterpriseMapViewer({
   onFeatureSelect,
   onMapQueryChange,
   privacyVisibility,
+  sectionInfo,
   selectedFeature,
 }: MapViewerProps) {
-  const activeInfo = mappingSections.find((section) => section.id === activeSection) ?? mappingSections[0];
+  const activeInfo = sectionInfo;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
   const [metadataLayer, setMetadataLayer] = useState<MapLayerRecord | null>(null);
@@ -735,7 +779,11 @@ function SectionContent({
   mapFeatures,
   mapLayers,
   onOpenDataQuality,
+  onViewProjectExtent,
+  preview,
   privacyVisibility,
+  projectExtents,
+  sectionInfo,
   selectedFeature,
   setActiveSection,
   spatialIssues,
@@ -747,7 +795,11 @@ function SectionContent({
   mapFeatures: MapFeatureRecord[];
   mapLayers: MapLayerRecord[];
   onOpenDataQuality: () => void;
+  onViewProjectExtent: (extent: ProjectExtent) => void;
+  preview: boolean;
   privacyVisibility: LayerVisibility;
+  projectExtents: ProjectExtent[];
+  sectionInfo: { description: string; label: string; route: string };
   selectedFeature: MapFeatureRecord | null;
   setActiveSection: (section: MappingSection) => void;
   spatialIssues: SpatialQualityIssue[];
@@ -758,6 +810,9 @@ function SectionContent({
   if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} />;
   if (activeSection === "data-quality-maps") {
     return <SpatialQualityWorkspace issues={spatialIssues} onOpenDataQuality={onOpenDataQuality} />;
+  }
+  if (activeSection === "project-maps" && !preview) {
+    return <ProjectOverviewWorkspace extents={projectExtents} onViewOnMap={onViewProjectExtent} />;
   }
 
   const features = filterFeaturesBySection(mapFeatures, activeSection);
@@ -779,9 +834,9 @@ function SectionContent({
             <Button onClick={() => setActiveSection("boundaries")} variant="secondary"><Map aria-hidden="true" /> Boundaries</Button>
           </div>
         }
-        route={mappingSections.find((section) => section.id === activeSection)?.route ?? "/mapping"}
-        title={mappingSections.find((section) => section.id === activeSection)?.label ?? "Mapping"}
-        description={mappingSections.find((section) => section.id === activeSection)?.description ?? "Spatial analysis"}
+        route={sectionInfo.route}
+        title={sectionInfo.label}
+        description={sectionInfo.description}
       />
       {selectedFeature?.sensitive ? (
         <section className="rounded-2xl border border-warning/30 bg-warning/10 p-4">
@@ -790,6 +845,44 @@ function SectionContent({
         </section>
       ) : null}
       <DataTable columns={columns} emptyLabel="No map features match this view yet" rows={features} searchLabel="Search map features, projects, locations" title="Companion spatial table" />
+    </section>
+  );
+}
+
+function ProjectOverviewWorkspace({
+  extents,
+  onViewOnMap,
+}: {
+  extents: ProjectExtent[];
+  onViewOnMap: (extent: ProjectExtent) => void;
+}) {
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        description="Project extent computed from GPS-tagged submissions and records. This is a coverage proxy, not official boundary geometry — boundary uploads are on our roadmap."
+        route="/mapping/project-maps"
+        title="Project Maps"
+      />
+      {extents.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {extents.map((extent) => (
+            <article className="rounded-xl border bg-panel p-3 shadow-line" key={extent.project}>
+              <h2 className="text-sm font-semibold">{extent.project}</h2>
+              <div className="mt-3 grid gap-2">
+                <Signal label="GPS-tagged points" value={extent.pointCount.toLocaleString()} />
+                <Signal label="Centroid" value={`${extent.centroidLat.toFixed(4)}, ${extent.centroidLng.toFixed(4)}`} />
+                <Signal label="Latitude range" value={`${extent.minLat.toFixed(4)} to ${extent.maxLat.toFixed(4)}`} />
+                <Signal label="Longitude range" value={`${extent.minLng.toFixed(4)} to ${extent.maxLng.toFixed(4)}`} />
+              </div>
+              <Button className="mt-3" onClick={() => onViewOnMap(extent)} size="sm" variant="secondary">
+                View on map
+              </Button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyMini label="No GPS-tagged submissions or records yet. Project extent will appear here once field data includes GPS coordinates." />
+      )}
     </section>
   );
 }
@@ -1070,13 +1163,11 @@ function EmptyMini({ label }: { label: string }) {
 }
 
 const NOT_AVAILABLE_REASONS: Partial<Record<MappingSection, string>> = {
-  "project-maps": "Project Maps need project boundary geometry from the location hierarchy, which isn't connected yet.",
-  "facility-maps": "Facility Maps need a facility registry (schools, clinics, water points, offices) that hasn't been built yet.",
-  "coverage-maps": "Coverage Maps need coverage targets and boundary geometry that aren't connected yet.",
-  "indicator-maps": "Indicator Maps need indicator geography and target data that isn't connected yet.",
-  "data-quality-maps": "Spatial data quality checks need GPS validation rules and boundary geometry that aren't connected yet.",
-  layers: "Map Layers needs a GIS file-processing service for uploading and managing spatial layers, which isn't connected yet.",
-  boundaries: "Boundaries need administrative and project boundary geometry uploads, which aren't connected yet.",
+  "facility-maps": "On our roadmap — Facility Maps require a facility registry (schools, clinics, water points, offices, warehouses) that hasn't been built yet.",
+  "coverage-maps": "On our roadmap — Coverage Maps require coverage targets and boundary geometry that aren't connected yet.",
+  "indicator-maps": "On our roadmap — Indicator Maps require linking indicator values and targets to specific locations, which isn't connected yet.",
+  layers: "On our roadmap — Map Layers require a GIS file-processing service for uploading, versioning, and managing spatial layers.",
+  boundaries: "On our roadmap — Boundaries require administrative and project boundary geometry uploads, which aren't connected yet.",
 };
 
 function MappingNotAvailable({
@@ -1091,17 +1182,23 @@ function MappingNotAvailable({
       <SectionHeader description={section.description} route={section.route} title={section.label} />
       <div className="rounded-2xl border border-dashed bg-muted/20 p-6 text-center">
         <Map aria-hidden="true" className="mx-auto text-muted-foreground" size={28} />
-        <h2 className="mt-3 text-sm font-semibold">{section.label} isn&apos;t connected to live data yet</h2>
+        <h2 className="mt-3 text-sm font-semibold">{section.label} isn&apos;t available yet</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-          {NOT_AVAILABLE_REASONS[section.id] ?? "This view needs additional GIS data that isn't connected yet for this organization."}
-          {" "}Submission Maps and Beneficiary Maps are available now using your real GPS data.
+          {NOT_AVAILABLE_REASONS[section.id] ?? "This view is on our roadmap and isn't connected to live data yet for this organization."}
+          {" "}Project Maps, Submission Maps, Beneficiary Maps, and Data Quality Maps are available now using your real data.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Button onClick={() => onSelectSection("project-maps")} variant="secondary">
+            <MapPinned aria-hidden="true" /> View Project Overview
+          </Button>
           <Button onClick={() => onSelectSection("submission-maps")} variant="secondary">
             <LocateFixed aria-hidden="true" /> View Submission Maps
           </Button>
           <Button onClick={() => onSelectSection("beneficiary-maps")} variant="secondary">
             <Shield aria-hidden="true" /> View Beneficiary Maps
+          </Button>
+          <Button onClick={() => onSelectSection("data-quality-maps")} variant="secondary">
+            <FileWarning aria-hidden="true" /> View Data Quality Map
           </Button>
         </div>
       </div>

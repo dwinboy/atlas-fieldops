@@ -7,7 +7,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 export const metadata: Metadata = marketingMetadata({
   title: "Onboarding Wizard",
   description:
-    "Atlas FieldOps onboarding guides new organizations through projects, data imports, forms, beneficiaries, team invitations, and data collection readiness.",
+    "Atlas FieldOps onboarding guides new organizations through projects, data imports, forms, entities, team invitations, and data collection readiness.",
   path: "/onboarding",
 });
 
@@ -16,7 +16,7 @@ const onboardingSteps = [
   ["Create project", "Set donor, locations, teams, indicators, project owner, and implementation dates."],
   ["Import existing data", "Bring Kobo, ODK, SurveyCTO, Excel, DHIS2, CommCare, or Google Forms history into the migration assistant."],
   ["Create form", "Start from templates or a blank builder, publish a governed version, and link entity controls."],
-  ["Add beneficiaries", "Register or import farmers, households, facilities, schools, groups, or custom entities."],
+  ["Add entities", "Register or import farmers, households, facilities, schools, groups, or custom entities."],
   ["Invite team", "Add supervisors, data managers, field officers, and read-only donor users with scoped roles."],
   ["Start collecting data", "Assign forms and entities, collect submissions, review data, monitor quality, and report progress."],
 ];

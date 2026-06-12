@@ -11,6 +11,7 @@ from app.models.base import Base
 from app.models.collection import DataForm, DataFormVersion, Project, Survey
 from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, User
+from app.repositories.collection import FormRepository
 from app.schemas.auth import CurrentPrincipal
 from app.models.operations import Beneficiary, DataQualitySignal
 from app.schemas.collection import (
@@ -132,6 +133,30 @@ def test_submission_requires_server_enforced_gps_and_device_metadata() -> None:
     assert submission.location.latitude == 5.9631
 
 
+@pytest.mark.asyncio
+async def test_custom_entity_type_generates_readable_code_prefix() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        service = SubmissionService(session)
+        water_prefix, _, _, _ = await service._beneficiary_uid_format_parts(
+            organization_id=uuid4(),
+            entity_type="Water Point",
+            project_id=None,
+        )
+        case_prefix, _, _, _ = await service._beneficiary_uid_format_parts(
+            organization_id=uuid4(),
+            entity_type="GBV Case",
+            project_id=None,
+        )
+
+    assert water_prefix == "WAT"
+    assert case_prefix == "GBV"
+
+
 def test_survey_payload_enforces_project_context_and_supported_types() -> None:
     project_id = uuid4()
     payload = SurveyCreate(
@@ -185,6 +210,83 @@ def test_form_controls_reject_unsupported_permissions() -> None:
                 }
             ],
         )
+
+
+@pytest.mark.asyncio
+async def test_editing_published_form_keeps_active_version_until_publish() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Version Org", slug="version-org"),
+                User(id=actor_user_id, email="manager-version@example.org", full_name="Manager", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Version Project", slug="version-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=actor_user_id,
+                    owner_user_id=actor_user_id,
+                    title="Version Survey",
+                    code="VERSION",
+                    survey_type="monitoring",
+                    status="active",
+                ),
+            ]
+        )
+        await session.flush()
+
+        forms = FormRepository(session)
+        form, published_version = await forms.create(
+            organization_id=organization_id,
+            project_id=project_id,
+            survey_id=survey_id,
+            created_by_user_id=actor_user_id,
+            name="Published form",
+            slug="published-form",
+            description="Live version",
+            schema_json={"sections": [{"id": "main", "title": "Main", "fields": [{"id": "q1", "type": "text", "label": "Name"}]}]},
+            publish=True,
+        )
+        assert form.status == "published"
+        assert form.current_version == 1
+        assert published_version.published_at is not None
+
+        form, draft_version = await forms.save_schema_revision(
+            form=form,
+            actor_user_id=actor_user_id,
+            name="Published form draft",
+            description="Draft edit",
+            schema_json={"sections": [{"id": "main", "title": "Main", "fields": [{"id": "q2", "type": "number", "label": "Age"}]}]},
+            publish=False,
+        )
+        assert form.status == "published"
+        assert form.current_version == 1
+        assert draft_version.version == 2
+        assert draft_version.published_at is None
+        assert (await forms.get_current_version(organization_id=organization_id, form_id=form.id)).id == published_version.id
+
+        form, promoted_version = await forms.save_schema_revision(
+            form=form,
+            actor_user_id=actor_user_id,
+            name="Published form v2",
+            description="Published edit",
+            schema_json={"sections": [{"id": "main", "title": "Main", "fields": [{"id": "q2", "type": "number", "label": "Age"}]}]},
+            publish=True,
+        )
+        assert form.status == "published"
+        assert form.current_version == 2
+        assert promoted_version.id == draft_version.id
+        assert promoted_version.published_at is not None
+        assert (await forms.get_current_version(organization_id=organization_id, form_id=form.id)).id == draft_version.id
 
 
 def test_submission_review_actions_are_limited_to_workflow_events() -> None:

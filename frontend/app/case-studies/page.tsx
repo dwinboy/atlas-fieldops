@@ -7,7 +7,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Case Studies",
-  description: "Case studies showing how organizations use Atlas FieldOps for monitoring, evaluation, offline data collection, GIS mapping, beneficiary tracking, and donor reporting.",
+  description: "Case studies showing how organizations use Atlas FieldOps for monitoring, evaluation, offline data collection, GIS mapping, entity tracking, and donor reporting.",
   path: "/case-studies",
 });
 

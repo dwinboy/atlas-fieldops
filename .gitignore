@@ -6,6 +6,8 @@
 .venv*/
 node_modules/
 .next/
+*.tsbuildinfo
+backend/uv.lock
 storybook-static/
 dist/
 build/

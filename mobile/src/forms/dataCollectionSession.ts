@@ -66,8 +66,9 @@ export class DataCollectionSessionService {
       throw new Error(permission.message ?? "You are not allowed to collect data for this form.");
     }
     const entity = entityLocalId ? this.database.entities.get(entityLocalId) : null;
+    const entityLabel = this.entityLabel(formVersion);
     if (formVersion.entitySettings.requiresExistingEntity && !entity) {
-      throw new Error("Select a beneficiary before opening this entity-linked form.");
+      throw new Error(`Select a ${entityLabel} before opening this form.`);
     }
     const prefilled = entity ? this.prefill.createPrefill(entity, formVersion).responses : [];
     const draft = this.drafts.createDraft({
@@ -155,15 +156,15 @@ export class DataCollectionSessionService {
       }
     }
     if (entitySettings.createsNewEntity && !draft.entityId) {
-      const input = this.buildDuplicateCheckInput(draft);
+      const input = this.buildDuplicateCheckInput(draft, formVersion);
       if (input.phone || input.nationalId || input.householdId || (input.name && input.village)) {
         const matches = this.duplicateCheck.check(input, this.database.entities.list(), entitySettings.duplicateThreshold);
         const topMatch = matches[0];
         if (topMatch) {
           issues.push({
             questionId: "_duplicate_check",
-            label: "Possible duplicate beneficiary",
-            message: `This record looks similar to an existing entry for ${topMatch.entity?.name ?? "a known beneficiary"} (matched on ${topMatch.matchedFields.join(", ")}).`,
+            label: `Possible duplicate ${this.entityLabel(formVersion)}`,
+            message: `This record looks similar to an existing entry for ${topMatch.entity?.name ?? `a known ${this.entityLabel(formVersion)}`} (matched on ${topMatch.matchedFields.join(", ")}).`,
             fixHint: "Double-check whether this person is already registered before submitting. The server will review this during sync either way.",
             severity: "Warning",
           });
@@ -173,7 +174,7 @@ export class DataCollectionSessionService {
     return issues;
   }
 
-  private buildDuplicateCheckInput(draft: MobileSubmission): DuplicateCheckInput {
+  private buildDuplicateCheckInput(draft: MobileSubmission, formVersion: MobileFormVersion): DuplicateCheckInput {
     const values = new Map(draft.responses.map((response) => [response.variableName.toLowerCase(), response.value]));
     const stringValue = (...keys: string[]): string | undefined => {
       for (const key of keys) {
@@ -194,7 +195,32 @@ export class DataCollectionSessionService {
       householdId: stringValue("household_id", "householdid", "household"),
       village: stringValue("village", "community"),
       name,
+      customIdentifiers: this.customDuplicateIdentifiers(formVersion, values),
     };
+  }
+
+  private customDuplicateIdentifiers(
+    formVersion: MobileFormVersion,
+    values: Map<string, unknown>,
+  ): Array<{ fieldKey: string; label: string; value: string }> {
+    const categoryId = formVersion.entitySettings.entityCategoryId;
+    const category = categoryId ? this.database.entityCategories.list().find((item) => item.id === categoryId) : null;
+    if (!category) return [];
+    return category.attributes
+      .filter((attribute) => /(^|_)(id|code|uid|number|registration|license)(_|$)/i.test(attribute.fieldKey))
+      .map((attribute) => {
+        const value = values.get(attribute.fieldKey.toLowerCase());
+        return typeof value === "string" && value.trim()
+          ? { fieldKey: attribute.fieldKey, label: attribute.label, value: value.trim() }
+          : null;
+      })
+      .filter((item): item is { fieldKey: string; label: string; value: string } => Boolean(item));
+  }
+
+  private entityLabel(formVersion: MobileFormVersion): string {
+    const categoryId = formVersion.entitySettings.entityCategoryId;
+    const category = categoryId ? this.database.entityCategories.list().find((item) => item.id === categoryId) : null;
+    return (category?.name ?? formVersion.entitySettings.entityType ?? "entity").toLowerCase();
   }
 
   private computeFrequencyPeriod(rule: FrequencyRule, now: Date): string | null {

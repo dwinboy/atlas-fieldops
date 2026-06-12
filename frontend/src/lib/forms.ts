@@ -111,6 +111,10 @@ export type FormField = {
     max?: number;
     allowNested?: boolean;
   };
+  beneficiary?: {
+    profileField?: string;
+    profileImpact?: "no_impact" | "creates_profile" | "updates_profile";
+  };
   media?: {
     compression?: "standard" | "high";
     metadata?: boolean;

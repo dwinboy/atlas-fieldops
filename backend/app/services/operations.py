@@ -49,6 +49,11 @@ from app.schemas.operations import (
     DataQualitySignalRead,
     DataQualitySignalUpdate,
     DonorReportCreate,
+    EntityAttributeRead,
+    EntityAttributeCreate,
+    EntityCategoryCreate,
+    EntityCategoryRead,
+    EntityCategoryUpdate,
     ExportJobCreate,
     ExportJobRead,
     FieldVisitCheckIn,
@@ -81,7 +86,13 @@ from app.schemas.operations import (
     ImportPreviewRequest,
     ImportPreviewResponse,
     ImportValidationIssue,
+    DonorReportIndicatorMetric,
+    DonorReportMetrics,
     IndicatorCreate,
+    IndicatorDisaggregationRead,
+    IndicatorDisaggregationsRead,
+    IndicatorLinkedSubmissionRead,
+    IndicatorLinkedSubmissionsRead,
     IndicatorRead,
     InterventionCreate,
     InterventionRead,
@@ -107,6 +118,7 @@ from app.schemas.operations import (
     OrganizationalUnitRead,
     OperationsSummary,
     ProgramCreate,
+    PredefinedEntityCategoryRead,
     ProjectBudgetLineCreate,
     ProjectBudgetLineRead,
     PublicCollectionLinkCreate,
@@ -119,11 +131,63 @@ from app.schemas.operations import (
 from app.services.file_imports import parse_uploaded_dataset
 
 
-def indicator_progress(indicator: MonitoringIndicator) -> float:
-    if indicator.target_value <= indicator.baseline_value:
+def _progress_percent(current_value: float, baseline_value: float, target_value: float) -> float:
+    if target_value <= baseline_value:
         return 0
-    progress = ((indicator.current_value - indicator.baseline_value) / (indicator.target_value - indicator.baseline_value)) * 100
+    progress = ((current_value - baseline_value) / (target_value - baseline_value)) * 100
     return round(max(0, min(progress, 100)), 1)
+
+
+def indicator_progress(indicator: MonitoringIndicator) -> float:
+    return _progress_percent(indicator.current_value, indicator.baseline_value, indicator.target_value)
+
+
+def _parse_formula(formula: str | None) -> tuple[str, str] | None:
+    """Parse an indicator formula string into (operation, field_name).
+
+    Supports `sum(field)`, `avg(field)`/`average(field)`, `count(field)`,
+    `percent(field)`, or a bare field name (implicit `sum`).
+    """
+    formula = (formula or "").strip()
+    if not formula:
+        return None
+    match = re.fullmatch(r"(?:(sum|avg|average|count|percent)\(([^)]+)\)|([A-Za-z0-9_.-]+))", formula, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    operation = (match.group(1) or "sum").lower()
+    field_name = (match.group(2) or match.group(3) or "").strip()
+    if not field_name:
+        return None
+    return operation, field_name
+
+
+def _build_report_summary(report: DonorReport, metrics: DonorReportMetrics) -> str:
+    parts = [
+        f"{metrics.submissions_approved} of {metrics.submissions_total} submissions approved",
+        f"{metrics.beneficiaries} beneficiaries recorded",
+    ]
+    if metrics.indicators:
+        on_track = sum(1 for indicator in metrics.indicators if indicator.progress_percent >= 75)
+        parts.append(f"{on_track} of {len(metrics.indicators)} indicators at 75%+ of target")
+    scope = f"project {report.project_id}" if report.project_id else "the organization"
+    return f"Auto-generated summary for {scope}: " + "; ".join(parts) + "."
+
+
+def _aggregate_values(operation: str, values: list[object]) -> float:
+    if operation == "count":
+        return float(sum(1 for value in values if value not in (None, "", [], {})))
+    if operation == "percent":
+        answered = [value for value in values if value not in (None, "", [], {})]
+        if not answered:
+            return 0.0
+        positive = sum(1 for value in answered if str(value).strip().lower() in {"1", "true", "yes", "y", "approved", "complete"})
+        return round((positive / len(answered)) * 100, 2)
+    numeric = [number for number in (number_value(value) for value in values) if number is not None]
+    if not numeric:
+        return 0.0
+    if operation in {"avg", "average"}:
+        return round(sum(numeric) / len(numeric), 2)
+    return round(sum(numeric), 2)
 
 
 FIELD_ALIASES = {
@@ -675,6 +739,10 @@ def normalized_text(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
+def category_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "entity-category"
+
+
 def normalized_phone(value: str | None) -> str:
     return "".join(character for character in (value or "") if character.isdigit())
 
@@ -894,6 +962,45 @@ def mark_record_as_imported(record: object, *, job: object, user_id: UUID, row_n
     setattr(record, "imported_by_user_id", user_id)
 
 
+def preset_attribute(label: str, field_key: str, field_type: str = "text", required: bool = False) -> EntityAttributeCreate:
+    return EntityAttributeCreate(label=label, field_key=field_key, field_type=field_type, required=required)
+
+
+PREDEFINED_ENTITY_CATEGORIES: list[PredefinedEntityCategoryRead] = [
+    PredefinedEntityCategoryRead(
+        sector=sector,
+        name=name,
+        slug=category_slug(name),
+        description=description,
+        icon=icon,
+        color=color,
+        attributes=attributes,
+    )
+    for sector, icon, color, names, description, attributes in [
+        ("education", "school", "#2563eb", ["Schools", "Students", "Teachers", "Classrooms", "School Clubs", "Parent Teacher Associations", "Education Districts"], "Education entity category for school and learner monitoring.", [preset_attribute("Name", "name", required=True), preset_attribute("District", "district"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("health", "hospital", "#dc2626", ["Health Facilities", "Patients", "Community Health Workers", "Pregnant Women", "Children Under Five", "Vaccination Sites", "Pharmacies"], "Health service entity category for facilities, clients, and service points.", [preset_attribute("Name", "name", required=True), preset_attribute("Facility Type", "facility_type", "dropdown"), preset_attribute("Phone Number", "phone_number", "phone")]),
+        ("agriculture", "sprout", "#0f8a4b", ["Farmers", "Farmer Groups", "Cooperatives", "Farms", "Crops", "Livestock", "Input Suppliers", "Aggregation Centers"], "Agriculture entity category for farmers, farms, crops, and market actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Farm Size", "farm_size", "number"), preset_attribute("Crop Type", "crop_type", "dropdown")]),
+        ("wash", "droplets", "#0891b2", ["Water Points", "Boreholes", "Toilets", "Households", "Communities", "Hygiene Clubs", "Waste Collection Points"], "WASH entity category for water, sanitation, and community infrastructure.", [preset_attribute("Name", "name", required=True), preset_attribute("Status", "status", "dropdown"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("nutrition", "heart-pulse", "#ea580c", ["Children Under Five", "Mothers", "Households", "Feeding Centers", "Nutrition Sites", "Health Workers"], "Nutrition entity category for clients, sites, and service workers.", [preset_attribute("Name", "name", required=True), preset_attribute("Age", "age", "number"), preset_attribute("Nutrition Status", "nutrition_status", "dropdown")]),
+        ("livelihoods", "briefcase", "#7c3aed", ["Beneficiaries", "Businesses", "Savings Groups", "Vocational Trainees", "Employers", "Markets", "Cooperatives"], "Livelihoods entity category for economic inclusion programs.", [preset_attribute("Name", "name", required=True), preset_attribute("Business Type", "business_type", "dropdown"), preset_attribute("Phone Number", "phone_number", "phone")]),
+        ("protection", "shield", "#be123c", ["Case Records", "Vulnerable Children", "Households", "Service Providers", "Referral Points", "Safe Spaces"], "Protection entity category for case, referral, and service tracking.", [preset_attribute("Case Code", "case_code", required=True), preset_attribute("Risk Level", "risk_level", "dropdown"), preset_attribute("Referral Status", "referral_status", "dropdown")]),
+        ("gender-gbv", "shield-check", "#db2777", ["Women's Groups", "Safe Spaces", "GBV Cases", "Service Providers", "Community Activists", "Referral Pathways"], "Gender and GBV category with sensitive data controls.", [preset_attribute("Name or Code", "name_or_code", required=True), preset_attribute("Service Type", "service_type", "dropdown"), preset_attribute("Confidentiality Level", "confidentiality_level", "dropdown")]),
+        ("emergency-response", "tent", "#f97316", ["Affected Households", "Refugees", "Internally Displaced Persons", "Camps", "Shelters", "Distribution Points", "Assessment Sites"], "Emergency response category for affected populations and service points.", [preset_attribute("Name or Code", "name_or_code", required=True), preset_attribute("Population Count", "population_count", "number"), preset_attribute("Location", "location", "gps")]),
+        ("food-security", "wheat", "#ca8a04", ["Households", "Farmers", "Markets", "Vendors", "Storage Facilities"], "Food security category for markets, households, and supply actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Food Security Status", "food_security_status", "dropdown"), preset_attribute("Market Type", "market_type", "dropdown")]),
+        ("environment-climate", "leaf", "#16a34a", ["Forest Areas", "Communities", "Protected Areas", "Tree Nurseries", "Climate Risk Zones", "Water Bodies"], "Environment and climate category for natural assets and risk zones.", [preset_attribute("Name", "name", required=True), preset_attribute("Area Size", "area_size", "number"), preset_attribute("GPS Boundary", "gps_boundary", "gps")]),
+        ("infrastructure", "construction", "#475569", ["Roads", "Bridges", "Buildings", "Construction Sites", "Contractors", "Assets"], "Infrastructure category for works, assets, and contractors.", [preset_attribute("Asset Name", "asset_name", required=True), preset_attribute("Condition", "condition", "dropdown"), preset_attribute("GPS Coordinates", "gps_coordinates", "gps")]),
+        ("governance", "landmark", "#4f46e5", ["Local Councils", "Community Committees", "Public Institutions", "Citizens", "Civil Society Organizations"], "Governance category for institutions and civic actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Institution Type", "institution_type", "dropdown"), preset_attribute("Contact Person", "contact_person")]),
+        ("economic-development", "chart-line", "#0d9488", ["SMEs", "Entrepreneurs", "Cooperatives", "Markets", "Financial Institutions"], "Economic development category for businesses and financial actors.", [preset_attribute("Name", "name", required=True), preset_attribute("Sector", "sector", "dropdown"), preset_attribute("Revenue", "revenue", "currency")]),
+        ("youth-development", "graduation-cap", "#9333ea", ["Youth Beneficiaries", "Training Centers", "Trainers", "Employers", "Apprenticeship Sites", "Youth Groups"], "Youth development category for trainees, trainers, and placement sites.", [preset_attribute("Name", "name", required=True), preset_attribute("Age", "age", "number"), preset_attribute("Training Cohort", "training_cohort")]),
+        ("disability-inclusion", "accessibility", "#0369a1", ["Persons with Disabilities", "Households", "Schools", "Health Facilities", "Service Providers"], "Disability inclusion category for people, providers, and inclusive services.", [preset_attribute("Name", "name", required=True), preset_attribute("Disability Type", "disability_type", "dropdown"), preset_attribute("Assistive Need", "assistive_need", "dropdown")]),
+        ("peacebuilding", "handshake", "#65a30d", ["Community Groups", "Conflict Incidents", "Mediation Committees", "Dialogue Sessions", "Youth Groups"], "Peacebuilding category for incidents, groups, and dialogue processes.", [preset_attribute("Name or Incident Code", "name_or_incident_code", required=True), preset_attribute("Conflict Type", "conflict_type", "dropdown"), preset_attribute("Resolution Status", "resolution_status", "dropdown")]),
+        ("donor-grant-management", "file-contract", "#64748b", ["Partners", "Grantees", "Sub-Grantees", "Projects", "Contracts", "Funding Windows"], "Donor and grant category for partners, grants, and funding instruments.", [preset_attribute("Name", "name", required=True), preset_attribute("Agreement Number", "agreement_number"), preset_attribute("Budget", "budget", "currency")]),
+        ("universal", "layers", "#0f8a4b", ["Beneficiaries", "Households", "Communities", "Facilities", "Institutions", "Groups", "Service Providers", "Assets", "Locations", "Activities", "Cases", "Partners"], "Universal entity category available to all programs.", [preset_attribute("Name", "name", required=True), preset_attribute("Status", "status", "dropdown"), preset_attribute("Location", "location")]),
+    ]
+    for name in names
+]
+
+
 class OperationsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -902,6 +1009,117 @@ class OperationsService:
         self.identity = IdentityRepository(session)
         self.roles = RoleRepository(session)
         self.units = OrganizationUnitRepository(session)
+
+    def predefined_entity_categories(self, sector: str | None = None) -> list[PredefinedEntityCategoryRead]:
+        if not sector:
+            return PREDEFINED_ENTITY_CATEGORIES
+        normalized = category_slug(sector)
+        return [category for category in PREDEFINED_ENTITY_CATEGORIES if category.sector == normalized]
+
+    async def list_entity_categories(
+        self,
+        organization_id: UUID,
+        *,
+        project_id: UUID | None = None,
+        include_archived: bool = False,
+    ) -> list[EntityCategoryRead]:
+        categories = await self.repository.list_entity_categories(
+            organization_id=organization_id,
+            project_id=project_id,
+            include_archived=include_archived,
+        )
+        attributes = await self.repository.list_entity_attributes(
+            organization_id=organization_id,
+            category_ids={category.id for category in categories},
+        )
+        return [
+            EntityCategoryRead.model_validate(category).model_copy(
+                update={"attributes": [EntityAttributeRead.model_validate(attribute) for attribute in attributes.get(category.id, [])]}
+            )
+            for category in categories
+        ]
+
+    async def create_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: EntityCategoryCreate,
+    ) -> EntityCategoryRead:
+        if payload.project_id and not await self.repository.project_exists(organization_id=organization_id, project_id=payload.project_id):
+            raise ValueError("Project not found")
+        values = payload.model_dump(exclude={"attributes"})
+        values["slug"] = payload.slug or category_slug(payload.name)
+        category = await self.repository.create_entity_category(
+            organization_id=organization_id,
+            values=values,
+            attributes=[attribute.model_dump() for attribute in payload.attributes],
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_category.created",
+            resource_type="entity_category",
+            resource_id=str(category.id),
+            metadata={"name": category.name, "project_id": str(category.project_id) if category.project_id else None},
+        )
+        await self.session.flush()
+        categories = await self.list_entity_categories(organization_id, project_id=category.project_id, include_archived=True)
+        return next(item for item in categories if item.id == category.id)
+
+    async def update_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        category_id: UUID,
+        payload: EntityCategoryUpdate,
+    ) -> EntityCategoryRead:
+        category = await self.repository.get_entity_category(organization_id=organization_id, category_id=category_id)
+        if category is None:
+            raise ValueError("Entity category not found")
+        values = payload.model_dump(exclude_unset=True, exclude={"attributes"})
+        category = await self.repository.update_entity_category(
+            organization_id=organization_id,
+            category=category,
+            values=values,
+            attributes=[attribute.model_dump() for attribute in payload.attributes] if payload.attributes is not None else None,
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="entity_category.updated",
+            resource_type="entity_category",
+            resource_id=str(category.id),
+            metadata={"status": category.status, "name": category.name},
+        )
+        await self.session.flush()
+        categories = await self.list_entity_categories(organization_id, project_id=category.project_id, include_archived=True)
+        return next(item for item in categories if item.id == category.id)
+
+    async def activate_predefined_entity_category(
+        self,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        project_id: UUID,
+        slug: str,
+    ) -> EntityCategoryRead:
+        preset = next((category for category in PREDEFINED_ENTITY_CATEGORIES if category.slug == slug), None)
+        if preset is None:
+            raise ValueError("Predefined entity category not found")
+        return await self.create_entity_category(
+            organization_id,
+            actor_user_id,
+            EntityCategoryCreate(
+                name=preset.name,
+                slug=preset.slug,
+                project_id=project_id,
+                sector=preset.sector,
+                description=preset.description,
+                icon=preset.icon,
+                color=preset.color,
+                is_predefined=True,
+                attributes=preset.attributes,
+            ),
+        )
 
     async def create_program(self, organization_id: UUID, payload: ProgramCreate, actor_user_id: UUID | None = None) -> Project:
         program = await self.repository.create_program(
@@ -2001,7 +2219,9 @@ class OperationsService:
         )
 
     async def create_indicator(self, organization_id: UUID, payload: IndicatorCreate, actor_user_id: UUID | None = None) -> IndicatorRead:
-        indicator = await self.repository.create_indicator(organization_id=organization_id, values=payload.model_dump())
+        values = payload.model_dump()
+        values["disaggregation_json"] = values.pop("disaggregation_fields", [])
+        indicator = await self.repository.create_indicator(organization_id=organization_id, values=values)
         if indicator.project_id:
             await self.repository.upsert_operational_link(
                 organization_id=organization_id,
@@ -2037,36 +2257,69 @@ class OperationsService:
         return reads
 
     async def calculate_indicator_current_value(self, organization_id: UUID, indicator: MonitoringIndicator) -> float | None:
-        formula = (indicator.formula or "").strip()
-        if not formula or not indicator.project_id:
+        if not indicator.project_id:
             return None
-        match = re.fullmatch(r"(?:(sum|avg|average|count|percent)\(([^)]+)\)|([A-Za-z0-9_.-]+))", formula, flags=re.IGNORECASE)
-        if match is None:
+        parsed = _parse_formula(indicator.formula)
+        if parsed is None:
             return None
-        operation = (match.group(1) or "sum").lower()
-        field_name = (match.group(2) or match.group(3) or "").strip()
-        if not field_name:
-            return None
+        operation, field_name = parsed
         submissions = await self.repository.list_approved_submissions(
             organization_id=organization_id,
             project_id=indicator.project_id,
             survey_id=indicator.survey_id,
         )
         values = [submission_values(submission.payload_json).get(field_name) for submission in submissions]
-        if operation == "count":
-            return float(sum(1 for value in values if value not in (None, "", [], {})))
-        if operation == "percent":
-            answered = [value for value in values if value not in (None, "", [], {})]
-            if not answered:
-                return 0.0
-            positive = sum(1 for value in answered if str(value).strip().lower() in {"1", "true", "yes", "y", "approved", "complete"})
-            return round((positive / len(answered)) * 100, 2)
-        numeric = [number for number in (number_value(value) for value in values) if number is not None]
-        if not numeric:
-            return 0.0
-        if operation in {"avg", "average"}:
-            return round(sum(numeric) / len(numeric), 2)
-        return round(sum(numeric), 2)
+        return _aggregate_values(operation, values)
+
+    async def calculate_indicator_disaggregation(
+        self, organization_id: UUID, indicator: MonitoringIndicator
+    ) -> IndicatorDisaggregationsRead:
+        if not indicator.project_id or not indicator.disaggregation_json:
+            return IndicatorDisaggregationsRead(items=[])
+        parsed = _parse_formula(indicator.formula)
+        operation, field_name = parsed if parsed is not None else ("sum", None)
+        submissions = await self.repository.list_approved_submissions(
+            organization_id=organization_id,
+            project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
+        )
+        payloads = [submission_values(submission.payload_json) for submission in submissions]
+        items: list[IndicatorDisaggregationRead] = []
+        for disaggregation_field in indicator.disaggregation_json:
+            groups: dict[str, list[object]] = {}
+            for values_map in payloads:
+                group_key = values_map.get(disaggregation_field)
+                group_label = "Unspecified" if group_key in (None, "", [], {}) else str(group_key)
+                groups.setdefault(group_label, []).append(values_map.get(field_name) if field_name else None)
+            breakdown = {label: _aggregate_values(operation, values) for label, values in groups.items()}
+            items.append(IndicatorDisaggregationRead(field_name=disaggregation_field, operation=operation, breakdown=breakdown))
+        return IndicatorDisaggregationsRead(items=items)
+
+    async def list_indicator_linked_submissions(
+        self, organization_id: UUID, indicator: MonitoringIndicator
+    ) -> IndicatorLinkedSubmissionsRead:
+        if not indicator.project_id:
+            return IndicatorLinkedSubmissionsRead(field_name=None, operation=None, total_count=0, items=[])
+        parsed = _parse_formula(indicator.formula)
+        operation, field_name = parsed if parsed is not None else (None, None)
+        submissions = await self.repository.list_approved_submissions(
+            organization_id=organization_id,
+            project_id=indicator.project_id,
+            survey_id=indicator.survey_id,
+        )
+        ordered = sorted(submissions, key=lambda submission: submission.submitted_at, reverse=True)
+        items = [
+            IndicatorLinkedSubmissionRead(
+                submission_id=submission.id,
+                client_submission_id=submission.client_submission_id,
+                submitted_at=submission.submitted_at,
+                approved_at=submission.approved_at,
+                field_value=submission_values(submission.payload_json).get(field_name) if field_name else None,
+                project_id=submission.project_id,
+            )
+            for submission in ordered[:200]
+        ]
+        return IndicatorLinkedSubmissionsRead(field_name=field_name, operation=operation, total_count=len(ordered), items=items)
 
     async def create_case(self, organization_id: UUID, payload: CaseCreate, actor_user_id: UUID | None = None) -> CaseRecord:
         case = await self.repository.create_case(organization_id=organization_id, values=payload.model_dump())
@@ -2109,6 +2362,107 @@ class OperationsService:
 
     async def list_reports(self, organization_id: UUID) -> list[DonorReport]:
         return await self.repository.list_reports(organization_id)
+
+    async def _compute_report_metrics(self, organization_id: UUID, report: DonorReport) -> DonorReportMetrics:
+        project_id = report.project_id
+        submissions_total = await self.repository.count_submissions_scoped(organization_id=organization_id, project_id=project_id)
+        submissions_approved = await self.repository.count_submissions_scoped(
+            organization_id=organization_id, project_id=project_id, status="approved"
+        )
+        beneficiaries = await self.repository.count_beneficiaries_scoped(organization_id=organization_id, project_id=project_id)
+        projects = 1 if project_id is not None else await self.repository.count(Project, organization_id)
+
+        indicators = await self.repository.list_indicators(organization_id)
+        scoped_indicators = [
+            indicator
+            for indicator in indicators
+            if indicator.is_active and (project_id is None or indicator.project_id == project_id)
+        ]
+        indicator_metrics: list[DonorReportIndicatorMetric] = []
+        for indicator in scoped_indicators:
+            calculated_value = await self.calculate_indicator_current_value(organization_id, indicator)
+            current_value = indicator.current_value if calculated_value is None else calculated_value
+            indicator_metrics.append(
+                DonorReportIndicatorMetric(
+                    code=indicator.code,
+                    name=indicator.name,
+                    unit=indicator.unit,
+                    baseline_value=indicator.baseline_value,
+                    target_value=indicator.target_value,
+                    current_value=current_value,
+                    progress_percent=_progress_percent(current_value, indicator.baseline_value, indicator.target_value),
+                )
+            )
+
+        return DonorReportMetrics(
+            projects=projects,
+            submissions_total=submissions_total,
+            submissions_approved=submissions_approved,
+            beneficiaries=beneficiaries,
+            indicators=indicator_metrics,
+            period_start=report.period_start,
+            period_end=report.period_end,
+            generated_at=datetime.now(UTC),
+        )
+
+    async def generate_report(self, organization_id: UUID, report_id: UUID) -> DonorReport:
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)
+        if report is None:
+            raise ValueError("Report not found")
+
+        metrics = await self._compute_report_metrics(organization_id, report)
+        values: dict[str, object] = {
+            "metrics_json": metrics.model_dump(mode="json"),
+            "generated_at": metrics.generated_at,
+            "status": "ready",
+        }
+        if not report.summary:
+            values["summary"] = _build_report_summary(report, metrics)
+        report = await self.repository.update_report(report, values)
+        await self.session.commit()
+        await event_publisher.publish("report.generated", {"organization_id": str(organization_id), "report_id": str(report.id)})
+        return report
+
+    async def export_report_csv(self, organization_id: UUID, report_id: UUID) -> tuple[str, str]:
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)
+        if report is None:
+            raise ValueError("Report not found")
+
+        if not report.metrics_json:
+            report = await self.generate_report(organization_id, report_id)
+
+        metrics_json = report.metrics_json
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Report", report.name])
+        writer.writerow(["Donor", report.donor or ""])
+        writer.writerow(["Report type", report.report_type])
+        writer.writerow(["Status", report.status])
+        writer.writerow(["Period start", metrics_json.get("period_start") or ""])
+        writer.writerow(["Period end", metrics_json.get("period_end") or ""])
+        writer.writerow(["Generated at", metrics_json.get("generated_at") or ""])
+        writer.writerow([])
+        writer.writerow(["Projects", metrics_json.get("projects", 0)])
+        writer.writerow(["Submissions (total)", metrics_json.get("submissions_total", 0)])
+        writer.writerow(["Submissions (approved)", metrics_json.get("submissions_approved", 0)])
+        writer.writerow(["Beneficiaries", metrics_json.get("beneficiaries", 0)])
+        writer.writerow([])
+        writer.writerow(["Indicator code", "Indicator name", "Unit", "Baseline", "Target", "Current", "Progress %"])
+        for indicator in metrics_json.get("indicators", []):
+            writer.writerow(
+                [
+                    indicator.get("code"),
+                    indicator.get("name"),
+                    indicator.get("unit"),
+                    indicator.get("baseline_value"),
+                    indicator.get("target_value"),
+                    indicator.get("current_value"),
+                    indicator.get("progress_percent"),
+                ]
+            )
+
+        filename = f"{report.name.strip().lower().replace(' ', '-') or 'report'}.csv"
+        return buffer.getvalue(), filename
 
     async def create_unit(self, organization_id: UUID, user_id: UUID, payload: OrganizationalUnitCreate) -> OrganizationalUnitRead:
         unit = await self.repository.create_enterprise_record(OrganizationalUnit, organization_id=organization_id, values=payload.model_dump())
@@ -3338,11 +3692,7 @@ class OperationsService:
     @staticmethod
     def to_indicator_read(indicator: MonitoringIndicator, calculated_value: float | None = None) -> IndicatorRead:
         current_value = indicator.current_value if calculated_value is None else calculated_value
-        progress = (
-            round(max(0, min(((current_value - indicator.baseline_value) / (indicator.target_value - indicator.baseline_value)) * 100, 100)), 1)
-            if indicator.target_value > indicator.baseline_value
-            else 0
-        )
+        progress = _progress_percent(current_value, indicator.baseline_value, indicator.target_value)
         return IndicatorRead(
             id=indicator.id,
             project_id=indicator.project_id,
@@ -3357,6 +3707,9 @@ class OperationsService:
             current_value=current_value,
             sdg_code=indicator.sdg_code,
             formula=indicator.formula,
+            category=indicator.category,
+            disaggregation_fields=indicator.disaggregation_json,
             is_active=indicator.is_active,
             progress_percent=progress,
+            calculated_at=datetime.now(UTC) if calculated_value is not None else None,
         )

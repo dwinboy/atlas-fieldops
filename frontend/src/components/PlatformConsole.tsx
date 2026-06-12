@@ -8,6 +8,7 @@ import {
   Building2,
   CheckCircle2,
   Database,
+  Smartphone,
   FileClock,
   Flag,
   HeartPulse,
@@ -17,6 +18,7 @@ import {
   LogOut,
   PlugZap,
   Plus,
+  PackageCheck,
   RotateCcw,
   Search,
   Settings,
@@ -37,10 +39,14 @@ import {
   createOrganization,
   createOrganizationSupportSession,
   getPlatformSettings,
+  getPlatformBackupPolicy,
+  getPlatformMobileFleet,
+  getPlatformSecurityPolicy,
   getPlatformSummary,
   getPlatformSystemHealth,
   listPlatformAuditLogs,
   listPlatformBackups,
+  listPlatformDataIsolationIssues,
   listPlatformFeatureFlags,
   listPlatformIntegrations,
   listPlatformLeads,
@@ -48,24 +54,35 @@ import {
   listPlatformOrganizationPlans,
   listPlatformRoles,
   listPlatformSecurityEvents,
+  listPlatformSectorPacks,
   listPlatformSupportSessions,
   listPlatformUsage,
   listPlatformUsers,
   runPlatformUserSecurityAction,
   updatePlatformFeatureFlag,
+  updatePlatformBackupPolicy,
+  updatePlatformIntegration,
+  updatePlatformOrganizationPlan,
   updatePlatformOrganizationStatus,
+  updatePlatformSecurityPolicy,
   type CurrentPrincipal,
   type PlatformAuditLogRead,
   type PlatformBackupJobRead,
+  type PlatformBackupPolicyRead,
+  type PlatformDataIsolationIssueRead,
   type PlatformFeatureFlagRead,
   type PlatformHealthServiceRead,
   type PlatformIntegrationRead,
   type PlatformLeadRead,
+  type PlatformMobileFleetDeviceRead,
+  type PlatformMobileFleetSummaryRead,
   type PlatformOrganizationRead,
   type PlatformOrganizationPlanRead,
   type PlatformOrganizationUsageRead,
   type PlatformRoleTemplateRead,
   type PlatformSecurityEventRead,
+  type PlatformSecurityPolicyRead,
+  type PlatformSectorPackRead,
   type PlatformSupportSessionRead,
   type PlatformUserRead,
 } from "@/lib/api";
@@ -84,10 +101,13 @@ type PlatformSection =
   | "organizations"
   | "users"
   | "roles"
+  | "data-isolation"
   | "feature-flags"
   | "system-health"
   | "audit-logs"
   | "security"
+  | "mobile-fleet"
+  | "sector-packs"
   | "integrations"
   | "backups"
   | "settings";
@@ -108,15 +128,44 @@ type DangerousAction =
   | { kind: "backup" | "maintenance" }
   | null;
 
+type PlanDraft = {
+  enabled_modules: string;
+  plan: string;
+  reason: string;
+  status: string;
+  storage_limit_gb: string;
+  submission_limit: string;
+  user_limit: string;
+};
+
+type SecurityPolicyDraft = Omit<PlatformSecurityPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type BackupPolicyDraft = Omit<PlatformBackupPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type IntegrationDraft = {
+  health: string;
+  notes: string;
+  owner: string;
+  reason: string;
+  status: string;
+};
+
 const consoleSections: ConsoleSection[] = [
   { id: "overview", label: "Platform Overview", route: "/platform/overview", icon: Activity, description: "Tenant health and platform readiness." },
   { id: "organizations", label: "Organizations", route: "/platform/organizations", icon: Building2, description: "Tenant lifecycle and usage." },
   { id: "users", label: "Global Users", route: "/platform/users", icon: UsersRound, description: "Cross-organization identity support." },
   { id: "roles", label: "Global Roles", route: "/platform/roles", icon: UserCog, description: "Protected role templates." },
+  { id: "data-isolation", label: "Data Isolation", route: "/platform/data-isolation", icon: ShieldCheck, description: "Tenant boundary checks and leakage risks." },
   { id: "feature-flags", label: "Feature Flags", route: "/platform/feature-flags", icon: Flag, description: "Global and tenant feature controls." },
   { id: "system-health", label: "System Health", route: "/platform/system-health", icon: HeartPulse, description: "API, database, jobs, and services." },
   { id: "audit-logs", label: "Audit Logs", route: "/platform/audit-logs", icon: FileClock, description: "Immutable platform events." },
   { id: "security", label: "Security", route: "/platform/security", icon: LockKeyhole, description: "Sessions, MFA, and risk events." },
+  { id: "mobile-fleet", label: "Mobile Fleet", route: "/platform/mobile-fleet", icon: Smartphone, description: "App versions, devices, sync health, and offline risk." },
+  { id: "sector-packs", label: "Sector Packs", route: "/platform/sector-packs", icon: PackageCheck, description: "Starter content for sectors, forms, entities, indicators, reports, and mobile rules." },
   { id: "integrations", label: "Integrations", route: "/platform/integrations", icon: PlugZap, description: "Platform-wide providers." },
   { id: "backups", label: "Backups", route: "/platform/backups", icon: Database, description: "Backup jobs and restore points." },
   { id: "settings", label: "Platform Settings", route: "/platform/settings", icon: Settings, description: "Safe global runtime settings." },
@@ -229,6 +278,45 @@ export function PlatformConsole({
   const [ownerPassword, setOwnerPassword] = useState("ChangeMe12345!");
   const [dangerAction, setDangerAction] = useState<DangerousAction>(null);
   const [dangerReason, setDangerReason] = useState("");
+  const [planToEdit, setPlanToEdit] = useState<PlatformOrganizationPlanRead | null>(null);
+  const [planDraft, setPlanDraft] = useState<PlanDraft>({
+    enabled_modules: "",
+    plan: "",
+    reason: "",
+    status: "",
+    storage_limit_gb: "",
+    submission_limit: "",
+    user_limit: "",
+  });
+  const [securityPolicyDraft, setSecurityPolicyDraft] = useState<SecurityPolicyDraft>({
+    failed_login_lock_threshold: 5,
+    ip_allowlist_enabled: false,
+    mfa_required_for_admins: false,
+    mfa_required_for_all_users: false,
+    password_min_length: 10,
+    password_rotation_days: 180,
+    reason: "",
+    session_timeout_minutes: 60,
+    support_session_timeout_minutes: 60,
+  });
+  const [backupPolicyDraft, setBackupPolicyDraft] = useState<BackupPolicyDraft>({
+    anonymize_archived_data: false,
+    backup_frequency: "Daily",
+    configuration_retention_days: 30,
+    reason: "",
+    restore_approver_role: "super_admin",
+    restore_requires_approval: true,
+    retention_days: 90,
+    tenant_export_enabled: true,
+  });
+  const [integrationToEdit, setIntegrationToEdit] = useState<PlatformIntegrationRead | null>(null);
+  const [integrationDraft, setIntegrationDraft] = useState<IntegrationDraft>({
+    health: "warning",
+    notes: "",
+    owner: "Platform team",
+    reason: "",
+    status: "not_connected",
+  });
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const operatorName =
     principal?.full_name?.trim() || principal?.email || "Platform operator";
@@ -249,9 +337,14 @@ export function PlatformConsole({
   const flagsQuery = useQuery({ queryKey: ["platform-feature-flags", token], queryFn: () => listPlatformFeatureFlags(token ?? ""), enabled });
   const healthQuery = useQuery({ queryKey: ["platform-system-health", token], queryFn: () => getPlatformSystemHealth(token ?? ""), enabled });
   const securityQuery = useQuery({ queryKey: ["platform-security", token], queryFn: () => listPlatformSecurityEvents(token ?? ""), enabled });
+  const securityPolicyQuery = useQuery({ queryKey: ["platform-security-policy", token], queryFn: () => getPlatformSecurityPolicy(token ?? ""), enabled });
+  const mobileFleetQuery = useQuery({ queryKey: ["platform-mobile-fleet", token], queryFn: () => getPlatformMobileFleet(token ?? ""), enabled });
+  const sectorPacksQuery = useQuery({ queryKey: ["platform-sector-packs", token], queryFn: () => listPlatformSectorPacks(token ?? ""), enabled });
   const integrationsQuery = useQuery({ queryKey: ["platform-integrations", token], queryFn: () => listPlatformIntegrations(token ?? ""), enabled });
   const backupsQuery = useQuery({ queryKey: ["platform-backups", token], queryFn: () => listPlatformBackups(token ?? ""), enabled });
+  const backupPolicyQuery = useQuery({ queryKey: ["platform-backup-policy", token], queryFn: () => getPlatformBackupPolicy(token ?? ""), enabled });
   const usageQuery = useQuery({ queryKey: ["platform-usage", token], queryFn: () => listPlatformUsage(token ?? ""), enabled });
+  const dataIsolationQuery = useQuery({ queryKey: ["platform-data-isolation", token], queryFn: () => listPlatformDataIsolationIssues(token ?? ""), enabled });
   const leadsQuery = useQuery({ queryKey: ["platform-leads", token], queryFn: () => listPlatformLeads(token ?? ""), enabled });
   const plansQuery = useQuery({ queryKey: ["platform-organization-plans", token], queryFn: () => listPlatformOrganizationPlans(token ?? ""), enabled });
   const supportSessionsQuery = useQuery({ queryKey: ["platform-support-sessions", token], queryFn: () => listPlatformSupportSessions(token ?? ""), enabled });
@@ -381,6 +474,128 @@ export function PlatformConsole({
     },
   });
 
+  const planMutation = useMutation({
+    mutationFn: (plan: PlatformOrganizationPlanRead) =>
+      updatePlatformOrganizationPlan(token ?? "", plan.organization_id, {
+        plan: planDraft.plan.trim(),
+        status: planDraft.status.trim(),
+        user_limit: Number(planDraft.user_limit),
+        submission_limit: Number(planDraft.submission_limit),
+        storage_limit_gb: Number(planDraft.storage_limit_gb),
+        enabled_modules: planDraft.enabled_modules
+          .split(",")
+          .map((module) => module.trim())
+          .filter(Boolean),
+        reason: planDraft.reason.trim(),
+      }),
+    onSuccess: async () => {
+      await plansQuery.refetch();
+      await usageQuery.refetch();
+      await auditQuery.refetch();
+      setPlanToEdit(null);
+      pushToast({
+        title: "Tenant plan updated",
+        description: "Plan limits and enabled modules were saved with an audit reason.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Tenant plan was not updated",
+        description: "Check numeric limits, enabled modules, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  function openPlanEditor(plan: PlatformOrganizationPlanRead) {
+    setPlanToEdit(plan);
+    setPlanDraft({
+      enabled_modules: plan.enabled_modules.join(", "),
+      plan: plan.plan,
+      reason: "",
+      status: plan.status,
+      storage_limit_gb: String(plan.storage_limit_gb),
+      submission_limit: String(plan.submission_limit),
+      user_limit: String(plan.user_limit),
+    });
+  }
+
+  const securityPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformSecurityPolicy(token ?? "", securityPolicyDraft),
+    onSuccess: async () => {
+      await securityPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setSecurityPolicyDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Security policy updated",
+        description: "Platform security settings were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Security policy was not updated",
+        description: "Check the policy values, audit reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const backupPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformBackupPolicy(token ?? "", backupPolicyDraft),
+    onSuccess: async () => {
+      await backupPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setBackupPolicyDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Backup policy updated",
+        description: "Backup, retention, export, and restore controls were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Backup policy was not updated",
+        description: "Check policy values, audit reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const integrationMutation = useMutation({
+    mutationFn: (integration: PlatformIntegrationRead) =>
+      updatePlatformIntegration(token ?? "", integration.key, integrationDraft),
+    onSuccess: async () => {
+      await integrationsQuery.refetch();
+      await auditQuery.refetch();
+      setIntegrationToEdit(null);
+      pushToast({
+        title: "Integration updated",
+        description: "Provider status and health metadata were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Integration was not updated",
+        description: "Check provider status, health, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  function openIntegrationEditor(integration: PlatformIntegrationRead) {
+    setIntegrationToEdit(integration);
+    setIntegrationDraft({
+      health: integration.health,
+      notes: "",
+      owner: "Platform team",
+      reason: "",
+      status: integration.status,
+    });
+  }
+
   const activeDefinition = consoleSections.find((section) => section.id === activeSection) ?? consoleSections[0];
   const organizations = organizationsQuery.data ?? [];
   const users = usersQuery.data ?? [];
@@ -389,18 +604,55 @@ export function PlatformConsole({
   const roles = rolesQuery.data ?? [];
   const services = healthQuery.data?.services ?? [];
   const securityEvents = securityQuery.data ?? [];
+  const mobileFleet = mobileFleetQuery.data;
+  const sectorPacks = sectorPacksQuery.data ?? [];
   const integrations = integrationsQuery.data ?? [];
   const backups = backupsQuery.data ?? [];
   const usageRows = usageQuery.data ?? [];
+  const dataIsolationIssues = dataIsolationQuery.data ?? [];
   const leads = leadsQuery.data ?? [];
   const organizationPlans = plansQuery.data ?? [];
   const supportSessions = supportSessionsQuery.data ?? [];
+
+  useEffect(() => {
+    const policy = securityPolicyQuery.data;
+    if (!policy) return;
+    setSecurityPolicyDraft({
+      failed_login_lock_threshold: policy.failed_login_lock_threshold,
+      ip_allowlist_enabled: policy.ip_allowlist_enabled,
+      mfa_required_for_admins: policy.mfa_required_for_admins,
+      mfa_required_for_all_users: policy.mfa_required_for_all_users,
+      password_min_length: policy.password_min_length,
+      password_rotation_days: policy.password_rotation_days,
+      reason: "",
+      session_timeout_minutes: policy.session_timeout_minutes,
+      support_session_timeout_minutes: policy.support_session_timeout_minutes,
+    });
+  }, [securityPolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = backupPolicyQuery.data;
+    if (!policy) return;
+    setBackupPolicyDraft({
+      anonymize_archived_data: policy.anonymize_archived_data,
+      backup_frequency: policy.backup_frequency,
+      configuration_retention_days: policy.configuration_retention_days,
+      reason: "",
+      restore_approver_role: policy.restore_approver_role,
+      restore_requires_approval: policy.restore_requires_approval,
+      retention_days: policy.retention_days,
+      tenant_export_enabled: policy.tenant_export_enabled,
+    });
+  }, [backupPolicyQuery.data]);
 
   const platformCards = [
     { label: "Organizations", value: String(summaryQuery.data?.organization_count ?? organizations.length), icon: Building2, tone: "platform" as const },
     { label: "Active Organizations", value: String(summaryQuery.data?.active_organization_count ?? organizations.filter((item) => item.is_active).length), icon: CheckCircle2, tone: "success" as const },
     { label: "Global Users", value: String(summaryQuery.data?.tenant_user_count ?? users.length), icon: UsersRound, tone: "neutral" as const },
     { label: "Platform Admins", value: String(summaryQuery.data?.platform_admin_count ?? users.filter((user) => user.role_name === "super_admin").length), icon: ShieldCheck, tone: "platform" as const },
+    { label: "Isolation Issues", value: String(dataIsolationIssues.length), icon: AlertTriangle, tone: dataIsolationIssues.some((issue) => issue.severity === "critical") ? "danger" as const : dataIsolationIssues.length ? "warning" as const : "success" as const },
+    { label: "Mobile Devices", value: String(mobileFleet?.active_devices ?? 0), icon: Smartphone, tone: mobileFleet?.offline_devices ? "warning" as const : "success" as const },
+    { label: "Sector Packs", value: String(sectorPacks.length), icon: PackageCheck, tone: "platform" as const },
     { label: "Feature Flags", value: String(flags.length), icon: Flag, tone: "neutral" as const },
     { label: "System Health", value: healthQuery.data?.status ?? "checking", icon: HeartPulse, tone: statusTone(healthQuery.data?.status ?? "warning") },
     { label: "Backups", value: String(backups.length), icon: Database, tone: "warning" as const },
@@ -484,6 +736,65 @@ export function PlatformConsole({
     [],
   );
 
+  const dataIsolationColumns = useMemo<TableColumn<PlatformDataIsolationIssueRead>[]>(
+    () => [
+      {
+        key: "severity",
+        header: "Severity",
+        value: (row) => row.severity,
+        render: (row) => <Badge tone={statusTone(row.severity)}>{row.severity}</Badge>,
+      },
+      {
+        key: "organization",
+        header: "Organization",
+        value: (row) => row.organization_name ?? "",
+        render: (row) => (
+          <div>
+            <p className="font-medium">{row.organization_name ?? "Platform"}</p>
+            <p className="text-xs text-muted-foreground">{row.organization_slug ?? "global"}</p>
+          </div>
+        ),
+      },
+      { key: "issue", header: "Issue", value: (row) => row.issue_type, render: (row) => row.issue_type },
+      { key: "resource", header: "Resource", value: (row) => row.resource_type, render: (row) => row.resource_type },
+      { key: "records", header: "Records", value: (row) => String(row.affected_records), render: (row) => row.affected_records.toLocaleString() },
+      {
+        key: "fix",
+        header: "Recommended action",
+        value: (row) => `${row.detail} ${row.recommendation}`,
+        render: (row) => (
+          <div className="max-w-xl">
+            <p className="text-sm">{row.detail}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{row.recommendation}</p>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const mobileDeviceColumns = useMemo<TableColumn<PlatformMobileFleetDeviceRead>[]>(
+    () => [
+      {
+        key: "device",
+        header: "Device",
+        value: (row) => `${row.device_id} ${row.officer_name ?? ""}`,
+        render: (row) => (
+          <div>
+            <p className="font-mono text-xs font-medium">{row.device_id}</p>
+            <p className="text-xs text-muted-foreground">{row.officer_name ?? "Officer not recorded"}</p>
+          </div>
+        ),
+      },
+      { key: "organization", header: "Organization", value: (row) => row.organization_name, render: (row) => row.organization_name },
+      { key: "version", header: "App version", value: (row) => row.app_version, render: (row) => row.app_version },
+      { key: "sync", header: "Last sync", value: (row) => row.last_sync_at ?? "", render: (row) => formatDate(row.last_sync_at) },
+      { key: "submissions", header: "Submissions", value: (row) => String(row.submission_count), render: (row) => row.submission_count.toLocaleString() },
+      { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    ],
+    [],
+  );
+
   const renderOverview = () => (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -544,7 +855,7 @@ export function PlatformConsole({
         </Panel>
         <DataTable columns={organizationColumns} emptyLabel={organizationsQuery.isFetching ? "Loading organizations..." : "No organizations found"} rows={organizations} searchLabel="Search organizations" title="Organizations" />
       </div>
-      <OrganizationPlanGrid plans={organizationPlans} />
+      <OrganizationPlanGrid onEdit={openPlanEditor} plans={organizationPlans} />
     </div>
   );
 
@@ -637,10 +948,35 @@ export function PlatformConsole({
 
   const renderTableSection = () => {
     if (activeSection === "users") return <DataTable columns={userColumns} emptyLabel={usersQuery.isFetching ? "Loading users..." : "No users found"} rows={users} searchLabel="Search global users" title="Global users" />;
+    if (activeSection === "data-isolation") return <DataTable columns={dataIsolationColumns} emptyLabel={dataIsolationQuery.isFetching ? "Checking tenant boundaries..." : "No tenant isolation issues found"} rows={dataIsolationIssues} searchLabel="Search isolation issues" title="Data isolation auditor" />;
     if (activeSection === "audit-logs") return <DataTable columns={auditColumns} emptyLabel={auditQuery.isFetching ? "Loading audit logs..." : "No audit logs found"} rows={auditLogs} searchLabel="Search audit logs" title="Platform audit logs" />;
-    if (activeSection === "security") return <SecurityEvents events={securityEvents} supportSessions={supportSessions} />;
-    if (activeSection === "integrations") return <Integrations rows={integrations} />;
-    if (activeSection === "backups") return <Backups rows={backups} onTrigger={() => setDangerAction({ kind: "backup" })} />;
+    if (activeSection === "security") {
+      return (
+        <SecurityEvents
+          draft={securityPolicyDraft}
+          events={securityEvents}
+          isSaving={securityPolicyMutation.isPending}
+          onDraftChange={setSecurityPolicyDraft}
+          onSave={() => securityPolicyMutation.mutate()}
+          supportSessions={supportSessions}
+        />
+      );
+    }
+    if (activeSection === "mobile-fleet") return <MobileFleet columns={mobileDeviceColumns} fleet={mobileFleet} isLoading={mobileFleetQuery.isFetching} />;
+    if (activeSection === "sector-packs") return <SectorPacks packs={sectorPacks} isLoading={sectorPacksQuery.isFetching} />;
+    if (activeSection === "integrations") return <Integrations onEdit={openIntegrationEditor} rows={integrations} />;
+    if (activeSection === "backups") {
+      return (
+        <Backups
+          draft={backupPolicyDraft}
+          isSaving={backupPolicyMutation.isPending}
+          onDraftChange={setBackupPolicyDraft}
+          onSave={() => backupPolicyMutation.mutate()}
+          onTrigger={() => setDangerAction({ kind: "backup" })}
+          rows={backups}
+        />
+      );
+    }
     return null;
   };
 
@@ -779,10 +1115,128 @@ export function PlatformConsole({
             {activeSection === "feature-flags" ? renderFlags() : null}
             {activeSection === "system-health" ? renderHealth() : null}
             {activeSection === "settings" ? renderSettings() : null}
-            {["users", "audit-logs", "security", "integrations", "backups"].includes(activeSection) ? renderTableSection() : null}
+            {["users", "data-isolation", "audit-logs", "security", "mobile-fleet", "sector-packs", "integrations", "backups"].includes(activeSection) ? renderTableSection() : null}
           </div>
         </section>
       </div>
+
+      <Modal
+        contentClassName="max-w-2xl"
+        description="Plan changes affect tenant capacity and module availability. Every change is saved with an audit reason."
+        onOpenChange={(open) => {
+          if (!open) setPlanToEdit(null);
+        }}
+        open={Boolean(planToEdit)}
+        title={planToEdit ? `Edit plan for ${planToEdit.organization_name}` : "Edit tenant plan"}
+      >
+        <div className="grid gap-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-medium">
+              Plan
+              <Input value={planDraft.plan} onChange={(event) => setPlanDraft((draft) => ({ ...draft, plan: event.target.value }))} placeholder="Professional" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Status
+              <Input value={planDraft.status} onChange={(event) => setPlanDraft((draft) => ({ ...draft, status: event.target.value }))} placeholder="Active" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              User limit
+              <Input min={1} type="number" value={planDraft.user_limit} onChange={(event) => setPlanDraft((draft) => ({ ...draft, user_limit: event.target.value }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Submission limit
+              <Input min={1} type="number" value={planDraft.submission_limit} onChange={(event) => setPlanDraft((draft) => ({ ...draft, submission_limit: event.target.value }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Storage limit GB
+              <Input min={1} type="number" value={planDraft.storage_limit_gb} onChange={(event) => setPlanDraft((draft) => ({ ...draft, storage_limit_gb: event.target.value }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Enabled modules
+              <Input value={planDraft.enabled_modules} onChange={(event) => setPlanDraft((draft) => ({ ...draft, enabled_modules: event.target.value }))} placeholder="projects, forms, reports" />
+            </label>
+          </div>
+          <label className="grid gap-2 text-sm font-medium">
+            Audit reason
+            <textarea
+              className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              onChange={(event) => setPlanDraft((draft) => ({ ...draft, reason: event.target.value }))}
+              placeholder="Example: Customer upgraded to Enterprise plan after contract approval."
+              value={planDraft.reason}
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setPlanToEdit(null)} type="button" variant="secondary">Cancel</Button>
+            <Button
+              disabled={
+                !planToEdit ||
+                !planDraft.plan.trim() ||
+                !planDraft.status.trim() ||
+                !planDraft.reason.trim() ||
+                Number(planDraft.user_limit) < 1 ||
+                Number(planDraft.submission_limit) < 1 ||
+                Number(planDraft.storage_limit_gb) < 1 ||
+                planMutation.isPending
+              }
+              onClick={() => {
+                if (planToEdit) planMutation.mutate(planToEdit);
+              }}
+              type="button"
+              variant="primary"
+            >
+              Save plan
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        contentClassName="max-w-xl"
+        description="Update provider status and operational health. Secrets are never shown or stored from this screen."
+        onOpenChange={(open) => {
+          if (!open) setIntegrationToEdit(null);
+        }}
+        open={Boolean(integrationToEdit)}
+        title={integrationToEdit ? `Configure ${integrationToEdit.name}` : "Configure integration"}
+      >
+        <div className="grid gap-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-medium">
+              Status
+              <Input value={integrationDraft.status} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, status: event.target.value }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Health
+              <Input value={integrationDraft.health} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, health: event.target.value }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium sm:col-span-2">
+              Owner
+              <Input value={integrationDraft.owner} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, owner: event.target.value }))} />
+            </label>
+          </div>
+          <label className="grid gap-2 text-sm font-medium">
+            Notes
+            <textarea className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={integrationDraft.notes} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, notes: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Audit reason
+            <textarea className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={integrationDraft.reason} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, reason: event.target.value }))} />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setIntegrationToEdit(null)} type="button" variant="secondary">Cancel</Button>
+            <Button
+              disabled={!integrationToEdit || !integrationDraft.status.trim() || !integrationDraft.health.trim() || !integrationDraft.reason.trim() || integrationMutation.isPending}
+              onClick={() => {
+                if (integrationToEdit) integrationMutation.mutate(integrationToEdit);
+              }}
+              type="button"
+              variant="primary"
+            >
+              Save integration
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         contentClassName="max-w-lg"
@@ -895,7 +1349,7 @@ function LeadPipeline({ leads }: { leads: PlatformLeadRead[] }) {
   );
 }
 
-function OrganizationPlanGrid({ plans }: { plans: PlatformOrganizationPlanRead[] }) {
+function OrganizationPlanGrid({ onEdit, plans }: { onEdit: (plan: PlatformOrganizationPlanRead) => void; plans: PlatformOrganizationPlanRead[] }) {
   return (
     <Panel title="Plans and platform limits" description="Plan readiness and derived limits for tenant operations. Persistent billing integration can attach here later.">
       {plans.length ? (
@@ -917,7 +1371,12 @@ function OrganizationPlanGrid({ plans }: { plans: PlatformOrganizationPlanRead[]
               <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
                 <div className="h-full bg-primary" style={{ width: `${Math.min(plan.usage_percent, 100)}%` }} />
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">{plan.usage_percent}% of current derived limit</p>
+              <p className="mt-2 text-xs text-muted-foreground">{plan.usage_percent}% of current limit</p>
+              <div className="mt-4 flex justify-end">
+                <Button onClick={() => onEdit(plan)} size="sm" type="button" variant="secondary">
+                  Edit plan
+                </Button>
+              </div>
             </article>
           ))}
         </div>
@@ -943,10 +1402,74 @@ function ServiceCard({ service }: { service: PlatformHealthServiceRead }) {
   );
 }
 
-function SecurityEvents({ events, supportSessions }: { events: PlatformSecurityEventRead[]; supportSessions: PlatformSupportSessionRead[] }) {
-  if (!events.length && !supportSessions.length) return <EmptyState title="No security events" detail="Failed logins, locked accounts, suspicious sessions, support access, MFA status, and policy events will appear here." />;
+function SecurityEvents({
+  draft,
+  events,
+  isSaving,
+  onDraftChange,
+  onSave,
+  supportSessions,
+}: {
+  draft: SecurityPolicyDraft;
+  events: PlatformSecurityEventRead[];
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<SecurityPolicyDraft>>;
+  onSave: () => void;
+  supportSessions: PlatformSupportSessionRead[];
+}) {
   return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+    <div className="space-y-5">
+      <Panel title="Security policy" description="Platform-wide identity defaults for MFA, passwords, sessions, support access, and lockout behavior.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Password minimum length
+            <Input min={8} type="number" value={draft.password_min_length} onChange={(event) => onDraftChange((current) => ({ ...current, password_min_length: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Password rotation days
+            <Input min={0} type="number" value={draft.password_rotation_days} onChange={(event) => onDraftChange((current) => ({ ...current, password_rotation_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Session timeout minutes
+            <Input min={5} type="number" value={draft.session_timeout_minutes} onChange={(event) => onDraftChange((current) => ({ ...current, session_timeout_minutes: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Failed login lock threshold
+            <Input min={1} type="number" value={draft.failed_login_lock_threshold} onChange={(event) => onDraftChange((current) => ({ ...current, failed_login_lock_threshold: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Support session timeout minutes
+            <Input min={5} type="number" value={draft.support_session_timeout_minutes} onChange={(event) => onDraftChange((current) => ({ ...current, support_session_timeout_minutes: Number(event.target.value) }))} />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.mfa_required_for_admins} onChange={(event) => onDraftChange((current) => ({ ...current, mfa_required_for_admins: event.target.checked }))} type="checkbox" />
+            Require MFA for admins
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.mfa_required_for_all_users} onChange={(event) => onDraftChange((current) => ({ ...current, mfa_required_for_all_users: event.target.checked }))} type="checkbox" />
+            Require MFA for all users
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.ip_allowlist_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, ip_allowlist_enabled: event.target.checked }))} type="checkbox" />
+            Enable IP allowlist
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Enforcing admin MFA before production rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save security policy
+          </Button>
+        </div>
+      </Panel>
+      <div className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
       <Panel title="Security center" description="High-risk actions such as lock, unlock, reset password, session revoke, and MFA requirement require confirmation and reason.">
         <div className="grid gap-3">
           {events.map((event) => (
@@ -981,11 +1504,90 @@ function SecurityEvents({ events, supportSessions }: { events: PlatformSecurityE
           {!supportSessions.length ? <EmptyState title="No support sessions" detail="Support access sessions will appear after Super Admin enters tenant support mode." /> : null}
         </div>
       </Panel>
+      </div>
     </div>
   );
 }
 
-function Integrations({ rows }: { rows: PlatformIntegrationRead[] }) {
+function MobileFleet({
+  columns,
+  fleet,
+  isLoading,
+}: {
+  columns: TableColumn<PlatformMobileFleetDeviceRead>[];
+  fleet?: PlatformMobileFleetSummaryRead;
+  isLoading: boolean;
+}) {
+  if (!fleet) return <EmptyState title={isLoading ? "Loading mobile fleet" : "No mobile fleet data"} detail="Mobile device and sync data will appear after field officers register devices and sync submissions." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Smartphone} label="Active devices" value={String(fleet.active_devices)} tone="success" />
+        <StatCard icon={AlertTriangle} label="Offline devices" value={String(fleet.offline_devices)} tone={fleet.offline_devices ? "warning" : "success"} />
+        <StatCard icon={UsersRound} label="Active users" value={String(fleet.active_users)} />
+        <StatCard icon={Activity} label="Submissions synced" value={fleet.submission_throughput.toLocaleString()} />
+      </div>
+      <Panel title="Version policy" description="Super Admin should verify production and minimum supported app versions before field rollout.">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border bg-panel p-4">
+            <p className="text-xs uppercase text-muted-foreground">Production version</p>
+            <p className="mt-2 font-semibold">{fleet.current_production_version}</p>
+          </div>
+          <div className="rounded-lg border bg-panel p-4">
+            <p className="text-xs uppercase text-muted-foreground">Minimum supported</p>
+            <p className="mt-2 font-semibold">{fleet.minimum_supported_version}</p>
+          </div>
+          <div className="rounded-lg border bg-panel p-4">
+            <p className="text-xs uppercase text-muted-foreground">Version distribution</p>
+            <p className="mt-2 font-semibold">{Object.entries(fleet.app_versions).map(([version, count]) => `${version}: ${count}`).join(", ") || "No devices"}</p>
+          </div>
+        </div>
+      </Panel>
+      <DataTable columns={columns} emptyLabel="No registered field devices found." rows={fleet.devices} searchLabel="Search devices" title="Mobile fleet devices" />
+    </div>
+  );
+}
+
+function SectorPacks({ isLoading, packs }: { isLoading: boolean; packs: PlatformSectorPackRead[] }) {
+  if (!packs.length) return <EmptyState title={isLoading ? "Loading sector packs" : "No sector packs found"} detail="Platform sector starter content will appear here after the catalog is available." />;
+  return (
+    <Panel title="Sector pack manager" description="Review platform starter content for industries. Each pack defines entities, starter forms, indicators, reports, validation, quality rules, workflows, and mobile guidance.">
+      <div className="grid gap-3 xl:grid-cols-2">
+        {packs.map((pack) => (
+          <article className="rounded-lg border bg-panel p-4 shadow-line" key={pack.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{pack.name}</h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{pack.description}</p>
+              </div>
+              <Badge tone="platform">{pack.sector}</Badge>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+              <SummaryList title="Entities" items={pack.entity_types} />
+              <SummaryList title="Forms" items={pack.form_templates} />
+              <SummaryList title="Indicators" items={pack.indicator_templates} />
+            </div>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <SummaryList title="Quality rules" items={pack.data_quality_rules} />
+              <SummaryList title="Mobile guidance" items={pack.mobile_guidance} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function SummaryList({ items, title }: { items: string[]; title: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase text-muted-foreground">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">{items.slice(0, 4).join(", ") || "Not set"}{items.length > 4 ? ` +${items.length - 4}` : ""}</p>
+    </div>
+  );
+}
+
+function Integrations({ onEdit, rows }: { onEdit: (row: PlatformIntegrationRead) => void; rows: PlatformIntegrationRead[] }) {
   return (
     <Panel title="Platform integrations" description="Secrets are never shown in the UI. Connection tests and disable actions are Super Admin-only and audited.">
       <div className="grid gap-3 lg:grid-cols-2">
@@ -1000,7 +1602,7 @@ function Integrations({ rows }: { rows: PlatformIntegrationRead[] }) {
             </div>
             <div className="mt-4 flex gap-2">
               <Button size="sm" type="button" variant="secondary">Test connection</Button>
-              <Button size="sm" type="button" variant="secondary">Configure</Button>
+              <Button onClick={() => onEdit(row)} size="sm" type="button" variant="secondary">Configure</Button>
             </div>
           </article>
         ))}
@@ -1009,29 +1611,89 @@ function Integrations({ rows }: { rows: PlatformIntegrationRead[] }) {
   );
 }
 
-function Backups({ onTrigger, rows }: { onTrigger: () => void; rows: PlatformBackupJobRead[] }) {
+function Backups({
+  draft,
+  isSaving,
+  onDraftChange,
+  onSave,
+  onTrigger,
+  rows,
+}: {
+  draft: BackupPolicyDraft;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<BackupPolicyDraft>>;
+  onSave: () => void;
+  onTrigger: () => void;
+  rows: PlatformBackupJobRead[];
+}) {
   return (
-    <Panel title="Backup and recovery" description="Backups are visible to Super Admins. Restore operations require re-authentication, reason, confirmation, and immutable audit logging.">
-      <div className="mb-4 flex justify-end">
-        <Button onClick={onTrigger} type="button" variant="primary">
-          <Database aria-hidden="true" />
-          Trigger backup
-        </Button>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {rows.map((row) => (
-          <article className="rounded-lg border bg-panel p-4" key={row.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{row.backup_type}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{row.size} · {row.retention}</p>
+    <div className="space-y-5">
+      <Panel title="Backup and retention policy" description="Configure platform backup frequency, retention, export, restore approval, and archive anonymization defaults.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Backup frequency
+            <Input value={draft.backup_frequency} onChange={(event) => onDraftChange((current) => ({ ...current, backup_frequency: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Data retention days
+            <Input min={1} type="number" value={draft.retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Config retention days
+            <Input min={1} type="number" value={draft.configuration_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, configuration_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Restore approver role
+            <Input value={draft.restore_approver_role} onChange={(event) => onDraftChange((current) => ({ ...current, restore_approver_role: event.target.value }))} />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.tenant_export_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, tenant_export_enabled: event.target.checked }))} type="checkbox" />
+            Tenant export enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.restore_requires_approval} onChange={(event) => onDraftChange((current) => ({ ...current, restore_requires_approval: event.target.checked }))} type="checkbox" />
+            Restore requires approval
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.anonymize_archived_data} onChange={(event) => onDraftChange((current) => ({ ...current, anonymize_archived_data: event.target.checked }))} type="checkbox" />
+            Anonymize archived data
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Updating retention policy for production rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={onTrigger} type="button" variant="secondary">
+            <Database aria-hidden="true" />
+            Trigger backup
+          </Button>
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save policy
+          </Button>
+        </div>
+      </Panel>
+      <Panel title="Backup jobs" description="Backups are visible to Super Admins. Restore operations require re-authentication, reason, confirmation, and immutable audit logging.">
+        <div className="grid gap-3 lg:grid-cols-2">
+          {rows.map((row) => (
+            <article className="rounded-lg border bg-panel p-4" key={row.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{row.backup_type}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{row.size} · {row.retention}</p>
+                </div>
+                <Badge tone={statusTone(row.status)}>{row.status}</Badge>
               </div>
-              <Badge tone={statusTone(row.status)}>{row.status}</Badge>
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">Created {formatDate(row.created_at)}</p>
-          </article>
-        ))}
+              <p className="mt-3 text-xs text-muted-foreground">Created {formatDate(row.created_at)}</p>
+            </article>
+          ))}
+        </div>
+      </Panel>
       </div>
-    </Panel>
   );
 }

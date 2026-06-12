@@ -12,14 +12,14 @@ export const metadata: Metadata = {
     default: "Atlas FieldOps | Monitoring, Evaluation & Field Data Collection Platform",
     template: "%s | Atlas FieldOps"
   },
-  description: "Offline-ready monitoring, evaluation, data collection, beneficiary management, and operational intelligence for NGOs, governments, and field teams.",
+  description: "Offline-ready monitoring, evaluation, data collection, entity management, and operational intelligence for NGOs, governments, and field teams.",
   keywords: [
     "monitoring and evaluation software",
     "data collection platform",
     "field data collection system",
     "NGO data platform",
     "agriculture monitoring platform",
-    "beneficiary management software",
+    "entity management software",
     "M&E platform",
     "offline data collection app",
     "operational intelligence system"

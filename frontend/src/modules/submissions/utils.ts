@@ -135,7 +135,13 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
   const qualityScore = calculateQualityScore(submission);
   const dueAt = new Date(new Date(submission.submitted_at || submission.sync_received_at).getTime() + 48 * 60 * 60 * 1000).toISOString();
   const reviewStage = reviewStageFromStatus(submission.status);
-  const gpsStatus = !submission.latitude || !submission.longitude ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
+  const locationStatus = submission.payload_json?._mobile_location_status;
+  const hasUsableGps =
+    locationStatus !== "not_required_or_missing" &&
+    Number.isFinite(submission.latitude) &&
+    Number.isFinite(submission.longitude) &&
+    !(submission.latitude === 0 && submission.longitude === 0);
+  const gpsStatus = !hasUsableGps ? "missing" : submission.accuracy && submission.accuracy > 15 ? "warning" : "valid";
   const validationIssues = submissionValidationIssues(submission);
   const qualityFlags: SubmissionRecord["quality_flags"] = [];
   const controlMetadata = submission.payload_json?._question_control_metadata;
@@ -224,7 +230,7 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
       { action: "Created", actor, created_at: submission.captured_at },
       { action: "Submitted", actor, created_at: submission.submitted_at },
     ],
-    location_name: submission.latitude && submission.longitude ? "Captured GPS location" : "No location captured",
+    location_name: hasUsableGps ? "GPS evidence captured" : "No GPS captured",
     project_name: submission.project_id?.replaceAll("-", " ") ?? "Unassigned project",
     quality_flags: qualityFlags,
     quality_score: qualityScore,

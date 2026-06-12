@@ -68,7 +68,7 @@ export const platformFeatures = [
   },
   {
     title: "GIS mapping",
-    text: "Visualize project boundaries, submission points, beneficiaries, facilities, coverage gaps, and spatial data quality issues.",
+    text: "Visualize project boundaries, submission points, entities, facilities, coverage gaps, and spatial data quality issues.",
     icon: Map,
   },
   {
@@ -109,7 +109,7 @@ export const workflowSteps = [
 export const industries = [
   {
     title: "NGO monitoring platform",
-    text: "Manage programs, beneficiaries, field officers, surveys, approvals, maps, indicators, donor reports, and audit requirements.",
+    text: "Manage programs, entities, field officers, surveys, approvals, maps, indicators, donor reports, and audit requirements.",
     image: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -135,10 +135,10 @@ export const solutionPages = [
     title: "Monitoring and evaluation software for NGOs",
     audience: "NGOs and implementing partners",
     icon: UsersRound,
-    description: "Run beneficiary programs, field surveys, approvals, data quality checks, GIS coverage, indicator tracking, and donor reports without scattered spreadsheets.",
-    challenges: ["Disconnected survey tools and reporting files", "Slow field supervision and approval queues", "Weak beneficiary visibility across projects", "Donor reporting pressure with limited data trust"],
+    description: "Run entity programs, field surveys, approvals, data quality checks, GIS coverage, indicator tracking, and donor reports without scattered spreadsheets.",
+    challenges: ["Disconnected survey tools and reporting files", "Slow field supervision and approval queues", "Weak entity visibility across projects", "Donor reporting pressure with limited data trust"],
     modules: ["Projects", "Forms", "Field Operations", "Submissions", "Data Quality", "Reports"],
-    outcomes: ["Cleaner monitoring data", "Faster review cycles", "Better donor reporting", "Clearer beneficiary reach"],
+    outcomes: ["Cleaner monitoring data", "Faster review cycles", "Better donor reporting", "Clearer entity reach"],
   },
   {
     slug: "government",
@@ -196,8 +196,8 @@ export const useCasePages = [
   ["baseline-surveys", "Baseline Surveys", "Collect baseline values, demographics, GPS evidence, and indicator starting points before implementation begins."],
   ["endline-surveys", "Endline Surveys", "Compare final results against baselines, targets, locations, and approved submissions."],
   ["monitoring-visits", "Monitoring Visits", "Plan visits, assign field officers, collect evidence, review findings, and resolve issues."],
-  ["registration-programs", "Registration Programs", "Register beneficiaries, households, facilities, farmers, students, or participants with governed reference data."],
-  ["beneficiary-tracking", "Beneficiary Tracking", "Maintain longitudinal beneficiary records, interventions, consent, locations, and status changes."],
+  ["registration-programs", "Registration Programs", "Register entities, households, facilities, farmers, students, or participants with governed reference data."],
+  ["beneficiary-tracking", "Entity Tracking", "Maintain longitudinal entity records, interventions, consent, locations, and status changes."],
   ["needs-assessments", "Needs Assessments", "Collect household, community, facility, and market needs data with offline forms and quality controls."],
   ["health-monitoring", "Health Monitoring", "Track outreach, facility performance, referrals, symptoms, and public health program indicators."],
   ["education-monitoring", "Education Monitoring", "Monitor schools, attendance, training, infrastructure, and learning program outcomes."],
@@ -283,7 +283,7 @@ export const pricingTiers = [
 export const resourceCards = [
   { title: "M&E implementation guide", type: "Guide", text: "Design indicators, workflows, field roles, and reporting cycles.", category: "Guides" },
   { title: "Offline field operations checklist", type: "Checklist", text: "Prepare forms, maps, media queues, sync retries, and training.", category: "Best Practices" },
-  { title: "Beneficiary registry blueprint", type: "Template", text: "Structure households, interventions, consent, and longitudinal tracking.", category: "Templates" },
+  { title: "Entity registry blueprint", type: "Template", text: "Structure households, interventions, consent, and longitudinal tracking.", category: "Templates" },
   { title: "Data quality rule starter pack", type: "Template", text: "Create duplicate, outlier, GPS, and validation rules before collection begins.", category: "Downloads" },
   { title: "Donor reporting workbook", type: "Whitepaper", text: "Connect indicators, approved submissions, maps, and governance controls.", category: "Whitepapers" },
   { title: "Enumerator training outline", type: "Video", text: "Plan mobile collection onboarding, field support, and sync readiness.", category: "Videos" },
@@ -300,7 +300,7 @@ export const blogPosts = [
     title: "What modern monitoring and evaluation software needs beyond surveys",
     category: "Monitoring & Evaluation",
     tags: ["M&E platform", "survey management platform"],
-    excerpt: "Why connected workflows, beneficiary context, data quality, and approvals matter.",
+    excerpt: "Why connected workflows, entity context, data quality, and approvals matter.",
   },
   {
     title: "Using GIS mapping software to close service coverage gaps",
@@ -334,7 +334,7 @@ export const caseStudies = [
     text: "Supervisors used live queues, offline mobile forms, and referral tracking to keep community visits on schedule.",
   },
   {
-    title: "Humanitarian team unifies beneficiary feedback",
+    title: "Humanitarian team unifies entity feedback",
     sector: "Humanitarian",
     country: "Multi-region",
     organizationType: "INGO",
@@ -374,7 +374,7 @@ export const seoKeywords = [
   "impact measurement platform",
   "results framework software",
   "data quality management platform",
-  "beneficiary management platform",
+  "entity management platform",
 ];
 
 export const pageFeatureIcons = [ShieldCheck, RadioTower, BarChart3, Smartphone, Globe2, BadgeCheck];

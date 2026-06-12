@@ -27,7 +27,7 @@ const sections = [
         <p>
           We provide a field data collection, monitoring, and operations platform used by organizations such as NGOs,
           government agencies, donors, healthcare providers, agricultural programs, and other businesses
-          (&quot;Customers&quot;) to manage forms, submissions, beneficiaries or records, field visits, media evidence,
+          (&quot;Customers&quot;) to manage forms, submissions, entities or records, field visits, media evidence,
           and reporting. Because of this, this policy describes two different relationships:
         </p>
         <ul>
@@ -57,7 +57,7 @@ const sections = [
         <li>
           <strong>&quot;Customer Data&quot;</strong> means data submitted to the Platform or Mobile App by a Customer
           or its authorized users in connection with their use of the Services, including form responses, GPS
-          coordinates, photos, audio, video, signatures, attachments, beneficiary or entity records, indicators, and
+          coordinates, photos, audio, video, signatures, attachments, entity records, indicators, and
           reports.
         </li>
         <li>
@@ -95,7 +95,7 @@ const sections = [
         <p>
           Customers and their authorized users may submit Customer Data to the Services, including form responses,
           GPS coordinates and maps, photos, audio recordings, video, signatures, file attachments, and records about
-          beneficiaries, entities, or other individuals relevant to the Customer&apos;s programs. Customer Data may
+          entities, or other individuals relevant to the Customer&apos;s programs. Customer Data may
           include sensitive information depending on how a Customer configures and uses their forms (for example,
           health, demographic, or location information about program participants). Customer Data is controlled by
           the Customer; see Section 13 for more on this relationship.
@@ -340,7 +340,7 @@ const sections = [
       <>
         <p>
           When a Customer organization uses the Platform and Mobile App to collect and manage Customer Data
-          (including data about beneficiaries, program participants, or other individuals), the Customer determines
+          (including data about entities, program participants, or other individuals), the Customer determines
           what data is collected, how it is configured within forms, who within their organization can access it, and
           how long it is retained on the Platform.
         </p>
@@ -349,7 +349,7 @@ const sections = [
           or service provider, processing Customer Data only as necessary to provide the Services and according to
           the Customer&apos;s instructions and our agreement with the Customer. Customers are responsible for ensuring
           they have an appropriate legal basis to collect Customer Data (including any necessary consents from
-          beneficiaries or program participants) and for configuring access controls, retention settings, and
+          entities or program participants) and for configuring access controls, retention settings, and
           consent or safeguarding workflows appropriate to their program and applicable law.
         </p>
         <p>
@@ -369,7 +369,7 @@ const sections = [
         The Website, Platform, and Mobile App are intended for business and organizational use by adults and are not
         directed to children. We do not knowingly collect Personal Data from children through the Website for our
         own purposes. Where Customer Data collected through the Platform or Mobile App includes information about
-        minors (for example, beneficiary records in health, education, or protection programs), that data is
+        minors (for example, entity records in health, education, or protection programs), that data is
         controlled by the Customer organization as described in Section 13, and Customers are responsible for
         ensuring such collection complies with applicable law, including any required parental or guardian consent
         and safeguarding obligations.

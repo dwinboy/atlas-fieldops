@@ -4,6 +4,8 @@ import type {
   MapFeatureRecord,
   MappingSection,
   MappingSummary,
+  ProjectExtent,
+  SpatialQualityIssue,
   SpatialSeverity,
   SpatialStatus,
   SpatialValidationState,
@@ -11,7 +13,7 @@ import type {
 
 export function statusTone(status: SpatialStatus | SpatialValidationState): BadgeProps["tone"] {
   if (status === "Healthy" || status === "Passed") return "success";
-  if (status === "Warning") return "warning";
+  if (status === "Warning" || status === "Needs review") return "warning";
   if (status === "Critical" || status === "Failed") return "danger";
   return "neutral";
 }
@@ -119,6 +121,53 @@ export function validateGpsPoint({
   if (!insideBoundary) return "Failed";
   if (accuracy > 30 || manual) return "Warning";
   return "Passed";
+}
+
+export function deriveQualityIssues(features: MapFeatureRecord[]): SpatialQualityIssue[] {
+  return features
+    .filter((feature) => feature.status !== "Healthy")
+    .map((feature) => {
+      const isBeneficiary = feature.category === "Beneficiary";
+      return {
+        enumerator: "—",
+        id: `quality-${feature.id}`,
+        issueType: isBeneficiary ? "High duplicate risk" : "Low GPS accuracy",
+        location: feature.location,
+        project: feature.project,
+        recommendedAction: isBeneficiary
+          ? "Review for duplicate beneficiary records before approval."
+          : "Request a GPS recapture or review submission accuracy before approval.",
+        severity: feature.status === "Critical" ? "Critical" : "Medium",
+        submissionId: feature.category === "Submission" ? feature.label : feature.id,
+        validationState: "Needs review" as SpatialValidationState,
+      };
+    });
+}
+
+export function computeProjectExtents(features: MapFeatureRecord[]): ProjectExtent[] {
+  const groups = new Map<string, MapFeatureRecord[]>();
+  for (const feature of features) {
+    const key = feature.project || "Unassigned project";
+    const list = groups.get(key) ?? [];
+    list.push(feature);
+    groups.set(key, list);
+  }
+  return Array.from(groups.entries())
+    .map(([project, items]) => {
+      const lats = items.map((item) => item.latitude);
+      const lngs = items.map((item) => item.longitude);
+      return {
+        centroidLat: lats.reduce((sum, value) => sum + value, 0) / lats.length,
+        centroidLng: lngs.reduce((sum, value) => sum + value, 0) / lngs.length,
+        maxLat: Math.max(...lats),
+        maxLng: Math.max(...lngs),
+        minLat: Math.min(...lats),
+        minLng: Math.min(...lngs),
+        pointCount: items.length,
+        project,
+      };
+    })
+    .sort((a, b) => b.pointCount - a.pointCount);
 }
 
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {

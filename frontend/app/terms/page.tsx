@@ -49,7 +49,7 @@ const sections = [
         </p>
         <ul>
           <li>The public Website, which provides product information, resources, and ways to contact our team;</li>
-          <li>The Platform, a web application used by Customer organizations to design forms, manage projects, users, submissions, beneficiaries or other records, maps, and reports; and</li>
+          <li>The Platform, a web application used by Customer organizations to design forms, manage projects, users, submissions, entities or other records, maps, and reports; and</li>
           <li>The Mobile App, an Android application used by field staff to collect data &mdash; including offline &mdash; and synchronize it with the Platform.</li>
         </ul>
         <p>
@@ -112,7 +112,7 @@ const sections = [
         <p>
           As between Atlas FieldOps and a Customer, the Customer owns all data submitted to the Platform or Mobile
           App by the Customer or its authorized users, including form designs, submissions, media, GPS data,
-          beneficiary or entity records, and reports (&quot;Customer Data&quot;).
+          entity records, and reports (&quot;Customer Data&quot;).
         </p>
         <p>
           Atlas FieldOps will not access, use, or disclose Customer Data except: (a) to provide, maintain, and

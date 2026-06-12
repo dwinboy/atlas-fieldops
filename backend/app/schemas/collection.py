@@ -442,6 +442,7 @@ class FormCollectionAccessSettings(BaseModel):
 
 class FormEntityControlSettings(BaseModel):
     linked_to_entity: bool = False
+    entity_category_id: UUID | None = None
     entity_type: str = Field(default="Farmer", max_length=80)
     creates_new_entity: bool = False
     updates_existing_entity: bool = False
@@ -883,6 +884,18 @@ class SubmissionCreate(BaseModel):
         return self
 
 
+class SubmissionBeneficiaryLinkRead(BaseModel):
+    id: str
+    beneficiary_id: str
+    beneficiary_uid: str
+    display_name: str
+    beneficiary_type: str
+    link_type: str
+    source: str
+    source_field: str | None = None
+    created_at: datetime
+
+
 class SubmissionRead(BaseModel):
     id: UUID
     client_submission_id: str
@@ -902,6 +915,7 @@ class SubmissionRead(BaseModel):
     submitted_at: datetime
     sync_received_at: datetime
     offline_created: bool
+    device_id: str
     latitude: float
     longitude: float
     accuracy: float | None
@@ -922,6 +936,8 @@ class SubmissionRead(BaseModel):
     approved_at: datetime | None = None
     beneficiary_code: str | None = None
     submitted_by_name: str | None = None
+    approved_by_name: str | None = None
+    linked_beneficiaries: list[SubmissionBeneficiaryLinkRead] = Field(default_factory=list)
     review_quality: int | None = None
     redacted_fields: list[str] = Field(default_factory=list)
     spatial_flags: dict[str, Any] | None = None

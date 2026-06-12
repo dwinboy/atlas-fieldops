@@ -44,7 +44,14 @@ export default function EntitySelectScreen() {
     return localDatabase.formVersions.list().find((v) => v.id === assignment.formVersionId) ?? null;
   }, [assignment]);
 
-  const entityType = formVersion?.entitySettings?.entityType ?? "beneficiary";
+  const entityType = useMemo(() => {
+    const settings = formVersion?.entitySettings;
+    const category = settings?.entityCategoryId
+      ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
+      : null;
+    return category?.name ?? settings?.entityType ?? "entity";
+  }, [formVersion]);
+  const entityTypePlural = pluralize(entityType);
 
   const query = search.trim().toLowerCase();
 
@@ -59,6 +66,7 @@ export default function EntitySelectScreen() {
       entity.location?.village,
       entity.location?.community,
       entity.location?.district,
+      ...Object.values(entity.profile ?? {}),
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
@@ -78,10 +86,10 @@ export default function EntitySelectScreen() {
     return localDatabase.entities
       .list()
       .filter((e) => !assignedIds.has(e.id))
-      .filter((e) => e.entityType === entityType)
+      .filter((e) => matchesEntityCategory(e.entityType, formVersion?.entitySettings?.entityType ?? null, formVersion?.entitySettings?.entityCategoryId))
       .filter(matchesQuery)
       .slice(0, OTHER_RESULTS_LIMIT + 1);
-  }, [assignment, search, entityType]);
+  }, [assignment, search, formVersion]);
 
   const otherEntitiesShown = otherEntities.slice(0, OTHER_RESULTS_LIMIT);
   const otherEntitiesTruncated = otherEntities.length > OTHER_RESULTS_LIMIT;
@@ -144,7 +152,7 @@ export default function EntitySelectScreen() {
             Select the {entityType} you are visiting to begin data collection.
           </Text>
           <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.85 }]}>
-            {assignment.entityIds.length} {entityType}(s) assigned to this survey
+            {assignment.entityIds.length} {entityTypePlural} assigned to this survey
           </Text>
         </Card>
 
@@ -180,11 +188,11 @@ export default function EntitySelectScreen() {
           </Card>
         ) : null}
 
-        <ListSectionHeader title={`Assigned ${entityType}s`} count={assignedEntities.length} />
+        <ListSectionHeader title={`Assigned ${entityTypePlural}`} count={assignedEntities.length} />
         {assignedEntities.length === 0 ? (
           <EmptyState
             icon={UserSearch}
-            title={isSearching ? `No assigned ${entityType}s match your search` : `No ${entityType}s assigned yet`}
+            title={isSearching ? `No assigned ${entityTypePlural} match your search` : `No ${entityTypePlural} assigned yet`}
             description={
               isSearching
                 ? isBroadSearch
@@ -231,7 +239,7 @@ export default function EntitySelectScreen() {
         {noResultsAtAll ? (
           <EmptyState
             icon={UserSearch}
-            title={`No ${entityType}s found`}
+            title={`No ${entityTypePlural} found`}
             description="Double-check the spelling, or sync to download the latest records."
           />
         ) : null}
@@ -347,6 +355,21 @@ function hashString(value: string): number {
     hash |= 0;
   }
   return Math.abs(hash);
+}
+
+function pluralize(label: string): string {
+  if (label.toLowerCase().endsWith("y")) return `${label.slice(0, -1)}ies`;
+  if (label.toLowerCase().endsWith("s")) return label;
+  return `${label}s`;
+}
+
+function matchesEntityCategory(entityType: string, settingsType: string | null, categoryId?: string | null): boolean {
+  if (settingsType && entityType === settingsType) return true;
+  const category = categoryId
+    ? localDatabase.entityCategories.list().find((item) => item.id === categoryId)
+    : null;
+  if (!category) return false;
+  return entityType === category.id || entityType === category.slug || entityType === category.name;
 }
 
 const styles = StyleSheet.create({

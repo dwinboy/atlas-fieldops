@@ -3,14 +3,15 @@ import type { BeneficiaryRead } from "@/lib/api";
 export type EntityType =
   | "Farmer"
   | "Household"
-  | "Beneficiary"
+  | "Entity"
   | "Facility"
   | "School"
   | "Village"
   | "Group"
   | "Training Participant"
   | "Health Worker"
-  | "Custom Entity";
+  | "Custom Entity"
+  | string;
 
 export type EntityStatus =
   | "Active"
@@ -74,6 +75,7 @@ export type EntityRegistrationDraft = {
   longitude: string;
   consentStatus: BeneficiaryEntity["consentStatus"];
   continuationReason: string;
+  customProfile: Record<string, string>;
 };
 
 export type DuplicateCandidate = {
@@ -110,7 +112,7 @@ export type EntityControlSettings = {
 export const entityTypes: EntityType[] = [
   "Farmer",
   "Household",
-  "Beneficiary",
+  "Entity",
   "Facility",
   "School",
   "Village",
@@ -255,7 +257,7 @@ export const previewEntities: BeneficiaryEntity[] = [
       },
     },
     entityId: "BEN-2026-000044",
-    entityType: "Beneficiary",
+    entityType: "Entity",
     firstName: "Esther",
     formsCompleted: 3,
     fullName: "Esther Fomunyam",
@@ -384,7 +386,7 @@ function titleEntityType(value: string): EntityType {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
   return entityTypes.includes(normalized as EntityType)
     ? (normalized as EntityType)
-    : "Custom Entity";
+    : normalized || "Custom Entity";
 }
 
 function titleStatus(value: string): EntityStatus {

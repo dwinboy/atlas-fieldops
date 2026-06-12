@@ -240,6 +240,19 @@ class Submission(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class SubmissionEntityLink(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "submission_entity_links"
+    __table_args__ = (UniqueConstraint("submission_id", "beneficiary_id", "link_type"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    submission_id: Mapped[UUID] = mapped_column(ForeignKey("submissions.id"), index=True)
+    beneficiary_id: Mapped[UUID] = mapped_column(ForeignKey("beneficiaries.id"), index=True)
+    link_type: Mapped[str] = mapped_column(String(60), default="participant", index=True)
+    source: Mapped[str] = mapped_column(String(80), default="approved_submission")
+    source_field: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+
 class SubmissionVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "submission_versions"
     __table_args__ = (UniqueConstraint("submission_id", "version"),)

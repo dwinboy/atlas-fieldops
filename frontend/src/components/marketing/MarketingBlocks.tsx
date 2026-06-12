@@ -153,7 +153,7 @@ export function WorkflowShowcase() {
       <SectionIntro
         eyebrow="Unified workflow"
         title="Every action updates the operational system"
-        text="Submissions, beneficiary changes, approvals, GPS evidence, imports, and interventions propagate through dashboards, reports, maps, notifications, and supervisor queues."
+        text="Submissions, entity changes, approvals, GPS evidence, imports, and interventions propagate through dashboards, reports, maps, notifications, and supervisor queues."
       />
       <div className="mx-auto mt-12 max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-3 md:grid-cols-5">
@@ -246,7 +246,7 @@ export function CTASection() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#5eead4]">Ready for field operations</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Run connected programs with trusted data, even offline.</h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70">
-              See how Atlas FieldOps can support your field teams, M&E workflows, beneficiary operations, geospatial intelligence, and donor reporting.
+              See how Atlas FieldOps can support your field teams, M&E workflows, entity operations, geospatial intelligence, and donor reporting.
             </p>
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">
@@ -388,7 +388,7 @@ export function TrustBand() {
     <div className="mx-auto grid max-w-7xl gap-4 px-4 pb-20 sm:px-6 md:grid-cols-3 lg:px-8">
       {[
         ["Secure by design", "RBAC, audit logs, tenant isolation, and approval history."],
-        ["Offline-first", "Forms, media, GPS, beneficiaries, tasks, and sync queues."],
+        ["Offline-first", "Forms, media, GPS, entities, tasks, and sync queues."],
         ["Enterprise ready", "Workflow orchestration, reporting, integrations, and support."]
       ].map(([title, text]) => (
         <article className="rounded-xl border border-black/10 bg-white p-6" key={title}>

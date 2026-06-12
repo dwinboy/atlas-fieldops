@@ -30,6 +30,7 @@ export default function SettingsScreen() {
     assignments: localDatabase.assignments.list().length,
     forms: localDatabase.forms.list().length,
     entities: localDatabase.entities.list().length,
+    entityCategories: localDatabase.entityCategories.list().length,
     drafts: localDatabase.draftSubmissions.list().filter((d) => d.status !== "Synced").length,
     syncLogs: localDatabase.syncLogs.list().length,
   }), [refreshKey]);
@@ -88,7 +89,8 @@ export default function SettingsScreen() {
         `Status: ${device?.status ?? session?.bootstrap?.blockedState.deviceStatus ?? "Unknown"}`,
         `Assignments: ${deviceStats.assignments}`,
         `Forms: ${deviceStats.forms}`,
-        `Beneficiaries: ${deviceStats.entities}`,
+        `Entities: ${deviceStats.entities}`,
+        `Entity categories: ${deviceStats.entityCategories}`,
         `Unsynced drafts: ${deviceStats.drafts}`,
         `Queued uploads: ${queued}`,
         `Failed uploads: ${failed}`,

@@ -109,7 +109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const pkg = await svc.syncAssignedWork(session.accessToken);
       setSession({ ...session, bootstrap: pkg.bootstrap });
       setLastSyncMessage(
-        `Sync complete: ${pkg.assignments.length} assignment(s), ${pkg.forms.length} form(s), ${pkg.entities.length} beneficiary record(s).`,
+        `Sync complete: ${pkg.assignments.length} assignment(s), ${pkg.forms.length} form(s), ${pkg.entities.length} entity record(s), ${pkg.entityCategories.length} category setup(s).`,
       );
       refresh();
     } catch (err) {

@@ -17,6 +17,7 @@ from app.models.collection import (
     OfficerAssignment,
     Project,
     Submission,
+    SubmissionEntityLink,
     SubmissionRepeatRow,
     SubmissionStatusHistory,
     SubmissionVersion,
@@ -223,6 +224,23 @@ class FormRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_unpublished_revision(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+        version: int,
+    ) -> DataFormVersion | None:
+        result = await self.session.execute(
+            select(DataFormVersion).where(
+                DataFormVersion.organization_id == organization_id,
+                DataFormVersion.form_id == form_id,
+                DataFormVersion.version == version,
+                DataFormVersion.published_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def update_controls(self, *, form: DataForm, controls_json: dict[str, Any]) -> DataForm:
         form.controls_json = controls_json
         form.updated_at = datetime.now(UTC)
@@ -247,28 +265,46 @@ class FormRepository:
         form_type: str | None = None,
     ) -> tuple[DataForm, DataFormVersion]:
         now = datetime.now(UTC)
-        form.name = name
-        form.description = description
         form.updated_at = now
-        if form_type is not None:
-            form.form_type = form_type
 
         if form.status == "published":
             next_version = form.current_version + 1
-            version = DataFormVersion(
+            version = await self.get_unpublished_revision(
                 organization_id=form.organization_id,
                 form_id=form.id,
                 version=next_version,
-                schema_json=schema_json,
-                offline_compatible=True,
-                published_at=now if publish else None,
-                published_by_user_id=actor_user_id if publish else None,
             )
-            self.session.add(version)
-            form.current_version = next_version
-            form.status = "published" if publish else "draft"
+            if version is None:
+                version = DataFormVersion(
+                    organization_id=form.organization_id,
+                    form_id=form.id,
+                    version=next_version,
+                    schema_json=schema_json,
+                    offline_compatible=True,
+                    published_at=now if publish else None,
+                    published_by_user_id=actor_user_id if publish else None,
+                )
+                self.session.add(version)
+            else:
+                version.schema_json = schema_json
+                version.offline_compatible = True
+                if publish:
+                    version.published_at = now
+                    version.published_by_user_id = actor_user_id
+            if publish:
+                form.name = name
+                form.description = description
+                if form_type is not None:
+                    form.form_type = form_type
+                form.current_version = next_version
+            form.status = "published"
             await self.session.flush()
             return form, version
+
+        form.name = name
+        form.description = description
+        if form_type is not None:
+            form.form_type = form_type
 
         version = await self.get_current_version(
             organization_id=form.organization_id,
@@ -725,6 +761,95 @@ class SubmissionRepository:
         )
         return {row.id: row.beneficiary_uid for row in result.all()}
 
+    async def beneficiaries_by_uid(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        beneficiary_uids: set[str],
+    ) -> list[Beneficiary]:
+        cleaned = {uid.strip() for uid in beneficiary_uids if uid.strip()}
+        if not cleaned:
+            return []
+        query = select(Beneficiary).where(
+            Beneficiary.organization_id == organization_id,
+            Beneficiary.beneficiary_uid.in_(cleaned),
+            Beneficiary.deleted_at.is_(None),
+        )
+        if project_id is not None:
+            query = query.where((Beneficiary.project_id == project_id) | (Beneficiary.project_id.is_(None)))
+        result = await self.session.execute(query)
+        return list(result.scalars())
+
+    async def add_entity_link(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID | None,
+        submission_id: UUID,
+        beneficiary_id: UUID,
+        link_type: str,
+        source: str,
+        source_field: str | None = None,
+    ) -> SubmissionEntityLink:
+        result = await self.session.execute(
+            select(SubmissionEntityLink).where(
+                SubmissionEntityLink.submission_id == submission_id,
+                SubmissionEntityLink.beneficiary_id == beneficiary_id,
+                SubmissionEntityLink.link_type == link_type,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            return existing
+        link = SubmissionEntityLink(
+            organization_id=organization_id,
+            project_id=project_id,
+            submission_id=submission_id,
+            beneficiary_id=beneficiary_id,
+            link_type=link_type,
+            source=source,
+            source_field=source_field,
+        )
+        self.session.add(link)
+        await self.session.flush()
+        return link
+
+    async def linked_beneficiary_summaries(
+        self,
+        *,
+        organization_id: UUID,
+        submission_ids: set[UUID],
+    ) -> dict[UUID, list[dict[str, Any]]]:
+        if not submission_ids:
+            return {}
+        result = await self.session.execute(
+            select(SubmissionEntityLink, Beneficiary)
+            .join(Beneficiary, Beneficiary.id == SubmissionEntityLink.beneficiary_id)
+            .where(
+                SubmissionEntityLink.organization_id == organization_id,
+                SubmissionEntityLink.submission_id.in_(submission_ids),
+                Beneficiary.organization_id == organization_id,
+            )
+            .order_by(SubmissionEntityLink.created_at)
+        )
+        grouped: dict[UUID, list[dict[str, Any]]] = {}
+        for link, beneficiary in result.all():
+            grouped.setdefault(link.submission_id, []).append(
+                {
+                    "id": str(link.id),
+                    "beneficiary_id": str(beneficiary.id),
+                    "beneficiary_uid": beneficiary.beneficiary_uid,
+                    "display_name": beneficiary.display_name,
+                    "beneficiary_type": beneficiary.beneficiary_type,
+                    "link_type": link.link_type,
+                    "source": link.source,
+                    "source_field": link.source_field,
+                    "created_at": link.created_at,
+                }
+            )
+        return grouped
+
     async def field_officer_names(self, *, organization_id: UUID, field_officer_ids: set[UUID]) -> dict[UUID, str]:
         if not field_officer_ids:
             return {}
@@ -734,6 +859,17 @@ class SubmissionRepository:
             .where(
                 FieldOfficerProfile.organization_id == organization_id,
                 FieldOfficerProfile.id.in_(field_officer_ids),
+            )
+        )
+        return {row.id: row.full_name for row in result.all()}
+
+    async def user_names(self, *, user_ids: set[UUID]) -> dict[UUID, str]:
+        if not user_ids:
+            return {}
+        result = await self.session.execute(
+            select(User.id, User.full_name).where(
+                User.id.in_(user_ids),
+                User.deleted_at.is_(None),
             )
         )
         return {row.id: row.full_name for row in result.all()}
