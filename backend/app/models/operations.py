@@ -532,6 +532,39 @@ class WorkflowQueueItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     context_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
 
 
+class FieldWorkPlan(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "field_work_plans"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    project: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
+    locations_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    assigned_teams_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    deliverables_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    view: Mapped[str] = mapped_column(String(20), default="Timeline")
+
+
+class OperationalTargetRecord(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "operational_targets"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(20), default="Project", index=True)
+    project: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    indicator: Mapped[str | None] = mapped_column(String(220), nullable=True)
+    team: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    assigned_staff_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    target_value: Mapped[int] = mapped_column(Integer, default=0)
+    achieved_value: Mapped[int] = mapped_column(Integer, default=0)
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
 class DonorReport(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "donor_reports"
 

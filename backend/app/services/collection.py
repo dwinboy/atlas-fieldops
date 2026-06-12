@@ -1249,7 +1249,18 @@ class FieldOfficerService:
         return assignment
 
     @staticmethod
-    def _work_assignment_to_read(record: FieldWorkAssignment) -> FieldWorkAssignmentRead:
+    def _work_assignment_to_read(
+        record: FieldWorkAssignment,
+        *,
+        completed_override: int | None = None,
+    ) -> FieldWorkAssignmentRead:
+        status = record.status
+        if (
+            status in ("Assigned", "In Progress")
+            and record.end_date is not None
+            and record.end_date < datetime.now(UTC).date()
+        ):
+            status = "Overdue"
         return FieldWorkAssignmentRead(
             id=record.id,
             project_id=record.project_id,
@@ -1265,12 +1276,45 @@ class FieldOfficerService:
             start_date=record.start_date,
             end_date=record.end_date,
             target_count=record.target_count,
-            completed_count=record.completed_count,
+            completed_count=completed_override if completed_override is not None else record.completed_count,
             priority=record.priority,
-            status=record.status,
+            status=status,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+    async def _work_assignment_submission_counts(
+        self,
+        organization_id: UUID,
+        records: list[FieldWorkAssignment],
+    ) -> dict[UUID, int]:
+        form_ids = {record.form_id for record in records if record.form_id is not None}
+        if not form_ids:
+            return {}
+        result = await self.session.execute(
+            select(Submission.form_id, Submission.field_officer_id, func.count())
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.form_id.in_(form_ids),
+                Submission.field_officer_id.is_not(None),
+                Submission.status != "rejected",
+                Submission.deleted_at.is_(None),
+            )
+            .group_by(Submission.form_id, Submission.field_officer_id)
+        )
+        counts_by_pair: dict[tuple[str, str], int] = {
+            (str(form_id), str(officer_id)): count
+            for form_id, officer_id, count in result.all()
+        }
+        counts: dict[UUID, int] = {}
+        for record in records:
+            if record.form_id is None or not record.officer_ids_json:
+                continue
+            counts[record.id] = sum(
+                counts_by_pair.get((str(record.form_id), officer_id), 0)
+                for officer_id in record.officer_ids_json
+            )
+        return counts
 
     async def _validate_work_assignment_links(
         self,
@@ -1312,7 +1356,11 @@ class FieldOfficerService:
 
     async def list_work_assignments(self, organization_id: UUID) -> list[FieldWorkAssignmentRead]:
         records = await self.officers.list_work_assignments(organization_id)
-        return [self._work_assignment_to_read(record) for record in records]
+        counts = await self._work_assignment_submission_counts(organization_id, records)
+        return [
+            self._work_assignment_to_read(record, completed_override=counts.get(record.id))
+            for record in records
+        ]
 
     async def create_work_assignment(
         self,

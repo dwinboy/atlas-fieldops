@@ -1194,3 +1194,112 @@ class BulkEditRead(BaseModel):
     undo_available: bool
 
     model_config = {"from_attributes": True}
+
+
+WORK_PLAN_VIEWS = ("Calendar", "Timeline", "Gantt", "Table")
+OPERATIONAL_TARGET_TYPES = ("Daily", "Weekly", "Monthly", "Project")
+
+
+class FieldWorkPlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=220)
+    project: str | None = Field(default=None, max_length=200)
+    objectives: str | None = None
+    locations: list[str] = Field(default_factory=list)
+    assigned_teams: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    view: str = "Timeline"
+
+    @model_validator(mode="after")
+    def validate_view(self) -> "FieldWorkPlanCreate":
+        if self.view not in WORK_PLAN_VIEWS:
+            raise ValueError(f"View must be one of {', '.join(WORK_PLAN_VIEWS)}")
+        return self
+
+
+class FieldWorkPlanUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    project: str | None = Field(default=None, max_length=200)
+    objectives: str | None = None
+    locations: list[str] | None = None
+    assigned_teams: list[str] | None = None
+    deliverables: list[str] | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)
+    view: str | None = None
+
+    @model_validator(mode="after")
+    def validate_view(self) -> "FieldWorkPlanUpdate":
+        if self.view is not None and self.view not in WORK_PLAN_VIEWS:
+            raise ValueError(f"View must be one of {', '.join(WORK_PLAN_VIEWS)}")
+        return self
+
+
+class FieldWorkPlanRead(BaseModel):
+    id: UUID
+    created_by_user_id: UUID
+    name: str
+    project: str | None = None
+    objectives: str | None = None
+    locations: list[str] = Field(default_factory=list)
+    assigned_teams: list[str] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    progress: int
+    view: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class OperationalTargetCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=220)
+    target_type: str = "Project"
+    project: str | None = Field(default=None, max_length=200)
+    indicator: str | None = Field(default=None, max_length=220)
+    team: str | None = Field(default=None, max_length=160)
+    assigned_staff: list[str] = Field(default_factory=list)
+    target_value: int = Field(default=0, ge=0)
+    deadline: date | None = None
+
+    @model_validator(mode="after")
+    def validate_target_type(self) -> "OperationalTargetCreate":
+        if self.target_type not in OPERATIONAL_TARGET_TYPES:
+            raise ValueError(f"Target type must be one of {', '.join(OPERATIONAL_TARGET_TYPES)}")
+        return self
+
+
+class OperationalTargetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    target_type: str | None = None
+    project: str | None = Field(default=None, max_length=200)
+    indicator: str | None = Field(default=None, max_length=220)
+    team: str | None = Field(default=None, max_length=160)
+    assigned_staff: list[str] | None = None
+    target_value: int | None = Field(default=None, ge=0)
+    achieved_value: int | None = Field(default=None, ge=0)
+    deadline: date | None = None
+
+    @model_validator(mode="after")
+    def validate_target_type(self) -> "OperationalTargetUpdate":
+        if self.target_type is not None and self.target_type not in OPERATIONAL_TARGET_TYPES:
+            raise ValueError(f"Target type must be one of {', '.join(OPERATIONAL_TARGET_TYPES)}")
+        return self
+
+
+class OperationalTargetRead(BaseModel):
+    id: UUID
+    created_by_user_id: UUID
+    name: str
+    target_type: str
+    project: str | None = None
+    indicator: str | None = None
+    team: str | None = None
+    assigned_staff: list[str] = Field(default_factory=list)
+    target_value: int
+    achieved_value: int
+    deadline: date | None = None
+    created_at: datetime
+    updated_at: datetime

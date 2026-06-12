@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.base import Base
-from app.models.collection import DataForm, DataFormVersion, Project, Survey
+from app.models.collection import DataForm, DataFormVersion, Project, Submission, Survey
 from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, User
 from app.repositories.collection import FormRepository
@@ -43,8 +43,15 @@ from app.services.collection import (
     form_schema_compatibility,
     form_schema_to_xlsform,
 )
+from app.schemas.operations import (
+    FieldWorkPlanCreate,
+    FieldWorkPlanUpdate,
+    OperationalTargetCreate,
+    OperationalTargetUpdate,
+)
 from app.services.form_engine import FormEngine
 from app.services.mobile import MobileService
+from app.services.operations import FieldPlanningService
 
 
 def test_enterprise_roles_have_collection_permissions() -> None:
@@ -1180,7 +1187,7 @@ async def test_field_work_assignment_lifecycle_with_audit_trail() -> None:
         await session.flush()
 
         forms = FormRepository(session)
-        form, _ = await forms.create(
+        form, form_version = await forms.create(
             organization_id=organization_id,
             project_id=project_id,
             survey_id=survey_id,
@@ -1241,8 +1248,63 @@ async def test_field_work_assignment_lifecycle_with_audit_trail() -> None:
                 payload=FieldWorkAssignmentStatusUpdate(status="Assigned"),
             )
 
+        def build_submission(client_id: str, *, status: str, officer_id: UUID) -> Submission:
+            now = datetime.now(UTC)
+            return Submission(
+                organization_id=organization_id,
+                project_id=project_id,
+                form_id=form.id,
+                form_version_id=form_version.id,
+                field_officer_id=officer_id,
+                client_submission_id=client_id,
+                status=status,
+                payload_json={"q1": "Answer"},
+                device_id="android-test",
+                captured_at=now,
+                submitted_at=now,
+                sync_received_at=now,
+                latitude=5.96,
+                longitude=10.16,
+                location_captured_at=now,
+            )
+
+        other_officer_profile_id = uuid4()
+        session.add(
+            FieldOfficerProfile(
+                id=other_officer_profile_id,
+                organization_id=organization_id,
+                user_id=actor_user_id,
+                is_active=True,
+            )
+        )
+        session.add_all(
+            [
+                build_submission("sub-counted", status="approved", officer_id=officer_profile_id),
+                build_submission("sub-rejected", status="rejected", officer_id=officer_profile_id),
+                build_submission("sub-other-officer", status="approved", officer_id=other_officer_profile_id),
+            ]
+        )
+        await session.flush()
+
+        overdue = await service.create_work_assignment(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=FieldWorkAssignmentCreate(
+                project_id=project_id,
+                name="Past deadline sweep",
+                officer_ids=[officer_profile_id],
+                end_date=datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 1),
+            ),
+        )
+
         listed = await service.list_work_assignments(organization_id)
-        assert [item.id for item in listed] == [created.id]
+        listed_by_id = {item.id: item for item in listed}
+        assert set(listed_by_id) == {created.id, overdue.id}
+        # Live count: only non-rejected submissions by assigned officers are counted.
+        assert listed_by_id[created.id].completed_count == 1
+        # Past end_date with an active status is surfaced as Overdue without persisting it.
+        assert listed_by_id[overdue.id].status == "Overdue"
+        assert listed_by_id[created.id].status == "Completed"
 
         audit_result = await session.execute(
             select(AuditLog).where(
@@ -1253,7 +1315,92 @@ async def test_field_work_assignment_lifecycle_with_audit_trail() -> None:
         actions = sorted(log.action for log in audit_result.scalars())
         assert actions == [
             "field_work_assignment.created",
+            "field_work_assignment.created",
             "field_work_assignment.status_changed",
             "field_work_assignment.status_changed",
             "field_work_assignment.updated",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_work_plans_and_targets_persist_with_audit() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Planning Org", slug="planning-org"),
+                User(id=actor_user_id, email="planner@example.org", full_name="Planner", password_hash="x"),
+            ]
+        )
+        await session.flush()
+
+        service = FieldPlanningService(session)
+        plan = await service.create_work_plan(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=FieldWorkPlanCreate(
+                name="Week 24 collection plan",
+                project="Agricultural Resilience Program",
+                locations=["Mezam", "Wouri"],
+                assigned_teams=["Survey Team A"],
+                deliverables=["120 farmer registrations"],
+                view="Timeline",
+            ),
+        )
+        assert plan.progress == 0
+
+        updated_plan = await service.update_work_plan(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            work_plan_id=plan.id,
+            payload=FieldWorkPlanUpdate(progress=40),
+        )
+        assert updated_plan.progress == 40
+        assert [item.id for item in await service.list_work_plans(organization_id)] == [plan.id]
+
+        target = await service.create_target(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=OperationalTargetCreate(
+                name="120 farmer households",
+                target_type="Weekly",
+                indicator="Households Registered",
+                team="Survey Team A",
+                target_value=120,
+            ),
+        )
+        assert target.achieved_value == 0
+
+        updated_target = await service.update_target(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            target_id=target.id,
+            payload=OperationalTargetUpdate(achieved_value=86),
+        )
+        assert updated_target.achieved_value == 86
+        assert [item.id for item in await service.list_targets(organization_id)] == [target.id]
+
+        with pytest.raises(LookupError):
+            await service.update_target(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                target_id=uuid4(),
+                payload=OperationalTargetUpdate(achieved_value=1),
+            )
+
+        audit_result = await session.execute(
+            select(AuditLog).where(AuditLog.organization_id == organization_id)
+        )
+        actions = sorted(log.action for log in audit_result.scalars())
+        assert actions == [
+            "field_work_plan.created",
+            "field_work_plan.updated",
+            "operational_target.created",
+            "operational_target.updated",
         ]

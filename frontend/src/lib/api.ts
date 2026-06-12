@@ -3382,6 +3382,96 @@ export async function setFieldWorkAssignmentStatus(
   });
 }
 
+export type FieldWorkPlanRead = {
+  id: string;
+  created_by_user_id: string;
+  name: string;
+  project: string | null;
+  objectives: string | null;
+  locations: string[];
+  assigned_teams: string[];
+  deliverables: string[];
+  start_date: string | null;
+  end_date: string | null;
+  progress: number;
+  view: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldWorkPlanCreate = {
+  name: string;
+  project?: string | null;
+  objectives?: string | null;
+  locations?: string[];
+  assigned_teams?: string[];
+  deliverables?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  view?: string;
+};
+
+export type OperationalTargetRecordRead = {
+  id: string;
+  created_by_user_id: string;
+  name: string;
+  target_type: string;
+  project: string | null;
+  indicator: string | null;
+  team: string | null;
+  assigned_staff: string[];
+  target_value: number;
+  achieved_value: number;
+  deadline: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationalTargetRecordCreate = {
+  name: string;
+  target_type?: string;
+  project?: string | null;
+  indicator?: string | null;
+  team?: string | null;
+  assigned_staff?: string[];
+  target_value?: number;
+  deadline?: string | null;
+};
+
+export async function listFieldWorkPlans(token: string): Promise<FieldWorkPlanRead[]> {
+  return request<FieldWorkPlanRead[]>("/operations/work-plans", { token });
+}
+
+export async function createFieldWorkPlan(
+  token: string,
+  payload: FieldWorkPlanCreate,
+): Promise<FieldWorkPlanRead> {
+  return request<FieldWorkPlanRead>("/operations/work-plans", { method: "POST", token, bodyJson: payload });
+}
+
+export async function listOperationalTargets(token: string): Promise<OperationalTargetRecordRead[]> {
+  return request<OperationalTargetRecordRead[]>("/operations/targets", { token });
+}
+
+export async function createOperationalTarget(
+  token: string,
+  payload: OperationalTargetRecordCreate,
+): Promise<OperationalTargetRecordRead> {
+  return request<OperationalTargetRecordRead>("/operations/targets", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateOperationalTarget(
+  token: string,
+  targetId: string,
+  payload: Partial<OperationalTargetRecordCreate> & { achieved_value?: number },
+): Promise<OperationalTargetRecordRead> {
+  return request<OperationalTargetRecordRead>(`/operations/targets/${targetId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function listFieldVisitRequests(token: string, status?: string): Promise<FieldVisitRequestRead[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return request<FieldVisitRequestRead[]>(`/operations/operational-activities${query}`, { token });

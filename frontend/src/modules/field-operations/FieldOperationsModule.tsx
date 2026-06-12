@@ -35,9 +35,14 @@ import { UserProfileLink } from "@/components/ui/user-link";
 import {
   createFieldOfficerAssignment,
   createFieldWorkAssignment,
+  createFieldWorkPlan,
+  createOperationalTarget,
   listFieldWorkAssignments,
+  listFieldWorkPlans,
+  listOperationalTargets,
   setFieldWorkAssignmentStatus,
   updateFieldWorkAssignment,
+  updateOperationalTarget,
   getOperationalActivityReport,
   getFieldOfficerProfile,
   getOperationsSummary,
@@ -287,6 +292,44 @@ function DetailSignal({ label, value }: { label: string; value: ReactNode }) {
     <div className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-right text-xs font-semibold">{value}</span>
+    </div>
+  );
+}
+
+function TargetProgressEditor({
+  disabled,
+  onSave,
+  target,
+}: {
+  disabled: boolean;
+  onSave: (value: number) => void;
+  target: OperationalTarget;
+}) {
+  const [value, setValue] = useState(String(target.achieved));
+  useEffect(() => {
+    setValue(String(target.achieved));
+  }, [target.achieved]);
+  const parsed = Number.parseInt(value, 10);
+  const valid = Number.isFinite(parsed) && parsed >= 0;
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      <Input
+        aria-label={`Achieved value for ${target.name}`}
+        className="h-8 w-24 text-right text-xs tabular-nums"
+        disabled={disabled}
+        inputMode="numeric"
+        onChange={(event) => setValue(event.target.value)}
+        value={value}
+      />
+      <Button
+        disabled={disabled || !valid || parsed === target.achieved}
+        onClick={() => onSave(parsed)}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        Save
+      </Button>
     </div>
   );
 }
@@ -1112,6 +1155,16 @@ export function FieldOperationsModule({
     queryFn: () => listFieldWorkAssignments(token ?? ""),
     enabled,
   });
+  const workPlansQuery = useQuery({
+    queryKey: ["field-operations", "work-plans", token],
+    queryFn: () => listFieldWorkPlans(token ?? ""),
+    enabled,
+  });
+  const targetsQuery = useQuery({
+    queryKey: ["field-operations", "targets", token],
+    queryFn: () => listOperationalTargets(token ?? ""),
+    enabled,
+  });
   const entitiesQuery = useQuery({
     queryKey: ["field-operations", "beneficiaries", token],
     queryFn: () => listBeneficiaries(token ?? ""),
@@ -1272,6 +1325,43 @@ export function FieldOperationsModule({
     }
     return Array.from(byId.values());
   }, [availableProjects, formsQuery.data, localForms, preview]);
+  useEffect(() => {
+    if (preview || !workPlansQuery.data) return;
+    setWorkPlans(
+      workPlansQuery.data.map((record) => ({
+        id: record.id,
+        name: record.name,
+        project: record.project ?? "",
+        startDate: record.start_date ?? "",
+        endDate: record.end_date ?? "",
+        objectives: record.objectives ?? "",
+        locations: record.locations,
+        assignedTeams: record.assigned_teams,
+        deliverables: record.deliverables,
+        progress: record.progress,
+        view: (record.view as WorkPlan["view"]) ?? "Timeline",
+      })),
+    );
+  }, [preview, workPlansQuery.data]);
+
+  useEffect(() => {
+    if (preview || !targetsQuery.data) return;
+    setTargets(
+      targetsQuery.data.map((record) => ({
+        id: record.id,
+        name: record.name,
+        type: (record.target_type as OperationalTarget["type"]) ?? "Project",
+        project: record.project ?? "",
+        indicator: record.indicator ?? "",
+        team: record.team ?? "",
+        assignedStaff: record.assigned_staff,
+        value: record.target_value,
+        achieved: record.achieved_value,
+        deadline: record.deadline ?? "",
+      })),
+    );
+  }, [preview, targetsQuery.data]);
+
   useEffect(() => {
     if (preview || !workAssignmentsQuery.data) return;
     const users = usersQuery.data ?? [];
@@ -1679,12 +1769,18 @@ export function FieldOperationsModule({
           progressPercent(assignment.completedCount, assignment.targetCount),
         ),
       render: (assignment) => (
-        <ProgressBar
-          value={progressPercent(
-            assignment.completedCount,
-            assignment.targetCount,
-          )}
-        />
+        <div>
+          <ProgressBar
+            value={progressPercent(
+              assignment.completedCount,
+              assignment.targetCount,
+            )}
+          />
+          <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+            {assignment.completedCount.toLocaleString()} /{" "}
+            {assignment.targetCount.toLocaleString()} collected
+          </p>
+        </div>
       ),
     },
     {
@@ -1940,6 +2036,18 @@ export function FieldOperationsModule({
       header: "Deadline",
       value: (target) => target.deadline,
       render: (target) => formatDate(target.deadline),
+    },
+    {
+      key: "record",
+      header: "Record progress",
+      align: "right",
+      render: (target) => (
+        <TargetProgressEditor
+          disabled={!canManageFieldOperations}
+          onSave={(value) => void recordTargetProgress(target, value)}
+          target={target}
+        />
+      ),
     },
   ];
 
@@ -2308,16 +2416,40 @@ export function FieldOperationsModule({
     setModalMode("assignment");
   }
 
-  function submitWorkPlan(): void {
-    setWorkPlans((current) => [
-      {
-        ...workPlanDraft,
-        id: `workplan-${Date.now()}`,
-        progress: 0,
-        view: "Timeline",
-      },
-      ...current,
-    ]);
+  async function submitWorkPlan(): Promise<void> {
+    if (!preview && token) {
+      try {
+        await createFieldWorkPlan(token, {
+          name: workPlanDraft.name,
+          project: workPlanDraft.project || null,
+          objectives: workPlanDraft.objectives || null,
+          locations: workPlanDraft.locations,
+          assigned_teams: workPlanDraft.assignedTeams,
+          deliverables: workPlanDraft.deliverables,
+          start_date: workPlanDraft.startDate || null,
+          end_date: workPlanDraft.endDate || null,
+          view: "Timeline",
+        });
+        void workPlansQuery.refetch();
+      } catch (error) {
+        pushToast({
+          title: "Work plan could not be saved",
+          description: error instanceof Error ? error.message : "Try again.",
+          tone: "danger",
+        });
+        return;
+      }
+    } else {
+      setWorkPlans((current) => [
+        {
+          ...workPlanDraft,
+          id: `workplan-${Date.now()}`,
+          progress: 0,
+          view: "Timeline",
+        },
+        ...current,
+      ]);
+    }
     setWorkPlanDraft(defaultWorkPlanDraft);
     setModalMode(null);
     pushToast({
@@ -2328,17 +2460,69 @@ export function FieldOperationsModule({
     });
   }
 
-  function submitTarget(): void {
-    setTargets((current) => [
-      { ...targetDraft, achieved: 0, id: `target-${Date.now()}` },
-      ...current,
-    ]);
+  async function submitTarget(): Promise<void> {
+    if (!preview && token) {
+      try {
+        await createOperationalTarget(token, {
+          name: targetDraft.name,
+          target_type: targetDraft.type,
+          project: targetDraft.project || null,
+          indicator: targetDraft.indicator || null,
+          team: targetDraft.team || null,
+          assigned_staff: targetDraft.assignedStaff,
+          target_value: targetDraft.value,
+          deadline: targetDraft.deadline || null,
+        });
+        void targetsQuery.refetch();
+      } catch (error) {
+        pushToast({
+          title: "Target could not be saved",
+          description: error instanceof Error ? error.message : "Try again.",
+          tone: "danger",
+        });
+        return;
+      }
+    } else {
+      setTargets((current) => [
+        { ...targetDraft, achieved: 0, id: `target-${Date.now()}` },
+        ...current,
+      ]);
+    }
     setTargetDraft(defaultTargetDraft);
     setModalMode(null);
     pushToast({
       title: "Target created",
       description:
         "Progress will appear in Field Operations and monitoring views.",
+      tone: "success",
+    });
+  }
+
+  async function recordTargetProgress(
+    target: OperationalTarget,
+    achieved: number,
+  ): Promise<void> {
+    if (!preview && token && !target.id.startsWith("target-")) {
+      try {
+        await updateOperationalTarget(token, target.id, { achieved_value: achieved });
+        void targetsQuery.refetch();
+      } catch (error) {
+        pushToast({
+          title: "Progress could not be saved",
+          description: error instanceof Error ? error.message : "Try again.",
+          tone: "danger",
+        });
+        return;
+      }
+    }
+    setTargets((current) =>
+      current.map((item) =>
+        item.id === target.id ? { ...item, achieved } : item,
+      ),
+    );
+    pushToast({
+      title: "Target progress recorded",
+      description: `"${target.name}" is now at ${achieved.toLocaleString()} of ${target.value.toLocaleString()}.`,
       tone: "success",
     });
   }
@@ -3690,7 +3874,7 @@ Password:          ${lastInviteCredentials.password}`}
           className="space-y-4 p-5"
           onSubmit={(event) => {
             event.preventDefault();
-            submitWorkPlan();
+            void submitWorkPlan();
           }}
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -3828,7 +4012,7 @@ Password:          ${lastInviteCredentials.password}`}
           className="space-y-4 p-5"
           onSubmit={(event) => {
             event.preventDefault();
-            submitTarget();
+            void submitTarget();
           }}
         >
           <div className="grid gap-4 md:grid-cols-2">

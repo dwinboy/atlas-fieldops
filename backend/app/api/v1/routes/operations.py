@@ -82,10 +82,16 @@ from app.schemas.operations import (
     ProjectBudgetLineRead,
     PublicCollectionLinkCreate,
     PublicCollectionLinkRead,
+    FieldWorkPlanCreate,
+    FieldWorkPlanRead,
+    FieldWorkPlanUpdate,
+    OperationalTargetCreate,
+    OperationalTargetRead,
+    OperationalTargetUpdate,
     WorkflowDefinitionCreate,
     WorkflowDefinitionRead,
 )
-from app.services.operations import OperationsService
+from app.services.operations import FieldPlanningService, OperationsService
 
 router = APIRouter()
 
@@ -1115,3 +1121,119 @@ async def create_bulk_edit_batch(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BulkEditRead:
     return await OperationsService(session).create_bulk_edit_batch(organization_uuid(principal), user_uuid(principal), payload)
+
+
+@router.get("/work-plans", response_model=list[FieldWorkPlanRead], summary="List field work plans")
+async def list_work_plans(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[FieldWorkPlanRead]:
+    return await FieldPlanningService(session).list_work_plans(organization_uuid(principal))
+
+
+@router.post(
+    "/work-plans",
+    response_model=FieldWorkPlanRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a field work plan",
+)
+async def create_work_plan(
+    payload: FieldWorkPlanCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkPlanRead:
+    service = FieldPlanningService(session)
+    plan = await service.create_work_plan(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        payload=payload,
+    )
+    await session.commit()
+    return plan
+
+
+@router.patch(
+    "/work-plans/{work_plan_id}",
+    response_model=FieldWorkPlanRead,
+    summary="Update a field work plan",
+)
+async def update_work_plan(
+    work_plan_id: UUID,
+    payload: FieldWorkPlanUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkPlanRead:
+    service = FieldPlanningService(session)
+    try:
+        plan = await service.update_work_plan(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            work_plan_id=work_plan_id,
+            payload=payload,
+        )
+        await session.commit()
+        return plan
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get("/targets", response_model=list[OperationalTargetRead], summary="List operational targets")
+async def list_operational_targets(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OperationalTargetRead]:
+    return await FieldPlanningService(session).list_targets(organization_uuid(principal))
+
+
+@router.post(
+    "/targets",
+    response_model=OperationalTargetRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an operational target",
+)
+async def create_operational_target(
+    payload: OperationalTargetCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalTargetRead:
+    service = FieldPlanningService(session)
+    target = await service.create_target(
+        organization_id=organization_uuid(principal),
+        actor_user_id=user_uuid(principal),
+        payload=payload,
+    )
+    await session.commit()
+    return target
+
+
+@router.patch(
+    "/targets/{target_id}",
+    response_model=OperationalTargetRead,
+    summary="Update an operational target, including achieved progress",
+)
+async def update_operational_target(
+    target_id: UUID,
+    payload: OperationalTargetUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OperationalTargetRead:
+    service = FieldPlanningService(session)
+    try:
+        target = await service.update_target(
+            organization_id=organization_uuid(principal),
+            actor_user_id=user_uuid(principal),
+            target_id=target_id,
+            payload=payload,
+        )
+        await session.commit()
+        return target
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise

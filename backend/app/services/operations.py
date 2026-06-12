@@ -19,6 +19,8 @@ from app.models.operations import (
     DataQualitySignal,
     DonorReport,
     FieldVisitRequest,
+    FieldWorkPlan,
+    OperationalTargetRecord,
     InterventionRecord,
     KnowledgeDocument,
     MediaEvidence,
@@ -56,6 +58,12 @@ from app.schemas.operations import (
     EntityCategoryUpdate,
     ExportJobCreate,
     ExportJobRead,
+    FieldWorkPlanCreate,
+    FieldWorkPlanRead,
+    FieldWorkPlanUpdate,
+    OperationalTargetCreate,
+    OperationalTargetRead,
+    OperationalTargetUpdate,
     FieldVisitCheckIn,
     FieldVisitCheckOut,
     FieldVisitOutcomeReview,
@@ -3713,3 +3721,218 @@ class OperationsService:
             progress_percent=progress,
             calculated_at=datetime.now(UTC) if calculated_value is not None else None,
         )
+
+
+class FieldPlanningService:
+    """Work plans and operational targets for the Field Operations module."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.audit = AuditRepository(session)
+
+    @staticmethod
+    def _work_plan_to_read(record: FieldWorkPlan) -> FieldWorkPlanRead:
+        return FieldWorkPlanRead(
+            id=record.id,
+            created_by_user_id=record.created_by_user_id,
+            name=record.name,
+            project=record.project,
+            objectives=record.objectives,
+            locations=list(record.locations_json),
+            assigned_teams=list(record.assigned_teams_json),
+            deliverables=list(record.deliverables_json),
+            start_date=record.start_date,
+            end_date=record.end_date,
+            progress=record.progress,
+            view=record.view,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @staticmethod
+    def _target_to_read(record: OperationalTargetRecord) -> OperationalTargetRead:
+        return OperationalTargetRead(
+            id=record.id,
+            created_by_user_id=record.created_by_user_id,
+            name=record.name,
+            target_type=record.target_type,
+            project=record.project,
+            indicator=record.indicator,
+            team=record.team,
+            assigned_staff=list(record.assigned_staff_json),
+            target_value=record.target_value,
+            achieved_value=record.achieved_value,
+            deadline=record.deadline,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    async def list_work_plans(self, organization_id: UUID) -> list[FieldWorkPlanRead]:
+        result = await self.session.execute(
+            select(FieldWorkPlan)
+            .where(
+                FieldWorkPlan.organization_id == organization_id,
+                FieldWorkPlan.deleted_at.is_(None),
+            )
+            .order_by(FieldWorkPlan.created_at.desc())
+        )
+        return [self._work_plan_to_read(record) for record in result.scalars()]
+
+    async def create_work_plan(
+        self, *, organization_id: UUID, actor_user_id: UUID, payload: FieldWorkPlanCreate
+    ) -> FieldWorkPlanRead:
+        record = FieldWorkPlan(
+            organization_id=organization_id,
+            created_by_user_id=actor_user_id,
+            name=payload.name,
+            project=payload.project,
+            objectives=payload.objectives,
+            locations_json=list(payload.locations),
+            assigned_teams_json=list(payload.assigned_teams),
+            deliverables_json=list(payload.deliverables),
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            progress=0,
+            view=payload.view,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_plan.created",
+            resource_type="field_work_plan",
+            resource_id=str(record.id),
+            metadata={"name": record.name, "project": record.project},
+        )
+        return self._work_plan_to_read(record)
+
+    async def update_work_plan(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        work_plan_id: UUID,
+        payload: FieldWorkPlanUpdate,
+    ) -> FieldWorkPlanRead:
+        result = await self.session.execute(
+            select(FieldWorkPlan).where(
+                FieldWorkPlan.organization_id == organization_id,
+                FieldWorkPlan.id == work_plan_id,
+                FieldWorkPlan.deleted_at.is_(None),
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise LookupError("Work plan not found")
+        changed: list[str] = []
+        for field in ("name", "project", "objectives", "start_date", "end_date", "progress", "view"):
+            value = getattr(payload, field)
+            if value is not None and getattr(record, field) != value:
+                setattr(record, field, value)
+                changed.append(field)
+        if payload.locations is not None:
+            record.locations_json = list(payload.locations)
+            changed.append("locations")
+        if payload.assigned_teams is not None:
+            record.assigned_teams_json = list(payload.assigned_teams)
+            changed.append("assigned_teams")
+        if payload.deliverables is not None:
+            record.deliverables_json = list(payload.deliverables)
+            changed.append("deliverables")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_plan.updated",
+            resource_type="field_work_plan",
+            resource_id=str(record.id),
+            metadata={"changed_fields": changed},
+        )
+        return self._work_plan_to_read(record)
+
+    async def list_targets(self, organization_id: UUID) -> list[OperationalTargetRead]:
+        result = await self.session.execute(
+            select(OperationalTargetRecord)
+            .where(
+                OperationalTargetRecord.organization_id == organization_id,
+                OperationalTargetRecord.deleted_at.is_(None),
+            )
+            .order_by(OperationalTargetRecord.created_at.desc())
+        )
+        return [self._target_to_read(record) for record in result.scalars()]
+
+    async def create_target(
+        self, *, organization_id: UUID, actor_user_id: UUID, payload: OperationalTargetCreate
+    ) -> OperationalTargetRead:
+        record = OperationalTargetRecord(
+            organization_id=organization_id,
+            created_by_user_id=actor_user_id,
+            name=payload.name,
+            target_type=payload.target_type,
+            project=payload.project,
+            indicator=payload.indicator,
+            team=payload.team,
+            assigned_staff_json=list(payload.assigned_staff),
+            target_value=payload.target_value,
+            achieved_value=0,
+            deadline=payload.deadline,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_target.created",
+            resource_type="operational_target",
+            resource_id=str(record.id),
+            metadata={"name": record.name, "target_value": record.target_value},
+        )
+        return self._target_to_read(record)
+
+    async def update_target(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        target_id: UUID,
+        payload: OperationalTargetUpdate,
+    ) -> OperationalTargetRead:
+        result = await self.session.execute(
+            select(OperationalTargetRecord).where(
+                OperationalTargetRecord.organization_id == organization_id,
+                OperationalTargetRecord.id == target_id,
+                OperationalTargetRecord.deleted_at.is_(None),
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise LookupError("Operational target not found")
+        changed: list[str] = []
+        for field in (
+            "name",
+            "target_type",
+            "project",
+            "indicator",
+            "team",
+            "target_value",
+            "achieved_value",
+            "deadline",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(record, field) != value:
+                setattr(record, field, value)
+                changed.append(field)
+        if payload.assigned_staff is not None:
+            record.assigned_staff_json = list(payload.assigned_staff)
+            changed.append("assigned_staff")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="operational_target.updated",
+            resource_type="operational_target",
+            resource_id=str(record.id),
+            metadata={"changed_fields": changed},
+        )
+        return self._target_to_read(record)
