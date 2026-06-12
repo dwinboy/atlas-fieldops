@@ -70,6 +70,52 @@ class BeneficiaryCreate(BaseModel):
         return self
 
 
+BENEFICIARY_ENROLLMENT_STATUSES = (
+    "active",
+    "inactive",
+    "moved",
+    "exited",
+    "deceased",
+    "duplicate",
+)
+
+
+class BeneficiaryUpdate(BaseModel):
+    """Correct an entity profile after registration. The UID stays immutable
+    because submissions, assignments, and reports reference it. A reason is
+    required so every registry correction is explainable in the audit trail."""
+
+    reason: str = Field(min_length=3, max_length=500)
+    display_name: str | None = Field(default=None, min_length=2, max_length=220)
+    sex: str | None = Field(default=None, max_length=30)
+    birth_year: int | None = Field(default=None, ge=1900, le=2100)
+    phone_number: str | None = Field(default=None, max_length=40)
+    region: str | None = Field(default=None, max_length=160)
+    district: str | None = Field(default=None, max_length=160)
+    community: str | None = Field(default=None, max_length=180)
+    enrollment_status: str | None = None
+    vulnerability_score: int | None = Field(default=None, ge=0, le=100)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def validate_enrollment_status(self) -> "BeneficiaryUpdate":
+        if (
+            self.enrollment_status is not None
+            and self.enrollment_status not in BENEFICIARY_ENROLLMENT_STATUSES
+        ):
+            raise ValueError(
+                f"Enrollment status must be one of {', '.join(BENEFICIARY_ENROLLMENT_STATUSES)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def require_complete_coordinates(self) -> "BeneficiaryUpdate":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
+
+
 class BeneficiaryRead(BaseModel):
     id: UUID
     project_id: UUID | None

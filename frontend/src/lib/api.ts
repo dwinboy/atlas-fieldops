@@ -3664,6 +3664,33 @@ export async function updateEntityCategory(
   return request<EntityCategoryRead>(`/operations/entity-categories/${categoryId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export type BeneficiaryUpdate = {
+  reason: string;
+  display_name?: string;
+  sex?: string | null;
+  birth_year?: number | null;
+  phone_number?: string | null;
+  region?: string | null;
+  district?: string | null;
+  community?: string | null;
+  enrollment_status?: string;
+  vulnerability_score?: number;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+
+export async function updateBeneficiary(
+  token: string,
+  beneficiaryId: string,
+  payload: BeneficiaryUpdate,
+): Promise<BeneficiaryRead> {
+  return request<BeneficiaryRead>(`/operations/beneficiaries/${beneficiaryId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createBeneficiary(token: string, payload: BeneficiaryCreate): Promise<BeneficiaryRead> {
   return request<BeneficiaryRead>("/operations/beneficiaries", { method: "POST", token, bodyJson: payload });
 }

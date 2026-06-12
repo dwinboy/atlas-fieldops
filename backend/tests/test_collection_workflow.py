@@ -44,6 +44,7 @@ from app.services.collection import (
     form_schema_to_xlsform,
 )
 from app.schemas.operations import (
+    BeneficiaryUpdate,
     FieldWorkPlanCreate,
     FieldWorkPlanUpdate,
     IndicatorUpdate,
@@ -1497,3 +1498,72 @@ async def test_indicator_update_revises_values_and_audits() -> None:
         logs = list(audit_result.scalars())
         assert [log.action for log in logs] == ["indicator.updated"]
         assert "target_value" in logs[0].metadata_json
+
+
+@pytest.mark.asyncio
+async def test_beneficiary_update_corrects_profile_with_audited_reason() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Registry Org", slug="registry-org"),
+                User(id=actor_user_id, email="registry-manager@example.org", full_name="Registry Manager", password_hash="x"),
+            ]
+        )
+        beneficiary = Beneficiary(
+            organization_id=organization_id,
+            beneficiary_uid="FRM-2026-000001",
+            beneficiary_type="Farmer",
+            display_name="Amadou Bello",
+            phone_number="+237 600 000 001",
+            region="Northwest",
+            enrollment_status="active",
+        )
+        session.add(beneficiary)
+        await session.flush()
+
+        service = OperationsService(session)
+        updated = await service.update_beneficiary(
+            organization_id,
+            beneficiary.id,
+            BeneficiaryUpdate(
+                reason="Household relocated after verification visit",
+                phone_number="+237 600 000 099",
+                region="West",
+                enrollment_status="moved",
+            ),
+            actor_user_id,
+        )
+        assert updated.phone_number == "+237 600 000 099"
+        assert updated.region == "West"
+        assert updated.enrollment_status == "moved"
+        assert updated.beneficiary_uid == "FRM-2026-000001"
+        assert updated.display_name == "Amadou Bello"
+
+        with pytest.raises(ValidationError):
+            BeneficiaryUpdate(reason="Bad status", enrollment_status="vanished")
+
+        with pytest.raises(LookupError):
+            await service.update_beneficiary(
+                organization_id,
+                uuid4(),
+                BeneficiaryUpdate(reason="Missing entity", region="West"),
+                actor_user_id,
+            )
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "beneficiary",
+            )
+        )
+        logs = list(audit_result.scalars())
+        assert [log.action for log in logs] == ["beneficiary.updated"]
+        assert "Household relocated" in logs[0].metadata_json
+        assert "enrollment_status" in logs[0].metadata_json

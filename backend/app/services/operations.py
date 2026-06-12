@@ -37,6 +37,7 @@ from app.repositories.identity import IdentityRepository, OrganizationUnitReposi
 from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryMergeRead,
+    BeneficiaryUpdate,
     BeneficiaryMergeRequest,
     BeneficiaryRead,
     EntityDuplicateCandidateRead,
@@ -1863,6 +1864,56 @@ class OperationsService:
         await event_publisher.publish(
             "beneficiary.enrolled",
             {"organization_id": str(organization_id), "beneficiary_id": str(beneficiary.id), "type": beneficiary.beneficiary_type},
+        )
+        return beneficiary
+
+    async def update_beneficiary(
+        self,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+        payload: BeneficiaryUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> Beneficiary:
+        result = await self.session.execute(
+            select(Beneficiary).where(
+                Beneficiary.organization_id == organization_id,
+                Beneficiary.id == beneficiary_id,
+                Beneficiary.deleted_at.is_(None),
+            )
+        )
+        beneficiary = result.scalar_one_or_none()
+        if beneficiary is None:
+            raise LookupError("Entity not found")
+        changed: list[str] = []
+        for field in (
+            "display_name",
+            "sex",
+            "birth_year",
+            "phone_number",
+            "region",
+            "district",
+            "community",
+            "enrollment_status",
+            "vulnerability_score",
+            "latitude",
+            "longitude",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(beneficiary, field) != value:
+                setattr(beneficiary, field, value)
+                changed.append(field)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="beneficiary.updated",
+            resource_type="beneficiary",
+            resource_id=str(beneficiary.id),
+            metadata={
+                "beneficiary_uid": beneficiary.beneficiary_uid,
+                "changed_fields": changed,
+                "reason": payload.reason,
+            },
         )
         return beneficiary
 

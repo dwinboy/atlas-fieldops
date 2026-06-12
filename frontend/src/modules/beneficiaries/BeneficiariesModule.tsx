@@ -28,6 +28,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   createBeneficiary,
+  updateBeneficiary,
   getProjectEntities,
   governExport,
   listEntityCategories,
@@ -156,6 +157,17 @@ export function BeneficiariesModule({
   });
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerDraft, setRegisterDraft] = useState<EntityRegistrationDraft>(emptyRegistrationDraft);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editEntityId, setEditEntityId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({
+    community: "",
+    displayName: "",
+    district: "",
+    phoneNumber: "",
+    reason: "",
+    region: "",
+    status: "Active" as EntityStatus,
+  });
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const router = useRouter();
@@ -289,6 +301,35 @@ export function BeneficiariesModule({
       });
     },
   });
+  const updateEntityMutation = useMutation({
+    mutationFn: () =>
+      updateBeneficiary(token ?? "", editEntityId ?? "", {
+        reason: editDraft.reason.trim(),
+        display_name: editDraft.displayName.trim() || undefined,
+        phone_number: editDraft.phoneNumber.trim() || null,
+        region: editDraft.region.trim() || null,
+        district: editDraft.district.trim() || null,
+        community: editDraft.community.trim() || null,
+        enrollment_status: editDraft.status.toLowerCase(),
+      }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["beneficiaries", token] });
+      setEditOpen(false);
+      setEditEntityId(null);
+      pushToast({
+        title: "Entity profile updated",
+        description: `${result.display_name} (${result.beneficiary_uid}) was corrected with an audited reason.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Profile update failed",
+        description: error instanceof Error ? error.message : "The entity profile could not be updated.",
+        tone: "danger",
+      });
+    },
+  });
   const createMutation = useMutation({
     mutationFn: (payload: BeneficiaryCreate) => createBeneficiary(token ?? "", payload),
     onSuccess: async (result) => {
@@ -327,6 +368,20 @@ export function BeneficiariesModule({
   function openWorkspace(view: WorkspaceView, path?: string): void {
     setActiveView(view);
     if (path) router.push(path);
+  }
+
+  function openEditEntity(entity: BeneficiaryEntity): void {
+    setEditEntityId(entity.id);
+    setEditDraft({
+      community: entity.community,
+      displayName: entity.fullName,
+      district: entity.district,
+      phoneNumber: entity.phoneNumber ?? "",
+      reason: "",
+      region: entity.region,
+      status: entity.status,
+    });
+    setEditOpen(true);
   }
 
   function openMergeReview(duplicate?: BeneficiaryEntity): void {
@@ -722,6 +777,7 @@ export function BeneficiariesModule({
         <EntitySidePanel
           duplicates={duplicates}
           entity={selectedEntity ?? filteredEntities[0] ?? null}
+          onEdit={openEditEntity}
           linkedSubmissions={
             submissionsByEntity.get((selectedEntity ?? filteredEntities[0])?.id ?? "") ?? []
           }
@@ -755,6 +811,70 @@ export function BeneficiariesModule({
         projectOptions={projectOptions}
         saving={createMutation.isPending}
       />
+      <Modal
+        contentClassName="max-w-xl"
+        description="Correct this entity's profile. The entity ID stays fixed, and the change is recorded in the audit trail with your reason."
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) setEditEntityId(null);
+        }}
+        open={editOpen}
+        title="Edit entity profile"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium">
+            Display name
+            <Input className="mt-2" value={editDraft.displayName} onChange={(event) => setEditDraft((current) => ({ ...current, displayName: event.target.value }))} />
+          </label>
+          <label className="text-sm font-medium">
+            Phone number
+            <Input className="mt-2" value={editDraft.phoneNumber} onChange={(event) => setEditDraft((current) => ({ ...current, phoneNumber: event.target.value }))} />
+          </label>
+          <label className="text-sm font-medium">
+            Region
+            <Input className="mt-2" value={editDraft.region} onChange={(event) => setEditDraft((current) => ({ ...current, region: event.target.value }))} />
+          </label>
+          <label className="text-sm font-medium">
+            District
+            <Input className="mt-2" value={editDraft.district} onChange={(event) => setEditDraft((current) => ({ ...current, district: event.target.value }))} />
+          </label>
+          <label className="text-sm font-medium">
+            Community
+            <Input className="mt-2" value={editDraft.community} onChange={(event) => setEditDraft((current) => ({ ...current, community: event.target.value }))} />
+          </label>
+          <label className="text-sm font-medium">
+            Enrollment status
+            <Select
+              className="mt-2"
+              onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value as EntityStatus }))}
+              value={editDraft.status}
+            >
+              {["Active", "Inactive", "Moved", "Deceased", "Duplicate"].map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </Select>
+          </label>
+        </div>
+        <label className="mt-3 block text-sm font-medium">
+          Reason for correction
+          <Input
+            className="mt-2"
+            placeholder="e.g. Household relocated after verification visit"
+            value={editDraft.reason}
+            onChange={(event) => setEditDraft((current) => ({ ...current, reason: event.target.value }))}
+          />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setEditOpen(false)} variant="secondary">Cancel</Button>
+          <Button
+            disabled={!managerAccess || preview || updateEntityMutation.isPending || editDraft.reason.trim().length < 3 || !editDraft.displayName.trim()}
+            onClick={() => updateEntityMutation.mutate()}
+            variant="primary"
+          >
+            {updateEntityMutation.isPending ? "Saving…" : "Save correction"}
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -764,12 +884,14 @@ function EntitySidePanel({
   entity,
   linkedSubmissions,
   managerAccess,
+  onEdit,
   onMerge,
 }: {
   duplicates: BeneficiaryEntity[];
   entity: BeneficiaryEntity | null;
   linkedSubmissions: SubmissionRead[];
   managerAccess: boolean;
+  onEdit: (entity: BeneficiaryEntity) => void;
   onMerge: (duplicate?: BeneficiaryEntity) => void;
 }) {
   const [activeTab, setActiveTab] = useState<
@@ -798,7 +920,12 @@ function EntitySidePanel({
               {entity.entityId} · {entity.entityType}
             </p>
           </div>
-          <Badge tone={statusTone(entity.status)}>{entity.status}</Badge>
+          <div className="flex flex-col items-end gap-2">
+            <Badge tone={statusTone(entity.status)}>{entity.status}</Badge>
+            <Button disabled={!managerAccess} onClick={() => onEdit(entity)} size="sm" variant="secondary">
+              Edit profile
+            </Button>
+          </div>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <MetricButton

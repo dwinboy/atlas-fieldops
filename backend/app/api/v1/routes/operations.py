@@ -12,6 +12,7 @@ from app.schemas.auth import CurrentPrincipal
 from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryMergeRead,
+    BeneficiaryUpdate,
     BeneficiaryMergeRequest,
     BeneficiaryRead,
     BulkEditRead,
@@ -469,6 +470,35 @@ async def list_beneficiaries(
         scope_type=principal.scope_type,
     )
     return [BeneficiaryRead.model_validate(beneficiary) for beneficiary in beneficiaries]
+
+
+@router.patch(
+    "/beneficiaries/{beneficiary_id}",
+    response_model=BeneficiaryRead,
+    summary="Correct an entity profile with an audited reason",
+)
+async def update_beneficiary(
+    beneficiary_id: UUID,
+    payload: BeneficiaryUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BeneficiaryRead:
+    service = OperationsService(session)
+    try:
+        beneficiary = await service.update_beneficiary(
+            organization_uuid(principal),
+            beneficiary_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return BeneficiaryRead.model_validate(beneficiary)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.get(
