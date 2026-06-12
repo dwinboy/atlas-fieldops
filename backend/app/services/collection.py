@@ -3,6 +3,7 @@ import json
 import re
 from datetime import UTC, datetime
 from io import StringIO
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -1286,7 +1287,7 @@ class FieldOfficerService:
     async def _work_assignment_submission_counts(
         self,
         organization_id: UUID,
-        records: list[FieldWorkAssignment],
+        records: Sequence[FieldWorkAssignment],
     ) -> dict[UUID, int]:
         form_ids = {record.form_id for record in records if record.form_id is not None}
         if not form_ids:

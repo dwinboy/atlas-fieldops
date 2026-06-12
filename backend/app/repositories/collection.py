@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 from datetime import UTC, date, datetime
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -144,7 +145,9 @@ class FieldOfficerRepository:
         await self.session.flush()
         return assignment
 
-    async def list_work_assignments(self, organization_id: UUID) -> list[FieldWorkAssignment]:
+    async def list_work_assignments(
+        self, organization_id: UUID
+    ) -> "Sequence[FieldWorkAssignment]":
         result = await self.session.execute(
             select(FieldWorkAssignment)
             .where(
@@ -153,7 +156,9 @@ class FieldOfficerRepository:
             )
             .order_by(FieldWorkAssignment.created_at.desc())
         )
-        return list(result.scalars())
+        # Annotated as Sequence because this class defines a method named
+        # `list`, which shadows the builtin inside the class body.
+        return result.scalars().all()
 
     async def get_work_assignment(
         self, *, organization_id: UUID, assignment_id: UUID
