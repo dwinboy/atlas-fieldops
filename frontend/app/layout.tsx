@@ -25,6 +25,10 @@ export const metadata: Metadata = {
     "operational intelligence system"
   ],
   applicationName: "Atlas FieldOps",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
   openGraph: {
     title: "Atlas FieldOps",
     description: "Connected monitoring, evaluation, field data collection, and operational intelligence.",

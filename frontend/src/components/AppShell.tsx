@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
@@ -151,8 +152,8 @@ function OrganizationMark({
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-sm font-semibold text-primary shadow-sm">
-      {organizationInitials(name)}
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-background shadow-sm">
+      <AtlasFieldOpsLogo alt={`${name} logo`} size={34} />
     </div>
   );
 }

@@ -15,6 +15,7 @@ from app.schemas.collection import (
     ImportCleaningBulkUpdateRequest,
     ImportCleaningBulkUpdateResponse,
     ImportCleaningRowRead,
+    SpatialQualityIssueRead,
     SubmissionCreate,
     SubmissionHistoryRead,
     SubmissionRead,
@@ -67,6 +68,22 @@ async def list_submissions(
             scope_type=principal.scope_type,
             can_view_sensitive=principal_can_view_sensitive(principal),
         )
+    )
+
+
+@router.get(
+    "/spatial-flags",
+    response_model=list[SpatialQualityIssueRead],
+    summary="List submissions flagged for polygon boundary overlaps",
+)
+async def list_spatial_flags(
+    form_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[SpatialQualityIssueRead]:
+    return await SubmissionService(session).list_polygon_overlap_flags(
+        organization_id=UUID(principal.organization_id),
+        form_id=form_id,
     )
 
 

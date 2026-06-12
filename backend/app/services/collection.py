@@ -55,6 +55,7 @@ from app.schemas.collection import (
     OfficerAssignmentCreate,
     FormField,
     FormSchema,
+    SpatialQualityIssueRead,
     SubmissionRead,
     SubmissionCreate,
     SubmissionRepeatRowRead,
@@ -2450,6 +2451,84 @@ class SubmissionService:
         return await self._enrich_submissions(
             organization_id=organization_id, submissions=submissions, can_view_sensitive=can_view_sensitive
         )
+
+    async def list_polygon_overlap_flags(
+        self,
+        *,
+        organization_id: UUID,
+        form_id: UUID,
+    ) -> list[SpatialQualityIssueRead]:
+        result = await self.session.execute(
+            select(Submission, Project)
+            .outerjoin(Project, Project.id == Submission.project_id)
+            .where(
+                Submission.organization_id == organization_id,
+                Submission.form_id == form_id,
+                Submission.deleted_at.is_(None),
+            )
+            .order_by(Submission.submitted_at.desc())
+            .limit(500)
+        )
+        flagged_rows = [
+            (submission, project)
+            for submission, project in result.all()
+            if isinstance((submission.payload_json or {}).get("_spatial_flags"), dict)
+        ]
+        if not flagged_rows:
+            return []
+
+        field_officer_ids = {
+            submission.field_officer_id
+            for submission, _project in flagged_rows
+            if submission.field_officer_id is not None
+        }
+        officer_names = await self.submissions.field_officer_names(
+            organization_id=organization_id, field_officer_ids=field_officer_ids
+        )
+
+        issues: list[SpatialQualityIssueRead] = []
+        for submission, project in flagged_rows:
+            spatial_flags = submission.payload_json.get("_spatial_flags") or {}
+            polygon_overlaps = spatial_flags.get("polygonOverlaps")
+            if not isinstance(polygon_overlaps, list):
+                continue
+            for entry in polygon_overlaps:
+                if not isinstance(entry, dict):
+                    continue
+                question_id = str(entry.get("questionId") or "")
+                overlaps = entry.get("overlaps")
+                if not isinstance(overlaps, list):
+                    continue
+                for overlap in overlaps:
+                    if not isinstance(overlap, dict):
+                        continue
+                    other_id = str(overlap.get("submissionId") or "")
+                    ratio = float(overlap.get("overlapRatio") or 0.0)
+                    if ratio > 0.5:
+                        severity, validation_state = "Critical", "Failed"
+                    elif ratio > 0.1:
+                        severity, validation_state = "High", "Failed"
+                    else:
+                        severity, validation_state = "Medium", "Warning"
+                    other_label = other_id[:8] if other_id else "another submission"
+                    issues.append(
+                        SpatialQualityIssueRead(
+                            id=f"spatial-overlap-{submission.id}-{question_id}-{other_id}",
+                            issue_type="Polygon boundary overlap",
+                            submission_id=str(submission.id),
+                            enumerator=(
+                                officer_names.get(submission.field_officer_id, "Unassigned")
+                                if submission.field_officer_id
+                                else "Unassigned"
+                            ),
+                            project=project.name if project else "Unknown project",
+                            location=f"{submission.latitude:.4f}, {submission.longitude:.4f}",
+                            severity=severity,
+                            recommended_action=f"Review boundary overlap ({ratio:.0%}) with submission {other_label}.",
+                            validation_state=validation_state,
+                        )
+                    )
+        return issues
 
     async def _enrich_submissions(
         self,

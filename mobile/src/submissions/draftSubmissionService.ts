@@ -40,6 +40,10 @@ export class DraftSubmissionService {
       submittedAt: null,
       appVersion: input.appVersion ?? null,
       integritySignals: null,
+      reviewStatus: null,
+      reviewComments: null,
+      reviewedAt: null,
+      approvedAt: null,
       syncStatus: "NotSynced",
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -139,12 +143,33 @@ function locationFromResponseValue(value: unknown): MobileSubmission["location"]
     return null;
   }
   const candidate = value as {
+    type?: unknown;
+    coordinates?: unknown;
     latitude?: unknown;
     longitude?: unknown;
     altitude?: unknown;
     accuracy?: unknown;
     timestamp?: unknown;
   };
+
+  if (candidate.type === "Polygon" && Array.isArray(candidate.coordinates)) {
+    const ring = candidate.coordinates[0];
+    const firstVertex = Array.isArray(ring) ? ring[0] : null;
+    if (!Array.isArray(firstVertex)) return null;
+    const longitude = Number(firstVertex[0]);
+    const latitude = Number(firstVertex[1]);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      latitude,
+      longitude,
+      altitude: null,
+      accuracy: null,
+      timestamp: nowIso(),
+    };
+  }
+
   const latitude = Number(candidate.latitude);
   const longitude = Number(candidate.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {

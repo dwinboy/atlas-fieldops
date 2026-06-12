@@ -263,6 +263,7 @@ class FormSchema(BaseModel):
             "geolocation",
             "map",
             "geofence",
+            "polygon",
             "photo",
             "image",
             "signature",
@@ -923,8 +924,31 @@ class SubmissionRead(BaseModel):
     submitted_by_name: str | None = None
     review_quality: int | None = None
     redacted_fields: list[str] = Field(default_factory=list)
+    spatial_flags: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _populate_spatial_flags(self) -> "SubmissionRead":
+        if self.spatial_flags is None:
+            flags = self.payload_json.get("_spatial_flags")
+            if isinstance(flags, dict):
+                self.spatial_flags = flags
+        return self
+
+
+class SpatialQualityIssueRead(BaseModel):
+    id: str
+    issue_type: str = Field(alias="issueType")
+    submission_id: str = Field(alias="submissionId")
+    enumerator: str
+    project: str
+    location: str
+    severity: str
+    recommended_action: str = Field(alias="recommendedAction")
+    validation_state: str = Field(alias="validationState")
+
+    model_config = {"populate_by_name": True}
 
 
 class CorrectionLogEntryRead(BaseModel):

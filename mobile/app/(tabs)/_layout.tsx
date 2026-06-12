@@ -1,17 +1,8 @@
 import { Tabs, useRouter } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Bell, ClipboardList, FileText, Home, RefreshCw, Send } from "lucide-react-native";
 
-// Simple icon components using text/emoji placeholders (no icon lib installed)
-function TabIcon({ symbol, label, focused }: { symbol: string; label: string; focused: boolean }) {
-  return (
-    <View style={{ alignItems: "center", gap: 2, paddingTop: 4 }}>
-      <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{symbol}</Text>
-      <Text style={{ fontSize: 10, color: focused ? "#12332b" : "#8aa79b", fontWeight: focused ? "700" : "500" }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
+import { IconButton, Logo } from "@/components/ui";
+import { colors, fontFamily, spacing, typography } from "@/theme";
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -19,25 +10,31 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: "#f6faf8" },
-        headerTintColor: "#12332b",
-        headerTitleStyle: { fontWeight: "800" },
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.primary,
+        headerTitleStyle: { fontFamily: fontFamily.semibold, fontWeight: "600" },
         headerShadowVisible: false,
         tabBarStyle: {
-          backgroundColor: "white",
-          borderTopColor: "#dbe7e2",
+          backgroundColor: colors.panel,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           height: 72,
           paddingBottom: 8,
+          paddingTop: 8,
         },
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarLabelStyle: { ...typography.micro, fontFamily: fontFamily.medium, fontWeight: "500" },
+        headerLeft: () => <Logo size={28} style={{ marginLeft: spacing.lg }} />,
         headerRight: () => (
-          <Pressable
+          <IconButton
+            icon={Bell}
+            accessibilityLabel="Notifications"
+            color={colors.primary}
             onPress={() => router.push("/notifications")}
-            style={{ marginRight: 16 }}
-          >
-            <Text style={{ fontSize: 22 }}>🔔</Text>
-          </Pressable>
+            style={{ marginRight: 8 }}
+          />
         ),
       }}
     >
@@ -45,35 +42,35 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="🏠" label="Home" focused={focused} />,
+          tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="assignments"
         options={{
-          title: "Assignments",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="📋" label="Work" focused={focused} />,
+          title: "Work",
+          tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="forms"
         options={{
           title: "Forms",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="📄" label="Forms" focused={focused} />,
+          tabBarIcon: ({ color, size }) => <FileText color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="submissions"
         options={{
-          title: "Submissions",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="📤" label="Drafts" focused={focused} />,
+          title: "Drafts",
+          tabBarIcon: ({ color, size }) => <Send color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="sync"
         options={{
-          title: "Sync Center",
-          tabBarIcon: ({ focused }) => <TabIcon symbol="🔄" label="Sync" focused={focused} />,
+          title: "Sync",
+          tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size} />,
         }}
       />
     </Tabs>

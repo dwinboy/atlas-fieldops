@@ -83,6 +83,13 @@ export class FormValidationService {
     if (questionType === "Matrix") {
       return !value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0;
     }
+    if (questionType === "Polygon") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return true;
+      const polygon = value as { type?: unknown; coordinates?: unknown };
+      if (polygon.type !== "Polygon" || !Array.isArray(polygon.coordinates)) return true;
+      const ring = polygon.coordinates[0];
+      return !Array.isArray(ring) || ring.length < 4;
+    }
     if (questionType === "Audio" || questionType === "FileUpload" || questionType === "Signature") {
       if (typeof value === "string") return value.trim().length === 0;
       if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -108,8 +115,17 @@ export class FormValidationService {
     return draft.responses.some((response) => {
       const value = response.value;
       if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-      const gps = value as { latitude?: unknown; longitude?: unknown };
-      return Number.isFinite(Number(gps.latitude)) && Number.isFinite(Number(gps.longitude));
+      const candidate = value as { type?: unknown; latitude?: unknown; longitude?: unknown; coordinates?: unknown };
+      if (candidate.type === "Polygon" && Array.isArray(candidate.coordinates)) {
+        const ring = candidate.coordinates[0];
+        const firstVertex = Array.isArray(ring) ? ring[0] : null;
+        return (
+          Array.isArray(firstVertex) &&
+          Number.isFinite(Number(firstVertex[0])) &&
+          Number.isFinite(Number(firstVertex[1]))
+        );
+      }
+      return Number.isFinite(Number(candidate.latitude)) && Number.isFinite(Number(candidate.longitude));
     });
   }
 
@@ -230,6 +246,32 @@ export class FormValidationService {
       const matrix = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
       if (question.required && Object.values(matrix).some((item) => Array.isArray(item) && item.length === 0)) {
         addIssue("Complete each matrix row before submitting.", "Error", "Review each row in the matrix and choose the required response.");
+      }
+    }
+
+    if (question.type === "Polygon" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+      const polygon = value as { type?: unknown; coordinates?: unknown };
+      const ring = polygon.type === "Polygon" && Array.isArray(polygon.coordinates) ? polygon.coordinates[0] : null;
+      if (!Array.isArray(ring)) {
+        addIssue("Draw a boundary on the map.", "Error", "Tap 'Draw boundary' and add at least 3 points, then tap 'Done' to close the shape.");
+        return issues;
+      }
+
+      const minVerticesRule = question.validationRules.find((rule) => rule.ruleType === "Custom" && typeof rule.value === "string" && rule.value.startsWith("minVertices:"));
+      const minVertices = typeof minVerticesRule?.value === "string" ? Number(minVerticesRule.value.replace("minVertices:", "")) : 3;
+      const vertexCount = Math.max(0, ring.length - 1);
+      if (Number.isFinite(minVertices) && vertexCount < minVertices) {
+        addIssue(minVerticesRule?.message || `Draw a boundary with at least ${minVertices} points.`, minVerticesRule?.severity === "Warning" ? "Warning" : "Error", "Tap 'Edit boundary' and add more points before closing the shape.");
+      }
+
+      const requireClosedRule = question.validationRules.find((rule) => rule.ruleType === "Custom" && rule.value === "requireClosed:true");
+      if (requireClosedRule) {
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        const isClosed = Array.isArray(first) && Array.isArray(last) && first[0] === last[0] && first[1] === last[1];
+        if (!isClosed) {
+          addIssue(requireClosedRule.message || "The boundary must form a closed shape.", requireClosedRule.severity === "Warning" ? "Warning" : "Error", "Tap 'Edit boundary' and tap 'Done' to connect the last point back to the first.");
+        }
       }
     }
 

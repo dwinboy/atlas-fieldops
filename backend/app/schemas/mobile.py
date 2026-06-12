@@ -193,6 +193,19 @@ class MobileSubmissionRead(MobileSchema):
     event_id: str | None = None
     responses: list[dict[str, Any]] = Field(default_factory=list)
     sync_status: str = "Queued"
+    review_status: str = "pending_review"
+    review_comments: str | None = None
+    reviewed_at: datetime | None = None
+    approved_at: datetime | None = None
+
+
+class MobileSubmissionStatusRead(MobileSchema):
+    client_submission_id: str
+    status: str
+    review_status: str = "pending_review"
+    review_comments: str | None = None
+    reviewed_at: datetime | None = None
+    approved_at: datetime | None = None
 
 
 class MobileSubmissionResponseUpload(MobileSchema):
@@ -301,6 +314,7 @@ class MobileSyncPackageRead(MobileSchema):
     locations: list[MobileLocationRead] = Field(default_factory=list)
     reference_lists: list[MobileReferenceListRead] = Field(default_factory=list)
     returned_submissions: list[MobileSubmissionRead] = Field(default_factory=list)
+    submission_statuses: list[MobileSubmissionStatusRead] = Field(default_factory=list)
     notifications: list[MobileNotificationRead] = Field(default_factory=list)
 
 
@@ -324,6 +338,7 @@ class MobileAuditEventUploadRead(MobileSchema):
 class MobileActionAcceptedRead(MobileSchema):
     status: Literal["accepted"] = "accepted"
     message: str
+    server_id: str | None = None
 
 
 class MobileDeviceRegistrationCreate(MobileSchema):

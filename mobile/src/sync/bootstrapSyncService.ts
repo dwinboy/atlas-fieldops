@@ -3,6 +3,7 @@ import type { MobileSyncPackage } from "@/models/contracts";
 import { AuditEventService } from "@/services/auditEventService";
 import { LocalDatabase } from "@/storage/localDatabase";
 import { ConflictService } from "@/sync/conflictService";
+import { nowIso } from "@/utils/ids";
 
 export class BootstrapSyncService {
   constructor(
@@ -82,6 +83,18 @@ export class BootstrapSyncService {
     }
     for (const returnedSubmission of syncPackage.returnedSubmissions) {
       this.database.draftSubmissions.upsert(this.database.importServerRecord(returnedSubmission));
+    }
+    for (const submissionStatus of syncPackage.submissionStatuses) {
+      const draft = this.database.draftSubmissions.get(submissionStatus.clientSubmissionId);
+      if (!draft) continue;
+      this.database.draftSubmissions.upsert({
+        ...draft,
+        reviewStatus: submissionStatus.reviewStatus,
+        reviewComments: submissionStatus.reviewComments,
+        reviewedAt: submissionStatus.reviewedAt,
+        approvedAt: submissionStatus.approvedAt,
+        updatedAt: nowIso(),
+      });
     }
 
     this.audit.queue("mobile.bootstrap_synced", {

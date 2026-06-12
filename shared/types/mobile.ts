@@ -245,7 +245,21 @@ export type MobileQuestionType =
   | "CalculatedField"
   | "RepeatGroup"
   | "Matrix"
-  | "Ranking";
+  | "Ranking"
+  | "Nps"
+  | "Rating"
+  | "Hidden"
+  | "Polygon";
+
+export type MobilePolygonGeometry = {
+  type: "Polygon";
+  /** [ring][vertex][lng, lat] — GeoJSON coordinate order */
+  coordinates: number[][][];
+  properties?: {
+    capturedAt?: string;
+    vertexCount?: number;
+  };
+};
 
 export type MobileQuestionOption = {
   id: string;
@@ -277,6 +291,7 @@ export type MobileQuestion = {
   label: string;
   helpText: string | null;
   type: MobileQuestionType;
+  inputMode?: "phone" | "email" | "url" | null;
   required: boolean;
   readOnly: boolean;
   defaultValue: unknown;
@@ -445,6 +460,17 @@ export type DraftSubmissionStatus =
   | "Failed"
   | "ReturnedForCorrection";
 
+export type MobileReviewStatus = "pending_review" | "under_review" | "approved" | "returned";
+
+export type MobileSubmissionStatus = {
+  clientSubmissionId: string;
+  status: string;
+  reviewStatus: MobileReviewStatus;
+  reviewComments: string | null;
+  reviewedAt: ISODateTime | null;
+  approvedAt: ISODateTime | null;
+};
+
 export type MobileSubmissionResponse = {
   questionId: string;
   variableName: string;
@@ -497,6 +523,10 @@ export type MobileSubmission = LocalRecord & {
   submittedAt: ISODateTime | null;
   appVersion: string | null;
   integritySignals: MobileCollectionIntegrity | null;
+  reviewStatus: MobileReviewStatus | null;
+  reviewComments: string | null;
+  reviewedAt: ISODateTime | null;
+  approvedAt: ISODateTime | null;
 };
 
 export type MobileAttachment = LocalRecord & {
@@ -815,5 +845,6 @@ export type MobileSyncPackage = {
   locations: MobileLocation[];
   referenceLists: MobileReferenceList[];
   returnedSubmissions: MobileSubmission[];
+  submissionStatuses: MobileSubmissionStatus[];
   notifications: MobileNotification[];
 };

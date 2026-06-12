@@ -342,6 +342,47 @@ export function FAQAccordion({ items }: { items: { question: string; answer: str
   );
 }
 
+export function LegalDocument({
+  lastUpdated,
+  intro,
+  sections,
+}: {
+  lastUpdated: string;
+  intro?: ReactNode;
+  sections: { id: string; title: string; content: ReactNode }[];
+}) {
+  return (
+    <section className="px-4 pb-24 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        <p className="text-sm text-[#5b6a65]">Last updated: {lastUpdated}</p>
+        {intro ? <div className="mt-4 space-y-4 text-sm leading-6 text-[#5b6a65]">{intro}</div> : null}
+
+        <nav aria-label="Table of contents" className="mt-8 rounded-xl border border-black/10 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">On this page</p>
+          <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+            {sections.map((section) => (
+              <li key={section.id}>
+                <a className="text-sm text-[#0c1f1b] transition hover:text-[#0d9488]" href={`#${section.id}`}>
+                  {section.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        <div className="mt-8 space-y-6">
+          {sections.map((section) => (
+            <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" id={section.id} key={section.id}>
+              <h2 className="text-xl font-semibold text-[#0c1f1b]">{section.title}</h2>
+              <div className="legal-prose mt-3 space-y-3 text-sm leading-6 text-[#5b6a65]">{section.content}</div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function TrustBand() {
   return (
     <div className="mx-auto grid max-w-7xl gap-4 px-4 pb-20 sm:px-6 md:grid-cols-3 lg:px-8">

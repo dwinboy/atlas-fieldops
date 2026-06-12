@@ -13,6 +13,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -325,8 +326,8 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
       <header className="border-b bg-panel/90 px-4 py-4 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-primary/10 text-sm font-semibold text-primary">
-              AF
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-background">
+              <AtlasFieldOpsLogo size={34} />
             </span>
             <div>
               <p className="text-sm font-semibold">Atlas FieldOps</p>

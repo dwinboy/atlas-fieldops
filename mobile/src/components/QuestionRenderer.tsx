@@ -6,22 +6,31 @@ import {
   View,
 } from "react-native";
 
+import { AudioCapture, type AudioResult } from "@/components/AudioCapture";
 import { BarcodeCapture } from "@/components/BarcodeCapture";
 import { GPSCapture } from "@/components/GPSCapture";
 import { PhotoCapture } from "@/components/PhotoCapture";
+import { PolygonCapture } from "@/components/PolygonCapture";
+import { SignatureCapture, type SignatureResult } from "@/components/SignatureCapture";
+import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
+import { isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
-import type { MobileQuestion } from "@/models/contracts";
+import type {
+  MobileLogicRule,
+  MobilePolygonGeometry,
+  MobileQuestion,
+  MobileQuestionOption,
+  MobileQuestionType,
+  MobileReferenceList,
+  MobileValidationRule,
+} from "@/models/contracts";
 
-type SimpleOption = {
-  id: string;
-  label: string;
-  value: string;
-};
+export type { SimpleOption };
 
 type EvidenceReference = {
-  kind: "Audio" | "FileUpload" | "Signature";
+  kind: "FileUpload";
   reference: string;
   notes: string;
   capturedAt: string | null;
@@ -33,9 +42,19 @@ type QuestionRendererProps = {
   onAnswer: (questionId: string, variableName: string, value: unknown) => void;
   issues: FormValidationIssue[];
   visible?: boolean;
+  allResponses?: Map<string, unknown>;
+  referenceLists?: MobileReferenceList[];
 };
 
-export function QuestionRenderer({ question, value, onAnswer, issues, visible = true }: QuestionRendererProps) {
+export function QuestionRenderer({
+  question,
+  value,
+  onAnswer,
+  issues,
+  visible = true,
+  allResponses,
+  referenceLists,
+}: QuestionRendererProps) {
   if (!visible) return null;
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
@@ -73,7 +92,7 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
       </View>
 
       {/* Input by type */}
-      {renderInput(question, value, answer)}
+      {renderInput(question, value, answer, allResponses ?? new Map(), referenceLists ?? [])}
 
       {/* Validation messages */}
       {issues
@@ -100,7 +119,13 @@ export function QuestionRenderer({ question, value, onAnswer, issues, visible = 
 
 // ─── Input renderers ─────────────────────────────────────────────────────────
 
-function renderInput(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+function renderInput(
+  question: MobileQuestion,
+  value: unknown,
+  answer: (v: unknown) => void,
+  allResponses: Map<string, unknown>,
+  referenceLists: MobileReferenceList[],
+) {
   const { type } = question;
 
   // ── GPS ──────────────────────────────────────────────────────────────────
@@ -110,6 +135,24 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
         value={value as GPSResult | null}
         onChange={(r) => answer(r)}
         required={question.required}
+      />
+    );
+  }
+
+  // ── Polygon / boundary ──────────────────────────────────────────────────
+  if (type === "Polygon") {
+    const minVerticesRule = question.validationRules.find(
+      (rule) => rule.ruleType === "Custom" && typeof rule.value === "string" && rule.value.startsWith("minVertices:"),
+    );
+    const minVertices = typeof minVerticesRule?.value === "string"
+      ? Number(minVerticesRule.value.replace("minVertices:", "")) || 3
+      : 3;
+    return (
+      <PolygonCapture
+        minVertices={minVertices}
+        onChange={(r) => answer(r)}
+        required={question.required}
+        value={value as MobilePolygonGeometry | null}
       />
     );
   }
@@ -167,9 +210,18 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Single select / Dropdown ──────────────────────────────────────────────
   if (type === "SingleSelect" || type === "Dropdown") {
+    if (isCascadeBlocked(question, allResponses)) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the related question above first</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>Choices for this question depend on a previous answer.</Text>
+        </View>
+      );
+    }
+    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
     return (
       <View style={{ gap: 8 }}>
-        {question.options.map((opt) => {
+        {cascadeOptions.map((opt) => {
           const selected = String(value) === opt.value;
           return (
             <Pressable
@@ -210,10 +262,19 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Multi select ──────────────────────────────────────────────────────────
   if (type === "MultiSelect") {
+    if (isCascadeBlocked(question, allResponses)) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the related question above first</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>Choices for this question depend on a previous answer.</Text>
+        </View>
+      );
+    }
+    const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
       <View style={{ gap: 8 }}>
-        {question.options.map((opt) => {
+        {cascadeOptions.map((opt) => {
           const isSelected = selected.includes(opt.value);
           return (
             <Pressable
@@ -259,87 +320,46 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
 
   // ── Date / DateTime ───────────────────────────────────────────────────────
   if (type === "Date" || type === "DateTime") {
-    const dateValue = String(value ?? "");
     return (
-      <View style={{ gap: 8 }}>
-        <TextInput
-          onChangeText={(text) => answer(normalizeDateEntry(text, type))}
-          placeholder={type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}
-          placeholderTextColor="#b0c5bc"
-          style={inputStyle}
-          value={dateValue}
-          keyboardType="numbers-and-punctuation"
-        />
-        <Text style={{ color: "#49635a", fontSize: 12 }}>
-          Use {type === "DateTime" ? "YYYY-MM-DD HH:MM" : "YYYY-MM-DD"}. Example: {type === "DateTime" ? "2026-06-08 14:30" : "2026-06-08"}.
-        </Text>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Pressable
-            onPress={() => answer(type === "DateTime" ? nowDateTimeValue() : todayDateValue())}
-            style={smallDateButton}
-          >
-            <Text style={smallDateButtonText}>{type === "DateTime" ? "Use now" : "Use today"}</Text>
-          </Pressable>
-          {dateValue ? (
-            <Pressable onPress={() => answer("")} style={smallDateButton}>
-              <Text style={smallDateButtonText}>Clear date</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+      <DateTimeField
+        mode={type === "DateTime" ? "datetime" : "date"}
+        value={String(value ?? "")}
+        onChange={(next) => answer(next)}
+      />
     );
   }
 
   // ── Time ─────────────────────────────────────────────────────────────────
   if (type === "Time") {
-    const timeValue = String(value ?? "");
     return (
-      <View style={{ gap: 8 }}>
-        <TextInput
-          onChangeText={(text) => answer(normalizeTimeEntry(text))}
-          placeholder="HH:MM"
-          placeholderTextColor="#b0c5bc"
-          style={inputStyle}
-          value={timeValue}
-          keyboardType="numbers-and-punctuation"
-        />
-        <Text style={{ color: "#49635a", fontSize: 12 }}>
-          Use 24-hour time. Example: 14:30.
-        </Text>
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Pressable onPress={() => answer(nowTimeValue())} style={smallDateButton}>
-            <Text style={smallDateButtonText}>Use current time</Text>
-          </Pressable>
-          {timeValue ? (
-            <Pressable onPress={() => answer("")} style={smallDateButton}>
-              <Text style={smallDateButtonText}>Clear time</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+      <DateTimeField
+        mode="time"
+        value={String(value ?? "")}
+        onChange={(next) => answer(next)}
+      />
     );
   }
 
   // ── Signature ─────────────────────────────────────────────────────────────
   if (type === "Signature") {
-    return renderEvidenceReference("Signature", value, answer, {
-      icon: "✍️",
-      title: "Signature",
-      referencePlaceholder: "Enter signer full name",
-      notesPlaceholder: "Add consent/signature note if needed",
-      help: "The saved signer name acts as a signature reference for this mobile build.",
-    });
+    return (
+      <SignatureCapture
+        value={value as SignatureResult | null}
+        onChange={(result) => answer(result)}
+        required={question.required}
+      />
+    );
   }
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   if (type === "Audio") {
-    return renderEvidenceReference("Audio", value, answer, {
-      icon: "🎙",
-      title: "Audio evidence",
-      referencePlaceholder: "Enter audio file name or recorder reference",
-      notesPlaceholder: "Summarize the audio content",
-      help: "If audio recording is required, record it on the device and enter the file/reference here for supervisor review.",
-    });
+    return (
+      <AudioCapture
+        value={value as AudioResult | null}
+        onChange={(result) => answer(result)}
+        required={question.required}
+      />
+    );
   }
 
   // ── FileUpload ────────────────────────────────────────────────────────────
@@ -419,10 +439,66 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
     return renderRanking(question, value, answer);
   }
 
+  // ── Rating (stars) ───────────────────────────────────────────────────────
+  if (type === "Rating") {
+    const max = 5;
+    const current = Number(value) || 0;
+    return (
+      <View style={{ flexDirection: "row", gap: 6 }}>
+        {Array.from({ length: max }, (_, index) => index + 1).map((star) => (
+          <Pressable key={star} onPress={() => answer(star === current ? null : star)} hitSlop={6}>
+            <Text style={{ fontSize: 28, color: star <= current ? "#f59e0b" : "#dbe7e2" }}>
+              {star <= current ? "★" : "☆"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
+
+  // ── NPS (0-10 score) ─────────────────────────────────────────────────────
+  if (type === "Nps") {
+    const current = value === null || value === undefined || value === "" ? null : Number(value);
+    return (
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {Array.from({ length: 11 }, (_, score) => score).map((score) => {
+            const selected = current === score;
+            return (
+              <Pressable
+                key={score}
+                onPress={() => answer(score)}
+                style={{
+                  alignItems: "center",
+                  backgroundColor: selected ? "#12332b" : "white",
+                  borderColor: selected ? "#12332b" : "#dbe7e2",
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  height: 32,
+                  justifyContent: "center",
+                  width: 32,
+                }}
+              >
+                <Text style={{ color: selected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>{score}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: "#8aa79b", fontSize: 11 }}>Not likely</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 11 }}>Very likely</Text>
+        </View>
+      </View>
+    );
+  }
+
   // ── Default: Text ─────────────────────────────────────────────────────────
+  const inputModeProps = textInputModeProps(question.inputMode);
   return (
     <TextInput
-      autoCapitalize="sentences"
+      autoCapitalize={inputModeProps.autoCapitalize ?? "sentences"}
+      keyboardType={inputModeProps.keyboardType}
+      textContentType={inputModeProps.textContentType}
       onChangeText={(t) => answer(t)}
       placeholder="Enter answer…"
       placeholderTextColor="#b0c5bc"
@@ -431,6 +507,23 @@ function renderInput(question: MobileQuestion, value: unknown, answer: (v: unkno
       value={String(value ?? "")}
     />
   );
+}
+
+function textInputModeProps(inputMode: MobileQuestion["inputMode"]): {
+  keyboardType?: "default" | "email-address" | "phone-pad" | "url";
+  autoCapitalize?: "none" | "sentences";
+  textContentType?: "emailAddress" | "telephoneNumber" | "URL";
+} {
+  switch (inputMode) {
+    case "email":
+      return { keyboardType: "email-address", autoCapitalize: "none", textContentType: "emailAddress" };
+    case "phone":
+      return { keyboardType: "phone-pad", autoCapitalize: "none", textContentType: "telephoneNumber" };
+    case "url":
+      return { keyboardType: "url", autoCapitalize: "none", textContentType: "URL" };
+    default:
+      return {};
+  }
 }
 
 function QuestionControlHints({ question }: { question: MobileQuestion }) {
@@ -542,12 +635,12 @@ function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v:
   const minRepeats = question.repeatSettings?.minRepeats ?? null;
   const canAdd = maxRepeats === null || rows.length < maxRepeats;
 
-  function updateRow(rowIndex: number, fieldId: string, fieldValue: string) {
+  function updateRow(rowIndex: number, fieldId: string, fieldValue: unknown) {
     answer(rows.map((row, index) => index === rowIndex ? { ...row, [fieldId]: fieldValue } : row));
   }
 
   function addRow() {
-    const blank = Object.fromEntries(fields.map((field) => [field.id, ""]));
+    const blank = Object.fromEntries(fields.map((field) => [field.id, blankRepeatValue(field)]));
     answer([...rows, blank]);
   }
 
@@ -577,14 +670,10 @@ function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v:
           </View>
           {fields.map((field) => (
             <View key={field.id} style={{ gap: 4 }}>
-              <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>{field.label}</Text>
-              <TextInput
-                onChangeText={(text) => updateRow(rowIndex, field.id, text)}
-                placeholder={`Enter ${field.label.toLowerCase()}`}
-                placeholderTextColor="#b0c5bc"
-                style={inputStyle}
-                value={String(row[field.id] ?? "")}
-              />
+              <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
+                {field.label}{field.required ? " *" : ""}
+              </Text>
+              {renderRepeatFieldInput(field, row[field.id], (next) => updateRow(rowIndex, field.id, next))}
             </View>
           ))}
         </View>
@@ -732,16 +821,209 @@ function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-function repeatFields(question: MobileQuestion): SimpleOption[] {
-  const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
-  const fields = firstNonEmptyOptionList(
-    optionListFromUnknown(metadata.fields, "fields"),
-    optionListFromUnknown(metadata.questions, "questions"),
-    optionListFromUnknown(metadata.children, "children"),
+function renderRepeatFieldInput(field: MobileQuestion, value: unknown, onChange: (v: unknown) => void) {
+  const { type } = field;
+
+  if (type === "Number" || type === "Decimal" || type === "Currency") {
+    return (
+      <TextInput
+        keyboardType="numeric"
+        onChangeText={(t) => {
+          const n = type === "Number" ? parseInt(t, 10) : parseFloat(t);
+          onChange(Number.isNaN(n) ? t : n);
+        }}
+        placeholder={type === "Currency" ? "0.00" : "0"}
+        placeholderTextColor="#b0c5bc"
+        style={inputStyle}
+        value={String(value ?? "")}
+      />
+    );
+  }
+
+  if (type === "LongText") {
+    return (
+      <TextInput
+        multiline
+        onChangeText={(t) => onChange(t)}
+        placeholder={`Enter ${field.label.toLowerCase()}`}
+        placeholderTextColor="#b0c5bc"
+        style={{ ...inputStyle, minHeight: 70, textAlignVertical: "top" }}
+        value={String(value ?? "")}
+      />
+    );
+  }
+
+  if (type === "Date" || type === "DateTime") {
+    return (
+      <DateTimeField
+        mode={type === "DateTime" ? "datetime" : "date"}
+        value={String(value ?? "")}
+        onChange={(next) => onChange(next)}
+      />
+    );
+  }
+
+  if (type === "Time") {
+    return <DateTimeField mode="time" value={String(value ?? "")} onChange={(next) => onChange(next)} />;
+  }
+
+  if (type === "Consent") {
+    const checked = value === true;
+    return (
+      <Pressable
+        onPress={() => onChange(!checked)}
+        style={{
+          alignItems: "center",
+          backgroundColor: checked ? "#12332b" : "white",
+          borderColor: checked ? "#12332b" : "#dbe7e2",
+          borderRadius: 10,
+          borderWidth: 1,
+          paddingVertical: 10,
+        }}
+      >
+        <Text style={{ color: checked ? "white" : "#12332b", fontWeight: "700", fontSize: 13 }}>
+          {checked ? "✓ Yes" : "Tap to confirm"}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  if ((type === "SingleSelect" || type === "Dropdown" || type === "MultiSelect") && field.options.length > 0) {
+    const isMulti = type === "MultiSelect";
+    const selected = isMulti ? (Array.isArray(value) ? value.map(String) : []) : [String(value ?? "")];
+    return (
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {field.options.map((option) => {
+          const isSelected = selected.includes(option.value);
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => {
+                if (isMulti) {
+                  const next = isSelected
+                    ? selected.filter((item) => item !== option.value)
+                    : [...selected, option.value];
+                  onChange(next);
+                } else {
+                  onChange(option.value);
+                }
+              }}
+              style={{
+                backgroundColor: isSelected ? "#12332b" : "white",
+                borderColor: isSelected ? "#12332b" : "#dbe7e2",
+                borderRadius: 999,
+                borderWidth: 1,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: isSelected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  // ── Default: Text ─────────────────────────────────────────────────────────
+  return (
+    <TextInput
+      onChangeText={(t) => onChange(t)}
+      placeholder={`Enter ${field.label.toLowerCase()}`}
+      placeholderTextColor="#b0c5bc"
+      style={inputStyle}
+      value={String(value ?? "")}
+    />
   );
-  if (fields.length > 0) return fields;
-  if (question.options.length > 0) return question.options;
-  return [{ id: "description", label: "Description", value: "description" }];
+}
+
+function blankRepeatValue(field: MobileQuestion): unknown {
+  if (field.type === "MultiSelect") return [];
+  if (field.type === "Consent") return false;
+  return "";
+}
+
+const REPEAT_FIELD_TYPES = new Set<string>([
+  "Text",
+  "LongText",
+  "Number",
+  "Decimal",
+  "Currency",
+  "Date",
+  "Time",
+  "DateTime",
+  "SingleSelect",
+  "MultiSelect",
+  "Dropdown",
+  "Consent",
+]);
+
+function repeatFields(question: MobileQuestion): MobileQuestion[] {
+  const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
+  const rawFields = firstNonEmptyArray(metadata.fields, metadata.questions, metadata.children);
+  if (rawFields.length > 0) {
+    return rawFields.map((field, index) => normalizeRepeatField(field, question, index));
+  }
+  if (question.options.length > 0) {
+    return question.options.map((option, index) => normalizeRepeatField(option, question, index));
+  }
+  return [normalizeRepeatField({ id: "description", label: "Description" }, question, 0)];
+}
+
+function firstNonEmptyArray(...lists: unknown[]): unknown[] {
+  for (const list of lists) {
+    if (Array.isArray(list) && list.length > 0) return list;
+  }
+  return [];
+}
+
+function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: number): MobileQuestion {
+  if (isRecord(raw) && typeof raw.id === "string" && typeof raw.type === "string" && REPEAT_FIELD_TYPES.has(raw.type)) {
+    return {
+      id: raw.id,
+      sectionId: typeof raw.sectionId === "string" ? raw.sectionId : parent.id,
+      variableName: typeof raw.variableName === "string" ? raw.variableName : raw.id,
+      label: String(raw.label ?? raw.id),
+      helpText: typeof raw.helpText === "string" ? raw.helpText : null,
+      type: raw.type as MobileQuestionType,
+      required: Boolean(raw.required),
+      readOnly: Boolean(raw.readOnly),
+      defaultValue: raw.defaultValue ?? null,
+      options: Array.isArray(raw.options) ? (raw.options as MobileQuestionOption[]) : [],
+      validationRules: Array.isArray(raw.validationRules) ? (raw.validationRules as MobileValidationRule[]) : [],
+      logicRules: Array.isArray(raw.logicRules) ? (raw.logicRules as MobileLogicRule[]) : [],
+      referenceListId: typeof raw.referenceListId === "string" ? raw.referenceListId : null,
+      cascadingParentQuestionId: null,
+      sensitive: Boolean(raw.sensitive),
+      repeatSettings: null,
+      order: typeof raw.order === "number" ? raw.order : index + 1,
+    };
+  }
+
+  // Legacy `{id,label,value}` option shape — render as a plain text field.
+  const id = isRecord(raw) ? String(raw.id ?? raw.value ?? raw.label ?? `field_${index + 1}`) : String(raw || `field_${index + 1}`);
+  const label = isRecord(raw) ? String(raw.label ?? raw.name ?? id) : String(raw || id);
+  return {
+    id,
+    sectionId: parent.id,
+    variableName: id,
+    label,
+    helpText: null,
+    type: "Text",
+    required: false,
+    readOnly: false,
+    defaultValue: null,
+    options: [],
+    validationRules: [],
+    logicRules: [],
+    referenceListId: null,
+    cascadingParentQuestionId: null,
+    sensitive: false,
+    repeatSettings: null,
+    order: index + 1,
+  };
 }
 
 function matrixMetadata(question: MobileQuestion): { rows: SimpleOption[]; columns: SimpleOption[]; multi: boolean } {
@@ -797,56 +1079,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeDateEntry(text: string, type: MobileQuestion["type"]): string {
-  const normalized = text.trim();
-  if (!normalized) return "";
-  const dateOnly = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dateOnly) {
-    const [, day, month, year] = dateOnly;
-    return `${year}-${pad2(month)}-${pad2(day)}`;
-  }
-  const dateWithTime = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})$/);
-  if (dateWithTime && type === "DateTime") {
-    const [, day, month, year, hour, minute] = dateWithTime;
-    return `${year}-${pad2(month)}-${pad2(day)} ${pad2(hour)}:${minute}`;
-  }
-  return text;
-}
-
-function normalizeTimeEntry(text: string): string {
-  const normalized = text.trim();
-  if (!normalized) return "";
-  const compact = normalized.match(/^(\d{1,2})(\d{2})$/);
-  if (compact) {
-    const [, hour, minute] = compact;
-    return `${pad2(hour)}:${minute}`;
-  }
-  const withSeparator = normalized.match(/^(\d{1,2})[:.](\d{2})$/);
-  if (withSeparator) {
-    const [, hour, minute] = withSeparator;
-    return `${pad2(hour)}:${minute}`;
-  }
-  return text;
-}
-
-function pad2(value: string): string {
-  return value.padStart(2, "0");
-}
-
-function todayDateValue(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function nowDateTimeValue(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function nowTimeValue(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
 const inputStyle = {
   backgroundColor: "#f6faf8",
   borderColor: "#dbe7e2",
@@ -855,21 +1087,6 @@ const inputStyle = {
   color: "#12332b",
   fontSize: 15,
   padding: 14,
-} as const;
-
-const smallDateButton = {
-  backgroundColor: "#f0f5f3",
-  borderColor: "#dbe7e2",
-  borderRadius: 10,
-  borderWidth: 1,
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-} as const;
-
-const smallDateButtonText = {
-  color: "#12332b",
-  fontSize: 12,
-  fontWeight: "700",
 } as const;
 
 const emptySubCard = {

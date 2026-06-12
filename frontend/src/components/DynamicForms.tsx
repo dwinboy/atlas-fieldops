@@ -38,6 +38,7 @@ import {
   GripVertical,
   Grid3X3,
   Hash,
+  Hexagon,
   History,
   Layers3,
   ListFilter,
@@ -165,6 +166,7 @@ const fieldTypeIcons: Record<FieldType, typeof Type> = {
   geolocation: MapPin,
   map: MapPin,
   geofence: MapPin,
+  polygon: Hexagon,
   photo: Camera,
   image: Camera,
   signature: Type,
@@ -1520,6 +1522,7 @@ function createPreviewSubmissionRows(form: DynamicForm): SubmissionRead[] {
       "geolocation",
       "map",
       "geofence",
+      "polygon",
       "photo",
       "image",
       "file",
@@ -1601,7 +1604,7 @@ function createPreviewQualityFlags(
     ),
   ).length;
   const gpsCount = form.fields.filter((field) =>
-    ["gps", "geolocation", "map", "geofence"].includes(field.type),
+    ["gps", "geolocation", "map", "geofence", "polygon"].includes(field.type),
   ).length;
   const reviewCount = submissions.filter((submission) =>
     ["submitted", "under_review", "correction_requested"].includes(
@@ -1925,6 +1928,25 @@ function FieldInputPreview({ field }: { field: FormField }) {
     return (
       <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
         {["Latitude", "Longitude", "Accuracy", "Timestamp"].map((label) => (
+          <span
+            className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (field.type === "polygon") {
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+        {[
+          `Min vertices: ${field.polygon?.minVertices ?? 3}`,
+          field.polygon?.requireClosed === false ? "Open shape allowed" : "Closed shape required",
+          field.polygon?.overlapCheck === false ? "Overlap check off" : "Overlap check on",
+        ].map((label) => (
           <span
             className="rounded-md border bg-panel px-3 py-2 text-muted-foreground"
             key={label}
@@ -5248,6 +5270,7 @@ export function DynamicForms({
         "geolocation",
         "map",
         "geofence",
+        "polygon",
         "photo",
         "image",
         "video",
@@ -13828,6 +13851,66 @@ export function DynamicForms({
                             }
                           />
                         </label>
+                      ) : null}
+                      {selectedField.type === "polygon" ? (
+                        <div className="grid gap-3 rounded-md border bg-background p-3 sm:grid-cols-2">
+                          <label className="block text-sm font-medium">
+                            Minimum vertices
+                            <Input
+                              className="mt-2"
+                              type="number"
+                              min={3}
+                              value={selectedField.polygon?.minVertices ?? 3}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      minVertices:
+                                        event.target.value === ""
+                                          ? undefined
+                                          : Number(event.target.value),
+                                    },
+                                  }),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                              checked={selectedField.polygon?.requireClosed ?? true}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      requireClosed: event.target.checked,
+                                    },
+                                  }),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            Require closed shape
+                          </label>
+                          <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                              checked={selectedField.polygon?.overlapCheck ?? true}
+                              onChange={(event) =>
+                                updateSelectedForm(
+                                  updateField(selectedForm, selectedField.id, {
+                                    polygon: {
+                                      ...selectedField.polygon,
+                                      overlapCheck: event.target.checked,
+                                    },
+                                  }),
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            Flag overlapping boundaries
+                          </label>
+                        </div>
                       ) : null}
                       {[
                         "photo",

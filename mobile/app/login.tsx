@@ -3,22 +3,25 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "ex
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AuthService } from "@/auth/authService";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
+import { Button, Card, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
 
 const authService = new AuthService(new ExpoSecureSessionStore());
+const atlasLogo = require("../assets/atlas-fieldops-logo.png");
 type LoginMode = "password" | "qr";
 
 function messageIsError(message: string) {
@@ -94,35 +97,30 @@ export default function LoginScreen() {
   }
 
   const isErrorMessage = message ? messageIsError(message) : false;
+  const messageTone = isErrorMessage ? tone("warning") : tone("success");
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ gap: 8, marginBottom: 32 }}>
-            <Text style={{ color: "#12332b", fontSize: 30, fontWeight: "800", letterSpacing: -0.5 }}>
-              Atlas FieldOps
-            </Text>
-            <Text style={{ color: "#49635a", fontSize: 15 }}>
-              Sign in to access your assigned field work.
-            </Text>
+          <View style={styles.header}>
+            <Image
+              accessibilityLabel="Atlas FieldOps logo"
+              resizeMode="contain"
+              source={atlasLogo}
+              style={styles.logo}
+            />
+            <View style={{ alignItems: "center", gap: 4 }}>
+              <Text style={styles.title}>Atlas FieldOps</Text>
+              <Text style={styles.subtitle}>Sign in to access your assigned field work.</Text>
+            </View>
           </View>
 
-          <View style={{
-            backgroundColor: "white",
-            borderColor: "#dbe7e2",
-            borderRadius: 20,
-            borderWidth: 1,
-            gap: 12,
-            padding: 20,
-          }}>
-            <View style={{ backgroundColor: "#f6faf8", borderRadius: 14, flexDirection: "row", gap: 4, padding: 4 }}>
+          <Card padding="lg" style={{ gap: spacing.md }}>
+            <View style={styles.modeSwitch}>
               {(["password", "qr"] as LoginMode[]).map((item) => (
                 <Pressable
                   key={item}
@@ -131,15 +129,9 @@ export default function LoginScreen() {
                     setMessage("");
                     setQrScanned(false);
                   }}
-                  style={{
-                    alignItems: "center",
-                    backgroundColor: mode === item ? "#12332b" : "transparent",
-                    borderRadius: 10,
-                    flex: 1,
-                    padding: 10,
-                  }}
+                  style={[styles.modeButton, mode === item ? styles.modeButtonActive : null]}
                 >
-                  <Text style={{ color: mode === item ? "white" : "#49635a", fontSize: 13, fontWeight: "800" }}>
+                  <Text style={[styles.modeButtonText, mode === item ? styles.modeButtonTextActive : null]}>
                     {item === "password" ? "Password" : "Scan QR code"}
                   </Text>
                 </Pressable>
@@ -148,155 +140,87 @@ export default function LoginScreen() {
 
             {mode === "password" ? (
               <>
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Organization code</Text>
-                  <TextInput
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    onChangeText={setOrgSlug}
-                    placeholder="e.g. acme-ngo"
-                    placeholderTextColor="#b0c5bc"
-                    style={inputStyle}
-                    value={orgSlug}
-                  />
-                </View>
+                <Input
+                  label="Organization code"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setOrgSlug}
+                  placeholder="e.g. acme-ngo"
+                  value={orgSlug}
+                />
+                <Input
+                  label="Email"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  value={email}
+                />
+                <Input
+                  label="Password"
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  secureTextEntry
+                  value={password}
+                />
 
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Email</Text>
-                  <TextInput
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    onChangeText={setEmail}
-                    placeholder="you@example.com"
-                    placeholderTextColor="#b0c5bc"
-                    style={inputStyle}
-                    value={email}
-                  />
-                </View>
-
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>Password</Text>
-                  <TextInput
-                    onChangeText={setPassword}
-                    placeholder="••••••••"
-                    placeholderTextColor="#b0c5bc"
-                    secureTextEntry
-                    style={inputStyle}
-                    value={password}
-                  />
-                </View>
-
-                <Pressable
-                  disabled={isLoading}
-                  onPress={handleLogin}
-                  style={{
-                    alignItems: "center",
-                    backgroundColor: isLoading ? "#8aa79b" : "#12332b",
-                    borderRadius: 14,
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    marginTop: 4,
-                    minHeight: 52,
-                    padding: 14,
-                    gap: 10,
-                  }}
-                >
-                  {isLoading && <ActivityIndicator color="white" size="small" />}
-                  <Text style={{ color: "white", fontWeight: "800", fontSize: 16 }}>
-                    {isLoading ? "Signing in…" : "Sign in"}
-                  </Text>
-                </Pressable>
+                <Button variant="primary" size="lg" loading={isLoading} onPress={handleLogin} style={{ marginTop: spacing.xs }}>
+                  {isLoading ? "Signing in…" : "Sign in"}
+                </Button>
               </>
             ) : (
-              <View style={{ gap: 12 }}>
-                <Text style={{ color: "#49635a", fontSize: 14, lineHeight: 20 }}>
+              <View style={{ gap: spacing.md }}>
+                <Text style={styles.qrHelp}>
                   Scan the mobile QR code from your field officer profile. Ask your supervisor or manager to open your profile if you do not have the code.
                 </Text>
                 {cameraPermission?.granted ? (
-                  <View style={{ borderColor: "#dbe7e2", borderRadius: 16, borderWidth: 1, height: 280, overflow: "hidden" }}>
+                  <View style={styles.cameraFrame}>
                     <CameraView
                       barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
                       onBarcodeScanned={qrScanned || isLoading ? undefined : handleBarcodeScanned}
                       style={{ flex: 1 }}
                     />
-                    <View style={{
-                      alignSelf: "center",
-                      borderColor: "rgba(255,255,255,0.9)",
-                      borderRadius: 18,
-                      borderWidth: 3,
-                      height: 180,
-                      position: "absolute",
-                      top: 50,
-                      width: 180,
-                    }} />
+                    <View style={styles.cameraReticle} />
                   </View>
                 ) : (
-                  <View style={{ backgroundColor: "#f6faf8", borderColor: "#dbe7e2", borderRadius: 16, borderWidth: 1, gap: 10, padding: 16 }}>
-                    <Text style={{ color: "#12332b", fontSize: 15, fontWeight: "800" }}>Camera permission needed</Text>
-                    <Text style={{ color: "#49635a", fontSize: 14, lineHeight: 20 }}>
+                  <Card tone="neutral" padding="lg" style={{ gap: spacing.sm }}>
+                    <Text style={styles.cameraTitle}>Camera permission needed</Text>
+                    <Text style={styles.qrHelp}>
                       Atlas FieldOps needs camera access only to scan your login QR code.
                     </Text>
-                    <Pressable
+                    <Button
+                      variant="primary"
                       onPress={() => {
                         void requestCameraPermission();
                       }}
-                      style={{
-                        alignItems: "center",
-                        backgroundColor: "#12332b",
-                        borderRadius: 14,
-                        minHeight: 48,
-                        justifyContent: "center",
-                        padding: 12,
-                      }}
                     >
-                      <Text style={{ color: "white", fontWeight: "800" }}>Allow camera</Text>
-                    </Pressable>
-                  </View>
+                      Allow camera
+                    </Button>
+                  </Card>
                 )}
                 {qrScanned ? (
-                  <Pressable
+                  <Button
+                    variant="secondary"
                     disabled={isLoading}
                     onPress={() => {
                       setQrScanned(false);
                       setMessage("");
                     }}
-                    style={{
-                      alignItems: "center",
-                      borderColor: "#dbe7e2",
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      minHeight: 48,
-                      justifyContent: "center",
-                      padding: 12,
-                    }}
                   >
-                    <Text style={{ color: "#12332b", fontWeight: "800" }}>Scan again</Text>
-                  </Pressable>
+                    Scan again
+                  </Button>
                 ) : null}
               </View>
             )}
-          </View>
+          </Card>
 
           {message ? (
-            <View style={{
-              backgroundColor: isErrorMessage ? "#fff7ed" : "#f0fdf4",
-              borderColor: isErrorMessage ? "#fed7aa" : "#bbf7d0",
-              borderRadius: 12,
-              borderWidth: 1,
-              marginTop: 16,
-              padding: 14,
-            }}>
-              <Text style={{
-                color: isErrorMessage ? "#9a3412" : "#15803d",
-                fontSize: 14,
-                fontWeight: "600",
-              }}>
-                {message}
-              </Text>
+            <View style={[styles.messageBanner, { backgroundColor: messageTone.bg, borderColor: messageTone.border }]}>
+              <Text style={[styles.messageText, { color: messageTone.fg }]}>{message}</Text>
             </View>
           ) : null}
 
-          <Text style={{ color: "#8aa79b", fontSize: 12, marginTop: 24, textAlign: "center" }}>
+          <Text style={styles.footerHint}>
             Contact your supervisor for your organization code and credentials.
           </Text>
         </ScrollView>
@@ -305,12 +229,100 @@ export default function LoginScreen() {
   );
 }
 
-const inputStyle = {
-  backgroundColor: "#f6faf8",
-  borderColor: "#dbe7e2",
-  borderRadius: 12,
-  borderWidth: 1,
-  color: "#12332b",
-  fontSize: 15,
-  padding: 14,
-} as const;
+const styles = StyleSheet.create({
+  cameraFrame: {
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    height: 280,
+    overflow: "hidden",
+  },
+  cameraReticle: {
+    alignSelf: "center",
+    borderColor: "rgba(255,255,255,0.9)",
+    borderRadius: 18,
+    borderWidth: 3,
+    height: 180,
+    position: "absolute",
+    top: 50,
+    width: 180,
+  },
+  cameraTitle: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  footerHint: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    marginTop: spacing["2xl"],
+    textAlign: "center",
+  },
+  header: {
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing["3xl"],
+  },
+  logo: {
+    height: 86,
+    width: 86,
+  },
+  messageBanner: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+  },
+  messageText: {
+    ...typography.body,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  modeButton: {
+    alignItems: "center",
+    borderRadius: radii.md,
+    flex: 1,
+    padding: spacing.sm,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  modeButtonText: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  modeButtonTextActive: {
+    color: colors.primaryForeground,
+  },
+  modeSwitch: {
+    backgroundColor: colors.muted,
+    borderRadius: radii.lg,
+    flexDirection: "row",
+    gap: spacing.xs,
+    padding: spacing.xs,
+  },
+  qrHelp: {
+    ...typography.body,
+    color: colors.mutedForeground,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.mutedForeground,
+  },
+  title: {
+    ...typography.display,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+});

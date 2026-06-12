@@ -1,28 +1,31 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AlertTriangle, ChevronRight, MapPin, Phone, Search, UserSearch, X } from "lucide-react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge, Card, EmptyState, IconButton, Input } from "@/components/ui";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileEntity } from "@/models/contracts";
 import { useAppContext } from "@/context/AppContext";
+import { colors, fontFamily, radii, spacing, tone, type Tone, typography } from "@/theme";
 
 const dataCollection = new DataCollectionSessionService(localDatabase);
 
 const OTHER_RESULTS_LIMIT = 15;
 const MIN_BROAD_SEARCH_LENGTH = 2;
 
-const STATUS_TONES: Record<MobileEntity["status"], { bg: string; fg: string }> = {
-  Active: { bg: "#d7efe7", fg: "#0f766e" },
-  Inactive: { bg: "#f1f5f9", fg: "#475569" },
-  Deceased: { bg: "#f1f5f9", fg: "#475569" },
-  Moved: { bg: "#fef3c7", fg: "#92400e" },
-  Duplicate: { bg: "#fee2e2", fg: "#b91c1c" },
-  Archived: { bg: "#f1f5f9", fg: "#475569" },
+const STATUS_TONE: Record<MobileEntity["status"], Tone> = {
+  Active: "success",
+  Inactive: "neutral",
+  Deceased: "neutral",
+  Moved: "warning",
+  Duplicate: "danger",
+  Archived: "neutral",
 };
 
-const AVATAR_PALETTE = ["#12332b", "#0f766e", "#1d4ed8", "#7c3aed", "#b45309"];
+const AVATAR_PALETTE = [colors.primary, colors.info, colors.warning, colors.danger, colors.accent];
 
 export default function EntitySelectScreen() {
   const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
@@ -116,12 +119,13 @@ export default function EntitySelectScreen() {
 
   if (!assignment) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8", padding: 20 }}>
-        <View style={warnCard}>
-          <Text style={{ color: "#9a3412", fontWeight: "800" }}>Assignment not found</Text>
-          <Text style={{ color: "#9a3412", marginTop: 6, fontSize: 13 }}>
-            Sync your assigned work and try again.
-          </Text>
+      <SafeAreaView style={styles.screen} edges={["bottom"]}>
+        <View style={{ padding: spacing.lg }}>
+          <EmptyState
+            icon={AlertTriangle}
+            title="Assignment not found"
+            description="Sync your assigned work and try again."
+          />
         </View>
       </SafeAreaView>
     );
@@ -132,85 +136,63 @@ export default function EntitySelectScreen() {
     : "No form";
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-        {/* Context card */}
-        <View style={{
-          backgroundColor: "#12332b",
-          borderRadius: 16,
-          padding: 16,
-          gap: 4,
-        }}>
-          <Text style={{ color: "white", fontWeight: "800", fontSize: 16 }}>{formName}</Text>
-          <Text style={{ color: "#d7efe7", fontSize: 13 }}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Card tone="primary" padding="lg" style={{ gap: 4 }}>
+          <Text style={styles.contextTitle}>{formName}</Text>
+          <Text style={styles.contextSubtitle}>
             Select the {entityType} you are visiting to begin data collection.
           </Text>
-          <Text style={{ color: "#d7efe7", fontSize: 12, marginTop: 4 }}>
+          <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.85 }]}>
             {assignment.entityIds.length} {entityType}(s) assigned to this survey
           </Text>
-        </View>
+        </Card>
 
-        {/* Search */}
         <View>
-          <TextInput
+          <Search size={18} color={colors.mutedForeground} style={styles.searchIcon} />
+          <Input
             autoCapitalize="none"
             clearButtonMode="while-editing"
             onChangeText={setSearch}
-            placeholder="Search by name, ID, phone, household, or village…"
-            placeholderTextColor="#b0c5bc"
-            style={{
-              backgroundColor: "white",
-              borderColor: "#dbe7e2",
-              borderRadius: 12,
-              borderWidth: 1,
-              color: "#12332b",
-              fontSize: 15,
-              padding: 12,
-              paddingRight: search.length > 0 ? 40 : 12,
-            }}
+            placeholder={`Search by name, ID, phone, household, or village…`}
             value={search}
+            style={styles.searchInput}
           />
           {search.length > 0 ? (
-            <Pressable
+            <IconButton
+              icon={X}
               accessibilityLabel="Clear search"
-              hitSlop={10}
+              size={16}
               onPress={() => setSearch("")}
-              style={{ position: "absolute", right: 10, top: 0, bottom: 0, justifyContent: "center" }}
-            >
-              <Text style={{ color: "#8aa79b", fontSize: 16, fontWeight: "800" }}>✕</Text>
-            </Pressable>
+              style={styles.clearButton}
+            />
           ) : null}
         </View>
-        <Text style={{ color: "#8aa79b", fontSize: 12, marginTop: -6 }}>
+        <Text style={styles.hint}>
           {isBroadSearch
             ? "Showing records assigned to you, plus other matches from your synced data."
             : "Showing records assigned to you. Keep typing to search all synced records."}
         </Text>
 
         {error ? (
-          <View style={warnCard}>
-            <Text style={{ color: "#9a3412", fontWeight: "700" }}>{error}</Text>
-          </View>
+          <Card tone="warning" padding="md">
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
         ) : null}
 
-        {/* Assigned entities */}
-        <SectionHeader
-          title={`Assigned ${entityType}s`}
-          count={assignedEntities.length}
-        />
+        <ListSectionHeader title={`Assigned ${entityType}s`} count={assignedEntities.length} />
         {assignedEntities.length === 0 ? (
-          <View style={warnCard}>
-            <Text style={{ color: "#9a3412", fontWeight: "800" }}>
-              {isSearching ? `No assigned ${entityType}s match your search` : `No ${entityType}s assigned yet`}
-            </Text>
-            <Text style={{ color: "#9a3412", marginTop: 6, fontSize: 13 }}>
-              {isSearching
+          <EmptyState
+            icon={UserSearch}
+            title={isSearching ? `No assigned ${entityType}s match your search` : `No ${entityType}s assigned yet`}
+            description={
+              isSearching
                 ? isBroadSearch
                   ? "Check the other matches below, or refine your search."
                   : "Try a different search term, or type at least 2 characters to search all synced records."
-                : "Sync assigned work or ask your supervisor to assign beneficiaries."}
-            </Text>
-          </View>
+                : "Sync assigned work or ask your supervisor to assign beneficiaries."
+            }
+          />
         ) : (
           assignedEntities.map((entity) => (
             <EntityCard
@@ -222,10 +204,9 @@ export default function EntitySelectScreen() {
           ))
         )}
 
-        {/* Other matches from the broader local dataset */}
         {isBroadSearch && otherEntitiesShown.length > 0 ? (
           <>
-            <SectionHeader
+            <ListSectionHeader
               title="Other matches"
               count={otherEntities.length > OTHER_RESULTS_LIMIT ? `${OTHER_RESULTS_LIMIT}+` : otherEntitiesShown.length}
               hint={`Not part of this assignment — confirm it's the right ${entityType} before using it.`}
@@ -240,7 +221,7 @@ export default function EntitySelectScreen() {
               />
             ))}
             {otherEntitiesTruncated ? (
-              <Text style={{ color: "#8aa79b", fontSize: 12, textAlign: "center" }}>
+              <Text style={styles.footer}>
                 Showing the first {OTHER_RESULTS_LIMIT} matches. Refine your search to narrow results.
               </Text>
             ) : null}
@@ -248,28 +229,25 @@ export default function EntitySelectScreen() {
         ) : null}
 
         {noResultsAtAll ? (
-          <View style={warnCard}>
-            <Text style={{ color: "#9a3412", fontWeight: "800" }}>No {entityType}s found</Text>
-            <Text style={{ color: "#9a3412", marginTop: 6, fontSize: 13 }}>
-              Double-check the spelling, or sync to download the latest records.
-            </Text>
-          </View>
+          <EmptyState
+            icon={UserSearch}
+            title={`No ${entityType}s found`}
+            description="Double-check the spelling, or sync to download the latest records."
+          />
         ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SectionHeader({ title, count, hint }: { title: string; count: number | string; hint?: string }) {
+function ListSectionHeader({ title, count, hint }: { title: string; count: number | string; hint?: string }) {
   return (
-    <View style={{ marginTop: 4 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-        <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5 }}>
-          {title}
-        </Text>
-        <Text style={{ color: "#8aa79b", fontSize: 12, fontWeight: "700" }}>{count}</Text>
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Badge label={String(count)} tone="neutral" />
       </View>
-      {hint ? <Text style={{ color: "#8aa79b", fontSize: 12, marginTop: 2 }}>{hint}</Text> : null}
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -288,71 +266,52 @@ function EntityCard({
   const location = [entity.location?.village, entity.location?.community, entity.location?.district]
     .filter(Boolean)
     .join(", ") || "No location";
-  const statusTone = STATUS_TONES[entity.status] ?? STATUS_TONES.Active;
+  const statusTone = STATUS_TONE[entity.status] ?? "neutral";
   const avatarColor = AVATAR_PALETTE[hashString(entity.entityUid || entity.id) % AVATAR_PALETTE.length];
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        backgroundColor: "white",
-        borderColor: "#dbe7e2",
-        borderRadius: 16,
-        borderWidth: 1,
-        padding: 16,
-        gap: 8,
-      }}
-    >
-      <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: avatarColor,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text style={{ color: "white", fontWeight: "800", fontSize: 14 }}>{initials(entity.name)}</Text>
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 15, flexShrink: 1 }}>
-              <HighlightedText text={entity.name || "Unnamed"} query={query} />
-            </Text>
-            <View style={{ backgroundColor: statusTone.bg, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ color: statusTone.fg, fontWeight: "700", fontSize: 11 }}>{entity.status}</Text>
-            </View>
+    <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
+      <Card padding="lg" style={{ gap: spacing.sm }}>
+        <View style={styles.cardHeaderRow}>
+          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+            <Text style={styles.avatarLabel}>{initials(entity.name)}</Text>
           </View>
-          <Text style={{ color: "#49635a", fontSize: 13 }}>
-            ID: <HighlightedText text={entity.entityUid} query={query} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.entityName} numberOfLines={1}>
+                <HighlightedText text={entity.name || "Unnamed"} query={query} />
+              </Text>
+              <Badge label={entity.status} tone={statusTone} />
+            </View>
+            <Text style={styles.entityMeta}>
+              ID: <HighlightedText text={entity.entityUid} query={query} />
+            </Text>
+          </View>
+        </View>
+
+        {tag ? <Badge label={tag} tone="warning" /> : null}
+
+        {entity.phone ? (
+          <View style={styles.metaRow}>
+            <Phone size={14} color={colors.mutedForeground} />
+            <Text style={styles.entityMeta}><HighlightedText text={entity.phone} query={query} /></Text>
+          </View>
+        ) : null}
+        <View style={styles.metaRow}>
+          <MapPin size={14} color={colors.mutedForeground} />
+          <Text style={styles.entityMeta}><HighlightedText text={location} query={query} /></Text>
+        </View>
+        {entity.householdId ? (
+          <Text style={styles.entityMicro}>
+            Household: <HighlightedText text={entity.householdId} query={query} />
           </Text>
-        </View>
-      </View>
+        ) : null}
 
-      {tag ? (
-        <View style={{ alignSelf: "flex-start", backgroundColor: "#fff7ed", borderColor: "#fed7aa", borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Text style={{ color: "#9a3412", fontWeight: "700", fontSize: 11 }}>{tag}</Text>
+        <View style={styles.startRow}>
+          <Text style={styles.startLabel}>Tap to start form</Text>
+          <ChevronRight size={16} color={colors.primary} />
         </View>
-      ) : null}
-
-      {entity.phone ? (
-        <Text style={{ color: "#49635a", fontSize: 13 }}>
-          📞 <HighlightedText text={entity.phone} query={query} />
-        </Text>
-      ) : null}
-      <Text style={{ color: "#49635a", fontSize: 13 }}>
-        📍 <HighlightedText text={location} query={query} />
-      </Text>
-      {entity.householdId ? (
-        <Text style={{ color: "#8aa79b", fontSize: 12 }}>
-          Household: <HighlightedText text={entity.householdId} query={query} />
-        </Text>
-      ) : null}
-      <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13, marginTop: 6 }}>
-        Tap to start form →
-      </Text>
+      </Card>
     </Pressable>
   );
 }
@@ -362,10 +321,11 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   const lower = text.toLowerCase();
   const index = lower.indexOf(query);
   if (index === -1) return <Text>{text}</Text>;
+  const highlight = tone("warning");
   return (
     <Text>
       {text.slice(0, index)}
-      <Text style={{ backgroundColor: "#fef08a", color: "#713f12", fontWeight: "800" }}>
+      <Text style={{ backgroundColor: highlight.bg, color: highlight.fg, fontWeight: "800" }}>
         {text.slice(index, index + query.length)}
       </Text>
       {text.slice(index + query.length)}
@@ -389,10 +349,129 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
-const warnCard = {
-  backgroundColor: "#fff7ed",
-  borderColor: "#fed7aa",
-  borderRadius: 14,
-  borderWidth: 1,
-  padding: 14,
-} as const;
+const styles = StyleSheet.create({
+  avatar: {
+    alignItems: "center",
+    borderRadius: radii.full,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  avatarLabel: {
+    ...typography.small,
+    color: colors.primaryForeground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "800",
+  },
+  cardHeaderRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  cardTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+  clearButton: {
+    height: 32,
+    position: "absolute",
+    right: spacing.xs,
+    top: 7,
+    width: 32,
+  },
+  contextSubtitle: {
+    ...typography.small,
+    color: colors.primaryForeground,
+  },
+  contextTitle: {
+    ...typography.headingSm,
+    color: colors.primaryForeground,
+    fontFamily: fontFamily.semibold,
+  },
+  content: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  entityMeta: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  entityMicro: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+  },
+  entityName: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    flexShrink: 1,
+    fontFamily: fontFamily.semibold,
+  },
+  errorText: {
+    ...typography.small,
+    color: tone("warning").fg,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  footer: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    textAlign: "center",
+  },
+  hint: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    marginTop: -spacing.xs,
+  },
+  metaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  searchIcon: {
+    left: spacing.md,
+    position: "absolute",
+    top: 14,
+    zIndex: 1,
+  },
+  searchInput: {
+    paddingLeft: spacing["2xl"] + spacing.xs,
+    paddingRight: spacing["2xl"] + spacing.xs,
+  },
+  sectionHeader: {
+    gap: 2,
+    marginTop: spacing.xs,
+  },
+  sectionHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  sectionTitle: {
+    ...typography.micro,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  startLabel: {
+    ...typography.small,
+    color: colors.primary,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  startRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2,
+    justifyContent: "flex-end",
+    marginTop: 2,
+  },
+});

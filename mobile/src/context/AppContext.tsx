@@ -56,7 +56,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         networkService.setOnline();
         setIsOnline(true);
         if (session?.accessToken) {
-          runSyncQueue(session.accessToken).catch(() => {});
+          runSyncQueue().catch(() => {});
         }
       }
       if (nextState.match(/inactive|background/)) {
@@ -77,11 +77,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  async function runSyncQueue(token: string) {
+  async function runSyncQueue() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const engine = new SyncEngine(localDatabase, networkService, async () => token);
+      const engine = new SyncEngine(localDatabase, networkService, async () => {
+        const current = await authService.currentSession();
+        if (current && current.accessToken !== session?.accessToken) {
+          setSessionState(current);
+        }
+        return current?.accessToken ?? null;
+      });
       const result = await engine.syncNow("Automatic");
       if (result.synced > 0 || result.failed > 0) {
         setLastSyncMessage(result.message);
@@ -115,7 +121,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const syncQueue = useCallback(async () => {
     if (!session?.accessToken) return;
-    await runSyncQueue(session.accessToken);
+    await runSyncQueue();
     setLastSyncMessage(lastSyncMessage || "Queue sync complete.");
   }, [session, lastSyncMessage]);
 

@@ -27,6 +27,7 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { DynamicForms } from "@/components/DynamicForms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -448,7 +449,10 @@ function MobileFormPreview({
       )}
     >
       <div className="flex items-center justify-between border-b bg-foreground px-4 py-2 text-[11px] font-semibold text-background">
-        <span>Atlas FieldOps</span>
+        <span className="flex items-center gap-1.5">
+          <AtlasFieldOpsLogo size={16} />
+          Atlas FieldOps
+        </span>
         <span>Preview</span>
       </div>
       <div className="max-h-[72vh] overflow-y-auto bg-muted/30 p-3 product-scrollbar">

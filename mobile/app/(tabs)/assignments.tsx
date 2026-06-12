@@ -1,12 +1,15 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ClipboardList, Folder, MapPin, BarChart3, ChevronRight } from "lucide-react-native";
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileAssignment } from "@/models/contracts";
+import { colors, fontFamily, spacing, typography } from "@/theme";
 
 const dataCollection = new DataCollectionSessionService(localDatabase);
 
@@ -64,29 +67,24 @@ export default function AssignmentsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
       <ScrollView
-        contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }}
-        refreshControl={
-          <RefreshControl refreshing={isSyncing} onRefresh={syncWork} tintColor="#12332b" />
-        }
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncWork} tintColor={colors.primary} />}
       >
-        <TextInput
+        <Input
           autoCapitalize="none"
           onChangeText={setSearch}
           placeholder="Search assignments…"
-          placeholderTextColor="#b0c5bc"
-          style={searchInput}
           value={search}
         />
 
         {assignments.length === 0 ? (
-          <View style={emptyCard}>
-            <Text style={{ color: "#9a3412", fontWeight: "800", fontSize: 15 }}>No assigned work on this device</Text>
-            <Text style={{ color: "#9a3412", marginTop: 6, fontSize: 13 }}>
-              Ask your supervisor to assign a published project form, then pull down to sync.
-            </Text>
-          </View>
+          <EmptyState
+            icon={ClipboardList}
+            title="No assigned work on this device"
+            description="Ask your supervisor to assign a published project form, then pull down to sync."
+          />
         ) : (
           assignments.map((assignment) => {
             const isReady = Boolean(assignment.formId && assignment.formVersionId);
@@ -95,79 +93,92 @@ export default function AssignmentsScreen() {
               : `${assignment.completedCount} record(s) collected`;
 
             return (
-              <Pressable
-                key={assignment.localId}
-                onPress={() => openAssignment(assignment)}
-                style={{
-                  backgroundColor: "white",
-                  borderColor: isReady ? "#dbe7e2" : "#fed7aa",
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 16,
-                  gap: 4,
-                }}
-              >
-                <Text style={{ color: "#12332b", fontSize: 16, fontWeight: "800" }}>
-                  {formName(assignment.formId)}
-                </Text>
-                <Text style={{ color: "#49635a", fontSize: 13 }}>
-                  📁 {projectName(assignment.projectId)}
-                </Text>
-                <Text style={{ color: "#49635a", fontSize: 13 }}>📊 {progress}</Text>
-                {assignment.locationIds?.length > 0 ? (
-                  <Text style={{ color: "#49635a", fontSize: 13 }}>📍 {assignment.locationIds[0]}</Text>
-                ) : null}
-
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
-                  <View style={{
-                    backgroundColor: isReady ? "#d7efe7" : "#fff7ed",
-                    borderRadius: 20,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                  }}>
-                    <Text style={{
-                      color: isReady ? "#0f766e" : "#9a3412",
-                      fontWeight: "700",
-                      fontSize: 12,
-                    }}>
-                      {isReady ? "Ready" : "Waiting for form"}
-                    </Text>
+              <Pressable key={assignment.localId} onPress={() => openAssignment(assignment)}>
+                <Card padding="lg" tone={isReady ? "neutral" : "warning"} style={{ gap: spacing.xs }}>
+                  <Text style={styles.formName}>{formName(assignment.formId)}</Text>
+                  <View style={styles.metaRow}>
+                    <Folder size={14} color={colors.mutedForeground} />
+                    <Text style={styles.metaText}>{projectName(assignment.projectId)}</Text>
                   </View>
-                  {isReady && (
-                    <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 13 }}>
-                      Tap to start →
-                    </Text>
-                  )}
-                </View>
+                  <View style={styles.metaRow}>
+                    <BarChart3 size={14} color={colors.mutedForeground} />
+                    <Text style={styles.metaText}>{progress}</Text>
+                  </View>
+                  {assignment.locationIds?.length > 0 ? (
+                    <View style={styles.metaRow}>
+                      <MapPin size={14} color={colors.mutedForeground} />
+                      <Text style={styles.metaText}>{assignment.locationIds[0]}</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.footerRow}>
+                    <Badge label={isReady ? "Ready" : "Waiting for form"} tone={isReady ? "success" : "warning"} />
+                    {isReady && (
+                      <View style={styles.startRow}>
+                        <Text style={styles.startLabel}>Tap to start</Text>
+                        <ChevronRight size={16} color={colors.primary} />
+                      </View>
+                    )}
+                  </View>
+                </Card>
               </Pressable>
             );
           })
         )}
 
         {assignments.length > 0 && (
-          <Text style={{ color: "#8aa79b", fontSize: 12, textAlign: "center" }}>
-            {assignments.length} assignment(s) • Pull down to sync latest work
-          </Text>
+          <Text style={styles.summary}>{assignments.length} assignment(s) • Pull down to sync latest work</Text>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const searchInput = {
-  backgroundColor: "white",
-  borderColor: "#dbe7e2",
-  borderRadius: 12,
-  borderWidth: 1,
-  color: "#12332b",
-  fontSize: 15,
-  padding: 12,
-} as const;
-
-const emptyCard = {
-  backgroundColor: "#fff7ed",
-  borderColor: "#fed7aa",
-  borderRadius: 16,
-  borderWidth: 1,
-  padding: 16,
-} as const;
+const styles = StyleSheet.create({
+  content: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  footerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+    marginTop: spacing.sm,
+  },
+  formName: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  metaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  metaText: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  startLabel: {
+    ...typography.small,
+    color: colors.primary,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  startRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2,
+  },
+  summary: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    textAlign: "center",
+  },
+});

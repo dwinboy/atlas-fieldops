@@ -1,14 +1,25 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  ClipboardList,
+  Save,
+  User,
+} from "lucide-react-native";
 import {
   Alert,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Button, Card, EmptyState } from "@/components/ui";
 import { QuestionRenderer } from "@/components/QuestionRenderer";
 import { useAppContext } from "@/context/AppContext";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
@@ -17,7 +28,9 @@ import { LogicEngine } from "@/forms/logicEngine";
 import type { FormValidationIssue } from "@/forms/formValidationService";
 import { FieldIntegrityService } from "@/services/fieldIntegrityService";
 import { localDatabase } from "@/storage/localDatabase";
-import type { MobileCollectionIntegrity, MobileFormSection, MobileFormVersion, MobileQuestion, MobileSubmission } from "@/models/contracts";
+import { isCascadeBlocked, resolveQuestionOptions } from "@/forms/optionResolver";
+import type { MobileCollectionIntegrity, MobileFormSection, MobileFormVersion, MobileQuestion, MobileReferenceList, MobileSubmission } from "@/models/contracts";
+import { colors, fontFamily, radii, spacing, tone, type Tone, typography } from "@/theme";
 
 const dataCollection = new DataCollectionSessionService(localDatabase);
 const validationService = new FormValidationService();
@@ -97,11 +110,80 @@ export default function FormFillScreen() {
     [draft, refreshKey],
   );
 
+  const referenceLists: MobileReferenceList[] = useMemo(
+    () => localDatabase.referenceLists.list(),
+    [refreshKey],
+  );
+
+  const allResponses = useMemo(
+    () => new Map<string, unknown>((draft?.responses ?? []).map((r) => [r.questionId, r.value])),
+    [draft, refreshKey],
+  );
+
+  const allQuestions: MobileQuestion[] = useMemo(
+    () => (formVersion?.sections ?? []).flatMap((section) => section.questions),
+    [formVersion],
+  );
+
+  useEffect(() => {
+    if (!draftId || !draft) return;
+    let didUpdate = false;
+    for (const question of allQuestions) {
+      if (question.type !== "CalculatedField" && String(question.type) !== "Calculated") continue;
+      const calculated = logicState[question.id]?.calculatedValue ?? null;
+      if (calculated === null) continue;
+      const current = draft.responses.find((r) => r.questionId === question.id)?.value;
+      if (calculated !== current) {
+        dataCollection.answerQuestion(draftId, question.id, question.variableName, calculated);
+        didUpdate = true;
+      }
+    }
+    if (didUpdate) {
+      setRefreshKey((k) => k + 1);
+    }
+  }, [draft, draftId, allQuestions, logicState]);
+
   function handleAnswer(questionId: string, variableName: string, value: unknown) {
     if (!draftId) return;
-    dataCollection.answerQuestion(draftId, questionId, variableName, value);
+    const updated = dataCollection.answerQuestion(draftId, questionId, variableName, value);
+    clearInvalidatedCascades(updated, questionId);
     setReviewMode(false);
     setRefreshKey((k) => k + 1);
+  }
+
+  function clearInvalidatedCascades(draftState: MobileSubmission, changedQuestionId: string): void {
+    if (!draftId) return;
+    let current = draftState;
+    let queue = [changedQuestionId];
+
+    while (queue.length > 0) {
+      const nextQueue: string[] = [];
+      const responses = new Map(current.responses.map((r) => [r.questionId, r.value]));
+
+      for (const parentId of queue) {
+        const children = allQuestions.filter((q) => q.cascadingParentQuestionId === parentId);
+        for (const child of children) {
+          const childValue = responses.get(child.id);
+          if (childValue === undefined || childValue === null || childValue === "") continue;
+          if (isCascadeBlocked(child, responses)) {
+            current = dataCollection.answerQuestion(draftId, child.id, child.variableName, "");
+            nextQueue.push(child.id);
+            continue;
+          }
+          const validOptions = resolveQuestionOptions(child, responses, referenceLists);
+          const validValues = new Set(validOptions.map((opt) => opt.value));
+          const stillValid = Array.isArray(childValue)
+            ? childValue.every((item) => validValues.has(String(item)))
+            : validValues.has(String(childValue));
+          if (!stillValid) {
+            current = dataCollection.answerQuestion(draftId, child.id, child.variableName, "");
+            nextQueue.push(child.id);
+          }
+        }
+      }
+
+      queue = nextQueue;
+    }
   }
 
   function handleNext() {
@@ -173,12 +255,13 @@ export default function FormFillScreen() {
 
   if (!draft || !form || !formVersion) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8", padding: 20 }}>
-        <View style={{ backgroundColor: "#fff7ed", borderColor: "#fed7aa", borderRadius: 14, borderWidth: 1, padding: 16 }}>
-          <Text style={{ color: "#9a3412", fontWeight: "800" }}>Form draft not found</Text>
-          <Text style={{ color: "#9a3412", fontSize: 13, marginTop: 6 }}>
-            Sync assigned work and start the assignment again.
-          </Text>
+      <SafeAreaView style={styles.screen} edges={["bottom"]}>
+        <View style={{ padding: spacing.lg }}>
+          <EmptyState
+            icon={AlertTriangle}
+            title="Form draft not found"
+            description="Sync assigned work and start the assignment again."
+          />
         </View>
       </SafeAreaView>
     );
@@ -193,266 +276,188 @@ export default function FormFillScreen() {
 
   if (reviewMode) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }}>
-        <View style={{
-          backgroundColor: "#12332b",
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 16,
-          gap: 8,
-        }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Pressable onPress={() => setReviewMode(false)} style={{ padding: 4 }}>
-              <Text style={{ color: "#d7efe7", fontWeight: "700", fontSize: 15 }}>‹ Back</Text>
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <Pressable onPress={() => setReviewMode(false)} style={styles.headerAction} hitSlop={8}>
+              <ChevronLeft size={18} color={colors.primaryForeground} />
+              <Text style={styles.headerActionLabel}>Back</Text>
             </Pressable>
-            <Text style={{ color: "white", fontWeight: "800", fontSize: 15, flex: 1, textAlign: "center" }} numberOfLines={1}>
-              Review submission
-            </Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>Review submission</Text>
             <View style={{ width: 64 }} />
           </View>
-          <Text style={{ color: "#d7efe7", fontSize: 12, textAlign: "center" }}>
-            Saved on this device {formatRelativeSave(draft.updatedAt)}
-          </Text>
+          <Text style={styles.headerSubtitle}>Saved on this device {formatRelativeSave(draft.updatedAt)}</Text>
         </View>
 
-        <ScrollView contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 28 }}>
-          <View style={reviewCard}>
-            <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 16 }}>{form.name}</Text>
-            <Text style={{ color: "#49635a", fontSize: 13, marginTop: 4 }}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Card padding="lg">
+            <Text style={styles.cardTitle}>{form.name}</Text>
+            <Text style={styles.cardSubtitle}>
               Check this summary before saving the record to the sync queue.
             </Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-              <ReviewPill label="Complete" value={`${progress.percent}%`} tone={progress.percent >= 100 ? "ok" : "warn"} />
-              <ReviewPill label="Answered" value={`${progress.answered}/${progress.total}`} tone="neutral" />
-              <ReviewPill label="Errors" value={String(reviewSummary.errorCount)} tone={reviewSummary.errorCount ? "bad" : "ok"} />
-              <ReviewPill label="Integrity" value={`${integrity.score}%`} tone={integrity.riskLevel === "High" ? "bad" : integrity.riskLevel === "Medium" ? "warn" : "ok"} />
+            <View style={styles.pillRow}>
+              <ReviewPill label="Complete" value={`${progress.percent}%`} pillTone={progress.percent >= 100 ? "ok" : "warn"} />
+              <ReviewPill label="Answered" value={`${progress.answered}/${progress.total}`} pillTone="neutral" />
+              <ReviewPill label="Errors" value={String(reviewSummary.errorCount)} pillTone={reviewSummary.errorCount ? "bad" : "ok"} />
+              <ReviewPill label="Integrity" value={`${integrity.score}%`} pillTone={integrity.riskLevel === "High" ? "bad" : integrity.riskLevel === "Medium" ? "warn" : "ok"} />
             </View>
-          </View>
+          </Card>
 
-          <View style={reviewCard}>
-            <Text style={reviewTitle}>Field checks</Text>
-            {reviewSummary.rows.map((row) => (
-              <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 7, borderBottomColor: "#f0f5f3", borderBottomWidth: 1 }}>
-                <Text style={{ color: "#49635a", flex: 1 }}>{row.label}</Text>
-                <Text style={{ color: row.tone === "bad" ? "#b42318" : row.tone === "warn" ? "#9a3412" : "#12332b", fontWeight: "800", textAlign: "right", flex: 1 }}>
+          <Card padding="lg">
+            <Text style={[styles.cardTitle, { marginBottom: spacing.sm }]}>Field checks</Text>
+            {reviewSummary.rows.map((row, index) => (
+              <View key={row.label} style={[styles.checkRow, index === reviewSummary.rows.length - 1 ? styles.checkRowLast : null]}>
+                <Text style={styles.checkLabel}>{row.label}</Text>
+                <Text style={[styles.checkValue, { color: pillToneColor(row.tone) }]}>
                   {row.value}
                 </Text>
               </View>
             ))}
-          </View>
+          </Card>
 
           {allIssues.length > 0 ? (
-            <View style={reviewCard}>
-              <Text style={reviewTitle}>Questions needing attention</Text>
-              {allIssues.map((issue) => (
-                <Pressable
-                  key={`${issue.questionId}-${issue.message}`}
-                  onPress={() => {
-                    const targetSectionIndex = sections.findIndex((section) =>
-                      section.questions.some((question) => question.id === issue.questionId),
-                    );
-                    if (targetSectionIndex >= 0) setSectionIndex(targetSectionIndex);
-                    setReviewMode(false);
-                  }}
-                  style={{
-                    backgroundColor: issue.severity === "Error" ? "#fee2e2" : "#fff7ed",
-                    borderRadius: 10,
-                    padding: 10,
-                    gap: 3,
-                    marginTop: 8,
-                  }}
-                >
-                  <Text style={{ color: issue.severity === "Error" ? "#b42318" : "#9a3412", fontWeight: "800" }}>{issue.label}</Text>
-                  <Text style={{ color: issue.severity === "Error" ? "#7f1d1d" : "#9a3412", fontSize: 12 }}>{issue.message}</Text>
-                  {issue.fixHint ? <Text style={{ color: "#49635a", fontSize: 12 }}>Fix: {issue.fixHint}</Text> : null}
-                  <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "700" }}>Tap to edit this answer →</Text>
-                </Pressable>
-              ))}
-            </View>
+            <Card padding="lg" style={{ gap: spacing.sm }}>
+              <Text style={styles.cardTitle}>Questions needing attention</Text>
+              {allIssues.map((issue) => {
+                const issueTone = tone(issue.severity === "Error" ? "danger" : "warning");
+                return (
+                  <Pressable
+                    key={`${issue.questionId}-${issue.message}`}
+                    onPress={() => {
+                      const targetSectionIndex = sections.findIndex((section) =>
+                        section.questions.some((question) => question.id === issue.questionId),
+                      );
+                      if (targetSectionIndex >= 0) setSectionIndex(targetSectionIndex);
+                      setReviewMode(false);
+                    }}
+                    style={[styles.issueRow, { backgroundColor: issueTone.bg }]}
+                  >
+                    <Text style={[styles.issueTitle, { color: issueTone.fg }]}>{issue.label}</Text>
+                    <Text style={[styles.issueMessage, { color: issueTone.fg }]}>{issue.message}</Text>
+                    {issue.fixHint ? <Text style={styles.issueHint}>Fix: {issue.fixHint}</Text> : null}
+                    <View style={styles.issueLinkRow}>
+                      <Text style={styles.issueLink}>Tap to edit this answer</Text>
+                      <ChevronRight size={14} color={colors.primary} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </Card>
           ) : (
-            <View style={{ ...reviewCard, backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }}>
-              <Text style={{ color: "#0f766e", fontWeight: "800" }}>Ready to queue</Text>
-              <Text style={{ color: "#49635a", fontSize: 13, marginTop: 4 }}>
-                This submission will stay safe on this device and upload when Sync is available.
-              </Text>
-            </View>
+            <Card tone="success" padding="lg" style={styles.readyCard}>
+              <CircleCheck size={20} color={tone("success").fg} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[styles.cardTitle, { color: tone("success").fg }]}>Ready to queue</Text>
+                <Text style={styles.cardSubtitle}>
+                  This submission will stay safe on this device and upload when Sync is available.
+                </Text>
+              </View>
+            </Card>
           )}
 
-          <View style={reviewCard}>
-            <Text style={reviewTitle}>Integrity signals for supervisor</Text>
+          <Card padding="lg" style={{ gap: spacing.sm }}>
+            <Text style={styles.cardTitle}>Integrity signals for supervisor</Text>
             {integrity.signals.length === 0 ? (
-              <Text style={{ color: "#49635a", fontSize: 13 }}>
+              <Text style={styles.cardSubtitle}>
                 No unusual field-work signals detected. Supervisors will still review according to the project workflow.
               </Text>
             ) : (
-              integrity.signals.map((signal) => (
-                <View
-                  key={signal.code}
-                  style={{
-                    backgroundColor: signal.severity === "Critical" ? "#fee2e2" : "#fff7ed",
-                    borderRadius: 10,
-                    gap: 3,
-                    marginTop: 8,
-                    padding: 10,
-                  }}
-                >
-                  <Text style={{ color: signal.severity === "Critical" ? "#b42318" : "#9a3412", fontWeight: "800" }}>
-                    {signal.severity}: {signal.code.replaceAll("_", " ")}
-                  </Text>
-                  <Text style={{ color: "#49635a", fontSize: 12 }}>{signal.message}</Text>
-                </View>
-              ))
+              integrity.signals.map((signal) => {
+                const signalTone = tone(signal.severity === "Critical" ? "danger" : "warning");
+                return (
+                  <View key={signal.code} style={[styles.signalRow, { backgroundColor: signalTone.bg }]}>
+                    <Text style={[styles.issueTitle, { color: signalTone.fg }]}>
+                      {signal.severity}: {signal.code.replaceAll("_", " ")}
+                    </Text>
+                    <Text style={[styles.issueMessage, { color: signalTone.fg }]}>{signal.message}</Text>
+                  </View>
+                );
+              })
             )}
-          </View>
+          </Card>
         </ScrollView>
 
-        <View style={{
-          backgroundColor: "white",
-          borderTopColor: "#dbe7e2",
-          borderTopWidth: 1,
-          flexDirection: "row",
-          gap: 12,
-          padding: 16,
-          paddingBottom: 24,
-        }}>
-          <Pressable
-            onPress={() => setReviewMode(false)}
-            style={{
-              flex: 1,
-              backgroundColor: "white",
-              borderColor: "#dbe7e2",
-              borderRadius: 14,
-              borderWidth: 1,
-              alignItems: "center",
-              paddingVertical: 14,
-            }}
-          >
-            <Text style={{ color: "#12332b", fontWeight: "700" }}>Edit answers</Text>
-          </Pressable>
-          <Pressable
+        <View style={styles.footer}>
+          <Button variant="secondary" onPress={() => setReviewMode(false)} style={{ flex: 1 }}>
+            Edit answers
+          </Button>
+          <Button
+            variant="primary"
             disabled={reviewSummary.errorCount > 0}
             onPress={handleSubmit}
-            style={{
-              flex: 1,
-              backgroundColor: reviewSummary.errorCount > 0 ? "#b0c5bc" : "#12332b",
-              borderRadius: 14,
-              alignItems: "center",
-              paddingVertical: 14,
-            }}
+            rightIcon={<CircleCheck size={18} color={colors.primaryForeground} />}
+            style={{ flex: 1 }}
           >
-            <Text style={{ color: "white", fontWeight: "800", fontSize: 15 }}>
-              Queue for sync
-            </Text>
-          </Pressable>
+            Queue for sync
+          </Button>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }}>
-      {/* Header */}
-      <View style={{
-        backgroundColor: "#12332b",
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 16,
-        gap: 10,
-      }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Pressable onPress={handleBack} style={{ padding: 4 }}>
-            <Text style={{ color: "#d7efe7", fontWeight: "700", fontSize: 15 }}>‹ Back</Text>
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <Pressable onPress={handleBack} style={styles.headerAction} hitSlop={8}>
+            <ChevronLeft size={18} color={colors.primaryForeground} />
+            <Text style={styles.headerActionLabel}>Back</Text>
           </Pressable>
-          <Text style={{ color: "white", fontWeight: "800", fontSize: 15, flex: 1, textAlign: "center" }} numberOfLines={1}>
-            {form.name}
-          </Text>
-          <Pressable onPress={confirmDiscard} style={{ padding: 4 }}>
-            <Text style={{ color: "#d7efe7", fontWeight: "700", fontSize: 13 }}>Save & exit</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{form.name}</Text>
+          <Pressable onPress={confirmDiscard} style={styles.headerAction} hitSlop={8}>
+            <Save size={16} color={colors.primaryForeground} />
+            <Text style={styles.headerActionLabel}>Save & exit</Text>
           </Pressable>
         </View>
 
-        {entityName && (
-          <Text style={{ color: "#d7efe7", fontSize: 13, textAlign: "center" }}>
-            👤 {entityName}
-          </Text>
-        )}
+        {entityName ? (
+          <View style={styles.entityRow}>
+            <User size={14} color={colors.primaryForeground} />
+            <Text style={styles.headerSubtitle}>{entityName}</Text>
+          </View>
+        ) : null}
 
-        <Text style={{ color: "#d7efe7", fontSize: 12, textAlign: "center" }}>
-          Saved on this device {formatRelativeSave(draft.updatedAt)}
-        </Text>
+        <Text style={styles.headerSubtitle}>Saved on this device {formatRelativeSave(draft.updatedAt)}</Text>
 
-        {/* Progress bar */}
-        <View style={{ gap: 4 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: "#d7efe7", fontSize: 12 }}>
+        <View style={{ gap: spacing.xs }}>
+          <View style={styles.progressLabelRow}>
+            <Text style={styles.headerSubtitle}>
               Section {sectionIndex + 1} of {sections.length}
             </Text>
-            <Text style={{ color: "#d7efe7", fontSize: 12 }}>
+            <Text style={styles.headerSubtitle}>
               {progress.percent}% complete
             </Text>
           </View>
-          <View style={{ backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 4, height: 6 }}>
-            <View style={{
-              backgroundColor: "white",
-              borderRadius: 4,
-              height: 6,
-              width: `${progress.percent}%`,
-            }} />
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress.percent}%` }]} />
           </View>
         </View>
       </View>
 
-      {/* Section header */}
-      {currentSection && (
-        <View style={{
-          backgroundColor: "#f0fdf4",
-          borderBottomColor: "#dbe7e2",
-          borderBottomWidth: 1,
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-        }}>
-          <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 16 }}>
-            {currentSection.title}
-          </Text>
+      {currentSection ? (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{currentSection.title}</Text>
           {currentSection.description ? (
-            <Text style={{ color: "#49635a", fontSize: 13, marginTop: 2 }}>
-              {currentSection.description}
-            </Text>
+            <Text style={styles.sectionDescription}>{currentSection.description}</Text>
           ) : null}
         </View>
-      )}
+      ) : null}
 
-      {/* Section-level errors */}
-      {submitAttempted && sectionIssues.filter((i) => i.severity === "Error").length > 0 && (
-        <View style={{
-          backgroundColor: "#fee2e2",
-          borderColor: "#fca5a5",
-          borderWidth: 1,
-          marginHorizontal: 16,
-          marginTop: 12,
-          borderRadius: 12,
-          padding: 12,
-        }}>
-          <Text style={{ color: "#b42318", fontWeight: "700" }}>
+      {submitAttempted && sectionIssues.filter((i) => i.severity === "Error").length > 0 ? (
+        <Card tone="danger" padding="md" style={styles.sectionErrorCard}>
+          <AlertTriangle size={16} color={tone("danger").fg} />
+          <Text style={[styles.sectionErrorText, { color: tone("danger").fg }]}>
             {sectionIssues.filter((i) => i.severity === "Error").length} question(s) need attention before you can submit.
           </Text>
-        </View>
-      )}
+        </Card>
+      ) : null}
 
-      {/* Questions */}
       <ScrollView
-        contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 24 }}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
         {currentQuestions.length === 0 ? (
-          <View style={{
-            alignItems: "center",
-            paddingVertical: 40,
-            gap: 8,
-          }}>
-            <Text style={{ fontSize: 36 }}>📋</Text>
-            <Text style={{ color: "#49635a", fontWeight: "700" }}>No questions in this section</Text>
-          </View>
+          <EmptyState icon={ClipboardList} title="No questions in this section" />
         ) : (
           currentQuestions.map((q) => {
             const state = logicState[q.id];
@@ -465,67 +470,44 @@ export default function FormFillScreen() {
                 onAnswer={handleAnswer}
                 issues={submitAttempted ? allIssues.filter((i) => i.questionId === q.id) : []}
                 visible={visible}
+                allResponses={allResponses}
+                referenceLists={referenceLists}
               />
             );
           })
         )}
       </ScrollView>
 
-      {/* Navigation footer */}
-      <View style={{
-        backgroundColor: "white",
-        borderTopColor: "#dbe7e2",
-        borderTopWidth: 1,
-        flexDirection: "row",
-        gap: 12,
-        padding: 16,
-        paddingBottom: 24,
-      }}>
-        {sectionIndex > 0 && (
-          <Pressable
+      <View style={styles.footer}>
+        {sectionIndex > 0 ? (
+          <Button
+            variant="secondary"
+            leftIcon={<ChevronLeft size={18} color={colors.foreground} />}
             onPress={() => setSectionIndex((i) => i - 1)}
-            style={{
-              flex: 1,
-              backgroundColor: "white",
-              borderColor: "#dbe7e2",
-              borderRadius: 14,
-              borderWidth: 1,
-              alignItems: "center",
-              paddingVertical: 14,
-            }}
+            style={{ flex: 1 }}
           >
-            <Text style={{ color: "#12332b", fontWeight: "700" }}>‹ Previous</Text>
-          </Pressable>
-        )}
+            Previous
+          </Button>
+        ) : null}
 
         {isLastSection ? (
-          <Pressable
+          <Button
+            variant="primary"
+            rightIcon={<CircleCheck size={18} color={colors.primaryForeground} />}
             onPress={openReview}
-            style={{
-              flex: 1,
-              backgroundColor: "#12332b",
-              borderRadius: 14,
-              alignItems: "center",
-              paddingVertical: 14,
-            }}
+            style={{ flex: 1 }}
           >
-            <Text style={{ color: "white", fontWeight: "800", fontSize: 15 }}>
-              Review submission ✓
-            </Text>
-          </Pressable>
+            Review submission
+          </Button>
         ) : (
-          <Pressable
+          <Button
+            variant="primary"
+            rightIcon={<ChevronRight size={18} color={colors.primaryForeground} />}
             onPress={handleNext}
-            style={{
-              flex: 1,
-              backgroundColor: "#12332b",
-              borderRadius: 14,
-              alignItems: "center",
-              paddingVertical: 14,
-            }}
+            style={{ flex: 1 }}
           >
-            <Text style={{ color: "white", fontWeight: "800" }}>Next section ›</Text>
-          </Pressable>
+            Next section
+          </Button>
         )}
       </View>
     </SafeAreaView>
@@ -619,32 +601,228 @@ function formatRelativeSave(iso: string): string {
   return `${hours} hour${hours === 1 ? "" : "s"} ago`;
 }
 
-function ReviewPill({ label, value, tone }: { label: string; value: string; tone: "ok" | "warn" | "bad" | "neutral" }) {
-  const colors = {
-    ok: { bg: "#d7efe7", text: "#0f766e" },
-    warn: { bg: "#fff7ed", text: "#9a3412" },
-    bad: { bg: "#fee2e2", text: "#b42318" },
-    neutral: { bg: "#f0f5f3", text: "#49635a" },
-  }[tone];
+type PillTone = "ok" | "warn" | "bad" | "neutral";
+
+function pillToneToTone(value: PillTone): Tone {
+  switch (value) {
+    case "ok": return "success";
+    case "warn": return "warning";
+    case "bad": return "danger";
+    default: return "neutral";
+  }
+}
+
+function pillToneColor(value: PillTone): string {
+  return tone(pillToneToTone(value)).fg;
+}
+
+function ReviewPill({ label, value, pillTone }: { label: string; value: string; pillTone: PillTone }) {
+  const t = tone(pillToneToTone(pillTone));
   return (
-    <View style={{ backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
-      <Text style={{ color: colors.text, fontSize: 11, fontWeight: "700" }}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: 15, fontWeight: "800" }}>{value}</Text>
+    <View style={[styles.pill, { backgroundColor: t.bg }]}>
+      <Text style={[styles.pillLabel, { color: t.fg }]}>{label}</Text>
+      <Text style={[styles.pillValue, { color: t.fg }]}>{value}</Text>
     </View>
   );
 }
 
-const reviewCard = {
-  backgroundColor: "white",
-  borderColor: "#dbe7e2",
-  borderRadius: 16,
-  borderWidth: 1,
-  padding: 14,
-} as const;
-
-const reviewTitle = {
-  color: "#12332b",
-  fontSize: 15,
-  fontWeight: "800",
-  marginBottom: 8,
-} as const;
+const styles = StyleSheet.create({
+  cardSubtitle: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  cardTitle: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  checkLabel: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    flex: 1,
+  },
+  checkRow: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+  },
+  checkRowLast: {
+    borderBottomWidth: 0,
+  },
+  checkValue: {
+    ...typography.small,
+    flex: 1,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  content: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  entityRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+  },
+  footer: {
+    backgroundColor: colors.panel,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["2xl"],
+  },
+  header: {
+    backgroundColor: colors.primary,
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  headerAction: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 4,
+    padding: 4,
+  },
+  headerActionLabel: {
+    ...typography.small,
+    color: colors.primaryForeground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  headerSubtitle: {
+    ...typography.micro,
+    color: colors.primaryForeground,
+    opacity: 0.85,
+    textAlign: "center",
+  },
+  headerTitle: {
+    ...typography.headingSm,
+    color: colors.primaryForeground,
+    flex: 1,
+    textAlign: "center",
+  },
+  issueHint: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+  },
+  issueLink: {
+    ...typography.micro,
+    color: colors.primary,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  issueLinkRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2,
+    marginTop: 4,
+  },
+  issueMessage: {
+    ...typography.micro,
+  },
+  issueRow: {
+    borderRadius: radii.lg,
+    gap: 2,
+    padding: spacing.md,
+  },
+  issueTitle: {
+    ...typography.small,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  pill: {
+    borderRadius: radii.lg,
+    minWidth: 80,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  pillLabel: {
+    ...typography.micro,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  pillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pillValue: {
+    ...typography.headingSm,
+    fontFamily: fontFamily.semibold,
+    marginTop: 2,
+  },
+  progressFill: {
+    backgroundColor: colors.primaryForeground,
+    borderRadius: radii.sm,
+    height: 6,
+  },
+  progressLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  progressTrack: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: radii.sm,
+    height: 6,
+  },
+  readyCard: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  sectionDescription: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  sectionErrorCard: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  sectionErrorText: {
+    ...typography.small,
+    flex: 1,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  sectionHeader: {
+    backgroundColor: colors.muted,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  signalRow: {
+    borderRadius: radii.lg,
+    gap: 2,
+    padding: spacing.md,
+  },
+});

@@ -4,6 +4,7 @@ import { ChevronDown, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useEffect, useRef, useState } from "react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Button } from "@/components/ui/button";
 import { NAV_CONFIG, type NavMenu } from "@/lib/marketing/nav-config";
 import { cn } from "@/lib/utils";
@@ -279,7 +280,10 @@ export function MarketingNav() {
           role="dialog"
         >
           <div className="flex items-center justify-between border-b border-border p-4">
-            <span className="font-semibold text-foreground">Atlas FieldOps</span>
+            <span className="flex items-center gap-2 font-semibold text-foreground">
+              <AtlasFieldOpsLogo size={30} />
+              Atlas FieldOps
+            </span>
             <button
               aria-label="Close navigation"
               className="rounded-md border border-border p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

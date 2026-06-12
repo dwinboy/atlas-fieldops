@@ -11,6 +11,7 @@ const config: ExpoConfig = {
   scheme: "atlasfieldops",
   version: appVersion,
   orientation: "portrait",
+  icon: "./assets/atlas-fieldops-logo.png",
   userInterfaceStyle: "light",
   platforms: ["android"],
   extra: {
@@ -36,11 +37,19 @@ const config: ExpoConfig = {
       },
     ],
     "expo-local-authentication",
+    "expo-font",
+    [
+      "expo-av",
+      {
+        microphonePermission: "Atlas FieldOps uses the microphone to record audio evidence for form submissions.",
+      },
+    ],
   ],
   android: {
     package: "com.atlasfieldops.mobile",
     versionCode: 2,
     adaptiveIcon: {
+      foregroundImage: "./assets/atlas-fieldops-logo.png",
       backgroundColor: "#12332b",
     },
     permissions: [
@@ -53,6 +62,7 @@ const config: ExpoConfig = {
       "android.permission.POST_NOTIFICATIONS",
       "android.permission.USE_BIOMETRIC",
       "android.permission.USE_FINGERPRINT",
+      "android.permission.RECORD_AUDIO",
     ],
   },
 };

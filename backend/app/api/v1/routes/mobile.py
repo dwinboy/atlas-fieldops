@@ -155,9 +155,10 @@ async def mobile_reference_data(
     summary="Get returned mobile submissions",
 )
 async def mobile_returned_submissions(
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[MobileSubmissionRead]:
-    return []
+    return await MobileService(session).returned_submissions(principal)
 
 
 @router.get("/notifications", response_model=list[MobileNotificationRead], summary="Get mobile notifications")
@@ -343,9 +344,12 @@ async def mobile_sync_package(
 @router.post("/sync", response_model=MobileSyncUploadRead, summary="Upload mobile sync queue")
 async def mobile_sync_upload(
     payload: MobileSyncQueueUpload,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileSyncUploadRead:
-    return MobileSyncUploadRead(accepted=len(payload.items), failed=0)
+    result = await MobileService(session).upload_sync_queue(principal=principal, payload=payload)
+    await session.commit()
+    return result
 
 
 @router.post(
@@ -381,15 +385,21 @@ async def mobile_submission_upload(
     summary="Upload mobile attachment metadata",
 )
 async def mobile_attachment_upload(
-    _payload: MobileAttachmentRead,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    payload: MobileAttachmentRead,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileActionAcceptedRead:
-    return MobileActionAcceptedRead(message="Attachment metadata accepted. Binary upload provider will be attached later.")
+    result = await MobileService(session).upload_attachment(principal=principal, payload=payload)
+    await session.commit()
+    return result
 
 
 @router.post("/audit-events", response_model=MobileAuditEventUploadRead, summary="Upload mobile audit events")
 async def mobile_audit_events_upload(
     payload: MobileAuditEventUpload,
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MobileAuditEventUploadRead:
-    return MobileAuditEventUploadRead(accepted=len(payload.events))
+    result = await MobileService(session).upload_audit_events(principal=principal, payload=payload)
+    await session.commit()
+    return result

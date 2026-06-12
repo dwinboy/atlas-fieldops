@@ -1,10 +1,10 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { StatusDot } from "@/components/ui/status-dot";
 import { footerColumns } from "@/lib/marketing/content";
@@ -32,9 +32,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
       >
         <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link className="flex items-center gap-3" href="/">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <ShieldCheck size={18} aria-hidden="true" />
-            </span>
+            <AtlasFieldOpsLogo size={38} />
             <span className="font-semibold tracking-tight text-foreground">Atlas FieldOps</span>
           </Link>
           <MarketingNav />
@@ -45,9 +43,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.3fr_2fr] lg:px-8">
           <div>
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#5eead4]/15 text-[#5eead4]">
-                <ShieldCheck size={18} aria-hidden="true" />
-              </span>
+              <AtlasFieldOpsLogo size={38} />
               <span className="font-semibold">Atlas FieldOps</span>
             </div>
             <p className="mt-4 max-w-md text-sm leading-6 text-white/68">

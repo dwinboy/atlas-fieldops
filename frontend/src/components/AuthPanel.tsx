@@ -11,10 +11,10 @@ import {
   KeyRound,
   LogIn,
   RadioTower,
-  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 
+import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +80,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
         >
           <div>
             <Badge tone="accent" className="mb-8 gap-2 border-white/15 bg-white/12 !text-white shadow-line">
-              <ShieldCheck aria-hidden="true" size={14} />
+              <AtlasFieldOpsLogo size={18} />
               Atlas FieldOps
             </Badge>
             <h1 className="text-balance text-4xl font-semibold tracking-tight !text-white md:text-5xl">

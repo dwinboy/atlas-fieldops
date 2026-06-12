@@ -1,8 +1,22 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Camera,
+  ClipboardList,
+  LogIn,
+  LogOut,
+  MapPin,
+  Navigation,
+  PenLine,
+  RefreshCw,
+  Send,
+  Video,
+} from "lucide-react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge, Button, Card, EmptyState, Input, SectionHeader } from "@/components/ui";
+import { DateTimeField } from "@/components/ui/DateTimeField";
 import { createMobileApis } from "@/api/mobileApis";
 import { useAppContext } from "@/context/AppContext";
 import { useGPS } from "@/hooks/useGPS";
@@ -12,6 +26,7 @@ import { AuditEventService } from "@/services/auditEventService";
 import { localDatabase } from "@/storage/localDatabase";
 import { AttachmentSyncService } from "@/sync/attachmentSyncService";
 import { SyncQueueService } from "@/sync/syncQueue";
+import { colors, fontFamily, radii, spacing, type Tone, typography } from "@/theme";
 import { createLocalId, nowIso } from "@/utils/ids";
 
 const apis = createMobileApis();
@@ -48,6 +63,8 @@ export default function VisitRequestsScreen() {
     return null;
   }
 
+  const accessToken = session.accessToken;
+
   const visits = useMemo(
     () => localDatabase.visitRequests.list().sort((a, b) => b.requestedStartAt.localeCompare(a.requestedStartAt)),
     [refreshKey],
@@ -69,8 +86,8 @@ export default function VisitRequestsScreen() {
     setSaving(true);
     const location = gps.result;
     try {
-      if (isOnline && session.accessToken) {
-        const saved = await apis.visitRequests.create(session.accessToken, {
+      if (isOnline && accessToken) {
+        const saved = await apis.visitRequests.create(accessToken, {
           beneficiaryId: null,
           activityScope: firstProject ? "project" : "organization",
           activityType,
@@ -165,17 +182,17 @@ export default function VisitRequestsScreen() {
     }
     const timestamp = location.timestamp;
     try {
-      if (isOnline && session.accessToken && visit.serverId) {
+      if (isOnline && accessToken && visit.serverId) {
         const saved =
           mode === "check-in"
-            ? await apis.visitRequests.checkIn(session.accessToken, visit.serverId, {
+            ? await apis.visitRequests.checkIn(accessToken, visit.serverId, {
                 accuracy: location.accuracy,
                 latitude: location.latitude,
                 longitude: location.longitude,
                 note: "Arrived at planned visit location.",
                 timestamp,
               })
-            : await apis.visitRequests.checkOut(session.accessToken, visit.serverId, {
+            : await apis.visitRequests.checkOut(accessToken, visit.serverId, {
                 accuracy: location.accuracy,
                 latitude: location.latitude,
                 longitude: location.longitude,
@@ -255,224 +272,304 @@ export default function VisitRequestsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={{ gap: 14, padding: 16, paddingBottom: 32 }}>
-        <View style={{ gap: 4 }}>
-          <Text style={{ color: "#12332b", fontSize: 22, fontWeight: "800" }}>Operations</Text>
-          <Text style={{ color: "#49635a", fontSize: 13 }}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Operations</Text>
+          <Text style={styles.headerSubtitle}>
             Request supervisor approval for field movement, meetings, support work, incidents, deliveries, or other organization activities.
           </Text>
         </View>
 
-        <View style={card()}>
-          <Text style={heading()}>Request an activity</Text>
+        <Card padding="lg" style={{ gap: spacing.md }}>
+          <SectionHeader title="Request an activity" />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -2 }}>
-            <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 2 }}>
-              {activityTypes.map((option) => (
-                <Pressable
-                  key={option.value}
-                  onPress={() => setActivityType(option.value)}
-                  style={{
-                    backgroundColor: activityType === option.value ? "#12332b" : "#f8fbfa",
-                    borderColor: "#dbe7e2",
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ color: activityType === option.value ? "white" : "#12332b", fontSize: 12, fontWeight: "800" }}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.chipRow}>
+              {activityTypes.map((option) => {
+                const active = activityType === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setActivityType(option.value)}
+                    style={[styles.chip, active ? styles.chipActive : null]}
+                  >
+                    <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </ScrollView>
-          <TextInput
-            onChangeText={setTitle}
-            placeholder="Example: Partner coordination visit"
-            style={input()}
-            value={title}
-          />
-          <TextInput
-            onChangeText={setLocationName}
-            placeholder="Place or village"
-            style={input()}
-            value={locationName}
-          />
-          <TextInput
+
+          <Input value={title} onChangeText={setTitle} placeholder="Example: Partner coordination visit" />
+          <Input value={locationName} onChangeText={setLocationName} placeholder="Place or village" />
+          <Input
             multiline
+            value={purpose}
             onChangeText={setPurpose}
             placeholder="Why do you need to visit?"
-            style={[input(), { minHeight: 74, textAlignVertical: "top" }]}
-            value={purpose}
           />
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setRequestedStartAt}
-            placeholder="Start time ISO"
-            style={input()}
-            value={requestedStartAt}
-          />
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setRequestedEndAt}
-            placeholder="End time ISO"
-            style={input()}
-            value={requestedEndAt}
-          />
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable disabled={gps.isCapturing} onPress={gps.capture} style={[button("#d7efe7"), { flex: 1 }]}>
-              <Text style={{ color: "#12332b", fontWeight: "800" }}>{gps.isCapturing ? "Getting GPS" : "Add GPS"}</Text>
-            </Pressable>
-            <Pressable disabled={saving} onPress={submitRequest} style={[button("#12332b"), { flex: 1 }]}>
-              <Text style={{ color: "white", fontWeight: "800" }}>{saving ? "Saving" : "Send request"}</Text>
-            </Pressable>
+
+          <View style={{ gap: spacing.xs }}>
+            <Text style={styles.fieldLabel}>Start time</Text>
+            <DateTimeField mode="datetime" value={isoToFieldValue(requestedStartAt)} onChange={(v) => setRequestedStartAt(fieldValueToIso(v, requestedStartAt))} />
+          </View>
+          <View style={{ gap: spacing.xs }}>
+            <Text style={styles.fieldLabel}>End time</Text>
+            <DateTimeField mode="datetime" value={isoToFieldValue(requestedEndAt)} onChange={(v) => setRequestedEndAt(fieldValueToIso(v, requestedEndAt))} />
+          </View>
+
+          <View style={styles.actionsRow}>
+            <Button
+              variant="secondary"
+              leftIcon={<Navigation size={16} color={colors.foreground} />}
+              loading={gps.isCapturing}
+              onPress={gps.capture}
+              style={{ flex: 1 }}
+            >
+              {gps.isCapturing ? "Getting GPS" : "Add GPS"}
+            </Button>
+            <Button
+              variant="primary"
+              leftIcon={<Send size={16} color={colors.primaryForeground} />}
+              loading={saving}
+              onPress={submitRequest}
+              style={{ flex: 1 }}
+            >
+              {saving ? "Saving" : "Send request"}
+            </Button>
           </View>
           {gps.result ? (
-            <Text style={{ color: "#49635a", fontSize: 12 }}>
+            <Text style={styles.gpsText}>
               GPS added: {gps.result.latitude.toFixed(5)}, {gps.result.longitude.toFixed(5)}
             </Text>
           ) : null}
-        </View>
+        </Card>
 
-        {message ? <Text style={{ color: "#12332b", fontSize: 13, fontWeight: "700" }}>{message}</Text> : null}
+        {message ? <Text style={styles.message}>{message}</Text> : null}
 
-        <View style={{ gap: 10 }}>
-          <Text style={heading()}>My operational plan</Text>
+        <View style={{ gap: spacing.sm }}>
+          <SectionHeader title="My operational plan" />
           {visits.length === 0 ? (
-            <View style={card()}>
-              <Text style={{ color: "#49635a" }}>No visit requests yet.</Text>
-            </View>
+            <EmptyState icon={ClipboardList} title="No visit requests yet" description="Activities you request will appear here." />
           ) : (
-            visits.map((visit) => (
-              <View key={visit.localId} style={card()}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#12332b", fontSize: 16, fontWeight: "800" }}>{visit.title}</Text>
-                    <Text style={{ color: "#49635a", fontSize: 12 }}>
-                      {visit.activityType.replaceAll("_", " ")} · {visit.activityScope} · {visit.locationName}
+            visits.map((visit) => {
+              const evidenceCount = localDatabase.attachments.list().filter((attachment) => attachment.activityLocalId === visit.localId).length;
+              const canCheckIn = ["approved", "scheduled"].includes(visit.status);
+              const canCheckOut = Boolean(visit.checkInAt);
+              return (
+                <Card key={visit.localId} padding="lg" style={{ gap: spacing.sm }}>
+                  <View style={styles.visitTitleRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.visitTitle}>{visit.title}</Text>
+                      <Text style={styles.visitMeta}>
+                        {visit.activityType.replaceAll("_", " ")} · {visit.activityScope} · {visit.locationName}
+                      </Text>
+                    </View>
+                    <Badge label={visit.status.replaceAll("_", " ")} tone={statusTone(visit.status)} />
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <MapPin size={14} color={colors.mutedForeground} />
+                    <Text style={styles.visitMeta}>
+                      {new Date(visit.requestedStartAt).toLocaleString()} - {new Date(visit.requestedEndAt).toLocaleString()}
                     </Text>
                   </View>
-                  <Text style={statusStyle(visit.status)}>{visit.status.replaceAll("_", " ")}</Text>
-                </View>
-                <Text style={{ color: "#49635a", fontSize: 12, marginTop: 8 }}>
-                  {new Date(visit.requestedStartAt).toLocaleString()} - {new Date(visit.requestedEndAt).toLocaleString()}
-                </Text>
-                {visit.supervisorInstructions ? (
-                  <Text style={{ color: "#12332b", fontSize: 12, marginTop: 8 }}>Supervisor: {visit.supervisorInstructions}</Text>
-                ) : null}
-                <Text style={{ color: "#49635a", fontSize: 12, marginTop: 8 }}>
-                  GPS: {visit.verificationStatus.replaceAll("_", " ")}
-                  {visit.distanceFromPlannedMeters === null ? "" : ` · ${Math.round(visit.distanceFromPlannedMeters)}m`}
-                </Text>
-                <Text style={{ color: "#49635a", fontSize: 12 }}>
-                  Evidence files: {localDatabase.attachments.list().filter((attachment) => attachment.activityLocalId === visit.localId).length}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                  <Pressable
-                    disabled={!["approved", "scheduled"].includes(visit.status) || gps.isCapturing}
-                    onPress={() => captureVisitEvidence(visit, "check-in")}
-                    style={[button("#d7efe7"), { flex: 1, opacity: ["approved", "scheduled"].includes(visit.status) ? 1 : 0.45 }]}
-                  >
-                    <Text style={{ color: "#12332b", fontWeight: "800" }}>Check in</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!visit.checkInAt || gps.isCapturing}
-                    onPress={() => captureVisitEvidence(visit, "check-out")}
-                    style={[button("#12332b"), { flex: 1, opacity: visit.checkInAt ? 1 : 0.45 }]}
-                  >
-                    <Text style={{ color: "white", fontWeight: "800" }}>Check out</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                  <Pressable
-                    disabled={photoCapture.isCapturing}
-                    onPress={() => addActivityAttachment(visit, "photo")}
-                    style={[button("#ffffff"), { flex: 1 }]}
-                  >
-                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Photo</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={photoCapture.isCapturing}
-                    onPress={() => addActivityAttachment(visit, "video")}
-                    style={[button("#ffffff"), { flex: 1 }]}
-                  >
-                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Video</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => addActivityAttachment(visit, "signature")}
-                    style={[button("#ffffff"), { flex: 1 }]}
-                  >
-                    <Text style={{ color: "#12332b", fontSize: 12, fontWeight: "800" }}>Signature</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))
+
+                  {visit.supervisorInstructions ? (
+                    <Text style={styles.supervisorNote}>Supervisor: {visit.supervisorInstructions}</Text>
+                  ) : null}
+
+                  <Text style={styles.visitMeta}>
+                    GPS: {visit.verificationStatus.replaceAll("_", " ")}
+                    {visit.distanceFromPlannedMeters === null ? "" : ` · ${Math.round(visit.distanceFromPlannedMeters)}m`}
+                  </Text>
+                  <Text style={styles.visitMeta}>Evidence files: {evidenceCount}</Text>
+
+                  <View style={styles.actionsRow}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!canCheckIn || gps.isCapturing}
+                      leftIcon={<LogIn size={16} color={colors.foreground} />}
+                      onPress={() => captureVisitEvidence(visit, "check-in")}
+                      style={{ flex: 1 }}
+                    >
+                      Check in
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!canCheckOut || gps.isCapturing}
+                      leftIcon={<LogOut size={16} color={colors.primaryForeground} />}
+                      onPress={() => captureVisitEvidence(visit, "check-out")}
+                      style={{ flex: 1 }}
+                    >
+                      Check out
+                    </Button>
+                  </View>
+                  <View style={styles.actionsRow}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={photoCapture.isCapturing}
+                      leftIcon={<Camera size={16} color={colors.foreground} />}
+                      onPress={() => addActivityAttachment(visit, "photo")}
+                      style={{ flex: 1 }}
+                    >
+                      Photo
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={photoCapture.isCapturing}
+                      leftIcon={<Video size={16} color={colors.foreground} />}
+                      onPress={() => addActivityAttachment(visit, "video")}
+                      style={{ flex: 1 }}
+                    >
+                      Video
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<PenLine size={16} color={colors.foreground} />}
+                      onPress={() => addActivityAttachment(visit, "signature")}
+                      style={{ flex: 1 }}
+                    >
+                      Signature
+                    </Button>
+                  </View>
+                </Card>
+              );
+            })
           )}
         </View>
 
-        <Pressable onPress={syncQueue} style={button("#ffffff")}>
-          <Text style={{ color: "#12332b", fontWeight: "800", textAlign: "center" }}>Sync visit evidence</Text>
-        </Pressable>
+        <Button variant="secondary" leftIcon={<RefreshCw size={16} color={colors.foreground} />} onPress={syncQueue}>
+          Sync visit evidence
+        </Button>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function card() {
-  return {
-    backgroundColor: "white",
-    borderColor: "#dbe7e2",
-    borderRadius: 16,
+function statusTone(status: string): Tone {
+  if (status === "approved" || status === "completed") return "success";
+  if (status === "rejected" || status === "flagged") return "danger";
+  return "warning";
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function isoToFieldValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const mo = pad2(date.getMonth() + 1);
+  const d = pad2(date.getDate());
+  const h = pad2(date.getHours());
+  const mi = pad2(date.getMinutes());
+  return `${y}-${mo}-${d} ${h}:${mi}`;
+}
+
+function fieldValueToIso(value: string, fallback: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+  if (!match) return fallback;
+  const [, y, mo, d, h, mi] = match;
+  return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)).toISOString();
+}
+
+const styles = StyleSheet.create({
+  actionsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  chip: {
+    backgroundColor: colors.muted,
+    borderColor: colors.border,
+    borderRadius: radii.full,
     borderWidth: 1,
-    gap: 10,
-    padding: 14,
-  } as const;
-}
-
-function heading() {
-  return { color: "#12332b", fontSize: 16, fontWeight: "800" as const };
-}
-
-function input() {
-  return {
-    backgroundColor: "#f8fbfa",
-    borderColor: "#dbe7e2",
-    borderRadius: 12,
-    borderWidth: 1,
-    color: "#12332b",
-    minHeight: 46,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  } as const;
-}
-
-function button(backgroundColor: string) {
-  return {
-    alignItems: "center" as const,
-    backgroundColor,
-    borderColor: "#dbe7e2",
-    borderRadius: 12,
-    borderWidth: backgroundColor === "#ffffff" ? 1 : 0,
-    justifyContent: "center" as const,
-    minHeight: 46,
-    padding: 12,
-  };
-}
-
-function statusStyle(status: string) {
-  const backgroundColor = status === "approved" || status === "completed" ? "#dcfce7" : status === "rejected" || status === "flagged" ? "#fee2e2" : "#fef3c7";
-  const color = status === "approved" || status === "completed" ? "#166534" : status === "rejected" || status === "flagged" ? "#991b1b" : "#92400e";
-  return {
-    backgroundColor,
-    borderRadius: 999,
-    color,
-    fontSize: 11,
-    fontWeight: "800" as const,
-    overflow: "hidden" as const,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    textTransform: "capitalize" as const,
-  };
-}
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipLabel: {
+    ...typography.small,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  chipLabelActive: {
+    color: colors.primaryForeground,
+  },
+  chipRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingHorizontal: 2,
+  },
+  content: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  fieldLabel: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    fontFamily: fontFamily.medium,
+    fontWeight: "500",
+  },
+  gpsText: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  header: {
+    gap: spacing.xs,
+  },
+  headerSubtitle: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  headerTitle: {
+    ...typography.display,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  message: {
+    ...typography.small,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+  },
+  metaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  supervisorNote: {
+    ...typography.small,
+    color: colors.foreground,
+  },
+  visitMeta: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  visitTitle: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+  },
+  visitTitleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
+  },
+});

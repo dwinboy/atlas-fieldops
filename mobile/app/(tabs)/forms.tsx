@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { FileText, User } from "lucide-react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
 import type { MobileFormVersion } from "@/models/contracts";
 import { localDatabase } from "@/storage/localDatabase";
+import { colors, fontFamily, radii, spacing, tone, typography } from "@/theme";
 
 export default function FormsScreen() {
   const { refreshKey, isSyncing, syncWork } = useAppContext();
@@ -38,40 +41,24 @@ export default function FormsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
       <ScrollView
-        contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncWork} tintColor="#12332b" />}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isSyncing} onRefresh={syncWork} tintColor={colors.primary} />}
       >
-        <TextInput
+        <Input
           autoCapitalize="none"
           onChangeText={setSearch}
           placeholder="Search forms…"
-          placeholderTextColor="#b0c5bc"
-          style={{
-            backgroundColor: "white",
-            borderColor: "#dbe7e2",
-            borderRadius: 12,
-            borderWidth: 1,
-            color: "#12332b",
-            fontSize: 15,
-            padding: 12,
-          }}
           value={search}
         />
 
         {forms.length === 0 ? (
-          <View style={{
-            alignItems: "center",
-            paddingVertical: 48,
-            gap: 8,
-          }}>
-            <Text style={{ fontSize: 40 }}>📄</Text>
-            <Text style={{ color: "#49635a", fontWeight: "700" }}>No forms downloaded</Text>
-            <Text style={{ color: "#8aa79b", fontSize: 13 }}>
-              Pull down to sync assigned forms from the web platform.
-            </Text>
-          </View>
+          <EmptyState
+            icon={FileText}
+            title="No forms downloaded"
+            description="Pull down to sync assigned forms from the web platform."
+          />
         ) : (
           forms.map((form) => {
             const version = latestVersion(form.id);
@@ -79,89 +66,54 @@ export default function FormsScreen() {
             const sections = sectionCount(form.id);
             const questions = questionCount(form.id);
             const readiness = version ? mobileReadiness(version) : null;
+            const readinessTone = readiness?.tone === "warn" ? "warning" : isOfflineReady ? "success" : "neutral";
+            const readinessTones = tone(readinessTone);
 
             return (
-              <View
-                key={form.localId}
-                style={{
-                  backgroundColor: "white",
-                  borderColor: "#dbe7e2",
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 16,
-                  gap: 6,
-                }}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <Text style={{ color: "#12332b", fontWeight: "800", fontSize: 15, flex: 1, marginRight: 8 }}>
+              <Card key={form.localId} padding="lg" style={{ gap: spacing.xs }}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.formName} numberOfLines={2}>
                     {form.name ?? "Unnamed form"}
                   </Text>
-                  <View style={{
-                    backgroundColor: readiness?.tone === "warn" ? "#fff7ed" : isOfflineReady ? "#d7efe7" : "#f0f5f3",
-                    borderRadius: 20,
-                    paddingHorizontal: 10,
-                    paddingVertical: 3,
-                  }}>
-                    <Text style={{ color: readiness?.tone === "warn" ? "#9a3412" : isOfflineReady ? "#0f766e" : "#49635a", fontWeight: "700", fontSize: 12 }}>
-                      {readiness ? `${readiness.score}% ready` : "No version"}
-                    </Text>
-                  </View>
+                  <Badge label={readiness ? `${readiness.score}% ready` : "No version"} tone={readinessTone} />
                 </View>
 
                 {form.description ? (
-                  <Text style={{ color: "#49635a", fontSize: 13 }} numberOfLines={2}>{form.description}</Text>
+                  <Text style={styles.description} numberOfLines={2}>{form.description}</Text>
                 ) : null}
 
-                <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-                  {version && (
-                    <Text style={{ color: "#8aa79b", fontSize: 12 }}>
-                      Version {version.version}
-                    </Text>
-                  )}
-                  <Text style={{ color: "#8aa79b", fontSize: 12 }}>
+                <View style={styles.metaRow}>
+                  {version && <Text style={styles.metaText}>Version {version.version}</Text>}
+                  <Text style={styles.metaText}>
                     {sections} section(s) · {questions} question(s)
                   </Text>
-                  <Text style={{ color: "#8aa79b", fontSize: 12 }}>
-                    {versionCount(form.id)} version(s) stored
-                  </Text>
+                  <Text style={styles.metaText}>{versionCount(form.id)} version(s) stored</Text>
                 </View>
 
                 {version?.entitySettings.requiresExistingEntity && (
-                  <Text style={{ color: "#49635a", fontSize: 12 }}>
-                    👤 Requires beneficiary selection
-                  </Text>
+                  <View style={styles.requiresEntityRow}>
+                    <User size={14} color={colors.mutedForeground} />
+                    <Text style={styles.metaText}>Requires beneficiary selection</Text>
+                  </View>
                 )}
 
                 {readiness ? (
-                  <View style={{
-                    backgroundColor: readiness.tone === "warn" ? "#fff7ed" : "#f6faf8",
-                    borderColor: readiness.tone === "warn" ? "#fed7aa" : "#dbe7e2",
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    gap: 4,
-                    padding: 10,
-                  }}>
-                    <Text style={{ color: readiness.tone === "warn" ? "#9a3412" : "#49635a", fontSize: 12, fontWeight: "700" }}>
-                      Field readiness
-                    </Text>
+                  <View style={[styles.readinessCard, { backgroundColor: readinessTones.bg, borderColor: readinessTones.border }]}>
+                    <Text style={[styles.readinessTitle, { color: readinessTones.fg }]}>Field readiness</Text>
                     {readiness.notes.map((note) => (
-                      <Text key={note} style={{ color: "#49635a", fontSize: 12 }}>• {note}</Text>
+                      <Text key={note} style={styles.readinessNote}>• {note}</Text>
                     ))}
                   </View>
                 ) : null}
 
-                <Text style={{ color: "#8aa79b", fontSize: 11 }}>
-                  Read-only on mobile • Managed from web platform
-                </Text>
-              </View>
+                <Text style={styles.footnote}>Read-only on mobile • Managed from web platform</Text>
+              </Card>
             );
           })
         )}
 
         {forms.length > 0 && (
-          <Text style={{ color: "#8aa79b", fontSize: 12, textAlign: "center" }}>
-            {forms.length} form(s) on this device
-          </Text>
+          <Text style={styles.summary}>{forms.length} form(s) on this device</Text>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -184,3 +136,69 @@ function mobileReadiness(version: MobileFormVersion | null): { score: number; to
   const score = version.offlineCompatible ? 100 : 85;
   return { score, tone: score >= 95 ? "ok" : "warn", notes };
 }
+
+const styles = StyleSheet.create({
+  content: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  description: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  footnote: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+  },
+  formName: {
+    ...typography.headingSm,
+    color: colors.foreground,
+    flex: 1,
+    fontFamily: fontFamily.semibold,
+    marginRight: spacing.sm,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  metaText: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  readinessCard: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: 4,
+    padding: spacing.sm,
+  },
+  readinessNote: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  readinessTitle: {
+    ...typography.small,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+  },
+  requiresEntityRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  summary: {
+    ...typography.small,
+    color: colors.mutedForeground,
+    textAlign: "center",
+  },
+  titleRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+});

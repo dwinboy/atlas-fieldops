@@ -1,12 +1,16 @@
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Activity, ChevronRight, FileText, LogOut, ScrollText, Trash2 } from "lucide-react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Constants from "expo-constants";
 
+import { Button, Card } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { androidReleaseConfig } from "@/config/releaseConfig";
 import { localDatabase } from "@/storage/localDatabase";
+import { colors, fontFamily, radii, spacing, typography } from "@/theme";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -93,14 +97,19 @@ export default function SettingsScreen() {
     );
   }
 
+  function openLegalLink(url: string) {
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Couldn't open link", "Please check your internet connection and try again.");
+    });
+  }
+
   const appVersion = Constants.expoConfig?.version ?? "—";
   const buildEnv = Constants.expoConfig?.extra?.appEnv ?? "production";
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f6faf8" }} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 40 }}>
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <ScrollView contentContainerStyle={styles.content}>
 
-        {/* Account */}
         <Section title="Account">
           <Row label="Name" value={officer?.fullName ?? user?.fullName ?? user?.email ?? "—"} />
           <Row label="Username" value={officer?.username ?? user?.email?.split("@")[0] ?? "—"} />
@@ -109,17 +118,16 @@ export default function SettingsScreen() {
           <Row label="Employee ID" value={officer?.employeeCode ?? "—"} />
           <Row label="Role" value={user?.roles?.join(", ") || "Field officer"} />
           <Row label="Status" value={officer?.status ?? session?.bootstrap?.blockedState.accountStatus ?? "—"} />
-          <Row label="Supervisor" value={supervisor?.fullName ?? officer?.supervisorName ?? "Not assigned"} />
+          <Row label="Supervisor" value={supervisor?.fullName ?? officer?.supervisorName ?? "Not assigned"} last />
         </Section>
 
-        {/* Device data */}
         <Section title="Data on this device">
           <Row label="Assigned projects" value={String(assignedCounts?.projects ?? deviceStats.assignments)} />
           <Row label="Assignments" value={String(assignedCounts?.assignments ?? deviceStats.assignments)} />
           <Row label="Forms" value={String(assignedCounts?.forms ?? deviceStats.forms)} />
           <Row label="Beneficiaries" value={String(assignedCounts?.beneficiaries ?? deviceStats.entities)} />
           <Row label="Active drafts" value={String(deviceStats.drafts)} />
-          <Row label="Sync logs" value={String(deviceStats.syncLogs)} />
+          <Row label="Sync logs" value={String(deviceStats.syncLogs)} last />
         </Section>
 
         <Section title="Permissions">
@@ -127,79 +135,69 @@ export default function SettingsScreen() {
           <Row label="Work offline" value={permissionSet?.canWorkOffline ? "Allowed" : "Blocked"} />
           <Row label="Use GPS" value={permissionSet?.canUseGps ? "Allowed" : "Blocked"} />
           <Row label="Upload media" value={permissionSet?.canUploadMedia ? "Allowed" : "Blocked"} />
-          <Row label="Correct returned submissions" value={permissionSet?.canCorrectReturnedSubmissions ? "Allowed" : "Blocked"} />
+          <Row label="Correct returned submissions" value={permissionSet?.canCorrectReturnedSubmissions ? "Allowed" : "Blocked"} last />
         </Section>
 
-        {/* Sync policy info */}
         <Section title="Sync behaviour">
           <Row label="Offline collection" value={mobileRules?.offlineCollectionAllowed ? "Allowed" : "Blocked"} />
           <Row label="Sync required first" value={mobileRules?.syncRequired ? "Yes" : "No"} />
           <Row label="Max offline days" value={String(mobileRules?.maxOfflineDays ?? 7)} />
           <Row label="GPS required" value={mobileRules?.gpsRequired ? "Yes" : "No"} />
           <Row label="Photo required" value={mobileRules?.photoRequired ? "Yes" : "No"} />
-          <Row label="Minimum app version" value={mobileRules?.minimumAppVersion ?? "—"} />
+          <Row label="Minimum app version" value={mobileRules?.minimumAppVersion ?? "—"} last />
         </Section>
 
-        {/* Storage actions */}
         <Section title="Storage">
-          <Pressable
+          <ActionRow
+            icon={Trash2}
+            label="Clear synced data"
+            sub="Removes synced submissions and logs. Unsynced drafts are kept."
             onPress={handleClearSynced}
             disabled={clearing}
-            style={{ padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
-          >
-            <Text style={{ fontSize: 20 }}>🗑</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 14 }}>Clear synced data</Text>
-              <Text style={{ color: "#49635a", fontSize: 12 }}>
-                Removes synced submissions and logs. Unsynced drafts are kept.
-              </Text>
-            </View>
-            <Text style={{ color: "#8aa79b" }}>›</Text>
-          </Pressable>
+            last
+          />
         </Section>
 
         <Section title="Field support">
-          <Pressable
+          <ActionRow
+            icon={Activity}
+            label="Show diagnostics"
+            sub="Share app status, queue counts, and last sync details with support. No form answers are shown."
             onPress={handleDiagnostics}
-            style={{ padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }}
-          >
-            <Text style={{ fontSize: 20 }}>🩺</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: "#12332b", fontWeight: "700", fontSize: 14 }}>Show diagnostics</Text>
-              <Text style={{ color: "#49635a", fontSize: 12 }}>
-                Share app status, queue counts, and last sync details with support. No form answers are shown.
-              </Text>
-            </View>
-            <Text style={{ color: "#8aa79b" }}>›</Text>
-          </Pressable>
+            last
+          />
         </Section>
 
-        {/* App info */}
         <Section title="App info">
           <Row label="Version" value={appVersion} />
           <Row label="Environment" value={buildEnv} />
           <Row label="Platform" value="Android" />
           <Row label="Device ID" value={device?.deviceId ?? session?.bootstrap?.lastSync.deviceId ?? "Pending registration"} />
           <Row label="Device status" value={device?.status ?? session?.bootstrap?.blockedState.deviceStatus ?? "—"} />
-          <Row label="Last sync" value={device?.lastSyncAt ?? session?.bootstrap?.lastSync.lastSyncedAt ?? "Never"} />
+          <Row label="Last sync" value={device?.lastSyncAt ?? session?.bootstrap?.lastSync.lastSyncedAt ?? "Never"} last />
         </Section>
 
-        {/* Log out */}
-        <Pressable
-          onPress={handleLogout}
-          style={{
-            backgroundColor: "white",
-            borderColor: "#fca5a5",
-            borderRadius: 16,
-            borderWidth: 1,
-            padding: 16,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#b42318", fontWeight: "800", fontSize: 15 }}>Log out</Text>
-        </Pressable>
+        <Section title="Legal">
+          <ActionRow
+            icon={ScrollText}
+            label="Privacy Policy"
+            sub="How your data is collected, used, and protected."
+            onPress={() => openLegalLink(androidReleaseConfig.privacyPolicyUrl)}
+          />
+          <ActionRow
+            icon={FileText}
+            label="Terms of Service"
+            sub="The terms for using Atlas FieldOps."
+            onPress={() => openLegalLink(androidReleaseConfig.termsUrl)}
+            last
+          />
+        </Section>
 
-        <Text style={{ color: "#8aa79b", fontSize: 11, textAlign: "center" }}>
+        <Button variant="danger" leftIcon={<LogOut size={18} color={colors.primaryForeground} />} onPress={handleLogout}>
+          Log out
+        </Button>
+
+        <Text style={styles.footer}>
           Atlas FieldOps · {appVersion} · {buildEnv}
         </Text>
       </ScrollView>
@@ -209,46 +207,119 @@ export default function SettingsScreen() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={{ gap: 2 }}>
-      <Text style={{
-        color: "#49635a",
-        fontSize: 11,
-        fontWeight: "700",
-        letterSpacing: 0.8,
-        marginBottom: 4,
-        paddingHorizontal: 4,
-        textTransform: "uppercase",
-      }}>
-        {title}
-      </Text>
-      <View style={{
-        backgroundColor: "white",
-        borderColor: "#dbe7e2",
-        borderRadius: 16,
-        borderWidth: 1,
-        overflow: "hidden",
-      }}>
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Card padding="xs" style={styles.sectionCard}>
         {children}
-      </View>
+      </Card>
     </View>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
   return (
-    <View style={{
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: "#f0f5f3",
-    }}>
-      <Text style={{ color: "#49635a", fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: "#12332b", fontWeight: "600", fontSize: 14, maxWidth: "55%", textAlign: "right" }}>
-        {value}
-      </Text>
+    <View style={[styles.row, last ? styles.rowLast : null]}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
     </View>
   );
 }
+
+function ActionRow({
+  icon: Icon, label, sub, onPress, disabled, last = false,
+}: {
+  icon: typeof Trash2; label: string; sub: string; onPress: () => void; disabled?: boolean; last?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.actionRow, last ? styles.rowLast : null, { opacity: disabled ? 0.6 : 1 }]}
+    >
+      <View style={styles.actionIcon}>
+        <Icon size={18} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.actionSub}>{sub}</Text>
+      </View>
+      <ChevronRight size={18} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  actionIcon: {
+    alignItems: "center",
+    backgroundColor: colors.muted,
+    borderRadius: radii.full,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  actionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  actionSub: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  content: {
+    gap: spacing.lg,
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+  footer: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    textAlign: "center",
+  },
+  row: {
+    alignItems: "center",
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  rowLabel: {
+    ...typography.small,
+    color: colors.mutedForeground,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowValue: {
+    ...typography.small,
+    color: colors.foreground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "600",
+    maxWidth: "55%",
+    textAlign: "right",
+  },
+  screen: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+  section: {
+    gap: spacing.xs,
+  },
+  sectionCard: {
+    overflow: "hidden",
+    padding: 0,
+  },
+  sectionTitle: {
+    ...typography.micro,
+    color: colors.mutedForeground,
+    fontFamily: fontFamily.semibold,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.xs,
+    textTransform: "uppercase",
+  },
+});
