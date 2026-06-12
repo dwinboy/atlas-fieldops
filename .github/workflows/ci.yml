@@ -19,6 +19,9 @@ jobs:
       - working-directory: backend
         run: mypy app
       - working-directory: backend
+        env:
+          # Offline --sql mode never connects; env.py only needs a configured URL.
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
         run: alembic upgrade head --sql
       - working-directory: backend
         run: pytest

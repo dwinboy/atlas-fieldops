@@ -228,7 +228,7 @@ async def submission_corrections(
     submission_id: UUID,
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> list[object]:
+) -> list[CorrectionLogEntryRead]:
     try:
         return await SubmissionService(session).list_corrections(
             organization_id=UUID(principal.organization_id),

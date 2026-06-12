@@ -56,6 +56,10 @@ from app.schemas.platform import (
 )
 from app.services.sector_packs import list_sector_packs
 
+
+def _platform_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
 router = APIRouter()
 
 DEFAULT_TENANT_MODULES = ["projects", "forms", "field_operations", "submissions", "mapping", "indicators", "reports", "data_quality"]
@@ -163,7 +167,7 @@ def runtime_release_read(value: dict[str, object] | None = None, updated_at: dat
         maintenance_message=str(stored.get("maintenance_message") or ""),
         maintenance_starts_at=stored.get("maintenance_starts_at") if isinstance(stored.get("maintenance_starts_at"), str) else None,
         maintenance_ends_at=stored.get("maintenance_ends_at") if isinstance(stored.get("maintenance_ends_at"), str) else None,
-        affected_services=[str(item) for item in stored.get("affected_services", [])] if isinstance(stored.get("affected_services"), list) else [],
+        affected_services=[str(item) for item in _platform_list(stored.get("affected_services"))],
         announcement_enabled=bool(stored.get("announcement_enabled", False)),
         announcement_title=str(stored.get("announcement_title") or ""),
         announcement_body=str(stored.get("announcement_body") or ""),
@@ -954,7 +958,8 @@ async def platform_organization_plans(
         user_limit = int(plan_value.get("user_limit") or (250 if plan == "Enterprise" else 50))
         submission_limit = int(plan_value.get("submission_limit") or (1_000_000 if plan == "Enterprise" else 100_000))
         storage_limit_gb = int(plan_value.get("storage_limit_gb") or (500 if plan == "Enterprise" else 100))
-        enabled_modules = plan_value.get("enabled_modules") if isinstance(plan_value.get("enabled_modules"), list) else DEFAULT_TENANT_MODULES
+        raw_enabled_modules = plan_value.get("enabled_modules")
+        enabled_modules = raw_enabled_modules if isinstance(raw_enabled_modules, list) else DEFAULT_TENANT_MODULES
         usage_percent = max(
             int((user_count / user_limit) * 100),
             int((submission_count / submission_limit) * 100),
@@ -1259,7 +1264,7 @@ async def platform_data_isolation(
                 "Assign or create an Organization Owner before handover.",
             )
 
-    checks = [
+    checks: list[tuple[str, Any, Any, Any, str, str, str]] = [
         (
             "form-project-org-mismatch",
             DataForm,

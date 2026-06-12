@@ -66,7 +66,7 @@ class UserRepository:
             )
             .order_by(UserRoleAssignment.created_at)
         )
-        return list(assignment_result.all())
+        return list(assignment_result.tuples().all())
 
     async def find_for_token(
         self,

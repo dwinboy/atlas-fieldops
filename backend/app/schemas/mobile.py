@@ -66,7 +66,9 @@ class MobileOfflineRulesRead(MobileSchema):
     gps_required: bool = False
     photo_required: bool = False
     minimum_app_version: str = "1.0.0-test"
-    allowed_collection_hours: dict[str, str | None] = Field(default_factory=lambda: {"start": None, "end": None})
+    allowed_collection_hours: dict[str, str | None] = Field(
+        default_factory=lambda: {"start": None, "end": None},  # type: ignore[arg-type]
+    )
     maximum_submissions_per_day: int | None = None
     minimum_interview_duration_seconds: int | None = None
 

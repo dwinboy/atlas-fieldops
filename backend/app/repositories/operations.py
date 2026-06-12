@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from uuid import UUID
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -154,7 +154,10 @@ class OperationsRepository:
             .values(beneficiary_id=master.id)
         )
         await self.session.flush()
-        return int(submission_result.rowcount or 0), int(signal_result.rowcount or 0)
+        return (
+            int(getattr(submission_result, "rowcount", 0) or 0),
+            int(getattr(signal_result, "rowcount", 0) or 0),
+        )
 
     async def list_beneficiaries(
         self,
@@ -795,7 +798,7 @@ class OperationsRepository:
         job: DataImportJob,
         *,
         status: str,
-        summary_updates: dict[str, object],
+        summary_updates: dict[str, Any],
     ) -> DataImportJob:
         job.status = status
         job.summary_json = {**job.summary_json, **summary_updates}
