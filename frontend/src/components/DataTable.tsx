@@ -24,6 +24,13 @@ export type TableEmptyAction = {
   onClick: () => void;
 };
 
+export type TableSelection<T> = {
+  isSelectable?: (row: T) => boolean;
+  isSelected: (row: T) => boolean;
+  onToggle: (row: T, checked: boolean) => void;
+  onToggleAll: (rows: T[], checked: boolean) => void;
+};
+
 export function DataTable<T>({
   columns,
   emptyAction,
@@ -31,6 +38,7 @@ export function DataTable<T>({
   emptyLabel,
   rows,
   searchLabel,
+  selection,
   title,
 }: {
   columns: TableColumn<T>[];
@@ -39,6 +47,7 @@ export function DataTable<T>({
   emptyLabel: string;
   rows: T[];
   searchLabel: string;
+  selection?: TableSelection<T>;
   title: string;
 }) {
   const [query, setQuery] = useState("");
@@ -85,6 +94,13 @@ export function DataTable<T>({
   useEffect(() => {
     setPage(0);
   }, [query, sortKey, sortDirection]);
+
+  const selectablePagedRows = selection
+    ? pagedRows.filter((row) => selection.isSelectable?.(row) ?? true)
+    : [];
+  const allPagedSelected =
+    selectablePagedRows.length > 0 &&
+    selectablePagedRows.every((row) => selection?.isSelected(row));
 
   const emptyContent = (
     <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
@@ -151,6 +167,16 @@ export function DataTable<T>({
       <div className="divide-y md:hidden">
         {pagedRows.map((row, index) => (
           <article className="space-y-3 px-4 py-4" key={index}>
+            {selection && (selection.isSelectable?.(row) ?? true) ? (
+              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <input
+                  checked={selection.isSelected(row)}
+                  onChange={(event) => selection.onToggle(row, event.target.checked)}
+                  type="checkbox"
+                />
+                Select record
+              </label>
+            ) : null}
             {columns.map((column) => (
               <div className="grid gap-1" key={column.key}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -174,12 +200,26 @@ export function DataTable<T>({
         <table className="w-full min-w-[920px] text-left text-xs">
           <thead className="sticky top-0 z-20 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
+              {selection ? (
+                <th className="w-10 px-2.5 py-2">
+                  <input
+                    aria-label="Select all rows on this page"
+                    checked={allPagedSelected}
+                    disabled={!selectablePagedRows.length}
+                    onChange={(event) =>
+                      selection.onToggleAll(selectablePagedRows, event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                </th>
+              ) : null}
               {columns.map((column, columnIndex) => (
                 <th
                   key={column.key}
                   className={cn(
                     "whitespace-nowrap px-2.5 py-2 font-semibold",
                     columnIndex === 0 &&
+                      !selection &&
                       "sticky left-0 z-10 border-r border-border/60 bg-muted/45 backdrop-blur",
                   )}
                 >
@@ -223,6 +263,18 @@ export function DataTable<T>({
           <tbody className="divide-y">
             {pagedRows.map((row, index) => (
               <tr key={index} className="group transition-colors hover:bg-muted/35">
+                {selection ? (
+                  <td className="w-10 px-2.5 py-2 align-top">
+                    {(selection.isSelectable?.(row) ?? true) ? (
+                      <input
+                        aria-label="Select row"
+                        checked={selection.isSelected(row)}
+                        onChange={(event) => selection.onToggle(row, event.target.checked)}
+                        type="checkbox"
+                      />
+                    ) : null}
+                  </td>
+                ) : null}
                 {columns.map((column, columnIndex) => (
                   <td
                     key={column.key}
@@ -230,6 +282,7 @@ export function DataTable<T>({
                       "max-w-72 px-2.5 py-2 align-top",
                       column.align === "right" && "text-right tabular-nums",
                       columnIndex === 0 &&
+                        !selection &&
                         "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
                     )}
                   >
@@ -244,7 +297,7 @@ export function DataTable<T>({
               <tr>
                 <td
                   className="px-4 py-12 text-center text-muted-foreground"
-                  colSpan={columns.length}
+                  colSpan={columns.length + (selection ? 1 : 0)}
                 >
                   {emptyContent}
                 </td>

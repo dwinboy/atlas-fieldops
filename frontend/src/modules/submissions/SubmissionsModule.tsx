@@ -401,6 +401,54 @@ export function SubmissionsModule({
     "submissions.approve",
     "submissions.manage",
   ]);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkComment, setBulkComment] = useState("");
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const bulkReviewEnabled = canReview && !preview && Boolean(token);
+
+  useEffect(() => {
+    setBulkSelectedIds(new Set());
+  }, [activeSection]);
+
+  function isBulkReviewable(submission: SubmissionRecord): boolean {
+    return !["approved", "rejected", "archived"].includes(submission.status);
+  }
+
+  async function runBulkReview(action: ReviewAction, actionLabel: string): Promise<void> {
+    const comment = bulkComment.trim();
+    if (!comment) {
+      pushToast({
+        title: "Reviewer comment required",
+        description: "Add one comment that applies to every selected record.",
+        tone: "warning",
+      });
+      return;
+    }
+    const ids = Array.from(bulkSelectedIds);
+    if (!ids.length || !token) return;
+    setBulkRunning(true);
+    const failedIds: string[] = [];
+    for (const submissionId of ids) {
+      try {
+        await reviewSubmission(token, submissionId, { action, comment });
+      } catch {
+        failedIds.push(submissionId);
+      }
+    }
+    setBulkRunning(false);
+    setBulkSelectedIds(new Set(failedIds));
+    if (!failedIds.length) setBulkComment("");
+    pushToast({
+      title: failedIds.length
+        ? `${actionLabel}: ${ids.length - failedIds.length} done, ${failedIds.length} failed`
+        : `${actionLabel}: ${ids.length} record(s) processed`,
+      description: failedIds.length
+        ? "Failed records stay selected. Check their workflow state and try again."
+        : "Each record kept its own audit trail entry.",
+      tone: failedIds.length ? "warning" : "success",
+    });
+    await submissionsQuery.refetch();
+  }
   const canExport = hasAnyPermission(principal, [
     "submissions.export",
     "reports.export",
@@ -1131,6 +1179,51 @@ export function SubmissionsModule({
             onChange={setSubmissionFilters}
             submissions={visibleSubmissions}
           />
+          {bulkReviewEnabled && bulkSelectedIds.size ? (
+            <section className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 p-3">
+              <Badge tone="accent">{bulkSelectedIds.size} selected</Badge>
+              <Input
+                aria-label="Bulk reviewer comment"
+                className="h-8 min-w-64 flex-1 text-xs"
+                disabled={bulkRunning}
+                onChange={(event) => setBulkComment(event.target.value)}
+                placeholder="Reviewer comment applied to every selected record"
+                value={bulkComment}
+              />
+              <Button
+                disabled={bulkRunning || !bulkComment.trim()}
+                onClick={() => void runBulkReview("approve", "Bulk approve")}
+                size="sm"
+                variant="primary"
+              >
+                {bulkRunning ? "Processing…" : "Approve selected"}
+              </Button>
+              <Button
+                disabled={bulkRunning || !bulkComment.trim()}
+                onClick={() => void runBulkReview("request_correction", "Bulk return")}
+                size="sm"
+                variant="secondary"
+              >
+                Return selected
+              </Button>
+              <Button
+                disabled={bulkRunning || !bulkComment.trim()}
+                onClick={() => void runBulkReview("reject", "Bulk reject")}
+                size="sm"
+                variant="danger"
+              >
+                Reject selected
+              </Button>
+              <Button
+                disabled={bulkRunning}
+                onClick={() => setBulkSelectedIds(new Set())}
+                size="sm"
+                variant="ghost"
+              >
+                Clear
+              </Button>
+            </section>
+          ) : null}
           <DataTable
             columns={columns}
             emptyAction={
@@ -1149,6 +1242,30 @@ export function SubmissionsModule({
             emptyLabel="No submissions match this view yet"
             rows={filteredSubmissions}
             searchLabel="Search submissions, forms, projects, officers, location"
+            selection={
+              bulkReviewEnabled
+                ? {
+                    isSelectable: isBulkReviewable,
+                    isSelected: (submission) => bulkSelectedIds.has(submission.id),
+                    onToggle: (submission, checked) =>
+                      setBulkSelectedIds((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(submission.id);
+                        else next.delete(submission.id);
+                        return next;
+                      }),
+                    onToggleAll: (rows, checked) =>
+                      setBulkSelectedIds((current) => {
+                        const next = new Set(current);
+                        for (const row of rows) {
+                          if (checked) next.add(row.id);
+                          else next.delete(row.id);
+                        }
+                        return next;
+                      }),
+                  }
+                : undefined
+            }
             title="Submission list"
           />
         </section>
