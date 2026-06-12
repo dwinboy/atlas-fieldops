@@ -288,6 +288,10 @@ SECTOR_PACKS: dict[str, SectorPack] = {
 }
 
 
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
 def list_sector_packs() -> list[SectorPack]:
     return [_enriched_sector_pack(pack) for pack in SECTOR_PACKS.values()]
 
@@ -642,14 +646,14 @@ def _section_title(kind: str) -> str:
 
 
 def _primary_entity(pack: SectorPack) -> str:
-    recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
-    beneficiary = recommended.get("beneficiary") if isinstance(recommended.get("beneficiary"), dict) else {}
+    recommended = _as_dict(pack.get("recommended_settings"))
+    beneficiary = _as_dict(recommended.get("beneficiary"))
     return str(beneficiary.get("primaryEntityType") or "Beneficiary")
 
 
 def _recommended_frequency(pack: SectorPack) -> str:
-    recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
-    indicators = recommended.get("indicators") if isinstance(recommended.get("indicators"), dict) else {}
+    recommended = _as_dict(pack.get("recommended_settings"))
+    indicators = _as_dict(recommended.get("indicators"))
     return str(indicators.get("frequency") or "Monthly").lower()
 
 

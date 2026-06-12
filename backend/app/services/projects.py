@@ -3,7 +3,9 @@ import json
 import re
 from uuid import UUID
 
-from sqlalchemy import func, select
+from typing import Any
+
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import AuditLog
@@ -24,6 +26,10 @@ from app.schemas.projects import (
 )
 from app.services.sector_packs import apply_sector_pack, get_sector_pack, list_sector_packs, sector_summary
 
+
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 class ProjectNotFoundError(Exception):
     pass
@@ -363,7 +369,7 @@ class ProjectsService:
         organization_id: UUID,
         actor_user_id: UUID,
         project: Project,
-        pack: dict[str, object],
+        pack: dict[str, Any],
     ) -> Survey:
         code = self._starter_slug(project.slug, f"{pack['id']}-starter-instruments")[:120]
         existing = await self.session.execute(
@@ -542,7 +548,7 @@ class ProjectsService:
         name_prefix = re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")[:24] or f"IND{index}"
         return f"{project_prefix}.{sector_prefix}.{name_prefix}"
 
-    def _project_sector_pack(self, project: Project) -> dict[str, object] | None:
+    def _project_sector_pack(self, project: Project) -> dict[str, Any] | None:
         sector_id, _ = sector_summary(project.settings_json)
         pack = get_sector_pack(sector_id)
         sector_settings = (
@@ -597,7 +603,7 @@ class ProjectsService:
                 pack[key] = sector_settings[key]
         return pack
 
-    def _sector_form_schema(self, pack: dict[str, object], form_definition: dict[str, object]) -> dict[str, object]:
+    def _sector_form_schema(self, pack: dict[str, Any], form_definition: dict[str, Any]) -> dict[str, Any]:
         form_name = str(form_definition.get("name") or "Sector Starter Form")
         fields = list(form_definition.get("questions", [])) if isinstance(form_definition.get("questions"), list) else []
         sections = list(form_definition.get("sections", [])) if isinstance(form_definition.get("sections"), list) else []
@@ -635,10 +641,10 @@ class ProjectsService:
             ],
         }
 
-    def _sector_form_controls(self, pack: dict[str, object], form_definition: dict[str, object]) -> dict[str, object]:
+    def _sector_form_controls(self, pack: dict[str, Any], form_definition: dict[str, Any]) -> dict[str, Any]:
         form_name = str(form_definition.get("name") or "Sector Starter Form")
-        recommended = pack.get("recommended_settings") if isinstance(pack.get("recommended_settings"), dict) else {}
-        beneficiary = recommended.get("beneficiary") if isinstance(recommended, dict) and isinstance(recommended.get("beneficiary"), dict) else {}
+        recommended = _as_dict(pack.get("recommended_settings"))
+        beneficiary = _as_dict(recommended.get("beneficiary"))
         creates_entity = bool(form_definition.get("creates_entity"))
         requires_existing_entity = bool(form_definition.get("requires_existing_entity"))
         return {
@@ -672,7 +678,7 @@ class ProjectsService:
             },
         }
 
-    def _sector_form_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+    def _sector_form_definitions(self, pack: dict[str, Any]) -> list[dict[str, Any]]:
         template_names = [str(name) for name in pack.get("form_templates", [])]
         definitions = pack.get("form_definitions")
         if isinstance(definitions, list) and definitions:
@@ -684,7 +690,7 @@ class ProjectsService:
                 return valid_definitions
         return [{"name": name} for name in template_names]
 
-    def _sector_indicator_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+    def _sector_indicator_definitions(self, pack: dict[str, Any]) -> list[dict[str, Any]]:
         template_names = [str(name) for name in pack.get("indicator_templates", [])]
         definitions = pack.get("indicator_definitions")
         if isinstance(definitions, list) and definitions:
@@ -696,7 +702,7 @@ class ProjectsService:
                 return valid_definitions
         return [{"name": name} for name in template_names]
 
-    def _sector_report_definitions(self, pack: dict[str, object]) -> list[dict[str, object]]:
+    def _sector_report_definitions(self, pack: dict[str, Any]) -> list[dict[str, Any]]:
         template_names = [str(name) for name in pack.get("report_templates", [])]
         definitions = pack.get("report_definitions")
         if isinstance(definitions, list) and definitions:
@@ -708,7 +714,7 @@ class ProjectsService:
                 return valid_definitions
         return [{"name": name} for name in template_names]
 
-    def _fallback_sector_questions(self, pack: dict[str, object], form_name: str) -> list[dict[str, object]]:
+    def _fallback_sector_questions(self, pack: dict[str, Any], form_name: str) -> list[dict[str, Any]]:
         entity_type = str(((pack.get("recommended_settings") or {}).get("beneficiary") or {}).get("primaryEntityType") or "Beneficiary") if isinstance(pack.get("recommended_settings"), dict) else "Beneficiary"
         return [
             {"id": "consent", "label": "Consent captured", "type": "consent", "required": True, "variableName": "consent_captured", "helpText": "Confirm informed consent before collecting data."},
@@ -719,7 +725,7 @@ class ProjectsService:
         ]
 
     @staticmethod
-    def _mark_sector_install(settings: dict[str, object] | None, key: str) -> dict[str, object]:
+    def _mark_sector_install(settings: dict[str, Any] | None, key: str) -> dict[str, Any]:
         next_settings = dict(settings or {})
         sector = next_settings.get("sector")
         if not isinstance(sector, dict):
@@ -776,7 +782,7 @@ class ProjectsService:
         result = await self.session.execute(select(func.count()).select_from(model).where(*conditions))
         return int(result.scalar_one())
 
-    async def _related(self, query, *, category: str, fallback_label: str | None = None) -> list[ProjectRelatedRecordRead]:
+    async def _related(self, query: Select[Any], *, category: str, fallback_label: str | None = None) -> list[ProjectRelatedRecordRead]:
         result = await self.session.execute(query)
         records: list[ProjectRelatedRecordRead] = []
         for row in result.all():
@@ -823,7 +829,7 @@ class ProjectsService:
         return "Critical"
 
     @staticmethod
-    def _metadata(value: str) -> dict[str, object]:
+    def _metadata(value: str) -> dict[str, Any]:
         try:
             parsed = json.loads(value or "{}")
         except json.JSONDecodeError:

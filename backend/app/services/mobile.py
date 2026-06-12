@@ -62,6 +62,14 @@ _ATTACHMENT_MEDIA_TYPES = {
 }
 
 
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
 def _form_status(value: str) -> str:
     return {
         "draft": "Draft",
@@ -251,7 +259,7 @@ def _field_indicator_mapping(field: dict[str, Any]) -> dict[str, Any]:
 
 
 def _field_beneficiary_mapping(field: dict[str, Any]) -> dict[str, Any]:
-    typed_mapping = field.get("beneficiary") if isinstance(field.get("beneficiary"), dict) else {}
+    typed_mapping = _as_dict(field.get("beneficiary"))
     return {
         "profileImpact": _field_metadata_value(field, "profile-impact") or typed_mapping.get("profileImpact"),
         "beneficiaryField": _field_metadata_value(field, "beneficiary-field") or typed_mapping.get("profileField"),
@@ -275,7 +283,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     field_type = str(field.get("type") or "").lower()
-    validation = field.get("validation") if isinstance(field.get("validation"), dict) else {}
+    validation = _as_dict(field.get("validation"))
     if validation:
         for source, rule_type in (
             ("min", "Min"),
@@ -313,7 +321,7 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     if field_type == "polygon":
-        polygon_config = field.get("polygon") if isinstance(field.get("polygon"), dict) else {}
+        polygon_config = _as_dict(field.get("polygon"))
         min_vertices = polygon_config.get("minVertices", 3)
         rules.append(
             {
@@ -462,15 +470,17 @@ def _logic_rules(field: dict[str, Any], variable_to_id: dict[str, str]) -> list[
             }
         )
     calculation = field.get("calculation")
-    expression = calculation.get("expression") if isinstance(calculation, dict) else field.get("calculation")
-    if expression:
+    calculation_expression = (
+        calculation.get("expression") if isinstance(calculation, dict) else field.get("calculation")
+    )
+    if calculation_expression:
         rules.append(
             {
                 "id": f"{field.get('id')}-calculation",
                 "action": "Calculate",
                 "sourceQuestionId": str(field.get("id")),
                 "operator": "IsNotEmpty",
-                "value": expression,
+                "value": calculation_expression,
                 "targetQuestionId": field.get("id"),
             }
         )
@@ -491,7 +501,7 @@ def _mobile_default_value(
     if default_value is not None and not isinstance(default_value, dict):
         metadata["value"] = default_value
     if field_type in {"matrix_single", "matrix_multi", "grid"}:
-        matrix_config = field.get("matrix") if isinstance(field.get("matrix"), dict) else {}
+        matrix_config = _as_dict(field.get("matrix"))
         metadata.setdefault("mode", "multi" if field_type == "matrix_multi" else "single")
         metadata.setdefault(
             "rows",
@@ -583,12 +593,16 @@ def _build_question_field(
 
 def _schema_sections(schema_json: dict[str, Any], controls_json: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     controls = controls_json or {}
-    reference_bindings = controls.get("reference_bindings") if isinstance(controls.get("reference_bindings"), list) else []
-    reference_by_question = {
-        str(binding.get("question_id")): _slugify_reference(str(binding.get("reference_type") or binding.get("reference_list_name") or ""))
-        for binding in reference_bindings
-        if isinstance(binding, dict) and binding.get("question_id")
-    }
+    reference_bindings = _as_list(controls.get("reference_bindings"))
+    reference_by_question: dict[str, str] = {}
+    for binding in reference_bindings:
+        if not (isinstance(binding, dict) and binding.get("question_id")):
+            continue
+        reference_slug = _slugify_reference(
+            str(binding.get("reference_type") or binding.get("reference_list_name") or "")
+        )
+        if reference_slug:
+            reference_by_question[str(binding.get("question_id"))] = reference_slug
     variable_to_id: dict[str, str] = {}
     for section in schema_json.get("sections", []):
         for field in section.get("fields", []):
@@ -640,7 +654,7 @@ def _polygon_question_ids(schema_json: dict[str, Any]) -> set[str]:
 
 def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
     controls = controls_json or {}
-    entity_controls = controls.get("entity_controls") if isinstance(controls.get("entity_controls"), dict) else {}
+    entity_controls = _as_dict(controls.get("entity_controls"))
     frequency = str(entity_controls.get("submission_frequency") or "Unlimited")
     frequency_map = {
         "once_ever": "OnceEverPerEntity",
@@ -1835,8 +1849,8 @@ class MobileService:
         return None
 
     def _form_requires_gps(self, schema_json: dict[str, Any], controls_json: dict[str, Any]) -> bool:
-        quality = controls_json.get("quality") if isinstance(controls_json.get("quality"), dict) else {}
-        governance = controls_json.get("governance") if isinstance(controls_json.get("governance"), dict) else {}
+        quality = _as_dict(controls_json.get("quality"))
+        governance = _as_dict(controls_json.get("governance"))
         if quality.get("gps_required") is True or governance.get("gps_required") is True:
             return True
         for section in schema_json.get("sections", []):

@@ -7,7 +7,7 @@ from io import StringIO
 from uuid import UUID
 from typing import Literal, cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
@@ -1173,7 +1173,7 @@ class OperationsService:
         actor_user_id: UUID | None,
         actor_roles: list[str] | None,
         actor_project_ids: list[str] | None,
-    ) -> list[object]:
+    ) -> list[ColumnElement[bool]]:
         if actor_user_id is None or actor_roles is None:
             return []
         roles = {canonical_role(role) for role in actor_roles}
@@ -1187,7 +1187,7 @@ class OperationsService:
                 continue
         if roles & {"me_manager", "project_manager", "data_manager", "data_analyst", "donor_viewer"} and project_ids:
             return [FieldVisitRequest.project_id.in_(project_ids)]
-        clauses: list[object] = []
+        clauses: list[ColumnElement[bool]] = []
         if project_ids:
             clauses.append(FieldVisitRequest.project_id.in_(project_ids))
         if "district_supervisor" in roles:

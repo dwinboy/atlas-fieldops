@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.base import Base
 
 from app.core.permissions import RoleDefinition, ScopeType
 from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project, Submission
@@ -242,7 +244,7 @@ class IdentityRepository:
             .where(*filters)
             .order_by(UserRoleAssignment.created_at)
         )
-        return list(result.all())
+        return list(result.tuples().all())
 
     async def get_role_assignment(
         self,
@@ -262,7 +264,7 @@ class IdentityRepository:
                 Role.deleted_at.is_(None),
             )
         )
-        return result.one_or_none()
+        return result.tuples().one_or_none()
 
     async def update_role_assignment(
         self,
@@ -386,7 +388,7 @@ class IdentityRepository:
         await self.session.flush()
         return profile
 
-    async def _count(self, model: type[object], *filters: object) -> int:
+    async def _count(self, model: type[Base], *filters: ColumnElement[bool]) -> int:
         result = await self.session.execute(select(func.count()).select_from(model).where(*filters))
         return int(result.scalar_one())
 

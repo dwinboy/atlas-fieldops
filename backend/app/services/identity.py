@@ -1,5 +1,6 @@
 import csv
 from io import StringIO
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,7 @@ from app.core.config import settings
 from app.core.events import event_publisher
 from app.core.permissions import ROLE_DEFINITIONS, ScopeType, canonical_role, default_scope_for_roles, is_assignable_role, is_scope_allowed_for_role
 from app.core.security import hash_password
-from app.models.identity import User
+from app.models.identity import Role, User, UserRoleAssignment
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository
 from app.repositories.identity import IdentityRepository, OrganizationRepository, OrganizationUnitRepository, RoleRepository
@@ -39,7 +40,7 @@ class IdentityPermissionError(Exception):
     pass
 
 
-ROLE_OPERATIONAL_PROFILE_BLUEPRINTS: dict[str, dict[str, object]] = {
+ROLE_OPERATIONAL_PROFILE_BLUEPRINTS: dict[str, dict[str, Any]] = {
     "owner": {
         "display_name": "Organization Owner Profile",
         "responsibilities": ["Own organization setup and tenant governance", "Approve senior access and role changes", "Monitor organization readiness and risk"],
@@ -259,7 +260,7 @@ class UserManagementService:
         )
 
     @staticmethod
-    def _operational_profile_blueprint(role_name: str) -> dict[str, object]:
+    def _operational_profile_blueprint(role_name: str) -> dict[str, Any]:
         canonical_name = canonical_role(role_name)
         fallback_label = canonical_name.replace("_", " ").title()
         return ROLE_OPERATIONAL_PROFILE_BLUEPRINTS.get(
@@ -278,10 +279,10 @@ class UserManagementService:
         organization_id: UUID,
         user_id: UUID,
         primary_role_name: str | None,
-        assignments: list[tuple[object, object]],
+        assignments: list[tuple[UserRoleAssignment, Role]],
         user_is_active: bool = True,
     ) -> list[UserOperationalProfileRead]:
-        grouped: dict[str, list[tuple[object, object]]] = {}
+        grouped: dict[str, list[tuple[UserRoleAssignment, Role]]] = {}
         for assignment, role in assignments:
             role_name = canonical_role(str(getattr(role, "name", "")))
             if not role_name:
@@ -336,7 +337,7 @@ class UserManagementService:
             for profile in await self.identity.list_operational_profiles(organization_id=organization_id, user_id=user_id)
         ]
 
-    async def _resolve_assignable_role(self, *, organization_id: UUID, role_name: str, actor_roles: list[str]) -> object:
+    async def _resolve_assignable_role(self, *, organization_id: UUID, role_name: str, actor_roles: list[str]) -> Role:
         canonical_name = canonical_role(role_name)
         if not is_assignable_role(canonical_name, actor_roles):
             raise IdentityPermissionError("Role cannot be assigned by this user")
@@ -501,7 +502,7 @@ class UserManagementService:
         )
 
     @staticmethod
-    def to_assignment_read(assignment: object, role: object) -> UserRoleAssignmentRead:
+    def to_assignment_read(assignment: UserRoleAssignment, role: Role) -> UserRoleAssignmentRead:
         return UserRoleAssignmentRead(
             id=getattr(assignment, "id"),
             role_id=getattr(role, "id"),
@@ -529,7 +530,7 @@ class UserManagementService:
         *,
         login_slug: str | None = None,
         temporary_password: str | None = None,
-        assignments: list[tuple[object, object]] | None = None,
+        assignments: list[tuple[UserRoleAssignment, Role]] | None = None,
         operational_profiles: list[UserOperationalProfileRead] | None = None,
     ) -> UserRead:
         assignment_reads = [cls.to_assignment_read(assignment, assignment_role) for assignment, assignment_role in (assignments or [])]

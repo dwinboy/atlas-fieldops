@@ -18,11 +18,12 @@ from app.core.permissions import (
 from app.repositories.identity import OrganizationUnitRepository, RoleRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.identity import AccessCatalogRead, OrganizationUnitRead, PermissionCatalogItem, RoleCatalogItem, RoleCreate, RoleRead
+from app.models.identity import Role
 
 router = APIRouter()
 
 
-def serialize_role(role) -> RoleRead:
+def serialize_role(role: Role) -> RoleRead:
     return RoleRead(
         id=role.id,
         organization_id=role.organization_id,

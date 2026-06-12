@@ -90,6 +90,14 @@ from app.services.auth import AuthService
 from app.services.template_library import TemplateLibraryService
 
 
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
 class CollectionNotFoundError(Exception):
     pass
 
@@ -496,6 +504,7 @@ def _parse_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value
     text = str(value).strip().replace("Z", "+00:00")
+    parsed: datetime | None
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
@@ -1689,7 +1698,7 @@ class FormService:
         return DataFormSchemaRead(
             form_id=form.id,
             version=version.version,
-            schema=version.schema_json,
+            form_schema=version.schema_json,
             published_at=version.published_at,
             published_by_user_id=version.published_by_user_id,
         )
@@ -2852,7 +2861,7 @@ class SubmissionService:
             )
         return enriched
 
-    def _review_quality_score(self, review_summary: dict[str, object]) -> int:
+    def _review_quality_score(self, review_summary: dict[str, Any]) -> int:
         critical_signals = int(review_summary.get("critical_mobile_integrity_signal_count") or 0)
         signal_count = int(review_summary.get("mobile_integrity_signal_count") or 0)
         other_signals = max(0, signal_count - critical_signals)
@@ -3072,7 +3081,7 @@ class SubmissionService:
             "sex": self._string_from_object(mapped_profile_values.get("sex")) or self._string_value(values, "gender", "sex"),
         }
         unique_field_keys = [
-            key for key in (self._profile_key_from_mapping(field) for field in controls.get("unique_fields") or []) if key
+            key for key in (self._profile_key_from_mapping(field) for field in _as_list(controls.get("unique_fields"))) if key
         ]
         existing = await self._find_beneficiary_for_submission(
             organization_id=organization_id,
@@ -3393,7 +3402,7 @@ class SubmissionService:
             "national_id": original_profile.get("national_id") or national_id,
             "household_id": original_profile.get("household_id") or household_id,
             "fieldLineage": {
-                **(original_profile.get("fieldLineage") if isinstance(original_profile.get("fieldLineage"), dict) else {}),
+                **_as_dict(original_profile.get("fieldLineage")),
                 **self._profile_field_lineage(
                     submission=submission,
                     actor_user_id=actor_user_id,
@@ -3777,9 +3786,8 @@ class SubmissionService:
             )
         )
 
-    def _entity_controls(self, controls_json: dict[str, object]) -> dict[str, object]:
-        controls = controls_json.get("entity_controls") if isinstance(controls_json.get("entity_controls"), dict) else {}
-        return controls
+    def _entity_controls(self, controls_json: dict[str, Any]) -> dict[str, Any]:
+        return _as_dict(controls_json.get("entity_controls"))
 
     async def _entity_type_from_controls(
         self,
@@ -3804,9 +3812,8 @@ class SubmissionService:
                 pass
         return str(controls.get("entity_type") or controls.get("entityType") or fallback or "Beneficiary")
 
-    def _governance_settings(self, controls_json: dict[str, object]) -> dict[str, object]:
-        governance = controls_json.get("governance") if isinstance(controls_json.get("governance"), dict) else {}
-        return governance
+    def _governance_settings(self, controls_json: dict[str, Any]) -> dict[str, Any]:
+        return _as_dict(controls_json.get("governance"))
 
     async def _find_duplicate_submission(
         self,
@@ -4128,7 +4135,7 @@ class SubmissionService:
     ) -> float:
         lat_meters = (latitude_a - latitude_b) * 111_320
         lon_meters = (longitude_a - longitude_b) * 111_320
-        return (lat_meters**2 + lon_meters**2) ** 0.5
+        return float((lat_meters**2 + lon_meters**2) ** 0.5)
 
     async def _next_beneficiary_uid(
         self,
