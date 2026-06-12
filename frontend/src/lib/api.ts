@@ -3800,6 +3800,33 @@ export async function listIndicators(token: string): Promise<IndicatorRead[]> {
   return request<IndicatorRead[]>("/operations/indicators", { token });
 }
 
+export type IndicatorUpdate = {
+  name?: string;
+  description?: string | null;
+  unit?: string;
+  reporting_frequency?: string;
+  baseline_value?: number;
+  target_value?: number;
+  current_value?: number;
+  sdg_code?: string | null;
+  formula?: string | null;
+  category?: string | null;
+  disaggregation_fields?: string[];
+  is_active?: boolean;
+};
+
+export async function updateIndicator(
+  token: string,
+  indicatorId: string,
+  payload: IndicatorUpdate,
+): Promise<IndicatorRead> {
+  return request<IndicatorRead>(`/operations/indicators/${indicatorId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createIndicator(token: string, payload: IndicatorCreate): Promise<IndicatorRead> {
   return request<IndicatorRead>("/operations/indicators", { method: "POST", token, bodyJson: payload });
 }

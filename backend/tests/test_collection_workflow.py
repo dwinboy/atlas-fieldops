@@ -46,12 +46,13 @@ from app.services.collection import (
 from app.schemas.operations import (
     FieldWorkPlanCreate,
     FieldWorkPlanUpdate,
+    IndicatorUpdate,
     OperationalTargetCreate,
     OperationalTargetUpdate,
 )
 from app.services.form_engine import FormEngine
 from app.services.mobile import MobileService
-from app.services.operations import FieldPlanningService
+from app.services.operations import FieldPlanningService, OperationsService
 
 
 def test_enterprise_roles_have_collection_permissions() -> None:
@@ -1441,3 +1442,58 @@ async def test_work_plans_and_targets_persist_with_audit() -> None:
             "operational_target.created",
             "operational_target.updated",
         ]
+
+
+@pytest.mark.asyncio
+async def test_indicator_update_revises_values_and_audits() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Indicator Org", slug="indicator-org"),
+                User(id=actor_user_id, email="me-manager@example.org", full_name="ME Manager", password_hash="x"),
+            ]
+        )
+        indicator = MonitoringIndicator(
+            organization_id=organization_id,
+            code="WASH.ACCESS",
+            name="Households with water access",
+            baseline_value=10,
+            target_value=100,
+            current_value=25,
+        )
+        session.add(indicator)
+        await session.flush()
+
+        service = OperationsService(session)
+        updated = await service.update_indicator(
+            organization_id,
+            indicator.id,
+            IndicatorUpdate(target_value=150, name="Households with safe water access"),
+            actor_user_id,
+        )
+        assert updated.target_value == 150
+        assert updated.name == "Households with safe water access"
+        assert updated.code == "WASH.ACCESS"
+        assert updated.baseline_value == 10
+
+        with pytest.raises(LookupError):
+            await service.update_indicator(
+                organization_id, uuid4(), IndicatorUpdate(target_value=1), actor_user_id
+            )
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "indicator",
+            )
+        )
+        logs = list(audit_result.scalars())
+        assert [log.action for log in logs] == ["indicator.updated"]
+        assert "target_value" in logs[0].metadata_json

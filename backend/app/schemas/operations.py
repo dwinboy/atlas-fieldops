@@ -301,6 +301,24 @@ class IndicatorCreate(BaseModel):
     disaggregation_fields: list[str] = Field(default_factory=list, max_length=6)
 
 
+class IndicatorUpdate(BaseModel):
+    """Revise an indicator after creation. The code stays immutable because
+    submissions, targets, and reports reference it."""
+
+    name: str | None = Field(default=None, min_length=2, max_length=240)
+    description: str | None = Field(default=None, max_length=2000)
+    unit: str | None = Field(default=None, max_length=60)
+    reporting_frequency: str | None = Field(default=None, pattern=r"^(monthly|quarterly|annual)$")
+    baseline_value: float | None = None
+    target_value: float | None = None
+    current_value: float | None = None
+    sdg_code: str | None = Field(default=None, max_length=40)
+    formula: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, max_length=60)
+    disaggregation_fields: list[str] | None = Field(default=None, max_length=6)
+    is_active: bool | None = None
+
+
 class IndicatorRead(BaseModel):
     id: UUID
     project_id: UUID | None

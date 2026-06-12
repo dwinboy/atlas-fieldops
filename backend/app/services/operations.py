@@ -97,6 +97,7 @@ from app.schemas.operations import (
     DonorReportIndicatorMetric,
     DonorReportMetrics,
     IndicatorCreate,
+    IndicatorUpdate,
     IndicatorDisaggregationRead,
     IndicatorDisaggregationsRead,
     IndicatorLinkedSubmissionRead,
@@ -2255,6 +2256,56 @@ class OperationsService:
         await self.session.commit()
         await event_publisher.publish("indicator.created", {"organization_id": str(organization_id), "indicator_id": str(indicator.id)})
         return self.to_indicator_read(indicator)
+
+    async def update_indicator(
+        self,
+        organization_id: UUID,
+        indicator_id: UUID,
+        payload: IndicatorUpdate,
+        actor_user_id: UUID | None = None,
+    ) -> IndicatorRead:
+        result = await self.session.execute(
+            select(MonitoringIndicator).where(
+                MonitoringIndicator.organization_id == organization_id,
+                MonitoringIndicator.id == indicator_id,
+                MonitoringIndicator.deleted_at.is_(None),
+            )
+        )
+        indicator = result.scalar_one_or_none()
+        if indicator is None:
+            raise LookupError("Indicator not found")
+        changed: list[str] = []
+        for field in (
+            "name",
+            "description",
+            "unit",
+            "reporting_frequency",
+            "baseline_value",
+            "target_value",
+            "current_value",
+            "sdg_code",
+            "formula",
+            "category",
+            "is_active",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(indicator, field) != value:
+                setattr(indicator, field, value)
+                changed.append(field)
+        if payload.disaggregation_fields is not None:
+            indicator.disaggregation_json = list(payload.disaggregation_fields)
+            changed.append("disaggregation_fields")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="indicator.updated",
+            resource_type="indicator",
+            resource_id=str(indicator.id),
+            metadata={"code": indicator.code, "changed_fields": changed},
+        )
+        calculated_value = await self.calculate_indicator_current_value(organization_id, indicator)
+        return self.to_indicator_read(indicator, calculated_value=calculated_value)
 
     async def list_indicators(self, organization_id: UUID) -> list[IndicatorRead]:
         indicators = await self.repository.list_indicators(organization_id)

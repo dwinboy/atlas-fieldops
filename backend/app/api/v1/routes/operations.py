@@ -52,6 +52,7 @@ from app.schemas.operations import (
     ImportSupportedSourceRead,
     ImportUploadResponse,
     IndicatorCreate,
+    IndicatorUpdate,
     IndicatorDisaggregationsRead,
     IndicatorLinkedSubmissionsRead,
     IndicatorRead,
@@ -745,6 +746,35 @@ async def create_indicator(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> IndicatorRead:
     return await OperationsService(session).create_indicator(organization_uuid(principal), payload, user_uuid(principal))
+
+
+@router.patch(
+    "/indicators/{indicator_id}",
+    response_model=IndicatorRead,
+    summary="Update an indicator's definition, baseline, target, or formula",
+)
+async def update_indicator(
+    indicator_id: UUID,
+    payload: IndicatorUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.INDICATOR_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IndicatorRead:
+    service = OperationsService(session)
+    try:
+        indicator = await service.update_indicator(
+            organization_uuid(principal),
+            indicator_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return indicator
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
 
 
 @router.get(

@@ -34,6 +34,7 @@ import {
   ApiError,
   createIndicator,
   getFormSchema,
+  updateIndicator,
   getIndicatorDisaggregation,
   getIndicatorLinkedSubmissions,
   listForms,
@@ -217,6 +218,12 @@ function apiFrequency(value: IndicatorRecord["frequency"]): IndicatorCreate["rep
   return "quarterly";
 }
 
+function displayFrequency(value: string | null | undefined): IndicatorRecord["frequency"] {
+  if (value === "monthly") return "Monthly";
+  if (value === "annual") return "Annual";
+  return "Quarterly";
+}
+
 function numberOrZero(value: string): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -254,7 +261,7 @@ function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
     dataSource,
     definition: row.description ?? "Imported monitoring indicator.",
     disaggregation: row.disaggregation_fields.map(prettifyFieldName),
-    frequency: (row.reporting_frequency || "Quarterly") as IndicatorRecord["frequency"],
+    frequency: displayFrequency(row.reporting_frequency),
     id: row.id,
     lastCalculatedAt: row.calculated_at ?? new Date().toISOString(),
     linkedForm: null,
@@ -289,6 +296,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const [activeDetailTab, setActiveDetailTab] = useState<IndicatorDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
   const [creationOpen, setCreationOpen] = useState(false);
+  const [editingIndicatorId, setEditingIndicatorId] = useState<string | null>(null);
   const [indicatorDraft, setIndicatorDraft] = useState<IndicatorDraft>(defaultIndicatorDraft);
   const [localIndicators, setLocalIndicators] = useState<IndicatorRecord[]>([]);
   const queryClient = useQueryClient();
@@ -416,9 +424,56 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
     },
   });
 
+  const updateIndicatorMutation = useMutation({
+    mutationFn: () =>
+      updateIndicator(token ?? "", editingIndicatorId ?? "", {
+        baseline_value: numberOrZero(indicatorDraft.baseline),
+        current_value: numberOrZero(indicatorDraft.current),
+        description: indicatorDraft.definition || null,
+        name: indicatorDraft.name.trim(),
+        reporting_frequency: apiFrequency(indicatorDraft.frequency),
+        sdg_code: indicatorDraft.resultArea || null,
+        target_value: numberOrZero(indicatorDraft.target),
+        unit: indicatorDraft.unit || "count",
+      }),
+    onSuccess: async (indicator) => {
+      const updated = mapApiIndicator(indicator);
+      setLocalIndicators((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      setCreationOpen(false);
+      setEditingIndicatorId(null);
+      setIndicatorDraft(defaultIndicatorDraft);
+      await queryClient.invalidateQueries({ queryKey: ["indicators-module"] });
+      pushToast({ title: "Indicator updated", description: `${updated.code} now reflects the revised values.`, tone: "success" });
+    },
+    onError: (error) => {
+      const description = messageFromError(error);
+      setActionResult(description);
+      pushToast({ title: "Could not update indicator", description, tone: "danger" });
+    },
+  });
+
   function openCreateIndicator(): void {
     setActionResult("");
+    setEditingIndicatorId(null);
     setIndicatorDraft(defaultIndicatorDraft);
+    setCreationOpen(true);
+  }
+
+  function openEditIndicator(indicator: IndicatorRecord): void {
+    setActionResult("");
+    setEditingIndicatorId(indicator.id);
+    setIndicatorDraft({
+      ...defaultIndicatorDraft,
+      baseline: String(indicator.baseline ?? 0),
+      code: indicator.code,
+      current: String(indicator.current ?? 0),
+      definition: indicator.definition,
+      frequency: indicator.frequency,
+      name: indicator.name,
+      resultArea: indicator.resultArea === "Monitoring framework" ? "" : indicator.resultArea,
+      target: String(indicator.target ?? 0),
+      unit: indicator.unit,
+    });
     setCreationOpen(true);
   }
 
@@ -426,6 +481,10 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
     const code = normalizeIndicatorCode(indicatorDraft.code);
     if (!indicatorDraft.name.trim() || code.length < 2) {
       setActionResult("Indicator name and a valid code are required before saving.");
+      return;
+    }
+    if (editingIndicatorId) {
+      updateIndicatorMutation.mutate();
       return;
     }
     if (indicators.some((indicator) => indicator.code === code)) {
@@ -515,9 +574,11 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         <IndicatorDetailWorkspace
           auditEvents={indicatorAuditEvents}
           baselines={indicatorBaselines}
+          canEdit={canManageIndicators && !preview}
           dataSources={indicatorDataSources}
           indicator={selectedIndicator}
           onClose={() => setSelectedIndicatorId(null)}
+          onEdit={() => openEditIndicator(selectedIndicator)}
           preview={preview}
           setTab={setActiveDetailTab}
           tab={activeDetailTab}
@@ -562,14 +623,18 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         )
       ) : null}
       <CreateIndicatorModal
-        canSubmit={canManageIndicators && !createIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
+        canSubmit={canManageIndicators && !createIndicatorMutation.isPending && !updateIndicatorMutation.isPending && Boolean(indicatorDraft.name.trim() && normalizeIndicatorCode(indicatorDraft.code).length >= 2)}
         draft={indicatorDraft}
+        editing={Boolean(editingIndicatorId)}
         onChange={setIndicatorDraft}
-        onOpenChange={setCreationOpen}
+        onOpenChange={(open) => {
+          setCreationOpen(open);
+          if (!open) setEditingIndicatorId(null);
+        }}
         onSubmit={submitIndicator}
         open={creationOpen}
         preview={preview}
-        saving={createIndicatorMutation.isPending}
+        saving={createIndicatorMutation.isPending || updateIndicatorMutation.isPending}
         token={token}
       />
     </section>
@@ -731,9 +796,10 @@ function IndicatorLibrary({ indicators, loading, onCreateIndicator, onImportIndi
   );
 }
 
-function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubmit, open, preview, saving, token }: {
+function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onOpenChange, onSubmit, open, preview, saving, token }: {
   canSubmit: boolean;
   draft: IndicatorDraft;
+  editing?: boolean;
   onChange: (draft: IndicatorDraft) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
@@ -789,11 +855,11 @@ function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubm
   }
 
   return (
-    <Modal contentClassName="max-w-3xl" description="Create a reusable M&E indicator, then attach targets, baselines, forms, and calculations from the indicator workspace." onOpenChange={onOpenChange} open={open} title="Create indicator">
+    <Modal contentClassName="max-w-3xl" description={editing ? "Revise this indicator's definition, baseline, target, and reporting setup. The indicator code stays fixed because submissions and reports reference it." : "Create a reusable M&E indicator, then attach targets, baselines, forms, and calculations from the indicator workspace."} onOpenChange={onOpenChange} open={open} title={editing ? "Edit indicator" : "Create indicator"}>
       <div className="grid max-h-[70vh] gap-4 overflow-y-auto p-5 product-scrollbar">
         <div className="grid gap-3 md:grid-cols-2">
           <Input placeholder="Indicator name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
-          <Input placeholder="Indicator code, e.g. WASH.ACCESS" value={draft.code} onChange={(event) => onChange({ ...draft, code: normalizeIndicatorCode(event.target.value) })} />
+          <Input disabled={editing} placeholder="Indicator code, e.g. WASH.ACCESS" value={draft.code} onChange={(event) => onChange({ ...draft, code: normalizeIndicatorCode(event.target.value) })} />
         </div>
         <Textarea placeholder="Definition" value={draft.definition} onChange={(event) => onChange({ ...draft, definition: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-3">
@@ -933,7 +999,7 @@ function CreateIndicatorModal({ canSubmit, draft, onChange, onOpenChange, onSubm
       </div>
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
-        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Creating..." : "Create indicator"}</Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Saving..." : editing ? "Save changes" : "Create indicator"}</Button>
       </div>
     </Modal>
   );
@@ -1112,9 +1178,11 @@ function IndicatorReportsOverview({ indicators, onOpenReports }: { indicators: I
 function IndicatorDetailWorkspace({
   auditEvents,
   baselines,
+  canEdit,
   dataSources,
   indicator,
   onClose,
+  onEdit,
   preview,
   setTab,
   tab,
@@ -1123,9 +1191,11 @@ function IndicatorDetailWorkspace({
 }: {
   auditEvents: IndicatorAuditEvent[];
   baselines: IndicatorBaseline[];
+  canEdit: boolean;
   dataSources: IndicatorDataSource[];
   indicator: IndicatorRecord;
   onClose: () => void;
+  onEdit: () => void;
   preview: boolean;
   setTab: (tab: IndicatorDetailTab) => void;
   tab: IndicatorDetailTab;
@@ -1144,7 +1214,10 @@ function IndicatorDetailWorkspace({
           <h2 className="mt-3 text-xl font-semibold">{indicator.name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{indicator.code} · {indicator.project} · {indicator.resultArea}</p>
         </div>
-        <Button onClick={onClose} variant="secondary">Back to indicators</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={!canEdit} onClick={onEdit} variant="primary">Edit indicator</Button>
+          <Button onClick={onClose} variant="secondary">Back to indicators</Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {detailTabs.map((item) => (
