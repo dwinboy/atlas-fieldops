@@ -34,6 +34,10 @@ import { Modal } from "@/components/ui/modal";
 import { UserProfileLink } from "@/components/ui/user-link";
 import {
   createFieldOfficerAssignment,
+  createFieldWorkAssignment,
+  listFieldWorkAssignments,
+  setFieldWorkAssignmentStatus,
+  updateFieldWorkAssignment,
   getOperationalActivityReport,
   getFieldOfficerProfile,
   getOperationsSummary,
@@ -1103,6 +1107,11 @@ export function FieldOperationsModule({
     queryFn: () => listForms(token ?? ""),
     enabled,
   });
+  const workAssignmentsQuery = useQuery({
+    queryKey: ["field-operations", "work-assignments", token],
+    queryFn: () => listFieldWorkAssignments(token ?? ""),
+    enabled,
+  });
   const entitiesQuery = useQuery({
     queryKey: ["field-operations", "beneficiaries", token],
     queryFn: () => listBeneficiaries(token ?? ""),
@@ -1263,6 +1272,37 @@ export function FieldOperationsModule({
     }
     return Array.from(byId.values());
   }, [availableProjects, formsQuery.data, localForms, preview]);
+  useEffect(() => {
+    if (preview || !workAssignmentsQuery.data) return;
+    const users = usersQuery.data ?? [];
+    setAssignments(
+      workAssignmentsQuery.data.map((record) => ({
+        id: record.id,
+        name: record.name,
+        assignmentType:
+          (record.assignment_type as FieldAssignment["assignmentType"]) ?? "Form only",
+        project:
+          availableProjects.find((project) => project.id === record.project_id)?.name ?? "",
+        form: availableForms.find((form) => form.id === record.form_id)?.name ?? "",
+        supervisor:
+          users.find((user) => user.id === record.supervisor_user_id)?.full_name ?? "",
+        fieldOfficers: record.officer_ids.map(
+          (officerId) =>
+            officers.find((officer) => officer.id === officerId)?.full_name ?? "Officer",
+        ),
+        location: record.location ?? "",
+        startDate: record.start_date ?? "",
+        endDate: record.end_date ?? "",
+        targetCount: record.target_count,
+        completedCount: record.completed_count,
+        assignedEntityIds: record.assigned_entity_ids,
+        priority: record.priority as Priority,
+        status: record.status as AssignmentStatus,
+        description: record.description ?? "",
+      })),
+    );
+  }, [availableForms, availableProjects, officers, preview, usersQuery.data, workAssignmentsQuery.data]);
+
   const caseEntities = useMemo<BeneficiaryEntity[]>(
     () =>
       preview
@@ -2093,7 +2133,34 @@ export function FieldOperationsModule({
     let assignmentId = `assignment-${Date.now()}`;
     try {
       if (!preview && token && selectedProject && selectedForm) {
-        const savedAssignments = await Promise.all(
+        const supervisorUser = (usersQuery.data ?? []).find(
+          (user) => user.full_name === assignmentDraft.supervisor,
+        );
+        const workPayload = {
+          form_id: selectedForm.id,
+          supervisor_user_id: supervisorUser?.id ?? null,
+          name: assignmentDraft.name,
+          description: assignmentDraft.description || null,
+          assignment_type: assignmentDraft.assignmentType,
+          officer_ids: selectedOfficers.map((officer) => officer.id),
+          assigned_entity_ids: assignmentDraft.assignedEntityIds ?? [],
+          location: assignmentDraft.location || null,
+          start_date: assignmentDraft.startDate || null,
+          end_date: assignmentDraft.endDate || null,
+          target_count: assignmentDraft.targetCount,
+          priority: assignmentDraft.priority,
+        };
+        const isBackendEdit = Boolean(
+          assignmentEditingId && !assignmentEditingId.startsWith("assignment-"),
+        );
+        const savedWorkAssignment = isBackendEdit
+          ? await updateFieldWorkAssignment(token, assignmentEditingId as string, workPayload)
+          : await createFieldWorkAssignment(token, {
+              project_id: selectedProject.id,
+              ...workPayload,
+            });
+        assignmentId = savedWorkAssignment.id;
+        await Promise.all(
           selectedOfficers.map((officer) =>
             createFieldOfficerAssignment(token, {
               officer_id: officer.id,
@@ -2104,8 +2171,7 @@ export function FieldOperationsModule({
             }),
           ),
         );
-        assignmentId =
-          assignmentEditingId ?? savedAssignments[0]?.id ?? assignmentId;
+        void workAssignmentsQuery.refetch();
       }
     } catch (error) {
       pushToast({
@@ -2148,10 +2214,28 @@ export function FieldOperationsModule({
     setAssignmentSaving(false);
   }
 
-  function updateAssignmentStatus(
+  async function updateAssignmentStatus(
     assignment: FieldAssignment,
     status: AssignmentStatus,
-  ): void {
+  ): Promise<void> {
+    const isBackendRecord =
+      !preview && Boolean(token) && !assignment.id.startsWith("assignment-");
+    if (isBackendRecord) {
+      try {
+        await setFieldWorkAssignmentStatus(token as string, assignment.id, status);
+        void workAssignmentsQuery.refetch();
+      } catch (error) {
+        pushToast({
+          title: "Status change failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "The assignment status could not be updated. Try again.",
+          tone: "danger",
+        });
+        return;
+      }
+    }
     const next = { ...assignment, status };
     setAssignments((current) =>
       current.map((item) => (item.id === assignment.id ? next : item)),
@@ -2180,7 +2264,7 @@ export function FieldOperationsModule({
       disabled: !canManageFieldOperations,
       key: transition.status + transition.label,
       label: transition.label,
-      onSelect: () => updateAssignmentStatus(assignment, transition.status),
+      onSelect: () => void updateAssignmentStatus(assignment, transition.status),
       tone: transition.tone,
     }));
   }

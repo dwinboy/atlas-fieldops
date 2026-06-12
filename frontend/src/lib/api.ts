@@ -296,6 +296,50 @@ export type PlatformBackupPolicyUpdate = PlatformBackupPolicyRead & {
   reason: string;
 };
 
+export type PlatformReleaseRead = {
+  environment: string;
+  backend_version: string;
+  frontend_version: string;
+  mobile_version: string;
+  release_status: string;
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  maintenance_starts_at?: string | null;
+  maintenance_ends_at?: string | null;
+  affected_services: string[];
+  announcement_enabled: boolean;
+  announcement_title: string;
+  announcement_body: string;
+  announcement_tone: string;
+  database_ready: boolean;
+  jwt_ready: boolean;
+  redis_ready: boolean;
+  kafka_ready: boolean;
+  release_notes: string;
+  checklist: string[];
+  updated_at?: string | null;
+};
+
+export type PlatformReleaseUpdate = Pick<
+  PlatformReleaseRead,
+  | "backend_version"
+  | "frontend_version"
+  | "mobile_version"
+  | "release_status"
+  | "maintenance_mode"
+  | "maintenance_message"
+  | "maintenance_starts_at"
+  | "maintenance_ends_at"
+  | "affected_services"
+  | "announcement_enabled"
+  | "announcement_title"
+  | "announcement_body"
+  | "announcement_tone"
+  | "release_notes"
+> & {
+  reason: string;
+};
+
 export type PlatformLeadRead = {
   id: string;
   name: string;
@@ -349,6 +393,20 @@ export type PlatformSupportSessionRead = {
   reason: string;
   started_at: string;
   expires_at?: string | null;
+};
+
+export type PlatformTenantSupportQueueItemRead = {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  priority: string;
+  status: string;
+  issue_count: number;
+  user_count: number;
+  submission_count: number;
+  last_support_at?: string | null;
+  reasons: string[];
+  recommended_action: string;
 };
 
 export type PlatformFeatureFlagUpdate = {
@@ -2641,6 +2699,10 @@ export async function listPlatformSupportSessions(token: string): Promise<Platfo
   return request<PlatformSupportSessionRead[]>("/platform/support-sessions", { token });
 }
 
+export async function listPlatformSupportQueue(token: string): Promise<PlatformTenantSupportQueueItemRead[]> {
+  return request<PlatformTenantSupportQueueItemRead[]>("/platform/support-queue", { token });
+}
+
 export async function getPlatformSettings(token: string): Promise<PlatformSettingsRead> {
   return request<PlatformSettingsRead>("/platform/settings", { token });
 }
@@ -2699,6 +2761,18 @@ export async function getPlatformBackupPolicy(token: string): Promise<PlatformBa
 
 export async function updatePlatformBackupPolicy(token: string, payload: PlatformBackupPolicyUpdate): Promise<PlatformBackupPolicyRead> {
   return request<PlatformBackupPolicyRead>("/platform/backup-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformRelease(token: string): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/release", { token });
+}
+
+export async function getPlatformAnnouncement(): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/announcement");
+}
+
+export async function updatePlatformRelease(token: string, payload: PlatformReleaseUpdate): Promise<PlatformReleaseRead> {
+  return request<PlatformReleaseRead>("/platform/release", { method: "PATCH", token, bodyJson: payload });
 }
 
 export async function createPublicLead(payload: PublicLeadCreate): Promise<PublicLeadRead> {
@@ -3228,6 +3302,84 @@ export async function createFieldOfficerAssignment(
   payload: FieldOfficerAssignmentCreate,
 ): Promise<FieldOfficerAssignmentRead> {
   return request<FieldOfficerAssignmentRead>("/field-officers/assignments", { method: "POST", token, bodyJson: payload });
+}
+
+export type FieldWorkAssignmentRead = {
+  id: string;
+  project_id: string;
+  form_id: string | null;
+  created_by_user_id: string;
+  supervisor_user_id: string | null;
+  name: string;
+  description: string | null;
+  assignment_type: string;
+  officer_ids: string[];
+  assigned_entity_ids: string[];
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  target_count: number;
+  completed_count: number;
+  priority: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FieldWorkAssignmentCreate = {
+  project_id: string;
+  form_id?: string | null;
+  supervisor_user_id?: string | null;
+  name: string;
+  description?: string | null;
+  assignment_type?: string;
+  officer_ids?: string[];
+  assigned_entity_ids?: string[];
+  location?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  target_count?: number;
+  priority?: string;
+};
+
+export type FieldWorkAssignmentUpdate = Partial<Omit<FieldWorkAssignmentCreate, "project_id">> & {
+  completed_count?: number;
+};
+
+export async function listFieldWorkAssignments(token: string): Promise<FieldWorkAssignmentRead[]> {
+  return request<FieldWorkAssignmentRead[]>("/field-officers/work-assignments/all", { token });
+}
+
+export async function createFieldWorkAssignment(
+  token: string,
+  payload: FieldWorkAssignmentCreate,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>("/field-officers/work-assignments", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateFieldWorkAssignment(
+  token: string,
+  assignmentId: string,
+  payload: FieldWorkAssignmentUpdate,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>(`/field-officers/work-assignments/${assignmentId}`, {
+    method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function setFieldWorkAssignmentStatus(
+  token: string,
+  assignmentId: string,
+  status: string,
+  reason?: string,
+): Promise<FieldWorkAssignmentRead> {
+  return request<FieldWorkAssignmentRead>(`/field-officers/work-assignments/${assignmentId}/status`, {
+    method: "POST",
+    token,
+    bodyJson: { status, reason: reason ?? null },
+  });
 }
 
 export async function listFieldVisitRequests(token: string, status?: string): Promise<FieldVisitRequestRead[]> {
@@ -3852,6 +4004,8 @@ export const api = {
   getImportErrorReport,
   getImportMigrationOverview,
   getPlatformBackupPolicy,
+  getPlatformAnnouncement,
+  getPlatformRelease,
   getPlatformMobileFleet,
   getPlatformSecurityPolicy,
   createGovernancePolicy,
@@ -3937,6 +4091,7 @@ export const api = {
   listPlatformSecurityEvents,
   listPlatformSectorPacks,
   listPlatformSupportSessions,
+  listPlatformSupportQueue,
   listPrograms,
   listProjectImportJobs,
   listProjects,
@@ -3979,6 +4134,7 @@ export const api = {
   updatePlatformFeatureFlag,
   updatePlatformIntegration,
   updatePlatformOrganizationPlan,
+  updatePlatformRelease,
   updatePlatformSecurityPolicy,
   updatePlatformBackupPolicy,
   updateImportRow,

@@ -76,6 +76,28 @@ class OfficerAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Ba
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class FieldWorkAssignment(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "field_work_assignments"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    form_id: Mapped[UUID | None] = mapped_column(ForeignKey("data_forms.id"), index=True, nullable=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    supervisor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assignment_type: Mapped[str] = mapped_column(String(80), default="Form only")
+    officer_ids_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    assigned_entity_ids_json: Mapped[list[str]] = mapped_column(JsonType, nullable=False, default=list)
+    location: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    target_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, default=0)
+    priority: Mapped[str] = mapped_column(String(20), default="Normal", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Assigned", index=True)
+
+
 class Survey(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "surveys"
     __table_args__ = (UniqueConstraint("organization_id", "code"),)

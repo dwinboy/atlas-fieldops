@@ -244,6 +244,48 @@ class PlatformBackupPolicyUpdate(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class PlatformReleaseRead(BaseModel):
+    environment: str
+    backend_version: str = "local"
+    frontend_version: str = "managed"
+    mobile_version: str = "1.0.0-test"
+    release_status: str = "Ready for review"
+    maintenance_mode: bool = False
+    maintenance_message: str = ""
+    maintenance_starts_at: datetime | None = None
+    maintenance_ends_at: datetime | None = None
+    affected_services: list[str] = Field(default_factory=list)
+    announcement_enabled: bool = False
+    announcement_title: str = ""
+    announcement_body: str = ""
+    announcement_tone: str = "info"
+    database_ready: bool = False
+    jwt_ready: bool = False
+    redis_ready: bool = False
+    kafka_ready: bool = False
+    release_notes: str = ""
+    checklist: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class PlatformReleaseUpdate(BaseModel):
+    backend_version: str = Field(min_length=1, max_length=120)
+    frontend_version: str = Field(min_length=1, max_length=120)
+    mobile_version: str = Field(min_length=1, max_length=120)
+    release_status: str = Field(min_length=2, max_length=80)
+    maintenance_mode: bool = False
+    maintenance_message: str = Field(default="", max_length=1000)
+    maintenance_starts_at: datetime | None = None
+    maintenance_ends_at: datetime | None = None
+    affected_services: list[str] = Field(default_factory=list)
+    announcement_enabled: bool = False
+    announcement_title: str = Field(default="", max_length=160)
+    announcement_body: str = Field(default="", max_length=1000)
+    announcement_tone: str = Field(default="info", max_length=40)
+    release_notes: str = Field(default="", max_length=4000)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class PlatformLeadRead(BaseModel):
     id: UUID
     name: str
@@ -308,3 +350,17 @@ class PlatformSupportSessionRead(BaseModel):
     reason: str = ""
     started_at: datetime
     expires_at: datetime | None = None
+
+
+class PlatformTenantSupportQueueItemRead(BaseModel):
+    organization_id: UUID
+    organization_name: str
+    organization_slug: str
+    priority: str
+    status: str
+    issue_count: int = 0
+    user_count: int = 0
+    submission_count: int = 0
+    last_support_at: datetime | None = None
+    reasons: list[str] = Field(default_factory=list)
+    recommended_action: str

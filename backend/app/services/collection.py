@@ -14,7 +14,14 @@ from app.core.events import event_publisher
 from app.core.permissions import canonical_role
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.collection import DataForm, FieldOfficerProfile, OfficerAssignment, Project, Submission
+from app.models.collection import (
+    DataForm,
+    FieldOfficerProfile,
+    FieldWorkAssignment,
+    OfficerAssignment,
+    Project,
+    Submission,
+)
 from app.models.governance import DataVersion, LineageEvent
 from app.models.identity import Organization, User
 from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, EntityCategory, SessionLog, VisitRecord
@@ -39,6 +46,10 @@ from app.schemas.collection import (
     FieldOfficerInvite,
     FieldOfficerImportIssue,
     FieldOfficerImportResponse,
+    FieldWorkAssignmentCreate,
+    FieldWorkAssignmentRead,
+    FieldWorkAssignmentStatusUpdate,
+    FieldWorkAssignmentUpdate,
     FormDataImportConfirmRequest,
     FormDataImportConfirmResponse,
     FormDataImportIssue,
@@ -1236,6 +1247,213 @@ class FieldOfficerService:
             },
         )
         return assignment
+
+    @staticmethod
+    def _work_assignment_to_read(record: FieldWorkAssignment) -> FieldWorkAssignmentRead:
+        return FieldWorkAssignmentRead(
+            id=record.id,
+            project_id=record.project_id,
+            form_id=record.form_id,
+            created_by_user_id=record.created_by_user_id,
+            supervisor_user_id=record.supervisor_user_id,
+            name=record.name,
+            description=record.description,
+            assignment_type=record.assignment_type,
+            officer_ids=[UUID(officer_id) for officer_id in record.officer_ids_json],
+            assigned_entity_ids=list(record.assigned_entity_ids_json),
+            location=record.location,
+            start_date=record.start_date,
+            end_date=record.end_date,
+            target_count=record.target_count,
+            completed_count=record.completed_count,
+            priority=record.priority,
+            status=record.status,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    async def _validate_work_assignment_links(
+        self,
+        *,
+        organization_id: UUID,
+        project_id: UUID,
+        form_id: UUID | None,
+        officer_ids: list[UUID],
+    ) -> None:
+        project_result = await self.session.execute(
+            select(Project).where(
+                Project.organization_id == organization_id,
+                Project.id == project_id,
+                Project.deleted_at.is_(None),
+                Project.is_active.is_(True),
+            )
+        )
+        if project_result.scalar_one_or_none() is None:
+            raise CollectionNotFoundError("Project not found or inactive")
+        if form_id is not None:
+            form_result = await self.session.execute(
+                select(DataForm).where(
+                    DataForm.organization_id == organization_id,
+                    DataForm.id == form_id,
+                    DataForm.project_id == project_id,
+                    DataForm.deleted_at.is_(None),
+                    DataForm.is_active.is_(True),
+                )
+            )
+            form = form_result.scalar_one_or_none()
+            if form is None:
+                raise CollectionNotFoundError("Form not found for the selected project")
+            if form.status != "published":
+                raise ValueError("Publish this form before assigning it for field collection")
+        for officer_id in officer_ids:
+            officer = await self.officers.get(organization_id=organization_id, profile_id=officer_id)
+            if officer is None or not officer.is_active:
+                raise CollectionNotFoundError("Field officer not found or inactive")
+
+    async def list_work_assignments(self, organization_id: UUID) -> list[FieldWorkAssignmentRead]:
+        records = await self.officers.list_work_assignments(organization_id)
+        return [self._work_assignment_to_read(record) for record in records]
+
+    async def create_work_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        payload: FieldWorkAssignmentCreate,
+    ) -> FieldWorkAssignmentRead:
+        await self._validate_work_assignment_links(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            form_id=payload.form_id,
+            officer_ids=payload.officer_ids,
+        )
+        record = FieldWorkAssignment(
+            organization_id=organization_id,
+            project_id=payload.project_id,
+            form_id=payload.form_id,
+            created_by_user_id=actor_user_id,
+            supervisor_user_id=payload.supervisor_user_id,
+            name=payload.name,
+            description=payload.description,
+            assignment_type=payload.assignment_type,
+            officer_ids_json=[str(officer_id) for officer_id in payload.officer_ids],
+            assigned_entity_ids_json=list(payload.assigned_entity_ids),
+            location=payload.location,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            target_count=payload.target_count,
+            completed_count=0,
+            priority=payload.priority,
+            status="Assigned",
+        )
+        self.session.add(record)
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_assignment.created",
+            resource_type="field_work_assignment",
+            resource_id=str(record.id),
+            metadata={
+                "name": record.name,
+                "project_id": str(record.project_id),
+                "form_id": str(record.form_id) if record.form_id else None,
+                "officer_count": len(record.officer_ids_json),
+                "target_count": record.target_count,
+            },
+        )
+        return self._work_assignment_to_read(record)
+
+    async def update_work_assignment(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        assignment_id: UUID,
+        payload: FieldWorkAssignmentUpdate,
+    ) -> FieldWorkAssignmentRead:
+        record = await self.officers.get_work_assignment(
+            organization_id=organization_id, assignment_id=assignment_id
+        )
+        if record is None:
+            raise CollectionNotFoundError("Field work assignment not found")
+        if payload.form_id is not None or payload.officer_ids is not None:
+            await self._validate_work_assignment_links(
+                organization_id=organization_id,
+                project_id=record.project_id,
+                form_id=payload.form_id if payload.form_id is not None else record.form_id,
+                officer_ids=payload.officer_ids or [],
+            )
+        changed_fields: list[str] = []
+        for field in (
+            "form_id",
+            "supervisor_user_id",
+            "name",
+            "description",
+            "assignment_type",
+            "location",
+            "start_date",
+            "end_date",
+            "target_count",
+            "completed_count",
+            "priority",
+        ):
+            value = getattr(payload, field)
+            if value is not None and getattr(record, field) != value:
+                setattr(record, field, value)
+                changed_fields.append(field)
+        if payload.officer_ids is not None:
+            record.officer_ids_json = [str(officer_id) for officer_id in payload.officer_ids]
+            changed_fields.append("officer_ids")
+        if payload.assigned_entity_ids is not None:
+            record.assigned_entity_ids_json = list(payload.assigned_entity_ids)
+            changed_fields.append("assigned_entity_ids")
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_assignment.updated",
+            resource_type="field_work_assignment",
+            resource_id=str(record.id),
+            metadata={"changed_fields": changed_fields},
+        )
+        return self._work_assignment_to_read(record)
+
+    async def set_work_assignment_status(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        assignment_id: UUID,
+        payload: FieldWorkAssignmentStatusUpdate,
+    ) -> FieldWorkAssignmentRead:
+        record = await self.officers.get_work_assignment(
+            organization_id=organization_id, assignment_id=assignment_id
+        )
+        if record is None:
+            raise CollectionNotFoundError("Field work assignment not found")
+        if record.status == payload.status:
+            raise ValueError(f"Assignment is already {payload.status}")
+        if record.status in ("Completed", "Cancelled") and payload.status != "In Progress":
+            raise ValueError(
+                f"A {record.status.lower()} assignment can only be reopened to In Progress"
+            )
+        previous_status = record.status
+        record.status = payload.status
+        await self.session.flush()
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="field_work_assignment.status_changed",
+            resource_type="field_work_assignment",
+            resource_id=str(record.id),
+            metadata={
+                "from": previous_status,
+                "to": payload.status,
+                "reason": payload.reason,
+            },
+        )
+        return self._work_assignment_to_read(record)
 
     @staticmethod
     def _metadata_detail(metadata: object) -> str:

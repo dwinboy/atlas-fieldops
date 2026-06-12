@@ -844,6 +844,101 @@ class OfficerAssignmentRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+FIELD_WORK_ASSIGNMENT_STATUSES = (
+    "Draft",
+    "Assigned",
+    "In Progress",
+    "Completed",
+    "Overdue",
+    "Cancelled",
+)
+
+FIELD_WORK_ASSIGNMENT_PRIORITIES = ("Low", "Normal", "High", "Urgent")
+
+
+class FieldWorkAssignmentCreate(BaseModel):
+    project_id: UUID
+    form_id: UUID | None = None
+    supervisor_user_id: UUID | None = None
+    name: str = Field(min_length=1, max_length=220)
+    description: str | None = None
+    assignment_type: str = Field(default="Form only", max_length=80)
+    officer_ids: list[UUID] = Field(default_factory=list)
+    assigned_entity_ids: list[str] = Field(default_factory=list)
+    location: str | None = Field(default=None, max_length=240)
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int = Field(default=0, ge=0)
+    priority: str = "Normal"
+
+    @model_validator(mode="after")
+    def validate_priority(self) -> "FieldWorkAssignmentCreate":
+        if self.priority not in FIELD_WORK_ASSIGNMENT_PRIORITIES:
+            raise ValueError(
+                f"Priority must be one of {', '.join(FIELD_WORK_ASSIGNMENT_PRIORITIES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentUpdate(BaseModel):
+    form_id: UUID | None = None
+    supervisor_user_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=220)
+    description: str | None = None
+    assignment_type: str | None = Field(default=None, max_length=80)
+    officer_ids: list[UUID] | None = None
+    assigned_entity_ids: list[str] | None = None
+    location: str | None = Field(default=None, max_length=240)
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int | None = Field(default=None, ge=0)
+    completed_count: int | None = Field(default=None, ge=0)
+    priority: str | None = None
+
+    @model_validator(mode="after")
+    def validate_priority(self) -> "FieldWorkAssignmentUpdate":
+        if self.priority is not None and self.priority not in FIELD_WORK_ASSIGNMENT_PRIORITIES:
+            raise ValueError(
+                f"Priority must be one of {', '.join(FIELD_WORK_ASSIGNMENT_PRIORITIES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentStatusUpdate(BaseModel):
+    status: str
+    reason: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_status(self) -> "FieldWorkAssignmentStatusUpdate":
+        if self.status not in FIELD_WORK_ASSIGNMENT_STATUSES:
+            raise ValueError(
+                f"Status must be one of {', '.join(FIELD_WORK_ASSIGNMENT_STATUSES)}"
+            )
+        return self
+
+
+class FieldWorkAssignmentRead(BaseModel):
+    id: UUID
+    project_id: UUID
+    form_id: UUID | None = None
+    created_by_user_id: UUID
+    supervisor_user_id: UUID | None = None
+    name: str
+    description: str | None = None
+    assignment_type: str
+    officer_ids: list[UUID] = Field(default_factory=list)
+    assigned_entity_ids: list[str] = Field(default_factory=list)
+    location: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    target_count: int
+    completed_count: int
+    priority: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class FieldOfficerImportIssue(BaseModel):
     row_number: int
     email: str | None = None

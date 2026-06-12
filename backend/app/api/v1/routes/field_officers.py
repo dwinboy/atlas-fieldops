@@ -14,6 +14,10 @@ from app.schemas.collection import (
     FieldOfficerProfileDetailRead,
     FieldOfficerProfileUpdate,
     FieldOfficerRead,
+    FieldWorkAssignmentCreate,
+    FieldWorkAssignmentRead,
+    FieldWorkAssignmentStatusUpdate,
+    FieldWorkAssignmentUpdate,
     OfficerAssignmentCreate,
     OfficerAssignmentRead,
 )
@@ -172,6 +176,113 @@ async def import_field_officers(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.get(
+    "/work-assignments/all",
+    response_model=list[FieldWorkAssignmentRead],
+    summary="List field work assignments with lifecycle status and targets",
+)
+async def list_work_assignments(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[FieldWorkAssignmentRead]:
+    return await FieldOfficerService(session).list_work_assignments(UUID(principal.organization_id))
+
+
+@router.post(
+    "/work-assignments",
+    response_model=FieldWorkAssignmentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a field work assignment for one or more officers",
+)
+async def create_work_assignment(
+    payload: FieldWorkAssignmentCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkAssignmentRead:
+    service = FieldOfficerService(session)
+    try:
+        assignment = await service.create_work_assignment(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            payload=payload,
+        )
+        await session.commit()
+        return assignment
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.patch(
+    "/work-assignments/{assignment_id}",
+    response_model=FieldWorkAssignmentRead,
+    summary="Update a field work assignment",
+)
+async def update_work_assignment(
+    assignment_id: UUID,
+    payload: FieldWorkAssignmentUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkAssignmentRead:
+    service = FieldOfficerService(session)
+    try:
+        assignment = await service.update_work_assignment(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            assignment_id=assignment_id,
+            payload=payload,
+        )
+        await session.commit()
+        return assignment
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/work-assignments/{assignment_id}/status",
+    response_model=FieldWorkAssignmentRead,
+    summary="Transition a field work assignment lifecycle status",
+)
+async def set_work_assignment_status(
+    assignment_id: UUID,
+    payload: FieldWorkAssignmentStatusUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.OFFICER_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FieldWorkAssignmentRead:
+    service = FieldOfficerService(session)
+    try:
+        assignment = await service.set_work_assignment_status(
+            organization_id=UUID(principal.organization_id),
+            actor_user_id=UUID(principal.user_id),
+            assignment_id=assignment_id,
+            payload=payload,
+        )
+        await session.commit()
+        return assignment
+    except CollectionNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

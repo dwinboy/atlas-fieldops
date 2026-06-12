@@ -12,6 +12,7 @@ from app.models.collection import (
     DataForm,
     DataFormVersion,
     FieldOfficerProfile,
+    FieldWorkAssignment,
     FormTemplateUsage,
     MobileSyncBatch,
     OfficerAssignment,
@@ -142,6 +143,29 @@ class FieldOfficerRepository:
             assignment.is_active = is_active
         await self.session.flush()
         return assignment
+
+    async def list_work_assignments(self, organization_id: UUID) -> list[FieldWorkAssignment]:
+        result = await self.session.execute(
+            select(FieldWorkAssignment)
+            .where(
+                FieldWorkAssignment.organization_id == organization_id,
+                FieldWorkAssignment.deleted_at.is_(None),
+            )
+            .order_by(FieldWorkAssignment.created_at.desc())
+        )
+        return list(result.scalars())
+
+    async def get_work_assignment(
+        self, *, organization_id: UUID, assignment_id: UUID
+    ) -> FieldWorkAssignment | None:
+        result = await self.session.execute(
+            select(FieldWorkAssignment).where(
+                FieldWorkAssignment.organization_id == organization_id,
+                FieldWorkAssignment.id == assignment_id,
+                FieldWorkAssignment.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
 
 
 class FormRepository:

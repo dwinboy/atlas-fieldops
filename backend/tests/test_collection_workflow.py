@@ -28,9 +28,16 @@ from app.schemas.collection import (
     SurveyCreate,
     SurveyGovernanceSettings,
 )
+from app.models.audit import AuditLog
+from app.schemas.collection import (
+    FieldWorkAssignmentCreate,
+    FieldWorkAssignmentStatusUpdate,
+    FieldWorkAssignmentUpdate,
+)
 from app.schemas.mobile import MobileSubmissionUpload
 from app.services.collection import (
     CollectionConflictError,
+    FieldOfficerService,
     InvalidWorkflowTransitionError,
     SubmissionService,
     form_schema_compatibility,
@@ -1129,3 +1136,124 @@ async def test_create_submission_with_repeat_group_persists_repeat_rows() -> Non
         assert rows[0].parent_submission_key == "repeat-001"
         assert rows[0].row_json == {"member_name": "Member One", "age": 12}
         assert rows[1].row_json == {"member_name": "Member Two", "age": 34}
+
+
+@pytest.mark.asyncio
+async def test_field_work_assignment_lifecycle_with_audit_trail() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        officer_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        officer_profile_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Assignment Org", slug="assignment-org"),
+                User(id=actor_user_id, email="manager-assignments@example.org", full_name="Manager", password_hash="x"),
+                User(id=officer_user_id, email="officer-assignments@example.org", full_name="Officer", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Assignment Project", slug="assignment-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=actor_user_id,
+                    owner_user_id=actor_user_id,
+                    title="Assignment Survey",
+                    code="ASSIGN",
+                    survey_type="monitoring",
+                    status="active",
+                ),
+                FieldOfficerProfile(
+                    id=officer_profile_id,
+                    organization_id=organization_id,
+                    user_id=officer_user_id,
+                    is_active=True,
+                ),
+            ]
+        )
+        await session.flush()
+
+        forms = FormRepository(session)
+        form, _ = await forms.create(
+            organization_id=organization_id,
+            project_id=project_id,
+            survey_id=survey_id,
+            created_by_user_id=actor_user_id,
+            name="Assignment form",
+            slug="assignment-form",
+            description=None,
+            schema_json={"sections": [{"id": "main", "title": "Main", "fields": [{"id": "q1", "type": "text", "label": "Name"}]}]},
+            publish=True,
+        )
+
+        service = FieldOfficerService(session)
+        created = await service.create_work_assignment(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=FieldWorkAssignmentCreate(
+                project_id=project_id,
+                form_id=form.id,
+                name="Household registration sweep",
+                officer_ids=[officer_profile_id],
+                target_count=120,
+                priority="High",
+            ),
+        )
+        assert created.status == "Assigned"
+        assert created.officer_ids == [officer_profile_id]
+
+        updated = await service.update_work_assignment(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            assignment_id=created.id,
+            payload=FieldWorkAssignmentUpdate(completed_count=45, location="Mezam"),
+        )
+        assert updated.completed_count == 45
+        assert updated.status == "Assigned"
+
+        in_progress = await service.set_work_assignment_status(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            assignment_id=created.id,
+            payload=FieldWorkAssignmentStatusUpdate(status="In Progress"),
+        )
+        assert in_progress.status == "In Progress"
+
+        completed = await service.set_work_assignment_status(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            assignment_id=created.id,
+            payload=FieldWorkAssignmentStatusUpdate(status="Completed", reason="Target reached"),
+        )
+        assert completed.status == "Completed"
+
+        with pytest.raises(ValueError):
+            await service.set_work_assignment_status(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                assignment_id=created.id,
+                payload=FieldWorkAssignmentStatusUpdate(status="Assigned"),
+            )
+
+        listed = await service.list_work_assignments(organization_id)
+        assert [item.id for item in listed] == [created.id]
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "field_work_assignment",
+            )
+        )
+        actions = sorted(log.action for log in audit_result.scalars())
+        assert actions == [
+            "field_work_assignment.created",
+            "field_work_assignment.status_changed",
+            "field_work_assignment.status_changed",
+            "field_work_assignment.updated",
+        ]

@@ -20,6 +20,7 @@ import {
   Plus,
   PackageCheck,
   RotateCcw,
+  Rocket,
   Search,
   Settings,
   ShieldCheck,
@@ -41,6 +42,7 @@ import {
   getPlatformSettings,
   getPlatformBackupPolicy,
   getPlatformMobileFleet,
+  getPlatformRelease,
   getPlatformSecurityPolicy,
   getPlatformSummary,
   getPlatformSystemHealth,
@@ -56,6 +58,7 @@ import {
   listPlatformSecurityEvents,
   listPlatformSectorPacks,
   listPlatformSupportSessions,
+  listPlatformSupportQueue,
   listPlatformUsage,
   listPlatformUsers,
   runPlatformUserSecurityAction,
@@ -63,6 +66,7 @@ import {
   updatePlatformBackupPolicy,
   updatePlatformIntegration,
   updatePlatformOrganizationPlan,
+  updatePlatformRelease,
   updatePlatformOrganizationStatus,
   updatePlatformSecurityPolicy,
   type CurrentPrincipal,
@@ -79,11 +83,13 @@ import {
   type PlatformOrganizationRead,
   type PlatformOrganizationPlanRead,
   type PlatformOrganizationUsageRead,
+  type PlatformReleaseRead,
   type PlatformRoleTemplateRead,
   type PlatformSecurityEventRead,
   type PlatformSecurityPolicyRead,
   type PlatformSectorPackRead,
   type PlatformSupportSessionRead,
+  type PlatformTenantSupportQueueItemRead,
   type PlatformUserRead,
 } from "@/lib/api";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
@@ -106,11 +112,13 @@ type PlatformSection =
   | "feature-flags"
   | "system-health"
   | "audit-logs"
+  | "support-queue"
   | "security"
   | "mobile-fleet"
   | "sector-packs"
   | "integrations"
   | "backups"
+  | "release-center"
   | "settings";
 
 type ConsoleSection = {
@@ -147,6 +155,26 @@ type BackupPolicyDraft = Omit<PlatformBackupPolicyRead, "updated_at"> & {
   reason: string;
 };
 
+type ReleaseDraft = Pick<
+  PlatformReleaseRead,
+  | "backend_version"
+  | "frontend_version"
+  | "mobile_version"
+  | "release_status"
+  | "maintenance_mode"
+  | "maintenance_message"
+  | "maintenance_starts_at"
+  | "maintenance_ends_at"
+  | "affected_services"
+  | "announcement_enabled"
+  | "announcement_title"
+  | "announcement_body"
+  | "announcement_tone"
+  | "release_notes"
+> & {
+  reason: string;
+};
+
 type IntegrationDraft = {
   health: string;
   notes: string;
@@ -164,11 +192,13 @@ const consoleSections: ConsoleSection[] = [
   { id: "feature-flags", label: "Feature Flags", route: "/platform/feature-flags", icon: Flag, description: "Global and tenant feature controls." },
   { id: "system-health", label: "System Health", route: "/platform/system-health", icon: HeartPulse, description: "API, database, jobs, and services." },
   { id: "audit-logs", label: "Audit Logs", route: "/platform/audit-logs", icon: FileClock, description: "Immutable platform events." },
+  { id: "support-queue", label: "Support Queue", route: "/platform/support-queue", icon: LifeBuoy, description: "Tenants that likely need platform intervention." },
   { id: "security", label: "Security", route: "/platform/security", icon: LockKeyhole, description: "Sessions, MFA, and risk events." },
   { id: "mobile-fleet", label: "Mobile Fleet", route: "/platform/mobile-fleet", icon: Smartphone, description: "App versions, devices, sync health, and offline risk." },
   { id: "sector-packs", label: "Sector Packs", route: "/platform/sector-packs", icon: PackageCheck, description: "Starter content for sectors, forms, entities, indicators, reports, and mobile rules." },
   { id: "integrations", label: "Integrations", route: "/platform/integrations", icon: PlugZap, description: "Platform-wide providers." },
   { id: "backups", label: "Backups", route: "/platform/backups", icon: Database, description: "Backup jobs and restore points." },
+  { id: "release-center", label: "Release Center", route: "/platform/release-center", icon: Rocket, description: "Version visibility, deployment readiness, maintenance mode, and rollout notes." },
   { id: "settings", label: "Platform Settings", route: "/platform/settings", icon: Settings, description: "Safe global runtime settings." },
 ];
 
@@ -201,6 +231,11 @@ function formatDate(value?: string | null): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatDateTimeInput(value?: string | null): string {
+  if (!value) return "";
+  return value.slice(0, 16);
 }
 
 function Panel({
@@ -309,6 +344,23 @@ export function PlatformConsole({
     retention_days: 90,
     tenant_export_enabled: true,
   });
+  const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>({
+    announcement_body: "",
+    announcement_enabled: false,
+    announcement_title: "",
+    announcement_tone: "info",
+    backend_version: "local",
+    affected_services: [],
+    frontend_version: "managed-by-vercel",
+    maintenance_ends_at: null,
+    maintenance_message: "",
+    maintenance_mode: false,
+    maintenance_starts_at: null,
+    mobile_version: "1.0.0-test",
+    reason: "",
+    release_notes: "",
+    release_status: "Ready for review",
+  });
   const [integrationToEdit, setIntegrationToEdit] = useState<PlatformIntegrationRead | null>(null);
   const [integrationDraft, setIntegrationDraft] = useState<IntegrationDraft>({
     health: "warning",
@@ -339,6 +391,7 @@ export function PlatformConsole({
   const securityQuery = useQuery({ queryKey: ["platform-security", token], queryFn: () => listPlatformSecurityEvents(token ?? ""), enabled });
   const securityPolicyQuery = useQuery({ queryKey: ["platform-security-policy", token], queryFn: () => getPlatformSecurityPolicy(token ?? ""), enabled });
   const mobileFleetQuery = useQuery({ queryKey: ["platform-mobile-fleet", token], queryFn: () => getPlatformMobileFleet(token ?? ""), enabled });
+  const releaseQuery = useQuery({ queryKey: ["platform-release", token], queryFn: () => getPlatformRelease(token ?? ""), enabled });
   const sectorPacksQuery = useQuery({ queryKey: ["platform-sector-packs", token], queryFn: () => listPlatformSectorPacks(token ?? ""), enabled });
   const integrationsQuery = useQuery({ queryKey: ["platform-integrations", token], queryFn: () => listPlatformIntegrations(token ?? ""), enabled });
   const backupsQuery = useQuery({ queryKey: ["platform-backups", token], queryFn: () => listPlatformBackups(token ?? ""), enabled });
@@ -348,6 +401,7 @@ export function PlatformConsole({
   const leadsQuery = useQuery({ queryKey: ["platform-leads", token], queryFn: () => listPlatformLeads(token ?? ""), enabled });
   const plansQuery = useQuery({ queryKey: ["platform-organization-plans", token], queryFn: () => listPlatformOrganizationPlans(token ?? ""), enabled });
   const supportSessionsQuery = useQuery({ queryKey: ["platform-support-sessions", token], queryFn: () => listPlatformSupportSessions(token ?? ""), enabled });
+  const supportQueueQuery = useQuery({ queryKey: ["platform-support-queue", token], queryFn: () => listPlatformSupportQueue(token ?? ""), enabled });
 
   const createOrganizationMutation = useMutation({
     mutationFn: () =>
@@ -563,6 +617,27 @@ export function PlatformConsole({
     },
   });
 
+  const releaseMutation = useMutation({
+    mutationFn: () => updatePlatformRelease(token ?? "", releaseDraft),
+    onSuccess: async () => {
+      await releaseQuery.refetch();
+      await auditQuery.refetch();
+      setReleaseDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Release center updated",
+        description: "Deployment readiness and rollout notes were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Release center was not updated",
+        description: "Check version fields, audit reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
   const integrationMutation = useMutation({
     mutationFn: (integration: PlatformIntegrationRead) =>
       updatePlatformIntegration(token ?? "", integration.key, integrationDraft),
@@ -608,11 +683,13 @@ export function PlatformConsole({
   const sectorPacks = sectorPacksQuery.data ?? [];
   const integrations = integrationsQuery.data ?? [];
   const backups = backupsQuery.data ?? [];
+  const release = releaseQuery.data;
   const usageRows = usageQuery.data ?? [];
   const dataIsolationIssues = dataIsolationQuery.data ?? [];
   const leads = leadsQuery.data ?? [];
   const organizationPlans = plansQuery.data ?? [];
   const supportSessions = supportSessionsQuery.data ?? [];
+  const supportQueue = supportQueueQuery.data ?? [];
 
   useEffect(() => {
     const policy = securityPolicyQuery.data;
@@ -645,6 +722,28 @@ export function PlatformConsole({
     });
   }, [backupPolicyQuery.data]);
 
+  useEffect(() => {
+    const current = releaseQuery.data;
+    if (!current) return;
+    setReleaseDraft({
+      announcement_body: current.announcement_body,
+      announcement_enabled: current.announcement_enabled,
+      announcement_title: current.announcement_title,
+      announcement_tone: current.announcement_tone,
+      backend_version: current.backend_version,
+      affected_services: current.affected_services,
+      frontend_version: current.frontend_version,
+      maintenance_ends_at: current.maintenance_ends_at ?? null,
+      maintenance_message: current.maintenance_message,
+      maintenance_mode: current.maintenance_mode,
+      maintenance_starts_at: current.maintenance_starts_at ?? null,
+      mobile_version: current.mobile_version,
+      reason: "",
+      release_notes: current.release_notes,
+      release_status: current.release_status,
+    });
+  }, [releaseQuery.data]);
+
   const platformCards = [
     { label: "Organizations", value: String(summaryQuery.data?.organization_count ?? organizations.length), icon: Building2, tone: "platform" as const },
     { label: "Active Organizations", value: String(summaryQuery.data?.active_organization_count ?? organizations.filter((item) => item.is_active).length), icon: CheckCircle2, tone: "success" as const },
@@ -652,10 +751,12 @@ export function PlatformConsole({
     { label: "Platform Admins", value: String(summaryQuery.data?.platform_admin_count ?? users.filter((user) => user.role_name === "super_admin").length), icon: ShieldCheck, tone: "platform" as const },
     { label: "Isolation Issues", value: String(dataIsolationIssues.length), icon: AlertTriangle, tone: dataIsolationIssues.some((issue) => issue.severity === "critical") ? "danger" as const : dataIsolationIssues.length ? "warning" as const : "success" as const },
     { label: "Mobile Devices", value: String(mobileFleet?.active_devices ?? 0), icon: Smartphone, tone: mobileFleet?.offline_devices ? "warning" as const : "success" as const },
+    { label: "Support Queue", value: String(supportQueue.length), icon: LifeBuoy, tone: supportQueue.some((item) => item.priority === "critical") ? "danger" as const : supportQueue.length ? "warning" as const : "success" as const },
     { label: "Sector Packs", value: String(sectorPacks.length), icon: PackageCheck, tone: "platform" as const },
     { label: "Feature Flags", value: String(flags.length), icon: Flag, tone: "neutral" as const },
     { label: "System Health", value: healthQuery.data?.status ?? "checking", icon: HeartPulse, tone: statusTone(healthQuery.data?.status ?? "warning") },
     { label: "Backups", value: String(backups.length), icon: Database, tone: "warning" as const },
+    { label: "Release", value: release?.release_status ?? "review", icon: Rocket, tone: release?.maintenance_mode ? "warning" as const : "success" as const },
     { label: "Audit Events", value: String(summaryQuery.data?.audit_event_count ?? auditLogs.length), icon: FileClock, tone: "neutral" as const },
   ];
 
@@ -791,6 +892,28 @@ export function PlatformConsole({
       { key: "sync", header: "Last sync", value: (row) => row.last_sync_at ?? "", render: (row) => formatDate(row.last_sync_at) },
       { key: "submissions", header: "Submissions", value: (row) => String(row.submission_count), render: (row) => row.submission_count.toLocaleString() },
       { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    ],
+    [],
+  );
+
+  const supportQueueColumns = useMemo<TableColumn<PlatformTenantSupportQueueItemRead>[]>(
+    () => [
+      {
+        key: "organization",
+        header: "Organization",
+        value: (row) => row.organization_name,
+        render: (row) => (
+          <div>
+            <p className="font-medium">{row.organization_name}</p>
+            <p className="text-xs text-muted-foreground">{row.organization_slug}</p>
+          </div>
+        ),
+      },
+      { key: "priority", header: "Priority", value: (row) => row.priority, render: (row) => <Badge tone={statusTone(row.priority)}>{row.priority}</Badge> },
+      { key: "issues", header: "Issues", value: (row) => row.reasons.join(" "), render: (row) => <div className="max-w-xl text-sm text-muted-foreground">{row.reasons.join(" · ")}</div> },
+      { key: "usage", header: "Usage", value: (row) => `${row.user_count} ${row.submission_count}`, render: (row) => `${row.user_count} users · ${row.submission_count} submissions` },
+      { key: "support", header: "Last support", value: (row) => row.last_support_at ?? "", render: (row) => formatDate(row.last_support_at) },
+      { key: "action", header: "Recommended action", value: (row) => row.recommended_action, render: (row) => <span className="text-sm">{row.recommended_action}</span> },
     ],
     [],
   );
@@ -948,6 +1071,7 @@ export function PlatformConsole({
 
   const renderTableSection = () => {
     if (activeSection === "users") return <DataTable columns={userColumns} emptyLabel={usersQuery.isFetching ? "Loading users..." : "No users found"} rows={users} searchLabel="Search global users" title="Global users" />;
+    if (activeSection === "support-queue") return <DataTable columns={supportQueueColumns} emptyLabel={supportQueueQuery.isFetching ? "Checking tenant support risks..." : "No tenants currently need platform support"} rows={supportQueue} searchLabel="Search support queue" title="Tenant support queue" />;
     if (activeSection === "data-isolation") return <DataTable columns={dataIsolationColumns} emptyLabel={dataIsolationQuery.isFetching ? "Checking tenant boundaries..." : "No tenant isolation issues found"} rows={dataIsolationIssues} searchLabel="Search isolation issues" title="Data isolation auditor" />;
     if (activeSection === "audit-logs") return <DataTable columns={auditColumns} emptyLabel={auditQuery.isFetching ? "Loading audit logs..." : "No audit logs found"} rows={auditLogs} searchLabel="Search audit logs" title="Platform audit logs" />;
     if (activeSection === "security") {
@@ -974,6 +1098,18 @@ export function PlatformConsole({
           onSave={() => backupPolicyMutation.mutate()}
           onTrigger={() => setDangerAction({ kind: "backup" })}
           rows={backups}
+        />
+      );
+    }
+    if (activeSection === "release-center") {
+      return (
+        <ReleaseCenter
+          draft={releaseDraft}
+          isLoading={releaseQuery.isFetching}
+          isSaving={releaseMutation.isPending}
+          onDraftChange={setReleaseDraft}
+          onSave={() => releaseMutation.mutate()}
+          release={release}
         />
       );
     }
@@ -1100,7 +1236,10 @@ export function PlatformConsole({
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
                   <Input className="pl-9" placeholder="Search console" />
                 </label>
-                <Button onClick={() => setDangerAction({ kind: "maintenance" })} type="button" variant="secondary">
+                <Button onClick={() => {
+                  setActiveSection("release-center");
+                  window.history.pushState(null, "", "/platform/release-center");
+                }} type="button" variant="secondary">
                   <AlertTriangle aria-hidden="true" />
                   Maintenance
                 </Button>
@@ -1115,7 +1254,7 @@ export function PlatformConsole({
             {activeSection === "feature-flags" ? renderFlags() : null}
             {activeSection === "system-health" ? renderHealth() : null}
             {activeSection === "settings" ? renderSettings() : null}
-            {["users", "data-isolation", "audit-logs", "security", "mobile-fleet", "sector-packs", "integrations", "backups"].includes(activeSection) ? renderTableSection() : null}
+            {["users", "support-queue", "data-isolation", "audit-logs", "security", "mobile-fleet", "sector-packs", "integrations", "backups", "release-center"].includes(activeSection) ? renderTableSection() : null}
           </div>
         </section>
       </div>
@@ -1608,6 +1747,170 @@ function Integrations({ onEdit, rows }: { onEdit: (row: PlatformIntegrationRead)
         ))}
       </div>
     </Panel>
+  );
+}
+
+function ReleaseCenter({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  release,
+}: {
+  draft: ReleaseDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<ReleaseDraft>>;
+  onSave: () => void;
+  release?: PlatformReleaseRead;
+}) {
+  if (!release) return <EmptyState title={isLoading ? "Loading release center" : "Release center unavailable"} detail="Deployment readiness, version labels, and rollout notes will appear after the platform API responds." />;
+  const readiness = [
+    ["Database", release.database_ready],
+    ["JWT secret", release.jwt_ready],
+    ["Redis", release.redis_ready],
+    ["Kafka", release.kafka_ready],
+  ] as const;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Rocket} label="Release status" value={release.release_status} tone={release.maintenance_mode ? "warning" : "success"} />
+        <StatCard icon={Settings} label="Environment" value={release.environment} tone="platform" />
+        <StatCard icon={Activity} label="Backend" value={release.backend_version} tone="neutral" />
+        <StatCard icon={Smartphone} label="Mobile" value={release.mobile_version} tone="neutral" />
+      </div>
+      <Panel title="Deployment readiness" description="Use this as the Super Admin release checklist before mobile builds, backend deploys, and public frontend rollout.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {readiness.map(([label, ready]) => (
+            <div className="rounded-lg border bg-panel p-4" key={label}>
+              <p className="text-xs uppercase text-muted-foreground">{label}</p>
+              <Badge className="mt-2" tone={ready ? "success" : "warning"}>{ready ? "Ready" : "Needs setup"}</Badge>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2">
+          {release.checklist.map((item) => (
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-sm" key={item}>
+              <CheckCircle2 aria-hidden="true" className="text-primary" size={15} />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Release controls" description="Record the version labels and rollout notes that support teams should use during production deployments.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Backend version
+            <Input value={draft.backend_version} onChange={(event) => onDraftChange((current) => ({ ...current, backend_version: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Frontend version
+            <Input value={draft.frontend_version} onChange={(event) => onDraftChange((current) => ({ ...current, frontend_version: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Mobile version
+            <Input value={draft.mobile_version} onChange={(event) => onDraftChange((current) => ({ ...current, mobile_version: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Release status
+            <Input value={draft.release_status} onChange={(event) => onDraftChange((current) => ({ ...current, release_status: event.target.value }))} />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.maintenance_mode} onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_mode: event.target.checked }))} type="checkbox" />
+            Maintenance mode planned
+          </label>
+        </div>
+        <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold">Maintenance window</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Use this when backend, frontend, mobile sync, imports, or reporting may be interrupted.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className="grid gap-2 text-sm font-medium">
+              Starts
+              <Input type="datetime-local" value={formatDateTimeInput(draft.maintenance_starts_at)} onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_starts_at: event.target.value || null }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Ends
+              <Input type="datetime-local" value={formatDateTimeInput(draft.maintenance_ends_at)} onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_ends_at: event.target.value || null }))} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium xl:col-span-2">
+              Affected services
+              <Input
+                placeholder="Backend, Mobile sync, Imports"
+                value={draft.affected_services.join(", ")}
+                onChange={(event) => onDraftChange((current) => ({
+                  ...current,
+                  affected_services: event.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                }))}
+              />
+            </label>
+          </div>
+          <label className="mt-3 grid gap-2 text-sm font-medium">
+            User-facing maintenance message
+            <textarea
+              className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_message: event.target.value }))}
+              placeholder="Example: Mobile sync may be delayed while the backend is being upgraded."
+              value={draft.maintenance_message}
+            />
+          </label>
+        </div>
+        <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold">Workspace announcement</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Show a platform notice to signed-in workspace users for rollout updates, incidents, or support guidance.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[180px_1fr_180px]">
+            <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+              <input checked={draft.announcement_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_enabled: event.target.checked }))} type="checkbox" />
+              Show notice
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Title
+              <Input value={draft.announcement_title} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_title: event.target.value }))} placeholder="System update" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Tone
+              <Input value={draft.announcement_tone} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_tone: event.target.value }))} placeholder="info, warning, danger" />
+            </label>
+          </div>
+          <label className="mt-3 grid gap-2 text-sm font-medium">
+            Message
+            <textarea
+              className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              onChange={(event) => onDraftChange((current) => ({ ...current, announcement_body: event.target.value }))}
+              placeholder="Tell users what changed, what to do, and when normal service resumes."
+              value={draft.announcement_body}
+            />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Release notes
+          <textarea
+            className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, release_notes: event.target.value }))}
+            placeholder="Summarize what changed, who should test it, and what support should watch after deploy."
+            value={draft.release_notes}
+          />
+        </label>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Preparing production rollout after QA sign-off."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save release state
+          </Button>
+        </div>
+      </Panel>
+    </div>
   );
 }
 
