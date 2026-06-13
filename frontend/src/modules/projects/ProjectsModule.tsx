@@ -109,28 +109,28 @@ const defaultProjectDraft: ProjectCreate = {
   settings_json: {
     automationRules: [],
     beneficiary: {
-      codeFormat: "BEN-YYYY-000001",
-      duplicateFields: ["Phone", "National ID", "Household ID", "Name + Village", "GPS"],
-      primaryEntityType: "Beneficiary",
-      profileUpdateRule: "Require review for name, phone, village, and GPS changes",
+      codeFormat: "REC-YYYY-000001",
+      duplicateFields: ["External ID", "Name + Location", "GPS"],
+      primaryEntityType: "Record",
+      profileUpdateRule: "Require review for identity and critical field changes",
       secondaryEntityTypes: [],
     },
     formJourney: [
-      "Registration required before baseline",
-      "Baseline required before monitoring",
-      "Monitoring required before endline",
+      "Registration required before assessment",
+      "Assessment required before follow-up",
+      "Follow-up required before reporting",
     ],
     governance: {
       approvalWorkflow: "Submitted → Under Review → Approved",
       approvedDataOnly: true,
-      consentPolicy: "Consent required where forms collect PII",
+      consentPolicy: "Consent required where records collect personal or sensitive data",
       exportRule: "Exports require permission and audit logging",
       retentionRule: "Retain project data according to organization policy",
-      sensitiveDataControls: "Mask sensitive beneficiary fields for viewer roles",
+      sensitiveDataControls: "Mask sensitive fields for restricted roles",
     },
     indicators: {
       baselineRequired: false,
-      disaggregation: ["Sex", "Age", "Location", "Disability status"],
+      disaggregation: ["Location", "Category", "Status"],
       frequency: "Monthly",
       setupMode: "Configure later",
     },
@@ -280,29 +280,36 @@ const richPreviewSectorPacks: ProjectSectorPackRead[] = ([
 // shows the full set even in preview / offline-fallback mode. IDs match the
 // backend sector packs, so a real session's richer packs supersede these.
 function buildFallbackSectorPack(sector: {
+  metricPluralLabel?: string;
+  optionalModules?: string[];
   sectorId: string;
   sectorName: string;
   primaryEntity: string;
   primaryEntityPlural: string;
+  recordLabel?: string;
+  workflowLabel?: string;
 }): ProjectSectorPackRead {
   const entity = sector.primaryEntity;
+  const metricLabel = sector.metricPluralLabel ?? "Metrics";
+  const workflowLabel = sector.workflowLabel ?? "Operational workflow";
+  const optionalModules = sector.optionalModules ?? [sector.primaryEntityPlural, "Locations", metricLabel, "Reports"];
   return {
     id: sector.sectorId,
     name: sector.sectorName,
     sector: sector.sectorName,
-    description: `Starter configuration for ${sector.sectorName.toLowerCase()} — entities, forms, indicators, and governance tuned for ${sector.primaryEntityPlural.toLowerCase()}.`,
-    terminology: { primary_entity: entity, secondary_entities: "Household", field_visit: "Field visit", submission: "Record" },
-    entity_types: [entity, "Household"],
-    form_templates: [`${entity} Registration`, "Baseline Survey", "Monitoring Visit", "Endline Survey"],
+    description: `Starter configuration for ${sector.sectorName.toLowerCase()} — entities, forms, ${metricLabel.toLowerCase()}, workflows, reports, and governance tuned for ${sector.primaryEntityPlural.toLowerCase()}.`,
+    terminology: { primary_entity: entity, secondary_entities: optionalModules.slice(1, 4).join(", "), field_visit: workflowLabel, submission: sector.recordLabel ?? "Record" },
+    entity_types: Array.from(new Set([entity, ...optionalModules.slice(0, 4)])),
+    form_templates: [`${entity} Registration`, `${entity} Assessment`, "Operational Checklist", "Follow-up Record"],
     form_definitions: [],
-    indicator_templates: [`${sector.primaryEntityPlural} registered`, `${sector.primaryEntityPlural} reached`, "Activities completed"],
+    indicator_templates: [`${sector.primaryEntityPlural} registered`, `${sector.primaryEntityPlural} active`, "Activities completed"],
     indicator_definitions: [],
     dashboard_widgets: [`${entity} coverage`, "Activity progress", "Data quality"],
-    report_templates: ["Monthly program report", "Donor results report"],
+    report_templates: ["Monthly operations report", "Performance summary"],
     report_definitions: [],
     validation_rules: ["Required identifiers present", "Dates cannot be in the future"],
     data_quality_rules: [`Duplicate ${entity.toLowerCase()} by phone or name + location`, "Static GPS across many records"],
-    workflows: ["Registration → Baseline → Monitoring → Endline"],
+    workflows: [`${entity} Registration → Assessment → Follow-up → Reporting`],
     mobile_guidance: ["Allow offline collection", "Capture GPS where relevant", "Prefill assigned records"],
     governance_defaults: {
       approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved",
@@ -312,20 +319,20 @@ function buildFallbackSectorPack(sector: {
     recommended_settings: {
       beneficiary: {
         primaryEntityType: entity,
-        secondaryEntityTypes: ["Household"],
+        secondaryEntityTypes: optionalModules.slice(1, 4),
         codeFormat: `${entity.slice(0, 3).toUpperCase()}-YYYY-000001`,
-        duplicateFields: ["Phone", "National ID", "Name + Location"],
-        profileUpdateRule: "Require review for name and contact changes",
+        duplicateFields: ["External ID", "Name + Location", "GPS"],
+        profileUpdateRule: "Require review for identity and critical field changes",
       },
       forms: {
         starterPack: "Install project starter pack",
-        journey: `${entity} Registration → Baseline → Monitoring → Endline`,
+        journey: `${entity} Registration → Assessment → Follow-up → Reporting`,
       },
       indicators: {
-        setupMode: "Use indicator templates",
+        setupMode: "Use metric templates when needed",
         frequency: "Monthly",
         dataSource: "Approved submissions",
-        disaggregation: ["Sex", "Age", "Location"],
+        disaggregation: ["Location", "Category", "Status"],
       },
     },
     manager_controls: {},
@@ -358,16 +365,26 @@ const countryOptions = [
 ];
 
 const projectTypeOptions = [
-  "Monitoring",
-  "Evaluation",
-  "Research",
-  "Registration",
-  "Humanitarian",
   "Agriculture",
+  "Asset Management",
+  "Audits",
   "Health",
   "Education",
+  "Evaluation",
+  "Government",
+  "HR",
+  "Humanitarian",
+  "Inspections",
+  "Inventory Management",
   "Livelihood",
+  "Logistics",
+  "Manufacturing",
+  "Monitoring",
   "Protection",
+  "Registration",
+  "Research",
+  "Retail",
+  "Sales",
   "WASH",
   "Custom",
 ];
@@ -382,10 +399,19 @@ const projectStatusOptions = [
 ];
 
 const projectEntityTypeOptions = [
+  "Asset",
+  "Audit Item",
+  "Customer",
+  "Employee",
   "Farmer",
   "Household",
   "Beneficiary",
+  "Inspection Site",
+  "Product",
+  "Production Batch",
   "School",
+  "Shipment",
+  "Stock Item",
   "Facility",
   "Village",
   "Group",
@@ -394,11 +420,15 @@ const projectEntityTypeOptions = [
 ];
 
 const duplicateFieldOptions = [
+  "External ID",
+  "Code / SKU",
   "Phone",
   "National ID",
   "Household ID",
+  "Name + Location",
   "Name + Village",
   "Name + Date of Birth",
+  "Serial Number",
   "GPS",
 ];
 
@@ -423,8 +453,8 @@ const wizardSteps = [
   "Basic Information",
   "Program Setup",
   "Geographic Scope",
-  "Beneficiaries",
-  "Indicators",
+  "Entities",
+  "Metrics",
   "Forms Setup",
   "Team Setup",
   "Governance",
@@ -814,7 +844,7 @@ function projectReadiness(draft: ProjectCreate): {
       targetStep: 3,
     },
     {
-      label: "Indicator setup plan is defined",
+      label: "Metric setup plan is defined",
       status: sectionSettings(draft, "indicators").setupMode
         ? "passed"
         : "warning",
@@ -1212,14 +1242,14 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       pushToast({
-        title: "Indicator templates installed",
+        title: "Metric templates installed",
         description: result.message,
         tone: "success",
       });
     },
     onError: (error) => {
       pushToast({
-        title: "Could not install indicators",
+        title: "Could not install metrics",
         description: messageFromError(error),
         tone: "danger",
       });
@@ -1384,7 +1414,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     },
     {
       key: "donor",
-      header: "Donor",
+      header: "Funder / Client",
       value: (project) => project.donor ?? "",
       render: (project) => project.donor ?? "Not set",
     },
@@ -1475,7 +1505,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
               </h1>
               <HelpHint label="About Projects" title="Projects">
                 Plan, monitor, govern, and connect project workspaces to forms,
-                teams, locations, indicators, assignments, submissions, reports,
+                teams, locations, metrics, assignments, submissions, reports,
                 and audit trails.
               </HelpHint>
             </div>
@@ -1554,9 +1584,9 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
           onInstallSectorIndicators={() => {
             if (preview) {
               pushToast({
-                title: "Indicator templates preview",
+                title: "Metric templates preview",
                 description:
-                  "In production this installs editable indicator templates from the selected sector pack.",
+                  "In production this installs editable metric templates from the selected sector pack.",
                 tone: "neutral",
               });
               return;
@@ -1641,10 +1671,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
                 ? { label: "Create project", onClick: () => openProjectWizard() }
                 : undefined
             }
-            emptyDescription="Projects hold your forms, field teams, entities, and indicators. Create one to set up the program context first."
+            emptyDescription="Projects hold your forms, field teams, entities, metrics, and reports. Create one to set up the operating context first."
             emptyLabel="No projects match this view yet"
             rows={filteredProjects}
-            searchLabel="Search projects, donors, owners, countries"
+            searchLabel="Search projects, funders, clients, owners, countries"
             title="Project list"
           />
         </section>
@@ -1723,7 +1753,7 @@ function ProjectsDashboard({
     { icon: Archive, label: "Closed Projects", value: summary.closed_projects },
     {
       icon: UsersRound,
-      label: "Beneficiaries",
+      label: "Entities",
       value: summary.total_beneficiaries,
     },
     {
@@ -1734,7 +1764,7 @@ function ProjectsDashboard({
     { icon: BarChart3, label: "Active Forms", value: summary.active_forms },
     {
       icon: Target,
-      label: "Indicator Rate",
+      label: "Metric Rate",
       value: `${summary.indicator_achievement_rate}%`,
     },
   ];
@@ -1905,7 +1935,7 @@ function ProjectDetailWorkspace({
           </div>
           <h2 className="mt-3 text-xl font-semibold">{detail.name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {detail.project_code} · {detail.donor ?? "No donor set"} ·{" "}
+            {detail.project_code} · {detail.donor ?? "No funder/client set"} ·{" "}
             {detail.region ?? "All regions"}
           </p>
         </div>
@@ -1943,7 +1973,7 @@ function ProjectDetailWorkspace({
           onSelectTab={setTab}
         />
       ) : null}
-      {tab === "Beneficiaries" ? (
+      {tab === "Entities" ? (
         <ProjectBeneficiariesPanel
           onOpenRegistry={onOpenBeneficiaries}
           preview={preview}
@@ -1951,7 +1981,7 @@ function ProjectDetailWorkspace({
           token={token}
         />
       ) : null}
-      {tab === "Forms & Indicators" ? (
+      {tab === "Forms & Metrics" ? (
         <div className="space-y-4">
           <RelatedTab
             actionLabel="Open Forms"
@@ -1961,11 +1991,11 @@ function ProjectDetailWorkspace({
             title="Project Forms"
           />
           <RelatedTab
-            actionLabel="Open Indicators"
-            description="Indicators stay reusable and are tracked in the Indicators module."
+            actionLabel="Open Metrics"
+            description="Metrics stay reusable and are tracked in the Metrics workspace when the project needs KPI or results tracking."
             onAction={onOpenIndicators}
             records={detail.indicators}
-            title="Project Indicators"
+            title="Project Metrics"
           />
         </div>
       ) : null}
@@ -2003,7 +2033,7 @@ function ProjectDetailWorkspace({
           />
           <RelatedTab
             actionLabel="Open Reports"
-            description="Project reports, indicator reports, and coverage reports are produced in Reports."
+            description="Project reports, metric reports, and coverage reports are produced in Reports."
             onAction={onOpenReports}
             records={detail.reports}
             title="Project Reports"
@@ -2115,11 +2145,11 @@ function ProjectOverview({
     tone?: "success" | "warning" | "danger" | "neutral";
   }[] = [
     {
-      label: "Beneficiaries",
-      tab: "Beneficiaries",
+      label: "Entities",
+      tab: "Entities",
       value: `${detail.beneficiary_count}`,
     },
-    { label: "Forms", tab: "Forms & Indicators", value: `${detail.active_forms}` },
+    { label: "Forms", tab: "Forms & Metrics", value: `${detail.active_forms}` },
     {
       label: "Assignments",
       tab: "Locations & Teams",
@@ -2131,8 +2161,8 @@ function ProjectOverview({
       value: `${detail.total_submissions}`,
     },
     {
-      label: "Indicators",
-      tab: "Forms & Indicators",
+      label: "Metrics",
+      tab: "Forms & Metrics",
       value: `${detail.indicator_count}`,
     },
     {
@@ -2167,9 +2197,9 @@ function ProjectOverview({
               Project setup checklist
             </h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Use the sector pack to install editable forms and indicators,
+              Use the sector pack to install editable forms and metrics,
               then assign teams, publish forms, and sync field officers. The
-              project remains customizable for donor and local requirements.
+              project remains customizable for funder, client, and local requirements.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -2192,10 +2222,10 @@ function ProjectOverview({
               variant={sectorIndicatorsInstalled || detail.indicator_count ? "secondary" : "primary"}
             >
               {installSectorIndicatorsPending
-                ? "Installing indicators..."
+                ? "Installing metrics..."
                 : sectorIndicatorsInstalled || detail.indicator_count
-                  ? "Install/update indicators"
-                : "Install indicators"}
+                  ? "Install/update metrics"
+                : "Install metrics"}
             </Button>
             <Button
               disabled={!canManageProjects || !detail.sector_id || installSectorReportsPending}
@@ -2214,8 +2244,8 @@ function ProjectOverview({
         <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
           {[
             ["Sector", detail.sector_id ? "Ready" : "Select pack", Boolean(detail.sector_id), "Overview"],
-            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms & Indicators"],
-            ["Indicators", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Forms & Indicators"],
+            ["Forms", detail.active_forms || sectorFormsInstalled ? "Ready" : "Install", Boolean(detail.active_forms || sectorFormsInstalled), "Forms & Metrics"],
+            ["Metrics", detail.indicator_count || sectorIndicatorsInstalled ? "Ready" : "Install", Boolean(detail.indicator_count || sectorIndicatorsInstalled), "Forms & Metrics"],
             ["Reports", detail.reports.length || sectorReportsInstalled ? "Ready" : "Install", Boolean(detail.reports.length || sectorReportsInstalled), "Submissions & Reports"],
             ["Teams", detail.teams.length || detail.active_assignments ? "Assigned" : "Assign", Boolean(detail.teams.length || detail.active_assignments), "Locations & Teams"],
             ["Governance", approvalWorkflow !== "Not configured" ? "Ready" : "Configure", approvalWorkflow !== "Not configured", "Data Quality & Governance"],
@@ -2243,7 +2273,7 @@ function ProjectOverview({
               <h3 className="font-semibold">Project Summary</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {detail.description ??
-                  "Project metadata is ready for ownership, locations, indicators, teams, forms, and governance setup."}
+                  "Project metadata is ready for ownership, locations, metrics, teams, forms, and governance setup."}
               </p>
             </div>
             <Badge tone={health.tone}>
@@ -2324,10 +2354,10 @@ function ProjectOverview({
               ? `${sectorFormTemplates.slice(0, 2).join(", ")} forms`
               : "Custom form templates",
             sectorIndicatorTemplates.length
-              ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} indicators`
-              : "Custom indicators",
+              ? `${sectorIndicatorTemplates.slice(0, 2).join(", ")} metrics`
+              : "Custom metrics",
           ]}
-          onClick={() => onSelectTab("Forms & Indicators")}
+          onClick={() => onSelectTab("Forms & Metrics")}
         />
         <InfoPanel
           title="Entity Journey"
@@ -2335,9 +2365,9 @@ function ProjectOverview({
             formJourney.length
               ? formJourney
               : [
-                  "Registration before baseline",
-                  "Baseline before monitoring",
-                  "Monitoring before endline",
+                  "Registration before assessment",
+                  "Assessment before follow-up",
+                  "Follow-up before reporting",
                 ]
           }
           onClick={() => onSelectTab("Data Quality & Governance")}
@@ -2347,7 +2377,7 @@ function ProjectOverview({
           lines={[
             "Coverage and submissions",
             "Data quality and approvals",
-            "Indicator and assignment progress",
+            "Metric and assignment progress",
           ]}
           onClick={() => onSelectTab("Data Quality & Governance")}
         />
@@ -2476,19 +2506,19 @@ function ProjectGovernance({ detail }: { detail: ProjectDetailRead }) {
     [
       "Approved Data Only",
       settingBoolean(settingsDraft, "governance", "approvedDataOnly", true)
-        ? "Entities, indicators, and reports use approved records"
+        ? "Entities, metrics, and reports use approved records"
         : "Draft policy allows unapproved data where configured",
     ],
   ];
   const beneficiaryItems = [
     ["Primary Entity", settingText(settingsDraft, "beneficiary", "primaryEntityType") || "Not configured"],
-    ["Code Format", settingText(settingsDraft, "beneficiary", "codeFormat") || "BEN-YYYY-000001"],
+    ["Code Format", settingText(settingsDraft, "beneficiary", "codeFormat") || "REC-YYYY-000001"],
     [
       "Duplicate Checks",
       settingStringList(settingsDraft, "beneficiary", "duplicateFields").join(", ") ||
-        "Phone, ID, household, name + village, GPS",
+        "External ID, name + location, GPS",
     ],
-    ["Profile Update Rule", settingText(settingsDraft, "beneficiary", "profileUpdateRule") || "Require review for sensitive changes"],
+    ["Profile Update Rule", settingText(settingsDraft, "beneficiary", "profileUpdateRule") || "Require review for identity and critical field changes"],
   ];
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -2651,7 +2681,7 @@ function ProjectSettings({
             <h3 className="mt-2 font-semibold">{sectorName}</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
               Customize this project&apos;s sector pack before installing or updating
-              starter forms, indicators, dashboards, and reports. These settings
+              starter forms, metrics, dashboards, and reports. These settings
               stay inside the project and do not create another module.
             </p>
           </div>
@@ -2670,7 +2700,7 @@ function ProjectSettings({
               <h4 className="text-sm font-semibold">Terminology</h4>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Set the words this project uses so agriculture, health, education,
-                infrastructure, protection, and custom projects do not all have to
+                infrastructure, retail, logistics, audits, and custom projects do not all have to
                 sound like beneficiary-only programs.
               </p>
               <div className="mt-3 grid gap-2">
@@ -2765,7 +2795,7 @@ function ProjectSettings({
                 />
                 <BeneficiaryCodeFormatDesigner
                   disabled={!canManageProjects}
-                  entityType={String(beneficiarySettings.primaryEntityType ?? "Beneficiary")}
+                  entityType={String(beneficiarySettings.primaryEntityType ?? "Record")}
                   onChange={(codeFormat) => setBeneficiary({ codeFormat })}
                   value={String(beneficiarySettings.codeFormat ?? "")}
                 />
@@ -2797,7 +2827,7 @@ function ProjectSettings({
             />
             <ListEditor
               disabled={!canManageProjects}
-              label="Custom indicators"
+              label="Custom metrics"
               onChange={(value) => setSectorList("indicatorTemplates", value)}
               value={joinLines(settingStringList(draft, "sector", "indicatorTemplates"))}
             />
@@ -2945,7 +2975,7 @@ function BeneficiaryCodeFormatDesigner({
         <Input
           disabled={disabled}
           onChange={(event) => onChange(event.target.value.toUpperCase())}
-          placeholder="BEN-YYYY-000001"
+          placeholder="ENT-YYYY-000001 or PRD-YYYY-000001"
           value={value}
         />
       </label>
@@ -3180,7 +3210,7 @@ function TemplatesSection({
   return (
     <section className="space-y-4">
       <SectionHeader
-        description="Reusable project structures for baseline, endline, monitoring, evaluation, registration, and multi-country programs."
+        description="Reusable project structures for assessments, operations, inspections, registration, review, and multi-location programs."
         title="Project Templates"
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -3196,7 +3226,7 @@ function TemplatesSection({
             </p>
             <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
               <Signal label="Forms" value={`${template.forms}`} />
-              <Signal label="Indicators" value={`${template.indicators}`} />
+              <Signal label="Metrics" value={`${template.indicators}`} />
               <Signal
                 label="Controls"
                 value={`${template.governance_controls}`}
@@ -3274,7 +3304,7 @@ function ProjectWizard({
   return (
     <Modal
       contentClassName="max-w-5xl"
-      description="Create the project container for beneficiaries, forms, indicators, teams, submissions, governance, and reports."
+      description="Create the project container for entities, forms, metrics, teams, submissions, governance, and reports."
       onOpenChange={onOpenChange}
       open={open}
       title={isEditing ? "Edit project" : "Project creation wizard"}
@@ -3453,8 +3483,8 @@ function ProjectWizardStepContent({
               <p className="text-sm font-semibold">Sector pack</p>
               <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
                 Choose the industry context for this project. Atlas keeps the
-                same M&E engine, but suggests the right entity types, forms,
-                indicators, validation rules, dashboards, reports, and mobile
+                same configurable engine, but suggests the right entity types, forms,
+                metrics, validation rules, dashboards, reports, and mobile
                 guidance for the sector.
               </p>
             </div>
@@ -3500,7 +3530,7 @@ function ProjectWizardStepContent({
               </div>
               <div className="rounded-xl border bg-panel p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  M&E controls
+                  Sector controls
                 </p>
                 <p className="mt-2 text-sm leading-5">
                   {activeSectorPack.validation_rules.slice(0, 3).join(", ")}
@@ -3677,7 +3707,7 @@ function ProjectWizardStepContent({
           </div>
           <Input
             inputMode="numeric"
-            placeholder="Target beneficiaries (reach)"
+            placeholder="Target records / entities"
             value={settingText(draft, "program", "targetBeneficiaries")}
             onChange={(event) =>
               updateSettings("program", {
@@ -3686,7 +3716,7 @@ function ProjectWizardStepContent({
             }
           />
           <Input
-            placeholder="Donor"
+            placeholder="Funder, client, or donor"
             value={draft.donor ?? ""}
             onChange={(event) => onChange({ ...draft, donor: event.target.value })}
           />
@@ -3900,9 +3930,9 @@ function ProjectWizardStepContent({
           }
         >
           <option value="Configure later">Configure later</option>
-          <option value="Create now">Create indicators now</option>
-          <option value="Import indicators">Import indicators</option>
-          <option value="Use templates">Use indicator templates</option>
+          <option value="Create now">Create metrics now</option>
+          <option value="Import indicators">Import metrics</option>
+          <option value="Use templates">Use metric templates</option>
         </Select>
         <Select
           value={settingText(draft, "indicators", "frequency")}
@@ -3933,7 +3963,7 @@ function ProjectWizardStepContent({
           }
         />
         <Textarea
-          placeholder="Disaggregation categories, e.g. Sex, Age, Location"
+          placeholder="Breakdown categories, e.g. Location, Category, Status"
           value={settingStringList(
             draft,
             "indicators",
@@ -3969,7 +3999,7 @@ function ProjectWizardStepContent({
           </option>
         </Select>
         <Textarea
-          placeholder="Form journey, e.g. Registration → Baseline → Monitoring → Endline"
+          placeholder="Form journey, e.g. Registration → Assessment → Follow-up → Reporting"
           value={settingText(draft, "forms", "journey")}
           onChange={(event) =>
             updateSettings("forms", { journey: event.target.value })
@@ -4012,7 +4042,7 @@ function ProjectWizardStepContent({
           }
         />
         <Input
-          placeholder="M&E Manager"
+          placeholder="Operations or data manager"
           value={settingText(draft, "team", "meManager")}
           onChange={(event) =>
             updateSettings("team", { meManager: event.target.value })
@@ -4125,7 +4155,7 @@ function ProjectWizardStepContent({
             }
             type="checkbox"
           />
-          Only approved submissions update beneficiaries, indicators, and reports
+          Only approved submissions update entities, metrics, and reports
         </label>
       </div>
     );
@@ -4187,7 +4217,7 @@ function ProjectWizardStepContent({
             label="Target reach"
             value={
               settingText(draft, "program", "targetBeneficiaries")
-                ? `${Number(settingText(draft, "program", "targetBeneficiaries")).toLocaleString()} ${settingText(draft, "beneficiary", "primaryEntityPlural") || "beneficiaries"}`
+                ? `${Number(settingText(draft, "program", "targetBeneficiaries")).toLocaleString()} ${settingText(draft, "beneficiary", "primaryEntityPlural") || "records"}`
                 : "Not set"
             }
             tone={settingText(draft, "program", "targetBeneficiaries") ? "success" : "neutral"}

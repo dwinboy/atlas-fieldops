@@ -111,12 +111,12 @@ export type IndicatorReport = {
   id: string;
   name: string;
   type:
-    | "Indicator Progress Report"
+    | "Metric Progress Report"
     | "Target Achievement Report"
     | "Baseline vs Current Report"
     | "Disaggregation Report"
     | "Location Performance Report"
-    | "Periodic Indicator Report";
+    | "Periodic Metric Report";
   project: string;
   period: string;
   status: "Ready" | "Draft" | "Needs Data";
@@ -151,13 +151,13 @@ export const indicatorSections: {
   description: string;
   status?: "planned";
 }[] = [
-  { id: "dashboard", label: "Overview", route: "/indicators", description: "Performance overview, category breakdown, target achievement, deadlines, and indicators requiring attention." },
-  { id: "library", label: "Indicator Library", route: "/indicators/library", description: "Create, edit, archive, import, export, and link reusable indicators to projects and form questions." },
-  { id: "targets", label: "Targets", route: "/indicators/targets", description: "Set annual, quarterly, monthly, lifetime, location-specific, and disaggregated indicator targets." },
+  { id: "dashboard", label: "Overview", route: "/indicators", description: "Performance overview, category breakdown, target achievement, deadlines, and metrics requiring attention." },
+  { id: "library", label: "Metric Library", route: "/indicators/library", description: "Create, edit, archive, import, export, and link reusable metrics or KPIs to projects and form questions." },
+  { id: "targets", label: "Targets", route: "/indicators/targets", description: "Set annual, quarterly, monthly, lifetime, location-specific, and disaggregated metric targets." },
   { id: "baselines", label: "Baselines", route: "/indicators/baselines", description: "Add, import, version, compare, and lock approved baseline values." },
-  { id: "reports", label: "Indicator Reports", route: "/indicators/reports", description: "Prepare indicator-specific reporting and link formal outputs to the Reports module." },
-  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "Manage Goal -> Impact -> Outcomes -> Outputs -> Activities -> Indicators with progress by result level.", status: "planned" },
-  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Manage donor logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, and targets.", status: "planned" },
+  { id: "reports", label: "Metric Reports", route: "/indicators/reports", description: "Prepare metric-specific reporting and link formal outputs to the Reports module." },
+  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "Manage Goal -> Impact -> Outcomes -> Outputs -> Activities -> Metrics with progress by result level.", status: "planned" },
+  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, and targets.", status: "planned" },
 ];
 
 const nowIso = new Date().toISOString();
@@ -181,7 +181,7 @@ export const previewIndicators: IndicatorRecord[] = [
     linkedQuestion: "yield_tons_ha",
     name: "Average crop yield increase",
     numerator: "Total yield in tons",
-    owner: "M&E Manager",
+    owner: "Operations Manager",
     project: "Agricultural Resilience Program",
     responsiblePerson: "Grace M.",
     resultArea: "Increased agricultural productivity",
@@ -255,7 +255,7 @@ export const previewIndicators: IndicatorRecord[] = [
     linkedForm: null,
     linkedQuestion: null,
     name: "Completed health referrals",
-    owner: "Health M&E Officer",
+    owner: "Health Data Officer",
     project: "Community Health Outreach",
     responsiblePerson: "Data Manager",
     resultArea: "Improved service completion",
@@ -273,7 +273,7 @@ export const previewTargets: IndicatorTarget[] = [
 ];
 
 export const previewBaselines: IndicatorBaseline[] = [
-  { confidenceLevel: "High", date: "2026-01-15", id: "baseline-yield", indicatorCode: "AG.YIELD", indicatorId: "indicator-ag-yield", location: "Northwest", locked: true, methodology: "Baseline survey with farm plot measurement.", notes: "Approved by donor M&E focal point.", project: "Agricultural Resilience Program", source: "Baseline Survey v1", value: 1.8, version: "v1" },
+  { confidenceLevel: "High", date: "2026-01-15", id: "baseline-yield", indicatorCode: "AG.YIELD", indicatorId: "indicator-ag-yield", location: "Northwest", locked: true, methodology: "Baseline survey with farm plot measurement.", notes: "Approved by funder data focal point.", project: "Agricultural Resilience Program", source: "Baseline Survey v1", value: 1.8, version: "v1" },
   { confidenceLevel: "Medium", date: "2026-02-01", id: "baseline-water", indicatorCode: "WASH.ACCESS", indicatorId: "indicator-wash-access", location: "West", locked: true, methodology: "Household registration and spot checks.", notes: "District-level estimate.", project: "Social Protection Response", source: "Household Verification Form v2", value: 38, version: "v2" },
   { confidenceLevel: "High", date: "2026-01-30", id: "baseline-attendance", indicatorCode: "EDU.ATTEND", indicatorId: "indicator-edu-attend", location: "Littoral", locked: false, methodology: "School records and facility assessment.", notes: "Pending final district validation.", project: "Education Access Program", source: "Facility Assessment", value: 64, version: "draft" },
 ];
@@ -293,7 +293,7 @@ export const previewLogframeRows: LogframeRow[] = [
 ];
 
 export const previewReports: IndicatorReport[] = [
-  { formats: ["PDF", "Excel"], id: "report-progress", name: "Indicator Progress Report", period: "Q2 2026", project: "Agricultural Resilience Program", status: "Ready", type: "Indicator Progress Report" },
+  { formats: ["PDF", "Excel"], id: "report-progress", name: "Metric Progress Report", period: "Q2 2026", project: "Agricultural Resilience Program", status: "Ready", type: "Metric Progress Report" },
   { formats: ["Excel"], id: "report-target", name: "Target Achievement Report", period: "June 2026", project: "All active projects", status: "Draft", type: "Target Achievement Report" },
   { formats: ["PDF"], id: "report-disaggregation", name: "Gender and Location Disaggregation", period: "Q2 2026", project: "Social Protection Response", status: "Needs Data", type: "Disaggregation Report" },
 ];
@@ -305,7 +305,7 @@ export const previewDataSources: IndicatorDataSource[] = [
 ];
 
 export const previewAuditEvents: IndicatorAuditEvent[] = [
-  { action: "Indicator linked to form", actor: "M&E Manager", createdAt: nowIso, id: "audit-link-yield", indicatorId: "indicator-ag-yield", reason: "Seasonal yield survey approved as primary source." },
-  { action: "Target changed", actor: "Data Manager", createdAt: yesterdayIso, id: "audit-target-water", indicatorId: "indicator-wash-access", reason: "Donor revised June target after project expansion." },
+  { action: "Metric linked to form", actor: "Operations Manager", createdAt: nowIso, id: "audit-link-yield", indicatorId: "indicator-ag-yield", reason: "Seasonal yield survey approved as primary source." },
+  { action: "Target changed", actor: "Data Manager", createdAt: yesterdayIso, id: "audit-target-water", indicatorId: "indicator-wash-access", reason: "Funder revised June target after project expansion." },
   { action: "Baseline locked", actor: "Governance Steward", createdAt: "2026-02-03T12:00:00.000Z", id: "audit-baseline-water", indicatorId: "indicator-wash-access", reason: "Baseline approved for Q2 reporting." },
 ];

@@ -110,9 +110,9 @@ export type EntityControlSettings = {
 };
 
 export const entityTypes: EntityType[] = [
+  "Entity",
   "Farmer",
   "Household",
-  "Entity",
   "Facility",
   "School",
   "Village",
@@ -124,7 +124,7 @@ export const entityTypes: EntityType[] = [
 
 export const defaultEntityControls: EntityControlSettings = {
   linkedToEntity: true,
-  entityType: "Farmer",
+  entityType: "Entity",
   createsNewEntity: false,
   updatesExistingEntity: false,
   requiresExistingEntity: true,

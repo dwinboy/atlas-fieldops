@@ -479,9 +479,9 @@ def detect_import_duplicate_groups(rows: list[dict[str, object]]) -> list[Import
                 ImportDuplicateGroupRead(
                     group_id=f"duplicate-group-{len(groups) + 1}",
                     confidence=confidence,
-                    reason=", ".join(reasons) or "similar beneficiary details",
-                    recommended_action="Use existing beneficiary when the same person already exists; otherwise keep separate with a reason.",
-                    actions=["Merge now", "Use existing beneficiary", "Keep separate", "Review later"],
+                    reason=", ".join(reasons) or "similar entity details",
+                    recommended_action="Use the existing entity record when both rows describe the same real-world record; otherwise keep separate with a reason.",
+                    actions=["Merge now", "Use existing entity", "Keep separate", "Review later"],
                     records=[
                         ImportDuplicateRecordRead(
                             row_number=left_index,
@@ -544,11 +544,11 @@ def detect_entity_matches(rows: list[dict[str, object]]) -> list[ImportMatchSugg
         matches.append(
             ImportMatchSuggestionRead(
                 source_value=f"Row {index}: {name}",
-                suggested_value=f"{name} - existing beneficiary candidate",
+                suggested_value=f"{name} - existing entity candidate",
                 confidence=confidence,
                 match_type="entity",
                 row_numbers=[index],
-                actions=["Link submission", "Create new beneficiary", "Leave unlinked", "Review later"],
+                actions=["Link submission", "Create new entity", "Leave unlinked", "Review later"],
             )
         )
     return matches[:6]
@@ -573,30 +573,73 @@ def detect_indicator_matches(rows: list[dict[str, object]]) -> list[ImportMatchS
                 confidence=95 if KNOWN_INDICATORS.get(normalized) else 78,
                 match_type="indicator",
                 row_numbers=[index],
-                actions=["Accept match", "Choose different indicator", "Create new indicator", "Store as legacy indicator"],
+                actions=["Accept match", "Choose different metric", "Create new metric", "Store as legacy metric"],
             )
         )
     return matches[:8]
 
 
+def entity_code_prefix(entity_type: str) -> str:
+    normalized = simplified_value(entity_type)
+    explicit_prefixes = {
+        "asset": "AST",
+        "beneficiary": "BEN",
+        "business": "BUS",
+        "case": "CASE",
+        "case record": "CASE",
+        "community": "COM",
+        "cooperative": "COOP",
+        "customer": "CUS",
+        "employee": "EMP",
+        "entity": "ENT",
+        "facility": "FAC",
+        "farmer": "FRM",
+        "group": "GRP",
+        "household": "HH",
+        "institution": "INS",
+        "inspection site": "ISP",
+        "location": "LOC",
+        "patient": "PAT",
+        "product": "PRD",
+        "school": "SCH",
+        "shipment": "SHP",
+        "site": "SITE",
+        "stock item": "STK",
+        "store": "STR",
+        "supplier": "SUP",
+        "vendor": "VEN",
+        "village": "VIL",
+        "water point": "WPT",
+    }
+    if normalized in explicit_prefixes:
+        return explicit_prefixes[normalized]
+    derived = "".join(part[0] for part in re.split(r"[^a-z0-9]+", normalized) if part)[:4].upper()
+    return derived or "ENT"
+
+
 def detect_missing_ids(rows: list[dict[str, object]], dataset_type: str) -> list[ImportGeneratedIdRead]:
     if dataset_type not in {"beneficiaries", "entity_registry", "submissions"}:
         return []
-    prefix = "BEN"
-    if dataset_type == "entity_registry":
-        prefix = "FRM"
-    if dataset_type == "submissions":
-        prefix = "BEN"
     generated: list[ImportGeneratedIdRead] = []
+    counters_by_prefix: dict[str, int] = {}
+    current_year = datetime.now(UTC).year
     for index, row in enumerate(rows, start=1):
         legacy = optional_text(row.get("beneficiary_uid") or row.get("entity_id") or row.get("household_id"))
         if legacy:
             continue
+        entity_type = (
+            optional_text(row.get("beneficiary_type"))
+            or optional_text(row.get("entity_type"))
+            or optional_text(row.get("entity_category"))
+            or "Entity"
+        )
+        prefix = entity_code_prefix(entity_type)
+        counters_by_prefix[prefix] = counters_by_prefix.get(prefix, 0) + 1
         generated.append(
             ImportGeneratedIdRead(
                 row_number=index,
-                generated_id=f"{prefix}-2026-{index:06d}",
-                entity_type=optional_text(row.get("beneficiary_type")) or "Farmer",
+                generated_id=f"{prefix}-{current_year}-{counters_by_prefix[prefix]:06d}",
+                entity_type=entity_type,
                 legacy_id=None,
             )
         )

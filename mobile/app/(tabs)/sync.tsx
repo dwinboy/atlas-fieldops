@@ -93,7 +93,7 @@ export default function SyncScreen() {
           <View style={{ gap: spacing.sm }}>
             <ActionRow
               label="Sync assigned work"
-              sub="Download latest assignments, forms, and beneficiaries"
+              sub="Download latest assignments, forms, and entity records"
               onPress={syncWork}
               loading={isSyncing}
               icon={Download}
@@ -155,7 +155,7 @@ export default function SyncScreen() {
           {[
             { label: "Assignments", value: assignments, icon: ClipboardList },
             { label: "Forms", value: forms, icon: FileText },
-            { label: "Beneficiaries", value: entities, icon: Users },
+            { label: "Entities", value: entities, icon: Users },
             { label: "Draft submissions", value: drafts, icon: FileEdit },
           ].map(({ label, value, icon: Icon }, index, arr) => (
             <View key={label} style={[styles.deviceRow, index === arr.length - 1 ? { borderBottomWidth: 0 } : null]}>

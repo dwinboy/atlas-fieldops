@@ -133,16 +133,45 @@ export function findDuplicateCandidates(
 }
 
 export function generateEntityId(entityType: string, count: number): string {
-  const prefix =
-    entityType === "Farmer"
-      ? "FRM"
-      : entityType === "Household"
-        ? "HH"
-        : entityType === "Facility"
-          ? "FAC"
-          : entityType === "School"
-            ? "SCH"
-            : "BEN";
+  const normalized = entityType.trim().toLowerCase();
+  const explicitPrefixes: Record<string, string> = {
+    asset: "AST",
+    beneficiary: "BEN",
+    business: "BUS",
+    case: "CASE",
+    "case record": "CASE",
+    community: "COM",
+    cooperative: "COOP",
+    customer: "CUS",
+    employee: "EMP",
+    entity: "ENT",
+    facility: "FAC",
+    farmer: "FRM",
+    group: "GRP",
+    household: "HH",
+    institution: "INS",
+    "inspection site": "ISP",
+    location: "LOC",
+    patient: "PAT",
+    product: "PRD",
+    school: "SCH",
+    shipment: "SHP",
+    site: "SITE",
+    store: "STR",
+    "stock item": "STK",
+    supplier: "SUP",
+    vendor: "VEN",
+    village: "VIL",
+    "water point": "WPT",
+  };
+  const derivedPrefix = normalized
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 4)
+    .toUpperCase();
+  const prefix = explicitPrefixes[normalized] ?? (derivedPrefix || "ENT");
   return `${prefix}-${new Date().getFullYear()}-${String(count + 1).padStart(6, "0")}`;
 }
 

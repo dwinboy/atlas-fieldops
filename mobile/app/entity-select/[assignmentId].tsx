@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, IconButton, Input } from "@/components/ui";
+import { displayEntityCategoryName, pluralizeEntityCategory } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileEntity } from "@/models/contracts";
@@ -46,12 +47,13 @@ export default function EntitySelectScreen() {
 
   const entityType = useMemo(() => {
     const settings = formVersion?.entitySettings;
+    const categories = localDatabase.entityCategories.list();
     const category = settings?.entityCategoryId
-      ? localDatabase.entityCategories.list().find((item) => item.id === settings.entityCategoryId)
+      ? categories.find((item) => item.id === settings.entityCategoryId)
       : null;
-    return category?.name ?? settings?.entityType ?? "entity";
+    return category?.name ?? displayEntityCategoryName(settings?.entityType, categories, "Entity");
   }, [formVersion]);
-  const entityTypePlural = pluralize(entityType);
+  const entityTypePlural = pluralizeEntityCategory(entityType);
 
   const query = search.trim().toLowerCase();
 
@@ -149,7 +151,7 @@ export default function EntitySelectScreen() {
         <Card tone="primary" padding="lg" style={{ gap: 4 }}>
           <Text style={styles.contextTitle}>{formName}</Text>
           <Text style={styles.contextSubtitle}>
-            Select the {entityType} you are visiting to begin data collection.
+            Select the {entityType.toLowerCase()} you are working with to begin data collection.
           </Text>
           <Text style={[styles.contextSubtitle, { marginTop: spacing.xs, opacity: 0.85 }]}>
             {assignment.entityIds.length} {entityTypePlural} assigned to this survey
@@ -162,7 +164,7 @@ export default function EntitySelectScreen() {
             autoCapitalize="none"
             clearButtonMode="while-editing"
             onChangeText={setSearch}
-            placeholder={`Search by name, ID, phone, household, or village…`}
+            placeholder={`Search ${entityTypePlural.toLowerCase()} by name, ID, phone, code, or location…`}
             value={search}
             style={styles.searchInput}
           />
@@ -198,7 +200,7 @@ export default function EntitySelectScreen() {
                 ? isBroadSearch
                   ? "Check the other matches below, or refine your search."
                   : "Try a different search term, or type at least 2 characters to search all synced records."
-                : "Sync assigned work or ask your supervisor to assign beneficiaries."
+                : "Sync assigned work or ask your supervisor to assign records."
             }
           />
         ) : (
@@ -355,12 +357,6 @@ function hashString(value: string): number {
     hash |= 0;
   }
   return Math.abs(hash);
-}
-
-function pluralize(label: string): string {
-  if (label.toLowerCase().endsWith("y")) return `${label.slice(0, -1)}ies`;
-  if (label.toLowerCase().endsWith("s")) return label;
-  return `${label}s`;
 }
 
 function matchesEntityCategory(entityType: string, settingsType: string | null, categoryId?: string | null): boolean {

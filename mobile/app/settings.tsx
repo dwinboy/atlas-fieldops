@@ -127,7 +127,7 @@ export default function SettingsScreen() {
           <Row label="Assigned projects" value={String(assignedCounts?.projects ?? deviceStats.assignments)} />
           <Row label="Assignments" value={String(assignedCounts?.assignments ?? deviceStats.assignments)} />
           <Row label="Forms" value={String(assignedCounts?.forms ?? deviceStats.forms)} />
-          <Row label="Beneficiaries" value={String(assignedCounts?.beneficiaries ?? deviceStats.entities)} />
+          <Row label="Entities" value={String(assignedCounts?.beneficiaries ?? deviceStats.entities)} />
           <Row label="Active drafts" value={String(deviceStats.drafts)} />
           <Row label="Sync logs" value={String(deviceStats.syncLogs)} last />
         </Section>

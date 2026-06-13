@@ -59,7 +59,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
               name="entity-select/[assignmentId]"
-              options={{ headerShown: true, title: "Select Beneficiary", headerTintColor: colors.primary, headerBackTitle: "Back" }}
+              options={{ headerShown: true, title: "Select Entity", headerTintColor: colors.primary, headerBackTitle: "Back" }}
             />
             <Stack.Screen
               name="form-fill/[draftId]"

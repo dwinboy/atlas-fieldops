@@ -278,7 +278,7 @@ const consoleSections: ConsoleSection[] = [
   { id: "communications", label: "Communications", route: "/platform/communications", icon: LifeBuoy, description: "Email, SMS, push, tenant broadcasts, and notification log defaults." },
   { id: "security", label: "Security", route: "/platform/security", icon: LockKeyhole, description: "Sessions, MFA, and risk events." },
   { id: "mobile-fleet", label: "Mobile Fleet", route: "/platform/mobile-fleet", icon: Smartphone, description: "App versions, devices, sync health, and offline risk." },
-  { id: "sector-packs", label: "Sector Packs", route: "/platform/sector-packs", icon: PackageCheck, description: "Starter content for sectors, forms, entities, indicators, reports, and mobile rules." },
+  { id: "sector-packs", label: "Sector Packs", route: "/platform/sector-packs", icon: PackageCheck, description: "Starter content for sectors, forms, entities, metrics, reports, and mobile rules." },
   { id: "integrations", label: "Integrations", route: "/platform/integrations", icon: PlugZap, description: "Platform-wide providers." },
   { id: "backups", label: "Backups", route: "/platform/backups", icon: Database, description: "Backup jobs and restore points." },
   { id: "release-center", label: "Release Center", route: "/platform/release-center", icon: Rocket, description: "Version visibility, deployment readiness, maintenance mode, and rollout notes." },
@@ -3049,7 +3049,7 @@ function CommunicationPolicy({
 function SectorPacks({ isLoading, packs }: { isLoading: boolean; packs: PlatformSectorPackRead[] }) {
   if (!packs.length) return <EmptyState title={isLoading ? "Loading sector packs" : "No sector packs found"} detail="Platform sector starter content will appear here after the catalog is available." />;
   return (
-    <Panel title="Sector pack manager" description="Review platform starter content for industries. Each pack defines entities, starter forms, indicators, reports, validation, quality rules, workflows, and mobile guidance.">
+    <Panel title="Sector pack manager" description="Review platform starter content for industries. Each pack defines entities, starter forms, metrics, reports, validation, quality rules, workflows, and mobile guidance.">
       <div className="grid gap-3 xl:grid-cols-2">
         {packs.map((pack) => (
           <article className="rounded-lg border bg-panel p-4 shadow-line" key={pack.id}>
@@ -3063,7 +3063,7 @@ function SectorPacks({ isLoading, packs }: { isLoading: boolean; packs: Platform
             <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
               <SummaryList title="Entities" items={pack.entity_types} />
               <SummaryList title="Forms" items={pack.form_templates} />
-              <SummaryList title="Indicators" items={pack.indicator_templates} />
+              <SummaryList title="Metrics" items={pack.indicator_templates} />
             </div>
             <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               <SummaryList title="Quality rules" items={pack.data_quality_rules} />

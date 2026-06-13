@@ -165,7 +165,7 @@ export class DataCollectionSessionService {
             questionId: "_duplicate_check",
             label: `Possible duplicate ${this.entityLabel(formVersion)}`,
             message: `This record looks similar to an existing entry for ${topMatch.entity?.name ?? `a known ${this.entityLabel(formVersion)}`} (matched on ${topMatch.matchedFields.join(", ")}).`,
-            fixHint: "Double-check whether this person is already registered before submitting. The server will review this during sync either way.",
+            fixHint: "Double-check whether this entity record is already registered before submitting. The server will review this during sync either way.",
             severity: "Warning",
           });
         }

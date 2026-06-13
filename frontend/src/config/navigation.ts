@@ -120,7 +120,7 @@ const sidebarSections: NavigationSection[] = [
         label: "Dashboard",
         hint: "Forms, reviews, quality",
         description:
-          "Main landing page for active projects, active forms, submissions, reviews, quality, coverage, field activity, indicators, alerts, approvals, and maps.",
+          "Main landing page for active projects, forms, submissions, reviews, quality, coverage, field activity, metrics, alerts, approvals, and maps.",
         route: "/dashboard",
         domain: "HOME",
         icon: Gauge,
@@ -152,7 +152,7 @@ const sidebarSections: NavigationSection[] = [
         tone: "monitor",
         allowedRoles: ["System Admin", "M&E Manager"],
         legacyViews: ["surveys", "ecosystem", "enterprise"],
-        keywords: ["project", "program", "donor", "survey"],
+        keywords: ["project", "program", "funder", "client", "survey"],
         children: [
           { label: "All Projects", route: "/projects/all", description: "Every project in the organization." },
           { label: "Active Projects", route: "/projects/active", description: "Projects currently being implemented." },
@@ -181,7 +181,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Draft Forms", route: "/forms/draft", description: "Forms still being built or configured." },
           { label: "Published Forms", route: "/forms/published", description: "Forms available for field collection." },
           { label: "Archived Forms", route: "/forms/archived", description: "Retired forms retained for audit." },
-          { label: "Form Templates", route: "/forms/templates", description: "Reusable M&E and sector templates." },
+          { label: "Form Templates", route: "/forms/templates", description: "Reusable operational and sector templates." },
           { label: "Reference Data", route: "/forms/reference-data", description: "Form-specific controlled lists and bindings." },
         ],
       },
@@ -190,7 +190,7 @@ const sidebarSections: NavigationSection[] = [
         label: "Field Operations",
         hint: "Assignments & teams",
         description:
-          "Manage field work, assignments, supervisors, field officers, targets, and monitoring.",
+          "Manage field work, assignments, supervisors, field officers, targets, visits, and activity tracking.",
         route: "/field-operations",
         domain: "OPERATIONS",
         icon: UserRoundCog,
@@ -271,7 +271,7 @@ const sidebarSections: NavigationSection[] = [
   },
   {
     label: "ANALYTICS",
-    description: "Maps, indicators, reporting, and quality investigation.",
+    description: "Maps, metrics, reporting, and quality investigation.",
     items: [
       {
         id: "map",
@@ -297,7 +297,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Entity Maps", route: "/mapping/beneficiary-maps", description: "Entity and household locations." },
           { label: "Facility Maps", route: "/mapping/facility-maps", description: "Facilities, schools, and service points." },
           { label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Target vs actual geographic coverage." },
-          { label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Spatial indicator performance." },
+          { label: "Metric Maps", route: "/mapping/indicator-maps", description: "Spatial metric performance." },
           { label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS, boundary, and spatial quality issues." },
           { label: "Map Layers", route: "/mapping/layers", description: "Operational map layers." },
           { label: "Boundaries", route: "/mapping/boundaries", description: "Administrative and project boundaries." },
@@ -305,10 +305,10 @@ const sidebarSections: NavigationSection[] = [
       },
       {
         id: "indicators",
-        label: "Indicators",
-        hint: "Targets & results",
+        label: "Metrics & Results",
+        hint: "Targets, KPIs, results",
         description:
-          "Manage M&E indicators, logframes, results frameworks, baselines, targets, and progress tracking.",
+          "Manage formal metrics, KPIs, indicators, results frameworks, baselines, targets, and progress tracking.",
         route: "/indicators",
         domain: "ANALYTICS",
         icon: ChartNoAxesCombined,
@@ -319,14 +319,14 @@ const sidebarSections: NavigationSection[] = [
           "Data Manager",
           "Viewer/Donor",
         ],
-        keywords: ["indicator", "logframe", "target", "baseline"],
+        keywords: ["metric", "kpi", "indicator", "logframe", "target", "baseline"],
         children: [
-          { label: "Indicator Library", route: "/indicators/library", description: "Reusable indicators and definitions." },
+          { label: "Metric Library", route: "/indicators/library", description: "Reusable metrics, indicators, KPIs, and definitions." },
           { label: "Results Framework", route: "/indicators/results-framework", description: "Outcome, output, and activity structure." },
           { label: "Logframes", route: "/indicators/logframes", description: "Logical framework management." },
           { label: "Targets", route: "/indicators/targets", description: "Target values and milestones." },
           { label: "Baselines", route: "/indicators/baselines", description: "Baseline values and comparison points." },
-          { label: "Indicator Reports", route: "/indicators/reports", description: "Indicator progress reports." },
+          { label: "Metric Reports", route: "/indicators/reports", description: "Metric and indicator progress reports." },
         ],
       },
       {
@@ -345,9 +345,9 @@ const sidebarSections: NavigationSection[] = [
           "Data Manager",
           "Viewer/Donor",
         ],
-        keywords: ["report", "dashboard", "export", "donor"],
+        keywords: ["report", "dashboard", "export", "funder", "client", "donor"],
         children: [
-          { label: "Standard Reports", route: "/reports/standard", description: "Common M&E and operations reports." },
+          { label: "Standard Reports", route: "/reports/standard", description: "Common operational, M&E, compliance, and sector reports." },
           { label: "Custom Reports", route: "/reports/custom", description: "Ad hoc report builder." },
           { label: "Dashboards", route: "/reports/dashboards", description: "Saved analytical dashboards." },
           { label: "Scheduled Reports", route: "/reports/scheduled", description: "Recurring report delivery." },
@@ -653,14 +653,14 @@ export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
   dashboard: {
     step: "Review today",
     outcome:
-      "Track active forms, submissions, sync progress, data quality, coverage, indicator progress, and approval queues.",
+      "Track active forms, submissions, sync progress, data quality, coverage, metric progress, and approval queues.",
     next: "submissions",
     nextLabel: "Review submissions",
   },
   ecosystem: {
     step: "Understand structure",
     outcome:
-      "See how projects, forms, people, submissions, indicators, reports, and controls connect across the platform.",
+      "See how projects, forms, people, submissions, metrics, reports, and controls connect across the platform.",
     next: "programs",
     nextLabel: "Open projects",
   },
@@ -702,14 +702,14 @@ export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
   programs: {
     step: "Plan projects",
     outcome:
-      "Create and manage projects with forms, indicators, locations, teams, assignments, submissions, reports, settings, and audit trails.",
+      "Create and manage projects with forms, entities, metrics, locations, teams, assignments, submissions, reports, settings, and audit trails.",
     next: "programs",
     nextLabel: "Create project",
   },
   surveys: {
     step: "Manage surveys",
     outcome:
-      "Organize survey activity under projects and connect it to forms, field teams, indicators, and reporting.",
+      "Organize survey or collection activity under projects and connect it to forms, field teams, metrics, and reporting.",
     next: "forms",
     nextLabel: "Create forms",
   },
@@ -781,7 +781,7 @@ export const viewGuidance: Record<WorkspaceView, ViewGuidance> = {
     outcome:
       "Create standard reports, custom reports, dashboards, scheduled reports, and authorized exports.",
     next: "indicators",
-    nextLabel: "Open indicators",
+    nextLabel: "Open metrics",
   },
   workflows: {
     step: "Configure approvals",

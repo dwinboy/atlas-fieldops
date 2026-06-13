@@ -11,6 +11,10 @@ from app.services.operations import (
     OperationsService,
     asset_values_from_import_row,
     case_values_from_import_row,
+    detect_entity_matches,
+    detect_import_duplicate_groups,
+    detect_missing_ids,
+    entity_code_prefix,
     indicator_progress,
     indicator_values_from_import_row,
     infer_mapping,
@@ -126,6 +130,41 @@ def test_import_mapping_supports_operational_dataset_aliases() -> None:
     assert [item.target_field for item in program_mapping] == ["name", "slug", "region"]
     assert [item.target_field for item in case_mapping] == ["case_number", "title", "case_type"]
     assert [item.target_field for item in asset_mapping] == ["asset_code", "name", "region"]
+
+
+def test_import_generated_ids_follow_entity_type_prefixes() -> None:
+    generated = detect_missing_ids(
+        [
+            {"entity_type": "Product", "name": "Maize seed"},
+            {"entity_type": "Asset", "name": "Tablet"},
+            {"entity_category": "Water Point", "name": "Borehole 1"},
+            {"name": "Generic record"},
+            {"entity_id": "LEGACY-1", "entity_type": "Store"},
+        ],
+        "entity_registry",
+    )
+
+    assert [row.entity_type for row in generated] == ["Product", "Asset", "Water Point", "Entity"]
+    assert generated[0].generated_id.startswith("PRD-")
+    assert generated[1].generated_id.startswith("AST-")
+    assert generated[2].generated_id.startswith("WPT-")
+    assert generated[3].generated_id.startswith("ENT-")
+    assert entity_code_prefix("Cold Chain Site") == "CCS"
+
+
+def test_import_match_actions_are_sector_neutral() -> None:
+    rows = [
+        {"display_name": "Store A", "phone_number": "+237600000001", "district": "Mifi"},
+        {"display_name": "Store A", "phone_number": "+237600000001", "district": "Mifi"},
+    ]
+    duplicate_groups = detect_import_duplicate_groups(rows)
+    entity_matches = detect_entity_matches(rows)
+
+    assert duplicate_groups
+    assert "entity" in duplicate_groups[0].recommended_action.lower()
+    assert "beneficiary" not in " ".join(duplicate_groups[0].actions).lower()
+    assert entity_matches
+    assert entity_matches[0].suggested_value.endswith("existing entity candidate")
 
 
 def test_import_row_converters_create_applyable_payloads() -> None:

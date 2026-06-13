@@ -542,8 +542,8 @@ function buildReviewSummary(
         tone: "ok" as const,
       },
       {
-        label: "Beneficiary link",
-        value: entityName ?? (formVersion.entitySettings.requiresExistingEntity ? "Missing required beneficiary" : "Not required"),
+        label: "Entity link",
+        value: entityName ?? (formVersion.entitySettings.requiresExistingEntity ? "Missing required entity" : "Not required"),
         tone: formVersion.entitySettings.requiresExistingEntity && !entityName ? "bad" as const : "ok" as const,
       },
       {
