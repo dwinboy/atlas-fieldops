@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Archive,
@@ -11,6 +11,7 @@ import {
   FileClock,
   GitBranch,
   History,
+  Plus,
   Scale,
   ShieldAlert,
   ShieldCheck,
@@ -25,7 +26,11 @@ import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
+import { Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
+  createGovernancePolicy,
+  createRetentionPolicy,
   getGovernanceSummary,
   listConsentRecords,
   listDataVersions,
@@ -259,6 +264,65 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
         ["governance.manage", "workflow.manage", "audit.read"].includes(permission),
       ),
   );
+  const queryClient = useQueryClient();
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [policyDraft, setPolicyDraft] = useState({
+    name: "",
+    policyType: "data_protection",
+    lifecycleState: "draft",
+    enforcementLevel: "warning",
+  });
+  const [retentionModalOpen, setRetentionModalOpen] = useState(false);
+  const [retentionDraft, setRetentionDraft] = useState({
+    recordType: "",
+    retentionYears: "5",
+    archiveAfterDays: "365",
+    legalHold: false,
+    purgeAllowed: false,
+    anonymizeOnExport: true,
+  });
+  const canCreateGovernance = canManageGovernance && enabled;
+
+  const policyMutation = useMutation({
+    mutationFn: () =>
+      createGovernancePolicy(token ?? "", {
+        name: policyDraft.name.trim(),
+        policy_type: policyDraft.policyType,
+        lifecycle_state: policyDraft.lifecycleState,
+        enforcement_level: policyDraft.enforcementLevel,
+      }),
+    onSuccess: async (policy) => {
+      await queryClient.invalidateQueries({ queryKey: ["governance", "policies", token] });
+      await queryClient.invalidateQueries({ queryKey: ["governance", "summary", token] });
+      setPolicyModalOpen(false);
+      setPolicyDraft({ name: "", policyType: "data_protection", lifecycleState: "draft", enforcementLevel: "warning" });
+      pushToast({ title: "Policy created", description: `"${policy.name}" is now tracked in governance.`, tone: "success" });
+    },
+    onError: (error) => {
+      pushToast({ title: "Could not create policy", description: error instanceof Error ? error.message : "Check your governance permissions.", tone: "danger" });
+    },
+  });
+
+  const retentionMutation = useMutation({
+    mutationFn: () =>
+      createRetentionPolicy(token ?? "", {
+        record_type: retentionDraft.recordType.trim(),
+        retention_years: Math.max(1, Number.parseInt(retentionDraft.retentionYears, 10) || 5),
+        archive_after_days: Math.max(30, Number.parseInt(retentionDraft.archiveAfterDays, 10) || 365),
+        legal_hold: retentionDraft.legalHold,
+        purge_allowed: retentionDraft.purgeAllowed,
+        anonymize_on_export: retentionDraft.anonymizeOnExport,
+      }),
+    onSuccess: async (rule) => {
+      await queryClient.invalidateQueries({ queryKey: ["governance", "retention", token] });
+      setRetentionModalOpen(false);
+      setRetentionDraft({ recordType: "", retentionYears: "5", archiveAfterDays: "365", legalHold: false, purgeAllowed: false, anonymizeOnExport: true });
+      pushToast({ title: "Retention rule created", description: `Retention for "${rule.record_type}" is now governed.`, tone: "success" });
+    },
+    onError: (error) => {
+      pushToast({ title: "Could not create retention rule", description: error instanceof Error ? error.message : "Check your governance permissions.", tone: "danger" });
+    },
+  });
 
   const summaryQuery = useQuery({ queryKey: ["governance", "summary", token], queryFn: () => getGovernanceSummary(token ?? ""), enabled });
   const policiesQuery = useQuery({ queryKey: ["governance", "policies", token], queryFn: () => listGovernancePolicies(token ?? ""), enabled });
@@ -547,7 +611,21 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
       ) : null}
 
       {activeSection === "policies" ? (
-        <DataTable columns={policyColumns} emptyLabel="No governance policies are configured." rows={policies} searchLabel="Search policies" title="Policy management" />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">Define organization data and operational policies with lifecycle state and enforcement level.</p>
+            <Button disabled={!canCreateGovernance} onClick={() => setPolicyModalOpen(true)} type="button"><Plus aria-hidden="true" /> Create policy</Button>
+          </div>
+          <DataTable
+            columns={policyColumns}
+            emptyAction={canCreateGovernance ? { label: "Create policy", onClick: () => setPolicyModalOpen(true) } : undefined}
+            emptyDescription="Governance policies set the data and operational rules that submissions, exports, and retention follow."
+            emptyLabel="No governance policies are configured."
+            rows={policies}
+            searchLabel="Search policies"
+            title="Policy management"
+          />
+        </div>
       ) : null}
 
       {activeSection === "approvals" ? (
@@ -555,7 +633,21 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
       ) : null}
 
       {activeSection === "retention-rules" ? (
-        <DataTable columns={retentionColumns} emptyLabel="No retention rules are configured." rows={retentionRules} searchLabel="Search retention rules" title="Retention rules" />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">Set how long each record type is kept, when it archives, and whether it can be purged or must be anonymized on export.</p>
+            <Button disabled={!canCreateGovernance} onClick={() => setRetentionModalOpen(true)} type="button"><Plus aria-hidden="true" /> Create retention rule</Button>
+          </div>
+          <DataTable
+            columns={retentionColumns}
+            emptyAction={canCreateGovernance ? { label: "Create retention rule", onClick: () => setRetentionModalOpen(true) } : undefined}
+            emptyDescription="Retention rules govern how long beneficiary, submission, and audit records are kept and how they are archived or anonymized."
+            emptyLabel="No retention rules are configured."
+            rows={retentionRules}
+            searchLabel="Search retention rules"
+            title="Retention rules"
+          />
+        </div>
       ) : null}
 
       {activeSection === "consent-management" ? (
@@ -636,6 +728,98 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
           <Badge tone="governance">{governanceSections.find((section) => section.id === activeSection)?.route}</Badge>
         </div>
       </section>
+
+      <Modal
+        contentClassName="max-w-xl"
+        description="Define an organization governance policy. Lifecycle state tracks review progress; enforcement level controls whether violations warn or block."
+        onOpenChange={setPolicyModalOpen}
+        open={policyModalOpen}
+        title="Create governance policy"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium md:col-span-2">
+            Policy name
+            <Input className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Beneficiary data protection policy" value={policyDraft.name} />
+          </label>
+          <label className="text-sm font-medium">
+            Policy type
+            <Select className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, policyType: event.target.value }))} value={policyDraft.policyType}>
+              <option value="data_protection">Data protection</option>
+              <option value="access_control">Access control</option>
+              <option value="data_quality">Data quality</option>
+              <option value="consent">Consent</option>
+              <option value="retention">Retention</option>
+              <option value="operational">Operational</option>
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Enforcement level
+            <Select className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, enforcementLevel: event.target.value }))} value={policyDraft.enforcementLevel}>
+              <option value="informational">Informational</option>
+              <option value="warning">Warning</option>
+              <option value="blocking">Blocking</option>
+            </Select>
+          </label>
+          <label className="text-sm font-medium md:col-span-2">
+            Lifecycle state
+            <Select className="mt-2" onChange={(event) => setPolicyDraft((current) => ({ ...current, lifecycleState: event.target.value }))} value={policyDraft.lifecycleState}>
+              <option value="draft">Draft</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="approved">Approved</option>
+              <option value="published">Published</option>
+            </Select>
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setPolicyModalOpen(false)} type="button" variant="secondary">Cancel</Button>
+          <Button disabled={policyMutation.isPending || policyDraft.name.trim().length < 2} onClick={() => policyMutation.mutate()} type="button" variant="primary">
+            {policyMutation.isPending ? "Creating…" : "Create policy"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        contentClassName="max-w-xl"
+        description="Govern how long a record type is kept before archival and whether it can be purged or must be anonymized on export."
+        onOpenChange={setRetentionModalOpen}
+        open={retentionModalOpen}
+        title="Create retention rule"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium md:col-span-2">
+            Record type
+            <Input className="mt-2" onChange={(event) => setRetentionDraft((current) => ({ ...current, recordType: event.target.value }))} placeholder="e.g. beneficiary, submission, consent" value={retentionDraft.recordType} />
+          </label>
+          <label className="text-sm font-medium">
+            Retention years
+            <Input className="mt-2" inputMode="numeric" onChange={(event) => setRetentionDraft((current) => ({ ...current, retentionYears: event.target.value }))} value={retentionDraft.retentionYears} />
+          </label>
+          <label className="text-sm font-medium">
+            Archive after (days)
+            <Input className="mt-2" inputMode="numeric" onChange={(event) => setRetentionDraft((current) => ({ ...current, archiveAfterDays: event.target.value }))} value={retentionDraft.archiveAfterDays} />
+          </label>
+        </div>
+        <div className="mt-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input checked={retentionDraft.legalHold} onChange={(event) => setRetentionDraft((current) => ({ ...current, legalHold: event.target.checked }))} type="checkbox" />
+            Legal hold (prevents purge regardless of age)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input checked={retentionDraft.purgeAllowed} onChange={(event) => setRetentionDraft((current) => ({ ...current, purgeAllowed: event.target.checked }))} type="checkbox" />
+            Purge allowed after retention period
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input checked={retentionDraft.anonymizeOnExport} onChange={(event) => setRetentionDraft((current) => ({ ...current, anonymizeOnExport: event.target.checked }))} type="checkbox" />
+            Anonymize on export
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setRetentionModalOpen(false)} type="button" variant="secondary">Cancel</Button>
+          <Button disabled={retentionMutation.isPending || retentionDraft.recordType.trim().length < 2} onClick={() => retentionMutation.mutate()} type="button" variant="primary">
+            {retentionMutation.isPending ? "Creating…" : "Create retention rule"}
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
