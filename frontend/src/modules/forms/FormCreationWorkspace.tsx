@@ -1012,6 +1012,12 @@ function messageFromUnknownError(error: unknown): string {
   return "The request could not be completed.";
 }
 
+function formatClockTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(timestamp),
+  );
+}
+
 function attachStarterField(
   section: FormSection,
   type: FieldType,
@@ -4870,6 +4876,10 @@ export function FormCreationWorkspace({
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importPreview, setImportPreview] = useState<string[] | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const lastPersistedSignatureRef = useRef<string | null>(null);
+  const autoSaveInFlightRef = useRef(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -5897,51 +5907,50 @@ export function FormCreationWorkspace({
     setStage("builder");
   }
 
-  async function saveDraftLocally(): Promise<void> {
-    if (!draftForm) return;
-    const localDraft = workspaceFormFromDraft(draftForm, setup, selectedProjectId);
-    upsertLocalForm(localDraft);
-    if (!token || preview || !selectedProjectId) {
-      setPublishMessage(
-        projectLinked
-          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
-          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
-      );
-      return;
+  // Persist the current draft to the organization workspace (create on first
+  // call, update afterwards). Shared by manual "Save draft" and auto-save.
+  // Caller guarantees token, non-preview, and a selected project.
+  async function persistDraftToBackend(): Promise<{ ok: boolean; error?: string }> {
+    if (!draftForm || !token || preview || !selectedProjectId) {
+      return { ok: false, error: "Sign in and select a project first." };
     }
-    setDraftSaving(true);
     try {
-      const survey =
-        selectedSurvey ??
-        (await createSurvey(token, {
-          code: `FORM-${Date.now().toString(36).toUpperCase()}`,
-          description: "Auto-created survey context for a project-linked draft form.",
-          geographic_scope: selectedProject?.region ?? null,
-          project_id: selectedProjectId,
-          status: "active",
-          survey_type: "monitoring",
-          target_population: "Project participants",
-          title: "General Data Collection",
-        }));
       const schema = toMobileSchema(draftForm) as Record<string, unknown>;
-      const saved = savedBackendFormId
-        ? await updateForm(token, savedBackendFormId, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
-            publish: false,
-            schema,
-          })
-        : await createForm(token, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
+      let saved;
+      if (savedBackendFormId) {
+        // Update path: no survey is created, so repeated auto-saves never spawn
+        // orphan surveys.
+        saved = await updateForm(token, savedBackendFormId, {
+          description:
+            setup.description || draftForm.sections[0]?.description || null,
+          name: draftForm.name,
+          publish: false,
+          schema,
+        });
+      } else {
+        const survey =
+          selectedSurvey ??
+          (await createSurvey(token, {
+            code: `FORM-${Date.now().toString(36).toUpperCase()}`,
+            description: "Auto-created survey context for a project-linked draft form.",
+            geographic_scope: selectedProject?.region ?? null,
             project_id: selectedProjectId,
-            publish: false,
-            schema,
-            slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
-            survey_id: survey.id,
-          });
+            status: "active",
+            survey_type: "monitoring",
+            target_population: "Project participants",
+            title: "General Data Collection",
+          }));
+        saved = await createForm(token, {
+          description:
+            setup.description || draftForm.sections[0]?.description || null,
+          name: draftForm.name,
+          project_id: selectedProjectId,
+          publish: false,
+          schema,
+          slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
+          survey_id: survey.id,
+        });
+      }
       const savedDraft: DynamicForm = {
         ...draftForm,
         activeVersion: saved.status === "published" ? saved.current_version : 0,
@@ -5958,15 +5967,87 @@ export function FormCreationWorkspace({
         controlsDraftToApiControls(controlsDraft, savedDraft),
       );
       upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
-      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+      return { ok: true };
     } catch (error) {
-      setPublishMessage(
-        `Draft saved in this browser, but it was not saved to the organization workspace: ${messageFromUnknownError(error)}`,
-      );
-    } finally {
-      setDraftSaving(false);
+      return { ok: false, error: messageFromUnknownError(error) };
     }
   }
+
+  async function saveDraftLocally(): Promise<void> {
+    if (!draftForm) return;
+    upsertLocalForm(workspaceFormFromDraft(draftForm, setup, selectedProjectId));
+    if (!token || preview || !selectedProjectId) {
+      setPublishMessage(
+        projectLinked
+          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
+          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
+      );
+      return;
+    }
+    setDraftSaving(true);
+    const result = await persistDraftToBackend();
+    if (result.ok) {
+      lastPersistedSignatureRef.current = draftSignature;
+      setAutoSaveState("saved");
+      setLastSavedAt(Date.now());
+      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+    } else {
+      setAutoSaveState("error");
+      setPublishMessage(
+        `Draft saved in this browser, but it was not saved to the organization workspace: ${result.error ?? "Unknown error"}`,
+      );
+    }
+    setDraftSaving(false);
+  }
+
+  // Content signature for auto-save: excludes volatile fields (id, version,
+  // updatedAt, history) so saving — which stamps those — never re-triggers.
+  const draftSignature = useMemo(
+    () =>
+      draftForm
+        ? JSON.stringify({
+            name: draftForm.name,
+            pages: draftForm.pages,
+            sections: draftForm.sections,
+            fields: draftForm.fields,
+            controls: controlsDraft,
+          })
+        : "",
+    [draftForm, controlsDraft],
+  );
+
+  const autoSaveEnabled = Boolean(
+    stage === "builder" && draftForm && token && !preview && selectedProjectId,
+  );
+
+  useEffect(() => {
+    if (!autoSaveEnabled || !draftForm) return;
+    if (draftSaving || publishing || autoSaveInFlightRef.current) return;
+    if (lastPersistedSignatureRef.current === draftSignature) return;
+    // Seed the baseline for an already-saved form opened for editing, so we
+    // don't re-save an unchanged form on open. A brand-new draft (no backend id)
+    // is auto-saved immediately so reaching the builder secures the work.
+    if (lastPersistedSignatureRef.current === null && (savedBackendFormId || initialForm)) {
+      lastPersistedSignatureRef.current = draftSignature;
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      autoSaveInFlightRef.current = true;
+      setAutoSaveState("saving");
+      const result = await persistDraftToBackend();
+      if (result.ok) {
+        lastPersistedSignatureRef.current = draftSignature;
+        setAutoSaveState("saved");
+        setLastSavedAt(Date.now());
+      } else {
+        setAutoSaveState("error");
+      }
+      autoSaveInFlightRef.current = false;
+    }, 1500);
+    return () => window.clearTimeout(timer);
+    // persistDraftToBackend is a stable closure over current state; signature drives saves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSaveEnabled, draftSignature, draftSaving, publishing, savedBackendFormId, initialForm]);
 
   async function saveControlsDraft(): Promise<void> {
     if (!draftForm) return;
@@ -6320,7 +6401,36 @@ export function FormCreationWorkspace({
               ) : null}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {autoSaveEnabled ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+                  autoSaveState === "error"
+                    ? "border-danger/30 bg-danger/10 text-danger"
+                    : autoSaveState === "saving"
+                      ? "border-border bg-muted text-muted-foreground"
+                      : "border-success/30 bg-success/10 text-success",
+                )}
+                title="Drafts auto-save to your organization workspace as you edit."
+              >
+                {autoSaveState === "saving" ? (
+                  <>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
+                    Saving…
+                  </>
+                ) : autoSaveState === "error" ? (
+                  <>Auto-save failed — use Save draft</>
+                ) : autoSaveState === "saved" || savedBackendFormId ? (
+                  <>
+                    <CheckCircle2 aria-hidden="true" size={13} />
+                    Draft saved{lastSavedAt ? ` · ${formatClockTime(lastSavedAt)}` : ""}
+                  </>
+                ) : (
+                  <>Auto-save on</>
+                )}
+              </span>
+            ) : null}
             <Button
               onClick={onBack}
               size={compactBuilderMode ? "sm" : undefined}
