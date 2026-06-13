@@ -279,6 +279,13 @@ export class NotificationsApi {
   list(token: string) {
     return this.http.request<MobileNotification[]>("/mobile/notifications", { token });
   }
+
+  markRead(token: string, notificationId: string) {
+    return this.http.request<MobileNotification>(`/mobile/notifications/${notificationId}/read`, {
+      method: "POST",
+      token,
+    });
+  }
 }
 
 type ServerFieldVisitRequest = {

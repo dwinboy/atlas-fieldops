@@ -265,7 +265,6 @@ export function Select({
                     disabled={option.disabled}
                     key={`${option.value}-${option.label}`}
                     onClick={() => choose(option)}
-                    onPointerDown={(event) => event.preventDefault()}
                     role="option"
                     type="button"
                   >

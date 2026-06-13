@@ -163,9 +163,24 @@ async def mobile_returned_submissions(
 
 @router.get("/notifications", response_model=list[MobileNotificationRead], summary="Get mobile notifications")
 async def mobile_notifications(
-    _principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[MobileNotificationRead]:
-    return []
+    return await MobileService(session).notifications(principal)
+
+
+@router.post("/notifications/{notification_id}/read", response_model=MobileNotificationRead, summary="Mark mobile notification read")
+async def mark_mobile_notification_read(
+    notification_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MobileNotificationRead:
+    try:
+        result = await MobileService(session).mark_notification_read(principal, notification_id)
+    except CollectionNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    await session.commit()
+    return result
 
 
 @router.get("/visit-requests", response_model=list[FieldVisitRequestRead], summary="Get field visit requests assigned to this mobile user")

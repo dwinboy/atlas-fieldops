@@ -405,6 +405,8 @@ export function SubmissionsModule({
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
   const [bulkComment, setBulkComment] = useState("");
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [quickRejectSubmission, setQuickRejectSubmission] = useState<SubmissionRecord | null>(null);
+  const [quickRejectComment, setQuickRejectComment] = useState("");
   const bulkReviewEnabled = canReview && !preview && Boolean(token);
 
   useEffect(() => {
@@ -416,11 +418,13 @@ export function SubmissionsModule({
   }
 
   async function runBulkReview(action: ReviewAction, actionLabel: string): Promise<void> {
-    const comment = bulkComment.trim();
+    const comment =
+      bulkComment.trim() ||
+      (action === "approve" ? "Approved from submissions list." : "");
     if (!comment) {
       pushToast({
         title: "Reviewer comment required",
-        description: "Add one comment that applies to every selected record.",
+        description: "Add one reason that applies to every selected record.",
         tone: "warning",
       });
       return;
@@ -733,6 +737,44 @@ export function SubmissionsModule({
     });
   }
 
+  function quickReviewSubmission(
+    submission: SubmissionRecord,
+    action: "approve" | "reject",
+    comment?: string,
+  ): void {
+    const reviewerComment =
+      comment?.trim() ||
+      (action === "approve" ? "Approved from submissions list." : "");
+    if (action === "reject" && reviewerComment.length < 8) {
+      pushToast({
+        title: "Reason required",
+        description: "Enter a clear rejection reason for the field officer and audit trail.",
+        tone: "warning",
+      });
+      return;
+    }
+    if (preview) {
+      setPreviewRows((current) =>
+        applyPreviewReviewAction(current, submission.id, action, reviewerComment),
+      );
+      setQuickRejectSubmission(null);
+      setQuickRejectComment("");
+      pushToast({
+        title: action === "approve" ? "Preview approved" : "Preview rejected",
+        description: displaySubmissionId(submission),
+        tone: action === "approve" ? "success" : "warning",
+      });
+      return;
+    }
+    reviewMutation.mutate({
+      action,
+      comment: reviewerComment,
+      submissionId: submission.id,
+    });
+    setQuickRejectSubmission(null);
+    setQuickRejectComment("");
+  }
+
   function saveResponses(
     submission: SubmissionRecord,
     responses: Record<string, unknown>,
@@ -988,7 +1030,7 @@ export function SubmissionsModule({
       header: "Actions",
       align: "right",
       render: (submission) => (
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-1.5">
           <Button
             onClick={() => openSubmission(submission)}
             size="sm"
@@ -997,6 +1039,31 @@ export function SubmissionsModule({
             <Eye aria-hidden="true" />
             View
           </Button>
+          {canReview && isBulkReviewable(submission) ? (
+            <>
+              <Button
+                disabled={reviewMutation.isPending}
+                onClick={() => quickReviewSubmission(submission, "approve")}
+                size="sm"
+                variant="ghost"
+              >
+                <CheckCircle2 aria-hidden="true" />
+                Approve
+              </Button>
+              <Button
+                disabled={reviewMutation.isPending}
+                onClick={() => {
+                  setQuickRejectSubmission(submission);
+                  setQuickRejectComment("");
+                }}
+                size="sm"
+                variant="ghost"
+              >
+                <XCircle aria-hidden="true" />
+                Reject
+              </Button>
+            </>
+          ) : null}
           {submissionHasUsableGps(submission) ? (
             <Button
               onClick={() => {
@@ -1010,14 +1077,6 @@ export function SubmissionsModule({
               Map
             </Button>
           ) : null}
-          <Button
-            disabled={!canReview}
-            onClick={() => openSubmission(submission, "Workflow")}
-            size="sm"
-            variant="ghost"
-          >
-            Review
-          </Button>
         </div>
       ),
     },
@@ -1180,6 +1239,59 @@ export function SubmissionsModule({
             onChange={setSubmissionFilters}
             submissions={visibleSubmissions}
           />
+          {quickRejectSubmission ? (
+            <section className="rounded-xl border border-danger/30 bg-danger/8 p-3 shadow-line">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Reject {displaySubmissionId(quickRejectSubmission)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Enter the exact reason. The field officer will see this comment after sync.
+                  </p>
+                  <Input
+                    autoFocus
+                    className="mt-2 h-8 text-xs"
+                    disabled={reviewMutation.isPending}
+                    onChange={(event) => setQuickRejectComment(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        quickReviewSubmission(quickRejectSubmission, "reject", quickRejectComment);
+                      }
+                      if (event.key === "Escape") {
+                        setQuickRejectSubmission(null);
+                        setQuickRejectComment("");
+                      }
+                    }}
+                    placeholder="Example: GPS is outside the assigned village; revisit and correct location."
+                    value={quickRejectComment}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    disabled={reviewMutation.isPending || quickRejectComment.trim().length < 8}
+                    onClick={() => quickReviewSubmission(quickRejectSubmission, "reject", quickRejectComment)}
+                    size="sm"
+                    variant="danger"
+                  >
+                    <XCircle aria-hidden="true" />
+                    Reject
+                  </Button>
+                  <Button
+                    disabled={reviewMutation.isPending}
+                    onClick={() => {
+                      setQuickRejectSubmission(null);
+                      setQuickRejectComment("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
           {bulkReviewEnabled && bulkSelectedIds.size ? (
             <section className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 p-3">
               <Badge tone="accent">{bulkSelectedIds.size} selected</Badge>
@@ -1188,11 +1300,11 @@ export function SubmissionsModule({
                 className="h-8 min-w-64 flex-1 text-xs"
                 disabled={bulkRunning}
                 onChange={(event) => setBulkComment(event.target.value)}
-                placeholder="Reviewer comment applied to every selected record"
+                placeholder="Reason for return/reject. Optional for approval."
                 value={bulkComment}
               />
               <Button
-                disabled={bulkRunning || !bulkComment.trim()}
+                disabled={bulkRunning}
                 onClick={() => void runBulkReview("approve", "Bulk approve")}
                 size="sm"
                 variant="primary"

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -310,6 +310,20 @@ class MobileSyncBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), default="processed")
     processed_count: Mapped[int] = mapped_column(Integer, default=0)
     conflict_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MobileNotification(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "mobile_notifications"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    resource_type: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    resource_id: Mapped[UUID | None] = mapped_column(index=True, nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_server_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class SubmissionRepeatRow(UUIDPrimaryKeyMixin, TimestampMixin, Base):

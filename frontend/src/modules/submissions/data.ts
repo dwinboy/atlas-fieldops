@@ -296,3 +296,101 @@ export const previewSubmissions: SubmissionRecord[] = [
     ],
   },
 ];
+
+const generatedSubmissionSeeds: {
+  actor: string;
+  device: string;
+  entity: string;
+  entityType: string;
+  form: string;
+  formId: string;
+  lat: number;
+  location: string;
+  lon: number;
+  project: string;
+  projectId: string;
+  quality: number;
+  status: SubmissionRead["status"];
+  source: "mobile" | "import" | "web";
+}[] = [
+  { actor: "Miriam Otieno", device: "android-store-2250", entity: "STORE-2026-000009", entityType: "Store", form: "Retail Stock Count and Shelf Availability", formId: "preview-retail-stock-count", lat: -1.2864, location: "Nairobi Central", lon: 36.8172, project: "Retail Store Stock Visibility", projectId: "project-retail", quality: 91, status: "under_review", source: "mobile" },
+  { actor: "Miriam Otieno", device: "android-store-2250", entity: "SKU-2026-000118", entityType: "Product", form: "Retail Stock Count and Shelf Availability", formId: "preview-retail-stock-count", lat: -1.2921, location: "Westlands Store", lon: 36.8219, project: "Retail Store Stock Visibility", projectId: "project-retail", quality: 72, status: "correction_requested", source: "mobile" },
+  { actor: "Store Ops Import", device: "legacy-import", entity: "STORE-2026-000014", entityType: "Store", form: "Retail Stock Count and Shelf Availability", formId: "preview-retail-stock-count", lat: -1.3032, location: "Industrial Area", lon: 36.8517, project: "Retail Store Stock Visibility", projectId: "project-retail", quality: 96, status: "approved", source: "import" },
+  { actor: "Ibrahima Ndiaye", device: "android-route-3310", entity: "SHIP-2026-000221", entityType: "Shipment", form: "Cold Chain Delivery Proof", formId: "preview-logistics-delivery-proof", lat: 14.7167, location: "Dakar Route 4", lon: -17.4677, project: "Cold Chain Delivery Monitoring", projectId: "project-logistics", quality: 93, status: "approved", source: "mobile" },
+  { actor: "Ibrahima Ndiaye", device: "android-route-3310", entity: "VEH-2026-000018", entityType: "Vehicle", form: "Cold Chain Delivery Proof", formId: "preview-logistics-delivery-proof", lat: 14.7645, location: "Rufisque", lon: -17.3908, project: "Cold Chain Delivery Monitoring", projectId: "project-logistics", quality: 81, status: "under_review", source: "mobile" },
+  { actor: "Audit Lead", device: "web-entry", entity: "SUP-2026-000031", entityType: "Supplier", form: "Supplier Compliance Audit Checklist", formId: "preview-supplier-audit", lat: -1.9441, location: "Kigali", lon: 30.0619, project: "Supplier Compliance Audit", projectId: "project-audits", quality: 77, status: "submitted", source: "web" },
+  { actor: "Audit Lead", device: "web-entry", entity: "SUP-2026-000044", entityType: "Supplier", form: "Supplier Compliance Audit Checklist", formId: "preview-supplier-audit", lat: -1.9588, location: "Kigali Industrial Zone", lon: 30.1127, project: "Supplier Compliance Audit", projectId: "project-audits", quality: 58, status: "rejected", source: "web" },
+  { actor: "Training Coordinator", device: "legacy-import", entity: "EMP-2026-000312", entityType: "Employee", form: "Workforce Training Attendance", formId: "preview-hr-training-attendance", lat: 0.3476, location: "Kampala Central", lon: 32.5825, project: "Workforce Training and Attendance", projectId: "project-hr", quality: 95, status: "approved", source: "import" },
+  { actor: "Nora Talla", device: "android-field-9901", entity: "SCH-2026-000005", entityType: "School", form: "School Facility Assessment", formId: "preview-school-facility", lat: 4.0511, location: "Douala", lon: 9.7679, project: "Education Attendance Assessment", projectId: "project-edu", quality: 69, status: "correction_requested", source: "mobile" },
+];
+
+previewSubmissions.push(
+  ...generatedSubmissionSeeds.map((seed, index): SubmissionRecord => {
+    const submittedAt = new Date(now - (index + 9) * 45 * 60 * 1000).toISOString();
+    const approved = seed.status === "approved";
+    const returned = seed.status === "correction_requested";
+    const rejected = seed.status === "rejected";
+    const displayIdPrefix = seed.source === "import" ? "IMP" : seed.source === "web" ? "WEB" : "MOB";
+    const statusLabel =
+      approved ? "Approved" : returned ? "Returned for Correction" : rejected ? "Rejected" : "Pending Review";
+    return {
+      id: `sub-preview-${index + 10}`,
+      accuracy: seed.source === "mobile" ? 9 + index : 0,
+      attachments: seed.source === "mobile" ? [
+        { id: `att-preview-${index}`, file_name: `${seed.formId}-evidence.jpg`, file_type: "Image", size_label: "1.4 MB", uploaded_at: submittedAt },
+      ] : [],
+      audit_events: [
+        { action: "Submission Submitted", actor: seed.actor, created_at: submittedAt, new_value: seed.status },
+      ],
+      captured_at: submittedAt,
+      client_submission_id: `${displayIdPrefix}-2026-${String(index + 10).padStart(4, "0")}`,
+      device_id: seed.device,
+      duplicate_risk: seed.quality < 75 ? "possible" : "none",
+      entity_id: seed.entity.toLowerCase(),
+      entity_type: seed.entityType,
+      field_officer_id: seed.actor,
+      form_id: seed.formId,
+      form_name: seed.form,
+      form_version: index % 3 === 0 ? 2 : 1,
+      gps_status: seed.source === "mobile" ? "valid" : "warning",
+      history: [
+        { action: "Submitted", actor: seed.actor, created_at: submittedAt },
+        ...(approved || returned || rejected ? [{ action: statusLabel, actor: "Supervisor", comment: approved ? "Approved for reporting." : "Needs follow-up before reporting.", created_at: new Date(now - (index + 2) * 20 * 60 * 1000).toISOString() }] : []),
+      ],
+      import_batch_id: seed.source === "import" ? "preview-import-batch-002" : undefined,
+      imported_at: seed.source === "import" ? submittedAt : undefined,
+      imported_by_user_id: seed.source === "import" ? seed.actor : undefined,
+      is_imported: seed.source === "import",
+      latitude: seed.lat,
+      location_name: seed.location,
+      longitude: seed.lon,
+      offline_created: seed.source === "mobile",
+      payload_json: {
+        entity_code: seed.entity,
+        location: seed.location,
+        operational_status: seed.quality > 80 ? "On track" : "Needs review",
+        score: seed.quality,
+        source_channel: seed.source,
+      },
+      project_id: seed.projectId,
+      project_name: seed.project,
+      quality_flags: seed.quality < 75 ? [
+        { id: `flag-preview-${index}`, check: "Reviewer attention", message: "This record has a validation, GPS, duplicate, or evidence concern.", severity: seed.quality < 65 ? "High" : "Medium", status: "open" },
+      ] : [],
+      quality_score: seed.quality,
+      review_stage: approved ? "Approved" : returned ? "Returned for Correction" : rejected ? "Rejected" : "Pending Review",
+      reviewer: "Supervisor",
+      server_sequence: 1,
+      sla_due_at: new Date(now + (index + 1) * 4 * 60 * 60 * 1000).toISOString(),
+      status: seed.status,
+      submitted_at: submittedAt,
+      supervisor: "Supervisor",
+      survey_id: `${seed.projectId}-survey`,
+      sync_received_at: submittedAt,
+      workflow: [
+        { action_date: submittedAt, reviewer: "System", sla_status: index % 4 === 0 ? "Warning" : "On Time", stage: "Submitted" },
+        { reviewer: "Supervisor", sla_status: index % 4 === 0 ? "Warning" : "On Time", stage: approved ? "Approved" : returned ? "Returned for Correction" : rejected ? "Rejected" : "Pending Review" },
+      ],
+    };
+  }),
+);

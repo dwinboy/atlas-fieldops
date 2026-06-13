@@ -19,6 +19,7 @@ from app.models.collection import (
     DataForm,
     FieldOfficerProfile,
     FieldWorkAssignment,
+    MobileNotification,
     OfficerAssignment,
     Project,
     Submission,
@@ -2996,6 +2997,14 @@ class SubmissionService:
                 actor_user_id=actor_user_id,
                 submission=submission,
             )
+        if to_status in {"approved", "correction_requested", "rejected"}:
+            await self._notify_field_officer_review_result(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+                status=to_status,
+                comment=payload.comment,
+            )
         await event_publisher.publish(
             settings.kafka_submission_events_topic,
             {
@@ -3005,6 +3014,59 @@ class SubmissionService:
             },
         )
         return submission
+
+    async def _notify_field_officer_review_result(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+        status: str,
+        comment: str,
+    ) -> None:
+        if submission.field_officer_id is None:
+            return
+        result = await self.session.execute(
+            select(FieldOfficerProfile.user_id).where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.id == submission.field_officer_id,
+                FieldOfficerProfile.deleted_at.is_(None),
+            )
+        )
+        officer_user_id = result.scalar_one_or_none()
+        if officer_user_id is None:
+            return
+        title = {
+            "approved": "Submission approved",
+            "correction_requested": "Submission returned",
+            "rejected": "Submission returned",
+        }.get(status, "Submission reviewed")
+        action_hint = (
+            "Open Submissions, review the supervisor comment, correct the form, and sync again."
+            if status in {"correction_requested", "rejected"}
+            else "Your synced submission has been approved."
+        )
+        body = f"{submission.client_submission_id}: {comment.strip()} {action_hint}".strip()
+        self.session.add(
+            MobileNotification(
+                organization_id=organization_id,
+                user_id=officer_user_id,
+                title=title,
+                body=body,
+                event_type=f"submission.{status}",
+                resource_type="submission",
+                resource_id=submission.id,
+                created_by_server_at=datetime.now(UTC),
+            )
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="mobile.notification_created",
+            resource_type="submission",
+            resource_id=str(submission.id),
+            metadata={"event_type": f"submission.{status}", "recipient_user_id": str(officer_user_id)},
+        )
 
     def _submission_review_summary(self, submission: Submission) -> dict[str, object]:
         payload = submission.payload_json if isinstance(submission.payload_json, dict) else {}
