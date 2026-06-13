@@ -72,6 +72,7 @@ import {
 import {
   calculateIndicatorResult,
   computeIndicatorSummary,
+  deriveResultsMatrix,
   filterIndicatorsBySection,
   indicatorTone,
   prettifyFieldName,
@@ -318,7 +319,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   }, [indicatorsQuery.data, localIndicators, preview]);
   const indicatorTargets = preview ? sampleIndicatorTargets : [];
   const indicatorBaselines = preview ? sampleIndicatorBaselines : [];
-  const resultFramework = preview ? sampleResultFramework : [];
+  const resultFramework = preview ? sampleResultFramework : deriveResultsMatrix(indicators);
   const indicatorAuditEvents = preview ? sampleIndicatorAuditEvents : [];
   const indicatorDataSources = preview ? sampleIndicatorDataSources : [];
   const logframeRows = preview ? previewLogframeRows : [];
@@ -604,7 +605,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Metric import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
       {!selectedIndicator && activeSection === "results-framework" ? (
-        preview ? <ResultsFramework resultFramework={resultFramework} /> : <ComingSoonSection sectionId="results-framework" />
+        <ResultsFramework derived={!preview} resultFramework={resultFramework} />
       ) : null}
       {!selectedIndicator && activeSection === "logframes" ? (
         preview ? <Logframes rows={logframeRows} /> : <ComingSoonSection sectionId="logframes" />
@@ -1005,13 +1006,33 @@ function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onO
   );
 }
 
-function ResultsFramework({ resultFramework }: { resultFramework: ResultsFrameworkNode[] }) {
+function ResultsFramework({ derived = false, resultFramework }: { derived?: boolean; resultFramework: ResultsFrameworkNode[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  if (derived && resultFramework.length === 0) {
+    return (
+      <section className="space-y-4">
+        <SectionHeader
+          description="Your live result areas, grouped from configured metrics with rolled-up progress. Add a result area to your metrics to populate this matrix."
+          route="/indicators/results-framework"
+          title="Results Framework"
+        />
+        <EmptyMini label="No metrics with result areas yet. Set a result area on your metrics and this matrix will group them automatically." />
+      </section>
+    );
+  }
   return (
     <section className="space-y-4">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect a results-framework editing service to add goal, impact, outcome, output, or activity levels. This control is a preview for now.", title: "Adding result levels isn't available yet", tone: "warning" })} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>}
-        description="Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Metrics without duplicating project setup."
+        action={
+          derived ? undefined : (
+            <Button onClick={() => pushToast({ description: "Connect a results-framework editing service to add goal, impact, outcome, output, or activity levels. This control is a preview for now.", title: "Adding result levels isn't available yet", tone: "warning" })} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>
+          )
+        }
+        description={
+          derived
+            ? "Your live result areas, grouped from configured metrics with rolled-up progress across each area."
+            : "Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Metrics without duplicating project setup."
+        }
         route="/indicators/results-framework"
         title="Results Framework"
       />
