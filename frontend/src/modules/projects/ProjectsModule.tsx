@@ -344,7 +344,10 @@ const previewSectorPacks: ProjectSectorPackRead[] = (() => {
   const generated = Object.values(SECTOR_TERMINOLOGY)
     .filter((sector) => sector.sectorId !== "custom" && !covered.has(sector.sectorId))
     .map(buildFallbackSectorPack);
-  return [...richPreviewSectorPacks, ...generated];
+  const customPack = covered.has("custom")
+    ? []
+    : [buildFallbackSectorPack(SECTOR_TERMINOLOGY.custom)];
+  return [...richPreviewSectorPacks, ...generated, ...customPack];
 })();
 
 const countryOptions = [

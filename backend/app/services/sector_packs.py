@@ -807,7 +807,11 @@ def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 def list_sector_packs() -> list[SectorPack]:
-    return [_enriched_sector_pack(pack) for pack in SECTOR_PACKS.values()]
+    ordered = [pack for sector_id, pack in SECTOR_PACKS.items() if sector_id != "custom"]
+    custom_pack = SECTOR_PACKS.get("custom")
+    if custom_pack:
+        ordered.append(custom_pack)
+    return [_enriched_sector_pack(pack) for pack in ordered]
 
 
 def get_sector_pack(sector_id: str | None) -> SectorPack | None:

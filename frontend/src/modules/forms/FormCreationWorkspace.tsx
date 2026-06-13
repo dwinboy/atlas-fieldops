@@ -759,7 +759,7 @@ const starterTemplates: StarterTemplate[] = [
     description:
       "Capture baseline status, household profile, services received, and initial indicator values.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Household size", type: "number" },
       { label: "Main livelihood activity", type: "select" },
       { label: "Baseline income", type: "currency" },
@@ -775,7 +775,7 @@ const starterTemplates: StarterTemplate[] = [
     description:
       "Use for repeated visits, progress checks, training follow-up, and data quality evidence.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Visit date", required: true, type: "date" },
       { label: "Activity completed", required: true, type: "radio" },
       { label: "Progress score", type: "rating" },
@@ -791,7 +791,7 @@ const starterTemplates: StarterTemplate[] = [
     description:
       "Track attendance, inputs, kits, cash, services, or materials delivered to participants.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Distribution date", required: true, type: "date" },
       { label: "Item or service received", required: true, type: "select" },
       { label: "Quantity received", type: "number" },
@@ -1141,7 +1141,7 @@ function recommendedQuestionsForFormType(
   if (family === "registration") {
     return [
       { label: "Consent confirmed", options: ["Yes", "No"], required: true, type: "radio" },
-      { label: `${controls.entityType || "Beneficiary"} full name`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} name`, required: true, type: "text" },
       { label: "Phone number", type: "phone" },
       { label: "Gender", options: ["Female", "Male", "Other", "Prefer not to say"], required: true, type: "radio" },
       {
@@ -1157,7 +1157,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "baseline") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Consent confirmed", options: ["Yes", "No"], required: controls.requireConsent, type: "radio" },
       { label: "Baseline interview date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Enumerator notes", type: "textarea" },
@@ -1167,7 +1167,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "monitoring") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Monitoring visit date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Service or activity received", required: true, type: "select", options: ["Training", "Input distribution", "Follow-up visit", "Other"] },
       { label: "Follow-up needed", required: true, type: "radio", options: ["Yes", "No"] },
@@ -1177,7 +1177,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "attendance") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Event or activity date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Item or service received", required: true, type: "select", options: ["Training", "Input", "Cash", "Service", "Other"] },
       { label: "Quantity received", type: "number", validation: { min: 0 } },
@@ -1752,7 +1752,7 @@ function controlsDraftToApiControls(
     permission_rules: [
       {
         subject_type: "role",
-        subject_name: "M&E Manager",
+        subject_name: "Form Owner",
         permissions: [
           "view_form",
           "edit_form",
@@ -1941,7 +1941,7 @@ function controlsDraftToApiControls(
         severity: "medium",
         blocking: false,
         fields: controls.disaggregationFields,
-        expression: "required for donor and indicator breakdowns",
+        expression: "required for reporting and metric breakdowns",
       },
     ],
     governance: {
@@ -2812,7 +2812,7 @@ export function createEditableDraftFromListItem(
   const questionCount = Math.max(1, form.questions || 1);
   const sectionTitles = [
     "Consent and respondent profile",
-    "Household and beneficiary details",
+    "Household and entity details",
     "Location and coverage",
     "Program participation",
     "Evidence and data quality",
@@ -3229,7 +3229,7 @@ export function validateFormForPublish(
     item({
       category: "Form information",
       complete: Boolean(setup.formType.trim()),
-      description: "Choose the M&E form type so readiness rules match the collection purpose.",
+      description: "Choose the form type so readiness rules match the selected sector and collection purpose.",
       id: "form-type",
       jumpTo: "setup",
       label: "Form type selected",
@@ -3271,7 +3271,7 @@ export function validateFormForPublish(
           controls.expectedUse.trim(),
       ),
       description:
-        "Managed M&E instruments need an objective, business purpose, and expected use before field deployment.",
+        "Managed data collection instruments need an objective, business purpose, and expected use before field deployment.",
       id: "purpose",
       jumpTo: "controls",
       label: "Form purpose and business context defined",
@@ -3285,7 +3285,7 @@ export function validateFormForPublish(
           controls.linkedOutput.trim(),
       ),
       description:
-        "Link the form to a result area, outcome, or output so it can support donor reporting and program learning.",
+        "Link the form to a result area, outcome, output, KPI, or operational objective when the project uses structured results tracking.",
       id: "results-linkage",
       jumpTo: "controls",
       label: "Result linkage reviewed",
@@ -3296,7 +3296,7 @@ export function validateFormForPublish(
       category: "Purpose",
       complete: Boolean(controls.decisionUse && controls.reportingPeriod !== "none"),
       description:
-        "Define how this form will be used for decisions, indicators, donor reporting, case management, or learning, and select its reporting period.",
+        "Define how this form will be used for decisions, metrics, reporting, case management, compliance, operations, or learning, and select its reporting period.",
       id: "decision-use",
       jumpTo: "controls",
       label: "Decision use and reporting period selected",
@@ -3325,10 +3325,10 @@ export function validateFormForPublish(
       category: "Structure",
       complete: missingStandardQuestions.length === 0,
       description:
-        "The assistant checks the form type against standard M&E starter questions such as consent, beneficiary identity, dates, GPS, service details, and visit notes.",
+        "The assistant checks the form type against sector-appropriate starter questions such as consent when needed, entity identity, dates, GPS, service details, quantities, observations, and notes.",
       id: "standard-questions",
       jumpTo: "builder",
-      label: "Standard M&E questions reviewed",
+      label: "Standard sector questions reviewed",
       required: fields.length > 0 && formOperationalFamily(setup.formType) !== "custom",
       warning: fields.length === 0 || formOperationalFamily(setup.formType) === "custom",
     }),
@@ -3430,7 +3430,7 @@ export function validateFormForPublish(
       warning: !entityRuleSelected,
     }),
     item({
-      category: "Beneficiary identity",
+      category: "Entity identity",
       complete:
         controls.respondentIdentification === "anonymous_allowed"
           ? controls.allowAnonymous
@@ -3610,7 +3610,7 @@ export function validateFormForPublish(
           ["select", "dropdown", "multiselect", "radio"].includes(field.type),
         ),
       description:
-        "Reference data is recommended for location, facility, crop, donor, and program lists.",
+        "Reference data is recommended for location, facility, product, crop, supplier, customer, partner, funder/client, and program lists.",
       id: "reference-data",
       jumpTo: "controls",
       label: "Reference data reviewed",
@@ -3756,7 +3756,7 @@ export function validateFormForPublish(
       category: "Mobile package",
       complete: Boolean(controls.mobilePackageMode && controls.syncRequirement),
       description:
-        "Choose whether the mobile package is standard, low-bandwidth, media-heavy, or built for a large beneficiary registry.",
+        "Choose whether the mobile package is standard, low-bandwidth, media-heavy, or built for a large entity registry.",
       id: "mobile-package",
       jumpTo: "controls",
       label: "Mobile package rules reviewed",
@@ -3803,7 +3803,7 @@ export function validateFormForPublish(
       category: "Retention",
       complete: Boolean(controls.dataRetentionPolicy),
       description:
-        "Set how long approved records are retained or archived for donor and organizational compliance.",
+        "Set how long approved records are retained or archived for funder, client, legal, and organizational compliance.",
       id: "retention",
       jumpTo: "controls",
       label: "Data retention rule selected",
@@ -3873,7 +3873,7 @@ export function validateFormForPublish(
       category: "Partner rules",
       complete: Boolean(controls.partnerDataSharingRule.trim()),
       description:
-        "If partners, sub-grantees, or donors will use the data, define the sharing rule before exports and reporting start.",
+        "If partners, suppliers, clients, funders, donors, auditors, or external teams will use the data, define the sharing rule before exports and reporting start.",
       id: "partner-sharing",
       jumpTo: "controls",
       label: "Partner data-sharing rule reviewed",
@@ -3912,7 +3912,7 @@ export function validateFormForPublish(
           controls.approvalNotes.trim(),
       ),
       description:
-        "Technical reviewer, M&E reviewer, final approver, and approval notes are required for enterprise form certification.",
+        "Technical reviewer, sector reviewer, final approver, and approval notes are required for enterprise form certification.",
       id: "certification",
       jumpTo: "controls",
       label: "Form certification completed",
@@ -3954,7 +3954,7 @@ export function validateFormForPublish(
       category: "Governance",
       complete: controls.dataFreezeRequired && controls.sourceOfTruthRule !== undefined,
       description:
-        "Official reports should freeze approved data and define which form is allowed to update each beneficiary profile field.",
+        "Official reports should freeze approved data and define which form is allowed to update each entity profile field.",
       id: "source-of-truth",
       jumpTo: "controls",
       label: "Source-of-truth and data freeze rules configured",
@@ -4023,7 +4023,7 @@ function buildPublishAssistantAdvice({
       Boolean(value) &&
       !controls.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
   );
-  const entityLabel = controls.entityType.trim() || "Beneficiary";
+  const entityLabel = controls.entityType.trim() || "Entity";
   const entityLabelLower = entityLabel.toLowerCase();
   const advice: PublishAssistantAdvice[] = [];
 
@@ -4052,14 +4052,14 @@ function buildPublishAssistantAdvice({
       actionLabel: "Open governance review",
       fix:
         currentStatus === "Review"
-          ? "Review the readiness list, complete technical and M&E certification, add approval notes, then click Approve Form."
-          : "Move the form through Testing and Review first. After the technical and M&E checks are complete, approve the form before publishing.",
+          ? "Review the readiness list, complete technical and sector certification, add approval notes, then click Approve Form."
+          : "Move the form through Testing and Review first. After the technical and sector checks are complete, approve the form before publishing.",
       id: "lifecycle-not-approved",
       item: checklist.find((item) => item.id === "lifecycle-approved") ?? null,
       jumpTo: "controls",
       label: `Form is ${currentStatus}, not Approved`,
       mneTip:
-        "Expert recommendation: do not publish until a technical reviewer and M&E reviewer have checked the form purpose, beneficiary rules, consent, workflow, data quality, and mobile readiness.",
+        `Expert recommendation: do not publish until a technical reviewer and sector reviewer have checked the form purpose, ${entityLabelLower} rules, consent where needed, workflow, data quality, and mobile readiness.`,
       platformAction:
         "Manager decision needed: the platform can open Governance controls, but a responsible reviewer must approve the form.",
       severity: "Required",
@@ -4090,7 +4090,7 @@ function buildPublishAssistantAdvice({
       jumpTo: item.jumpTo,
       label: item.label,
       mneTip:
-        "Resolve this before publishing so collection, review, beneficiary updates, and reporting stay governed.",
+        `Resolve this before publishing so collection, review, ${entityLabelLower} updates, and reporting stay governed.`,
       platformAction:
         item.jumpTo === "builder"
           ? "Open the Builder to fix the question or structure issue."
@@ -4123,16 +4123,16 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Expert recommendation: choose the form type based on what the submission represents in the program lifecycle, not only by the questions it contains.",
           platformAction:
-            "Manager decision needed: the platform can open Basic Information, but the M&E manager must choose the correct instrument type.",
+            "Manager decision needed: the platform can open Basic Information, but the project owner must choose the correct instrument type for this sector.",
           why:
-            "The platform cannot apply the right M&E readiness logic until it knows what kind of instrument this is.",
+            "The platform cannot apply the right readiness logic until it knows what kind of instrument this is.",
         });
         break;
       case "owner":
         advice.push({
           ...base,
           fix:
-            "Add the responsible owner in Basic Information. This is usually the M&E Manager, Data Manager, or project lead accountable for the instrument.",
+            "Add the responsible owner in Basic Information. This is usually the Operations Manager, Data Manager, project lead, or sector specialist accountable for the instrument.",
           mneTip:
             "Expert recommendation: assign ownership to the person accountable for methodology, version changes, data quality, and approval decisions.",
           platformAction:
@@ -4149,7 +4149,7 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Expert recommendation: keep one governed instrument with translations unless the local-language questionnaire truly changes meaning or methodology.",
           platformAction:
-            "Manager decision needed: the platform can open Basic Information, but the M&E manager should confirm the working language for field teams.",
+            "Manager decision needed: the platform can open Basic Information, but the project owner should confirm the working language for field teams.",
           why:
             "Mobile display, translation completeness, and field training depend on the primary language being known.",
         });
@@ -4161,7 +4161,7 @@ function buildPublishAssistantAdvice({
             ? "The project link is detected. Refresh the readiness review and try publishing again."
             : "Select an existing project in Basic Information. If no project exists, create it in Projects first; this form cannot be safely published without a project.",
           mneTip:
-            "Expert recommendation: always attach a form to the project that owns the beneficiaries, indicators, assignments, locations, approvals, and reports.",
+            `Expert recommendation: always attach a form to the project that owns the ${entityLabelLower} records, metrics/KPIs, assignments, locations, approvals, and reports.`,
           platformAction:
             "Manager decision needed: the platform can open project selection, but the user must select the correct project context.",
           why:
@@ -4176,26 +4176,26 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Purpose fields help future reviewers understand why the data was collected and how it should be used.",
           platformAction:
-            "The platform can fill starter M&E purpose text, then you can edit it to match your project.",
+            "The platform can fill starter purpose text, then you can edit it to match your project and sector.",
           quickFixId: "mne_context_defaults",
           targetControlStep: "essentials",
           why:
-            "The form is missing its M&E business context. A governed instrument needs a reason for collection before it reaches the field.",
+            "The form is missing its business context. A governed instrument needs a reason for collection before it reaches the field.",
         });
         break;
       case "decision-use":
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set a practical decision use and reporting period. Manually choose Indicator Reporting or Donor Reporting when answers feed a results framework; choose Operational Decision for routine management forms.",
+            "Use Apply platform fix to set a practical decision use and reporting period. Choose metric/reporting when answers feed KPIs or formal reports; choose Operational Decision for routine management forms.",
           mneTip:
-            "Every field instrument should answer: what decision, report, beneficiary action, or management review will use this data?",
+            `Every field instrument should answer: what decision, report, ${entityLabelLower} action, compliance check, or management review will use this data?`,
           platformAction:
-            "The platform can apply a practical M&E decision-use and reporting-period default.",
+            "The platform can apply a practical decision-use and reporting-period default.",
           quickFixId: "mne_context_defaults",
           targetControlStep: "essentials",
           why:
-            "The form does not yet say how the data will be used or what reporting cycle it belongs to, so users cannot judge whether indicators, approvals, and reports are correctly configured.",
+            "The form does not yet say how the data will be used or what reporting cycle it belongs to, so users cannot judge whether metrics, approvals, and reports are correctly configured.",
         });
         break;
       case "sections":
@@ -4204,9 +4204,9 @@ function buildPublishAssistantAdvice({
           fix:
             "Open Builder and add at least one section, for example Respondent Information, Household Details, Farm Information, Service Received, or Enumerator Notes.",
           mneTip:
-            "Expert recommendation: group questions by field workflow, usually Consent, Respondent or Beneficiary Details, Location, Service or Measurement, and Enumerator Notes.",
+            `Expert recommendation: group questions by field workflow, usually Consent when needed, Respondent or ${entityLabel} Details, Location, Service/Measurement/Observation, and Collector Notes.`,
           platformAction:
-            "Manager decision needed: the platform can open Builder, but the M&E manager should choose section names that match the actual field interview.",
+            "Manager decision needed: the platform can open Builder, but the project owner should choose section names that match the actual field workflow.",
           why:
             "The form has no sections. Field officers would receive an unstructured instrument.",
         });
@@ -4217,7 +4217,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Open Builder and add the questions field officers must answer. If you already have an Excel questionnaire, use the spreadsheet import option to create questions faster.",
           mneTip:
-            "Expert recommendation: at minimum include consent, identity or beneficiary link, date, location where relevant, core measurements, and enumerator notes.",
+            `Expert recommendation: at minimum include consent when needed, identity or ${entityLabelLower} link, date, location where relevant, core measurements, and collector notes.`,
           platformAction:
             "Manager decision needed: the platform can open Builder or import from Excel, but the program team must confirm which data is actually needed.",
           why:
@@ -4236,10 +4236,10 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Standard questions protect the basic field loop: consent, identity, date, location, service/activity, and follow-up evidence.",
           platformAction:
-            "The platform can add the missing standard M&E questions into a new builder section for you to edit.",
+            "The platform can add the missing standard sector questions into a new builder section for you to edit.",
           quickFixId: "add_standard_questions",
           why:
-            "This form appears to be missing one or more questions normally needed for its M&E purpose.",
+            "This form appears to be missing one or more questions normally needed for its selected purpose.",
         });
         break;
       case "variables":
@@ -4248,7 +4248,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Click Apply platform fix to regenerate stable unique variable names from the question labels. Then keep those variable names stable after publishing.",
           mneTip:
-            "Variable names are the bridge between form answers, Excel exports, indicators, and donor reporting.",
+            "Variable names are the bridge between form answers, Excel exports, metrics/KPIs, dashboards, and reports.",
           platformAction:
             "The platform can repair missing or duplicate variable names automatically.",
           quickFixId: "fix_question_variables",
@@ -4290,7 +4290,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to add standard disaggregation categories. Then make sure the Builder contains matching questions for sex, age group, location, disability status, or any donor-required category.",
+            "Use Apply platform fix to add standard breakdown categories. Then make sure the Builder contains matching questions for location, category, status, product type, sex, age group, disability status, or any funder/client-required category.",
           mneTip:
             "Disaggregation should be designed before field rollout so teams do not sort records manually later.",
           platformAction:
@@ -4335,7 +4335,7 @@ function buildPublishAssistantAdvice({
           fix:
             `Use Apply platform fix to set entity behavior for this form type. Then confirm the entity type (currently ${entityLabel}) and whether the form creates a new entity, updates an existing entity, requires an existing entity, or allows anonymous collection.`,
           mneTip:
-            `Registration forms usually create a new ${entityLabelLower} record. Baseline, monitoring, endline, training, and distribution forms usually require an existing ${entityLabelLower} record.`,
+            `Registration or intake forms usually create a new ${entityLabelLower} record. Follow-up, inspection, monitoring, delivery, training, distribution, audit, or service forms usually require an existing ${entityLabelLower} record.`,
           platformAction:
             `The platform can apply recommended ${entityLabelLower} record rules for this form type, then you can fine-tune the entity type and mappings.`,
           quickFixId: formTypeQuickFix,
@@ -4352,11 +4352,11 @@ function buildPublishAssistantAdvice({
           mneTip:
             `This prevents disconnected submissions and reduces duplicate ${entityLabelLower} records.`,
           platformAction:
-            "The platform can set the respondent identification rule based on whether this is registration, baseline, monitoring, or follow-up.",
+            "The platform can set the identification rule based on whether this is registration, intake, assessment, inspection, monitoring, delivery, audit, service, or follow-up.",
           quickFixId: formTypeQuickFix,
           targetControlStep: "beneficiaries",
           why:
-            "The collection flow does not yet define how field officers identify the person, household, facility, or entity being surveyed.",
+            `The collection flow does not yet define how field officers identify the ${entityLabelLower} record being surveyed, inspected, visited, delivered to, audited, or updated.`,
         });
         break;
       case "entity-mapping":
@@ -4379,7 +4379,7 @@ function buildPublishAssistantAdvice({
           fix: unmappedSuggestedMappings.length
             ? `Click Apply platform fix to map: ${unmappedSuggestedMappings
                 .map(([field]) => humanizeControlValue(field))
-                .join(", ")}. Then verify the mappings in Controls > Beneficiaries.`
+                .join(", ")}. Then verify the mappings in Controls > Entity Rules.`
             : "No unmapped profile suggestions remain. No action is required.",
           mneTip:
             `Profile mappings let approved submissions update ${entityLabelLower} records with traceable data lineage.`,
@@ -4388,22 +4388,22 @@ function buildPublishAssistantAdvice({
           quickFixId: "apply_profile_mapping",
           targetControlStep: "beneficiaries",
           why:
-            "The form contains questions that look like beneficiary profile fields but they are not mapped yet.",
+            `The form contains questions that look like ${entityLabelLower} profile fields but they are not mapped yet.`,
         });
         break;
       case "frequency":
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set the frequency rule from the form type. Registration = Once Ever, Baseline = Once Per Project, Monitoring = Once Per Month or Quarter, Attendance/Distribution = Once Per Event.",
+            "Use Apply platform fix to set the frequency rule from the form type. Registration/intake is usually Once Ever, assessment is often Once Per Project or Period, monitoring is monthly/quarterly, and attendance/delivery/inspection is usually Once Per Event.",
           mneTip:
-            "Frequency rules stop repeated baselines and accidental double-counting in reports.",
+            "Frequency rules stop accidental duplicate records, repeated assessments, and double-counting in reports.",
           platformAction:
             "The platform can set a recommended frequency rule for this form type.",
           quickFixId: formTypeQuickFix,
           targetControlStep: "beneficiaries",
           why:
-            "The form does not define how often the same beneficiary or event can be submitted.",
+            `The form does not define how often the same ${entityLabelLower} record or event can be submitted.`,
         });
         break;
       case "frequency-window":
@@ -4425,8 +4425,8 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix: selectedDuplicateFields
-            ? `Open Controls > Beneficiaries. Current duplicate fields: ${selectedDuplicateFields}. Make sure the threshold is at least 50 and the action is Warn, Block, or Require Review.`
-            : "Open Controls > Beneficiaries and select duplicate matching fields such as Phone, National ID, Household ID, Name + Village, Name + DOB, or GPS. Then choose Warn, Block, or Require Review.",
+            ? `Open Controls > Entity Rules. Current duplicate fields: ${selectedDuplicateFields}. Make sure the threshold is at least 50 and the action is Warn, Block, or Require Review.`
+            : "Open Controls > Entity Rules and select duplicate matching fields such as external ID, phone/account ID, parent ID, name + location, date, code, or GPS. Then choose Warn, Block, or Require Review.",
           mneTip:
             "For real programs, Require Review is often safer than automatic creation when phone, ID, or name + village are similar.",
           platformAction:
@@ -4434,7 +4434,7 @@ function buildPublishAssistantAdvice({
           quickFixId: "registration_defaults",
           targetControlStep: "beneficiaries",
           why:
-            "Duplicate prevention is not configured strongly enough, so approved registration data could create multiple beneficiary records for the same person or household.",
+            `Duplicate prevention is not configured strongly enough, so approved registration or intake data could create multiple ${entityLabelLower} records for the same real-world record.`,
         });
         break;
       case "duration":
@@ -4503,7 +4503,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Click Apply platform fix to add a Consent confirmed question. If consent is not required for this instrument, open Controls > Evidence and disable Require Consent.",
           mneTip:
-            "Consent should be explicit for beneficiary registration, household surveys, health, child protection, and other sensitive collection.",
+            "Consent should be explicit when collecting personal, household, health, child protection, sensitive, or regulated data.",
           platformAction:
             "The platform can add a consent question and keep consent blocking enabled.",
           quickFixId: "add_consent_question",
@@ -4516,7 +4516,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set Standard quality mode. Choose Strict manually for sensitive or donor-critical forms; choose Advisory only for pilots.",
+            "Use Apply platform fix to set Standard quality mode. Choose Strict manually for sensitive, regulated, audit-critical, or external-reporting forms; choose Advisory only for pilots.",
           mneTip:
             "Data quality settings decide whether validation issues block field submission or arrive as reviewer warnings.",
           platformAction:
@@ -4548,7 +4548,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to send invalid ages to reviewer decision. Switch to Block manually only when the form is mature and the age rules are certain.",
           mneTip:
-            "Age errors spread quickly into disaggregation, eligibility, vulnerability, and donor reports.",
+            "Age or date errors spread quickly into breakdowns, eligibility, risk scoring, and reports.",
           platformAction:
             "The platform can set invalid age handling to reviewer decision.",
           quickFixId: "evidence_defaults",
@@ -4561,7 +4561,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set supervisor review and M&E manager approval. Then change the reviewer roles only if your organization uses a different approval chain.",
+            "Use Apply platform fix to set supervisor review and manager approval. Then change the reviewer roles only if your organization uses a different approval chain.",
           mneTip:
             "The app can flag what looks wrong, but a reviewer should decide whether to approve, return, or reject the data.",
           platformAction:
@@ -4576,7 +4576,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set standard collection/review permissions. Switch to Restricted manually for sensitive beneficiary, health, child protection, or protection forms.",
+            `Use Apply platform fix to set standard collection/review permissions. Switch to Restricted manually for sensitive ${entityLabelLower}, health, child protection, compliance, audit, or regulated forms.`,
           mneTip:
             "Permissions protect who can edit, assign, collect, review, approve, export, and archive the form.",
           platformAction:
@@ -4611,9 +4611,9 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to require manager-approved exports and audit logging. Change to Data Manager Approval manually if your organization separates M&E and data stewardship.",
+            "Use Apply platform fix to require manager-approved exports and audit logging. Change to Data Manager Approval manually if your organization separates operational ownership and data stewardship.",
           mneTip:
-            "Export governance is important when datasets include PII, donor-sensitive figures, or unpublished results.",
+            "Export governance is important when datasets include PII, confidential figures, regulated data, or unpublished results.",
           platformAction:
             "The platform can apply manager-approved export governance and audit logging.",
           quickFixId: "governance_defaults",
@@ -4626,11 +4626,11 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set seven-year retention. Change it manually if the donor agreement or national law requires a different period.",
+            "Use Apply platform fix to set seven-year retention. Change it manually if the client, funder, donor agreement, contract, or national law requires a different period.",
           mneTip:
             "Retention rules help organizations know when data should stay active, be archived, or be prepared for anonymization.",
           platformAction:
-            "The platform can apply a seven-year retention default suitable for many donor-funded programs.",
+            "The platform can apply a seven-year retention default suitable for many governed programs and operations.",
           quickFixId: "governance_defaults",
           targetControlStep: "governance",
           why:
@@ -4668,9 +4668,9 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Open Controls > Governance and complete Technical Reviewer, M&E Reviewer, Final Approver, and Approval Notes.",
+            "Open Controls > Governance and complete Technical Reviewer, Sector Reviewer, Final Approver, and Approval Notes.",
           mneTip:
-            "Certification records who checked the questionnaire, methodology, beneficiary rules, and approval workflow.",
+            `Certification records who checked the questionnaire, methodology, ${entityLabelLower} rules, and approval workflow.`,
           targetControlStep: "governance",
           why:
             "The form does not yet have complete review certification.",
@@ -4697,7 +4697,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to enable audit trail, approved-record locking, export approval, retention, and source-of-truth defaults.",
           mneTip:
-            "This supports donor auditability, data stewardship, and trustworthy reports.",
+            "This supports auditability, data stewardship, and trustworthy reports.",
           platformAction:
             "The platform can enable audit trail, approved-record locking, retention, and export approval defaults.",
           quickFixId: "governance_defaults",
@@ -4712,13 +4712,13 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to enable report data freeze and manager-approved profile updates. This keeps identity fields controlled by registration unless a reviewer accepts a later change.",
           mneTip:
-            "This prevents past reports and official beneficiary profiles from changing silently after approval.",
+            `This prevents past reports and official ${entityLabelLower} profiles from changing silently after approval.`,
           platformAction:
             "The platform can enable approved-data freeze and manager-approved profile updates.",
           quickFixId: "governance_defaults",
           targetControlStep: "governance",
           why:
-            "The form does not yet define how approved data contributes to official reports and beneficiary profile fields.",
+            `The form does not yet define how approved data contributes to official reports and ${entityLabelLower} profile fields.`,
         });
         break;
       case "mobile-complexity":
@@ -4792,8 +4792,8 @@ function buildPublishAssistantAdvice({
             ? "Select the exact field officers who should receive this form on mobile."
             : "Create or activate field officer accounts before restricting this form to assigned users."
           : warningQuickFix
-            ? "Expert recommendation: apply the platform fix first, then confirm the setting matches the project methodology and donor requirements."
-            : "Expert recommendation: review this item before field rollout because it depends on project design, organizational policy, or donor expectations.",
+            ? "Expert recommendation: apply the platform fix first, then confirm the setting matches the project methodology, sector practice, and external requirements."
+            : "Expert recommendation: review this item before field rollout because it depends on project design, organizational policy, sector practice, or external expectations.",
       platformAction:
         item.id === "assignment" && fieldOfficerCount > 0
           ? "The platform can select all active field officers now; you can remove users who should not receive the form."
@@ -5191,7 +5191,7 @@ export function FormCreationWorkspace({
       : stage === "start"
         ? "Next: the Builder opens so you can add and arrange questions."
         : stage === "builder"
-          ? "Next: Controls sets who can collect this form, beneficiary rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
+          ? "Next: Controls sets who can collect this form, entity rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
           : stage === "controls"
             ? nextControlStepConfig
               ? `Next control step: "${nextControlStepConfig.label}" — ${nextControlStepConfig.mustDo}`
@@ -5387,7 +5387,7 @@ export function FormCreationWorkspace({
 
     if (quickFixId === "add_standard_questions") {
       if (!draftForm) {
-        setPublishMessage("Start a draft first, then the assistant can add recommended M&E questions.");
+        setPublishMessage("Start a draft first, then the assistant can add recommended sector questions.");
         setStage("start");
         return;
       }
@@ -5399,8 +5399,8 @@ export function FormCreationWorkspace({
       }
       addQuestionsToDraft(
         missingQuestions,
-        "M&E standard readiness questions",
-        `${missingQuestions.length} recommended M&E question${missingQuestions.length === 1 ? "" : "s"} added. Review wording and validation in Builder.`,
+        "Sector-standard readiness questions",
+        `${missingQuestions.length} recommended sector question${missingQuestions.length === 1 ? "" : "s"} added. Review wording and validation in Builder.`,
       );
       return;
     }
@@ -5462,7 +5462,7 @@ export function FormCreationWorkspace({
       }));
       setActiveControlStep("beneficiaries");
       setStage("controls");
-      setPublishMessage("Suggested beneficiary profile mappings were applied. Review them before publishing.");
+      setPublishMessage("Suggested entity profile mappings were applied. Review them before publishing.");
       window.setTimeout(() => {
         window.scrollTo({ behavior: "smooth", top: 0 });
       }, 0);
@@ -5546,7 +5546,7 @@ export function FormCreationWorkspace({
     }
 
     setControlsDraft((current) => {
-      const commonBeneficiaryDefaults: Partial<FormControlsDraft> = {
+      const commonEntityDefaults: Partial<FormControlsDraft> = {
         allowAnonymous: false,
         duplicateAction: "review",
         duplicateFields: current.duplicateFields.length
@@ -5555,34 +5555,34 @@ export function FormCreationWorkspace({
         duplicateGpsDetection: true,
         duplicateSeverity: "high",
         duplicateThreshold: Math.max(current.duplicateThreshold, 85),
-        entityType: current.entityType || "Beneficiary",
+        entityType: current.entityType || "Entity",
         profileUpdateMode: "with_supervisor_approval",
         requiresEntity: true,
       };
 
       switch (quickFixId) {
         case "mne_context_defaults": {
-          const contextEntityLabel = (current.entityType.trim() || "Beneficiary").toLowerCase();
+          const contextEntityLabel = (current.entityType.trim() || "Entity").toLowerCase();
           return {
             ...current,
             businessPurpose:
               current.businessPurpose ||
-              `Support project monitoring, ${contextEntityLabel} record management, evidence review, and donor-ready reporting.`,
+              `Support project operations, ${contextEntityLabel} record management, evidence review, and reporting.`,
             decisionUse:
               /donor|report/i.test(current.expectedUse)
                 ? "donor_reporting"
                 : current.decisionUse || "operational_decision",
             disaggregationFields: current.disaggregationFields.length
               ? current.disaggregationFields
-              : ["sex", "age_group", "location", "disability_status"],
-            disaggregationRequired: true,
+              : ["location", "category", "status"],
+            disaggregationRequired: current.disaggregationRequired,
             dontKnowPolicy:
               current.dontKnowPolicy === "disabled"
                 ? "required_for_sensitive"
                 : current.dontKnowPolicy,
             expectedUse:
               current.expectedUse ||
-              `Approved submissions will feed ${contextEntityLabel} history, data quality review, dashboards, indicators, and reports.`,
+              `Approved submissions will feed ${contextEntityLabel} history, data quality review, dashboards, metrics, and reports.`,
             formObjective:
               current.formObjective ||
               `Collect reliable ${setup.formType || "field"} data for ${setup.projectName || "the selected project"}.`,
@@ -5600,7 +5600,7 @@ export function FormCreationWorkspace({
         case "registration_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "disabled",
             frequencyWindow: "none",
             respondentIdentification: "new_registration",
@@ -5609,7 +5609,7 @@ export function FormCreationWorkspace({
         case "baseline_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "required",
             frequencyWindow: "reporting_period",
             respondentIdentification: "existing_beneficiary",
@@ -5618,7 +5618,7 @@ export function FormCreationWorkspace({
         case "monitoring_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "required",
             frequencyWindow: "month",
             respondentIdentification: "existing_beneficiary",
@@ -5758,7 +5758,7 @@ export function FormCreationWorkspace({
               : "beneficiaries";
     setActiveControlStep(targetStep);
     setStage("controls");
-    setPublishMessage("Recommended M&E settings were applied. Review them, save controls, then run the readiness review again.");
+    setPublishMessage("Recommended sector-ready settings were applied. Review them, save controls, then run the readiness review again.");
     window.setTimeout(() => {
       window.scrollTo({ behavior: "smooth", top: 0 });
     }, 0);
@@ -6636,7 +6636,7 @@ export function FormCreationWorkspace({
                     lifecycleStatus: "review",
                     reviewComments:
                       controlsDraft.reviewComments ||
-                      "Submitted for technical and M&E review.",
+                      "Submitted for technical and sector review.",
                   });
                   setStage("review");
                 }}
@@ -7322,7 +7322,7 @@ export function FormCreationWorkspace({
                 <p className="text-sm font-semibold">Profile mapping</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {suggestedProfileMappingCount
-                    ? `${suggestedProfileMappingCount} beneficiary mapping suggestion(s) can be applied.`
+                    ? `${suggestedProfileMappingCount} entity mapping suggestion(s) can be applied.`
                     : "No obvious unmapped profile fields detected."}
                 </p>
                 {suggestedProfileMappingCount ? (
@@ -7539,7 +7539,7 @@ export function FormCreationWorkspace({
                         lifecycleStatus: "review",
                         reviewComments:
                           controlsDraft.reviewComments ||
-                          "Submitted for technical and M&E review.",
+                          "Submitted for technical and sector review.",
                       })
                     }
                     size="sm"
@@ -7669,7 +7669,7 @@ export function FormCreationWorkspace({
                     >
                       <option value="operational_decision">Operational decision</option>
                       <option value="indicator_reporting">{metricLabel} reporting</option>
-                      <option value="donor_reporting">External / donor reporting</option>
+                      <option value="donor_reporting">External / funder reporting</option>
                       <option value="case_management">Case management</option>
                       <option value="research_learning">Research / learning</option>
                     </Select>
@@ -7691,7 +7691,7 @@ export function FormCreationWorkspace({
                       <option value="quarterly">Quarterly</option>
                       <option value="seasonal">Seasonal</option>
                       <option value="annual">Annual</option>
-                      <option value="donor_schedule">Donor schedule</option>
+                      <option value="donor_schedule">External reporting schedule</option>
                     </Select>
                   </label>
                 </div>
@@ -7807,7 +7807,7 @@ export function FormCreationWorkspace({
                     >
                       <option value="optional">Optional per question</option>
                       <option value="required_for_sensitive">
-                        Required for sensitive or beneficiary questions
+                        Required for sensitive or entity-identifying questions
                       </option>
                       <option value="disabled">Do not add exception answers</option>
                     </Select>
@@ -7869,7 +7869,7 @@ export function FormCreationWorkspace({
                       }
                       value={controlsDraft.eventMode}
                     >
-                      <option value="none">Beneficiary form</option>
+                      <option value="none">Entity or record form</option>
                       <option value="creates_event">Creates event</option>
                       <option value="selects_event">Selects event</option>
                       <option value="attendance">Attendance tracking</option>
@@ -9415,7 +9415,7 @@ export function FormCreationWorkspace({
                     value={controlsDraft.dataRetentionPolicy}
                   >
                     <option value="project_life">Keep for project life</option>
-                    <option value="donor_period">Keep for donor compliance period</option>
+                    <option value="donor_period">Keep for external compliance period</option>
                     <option value="seven_years">Keep for seven years</option>
                     <option value="custom">Custom retention rule</option>
                   </Select>
@@ -9608,7 +9608,7 @@ export function FormCreationWorkspace({
                     lifecycleStatus: "review",
                     reviewComments:
                       controlsDraft.reviewComments ||
-                      "Submitted for technical and M&E review.",
+                      "Submitted for technical and sector review.",
                   });
                   setStage("review");
                 }}
@@ -9857,7 +9857,7 @@ export function FormCreationWorkspace({
                     : "No blockers are currently detected. If the publish button is still disabled, save the draft and refresh the review."}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                This assistant supports form readiness and sector-standard operations. It applies safe platform fixes where possible, and gives expert recommendations where the final decision depends on the project, workflow, reporting method, customer requirement, donor, or organization policy.
+                This assistant supports form readiness and sector-standard operations. It applies safe platform fixes where possible, and gives expert recommendations where the final decision depends on the project, workflow, reporting method, customer requirement, external funder, or organization policy.
               </p>
             </div>
           </div>

@@ -17,6 +17,14 @@ def test_operational_sector_packs_are_available() -> None:
     }.issubset(pack_ids)
 
 
+def test_custom_sector_pack_is_after_at_least_ten_main_sectors() -> None:
+    pack_ids = [str(pack["id"]) for pack in list_sector_packs()]
+
+    assert len([pack_id for pack_id in pack_ids if pack_id != "custom"]) >= 10
+    assert pack_ids[-1] == "custom"
+    assert pack_ids.index("custom") >= 10
+
+
 def test_custom_pack_is_generic_not_me_only() -> None:
     pack = get_sector_pack("custom")
 
