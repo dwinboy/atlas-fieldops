@@ -928,10 +928,12 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">
             View data
           </Button>
-          <Button onClick={() => openFormData(form.id, "source=uploaded")} size="sm" variant="secondary">
-            <UploadCloud aria-hidden="true" />
-            Upload
-          </Button>
+          {form.status === "published" ? (
+            <Button onClick={() => openFormData(form.id, "source=uploaded")} size="sm" variant="secondary">
+              <UploadCloud aria-hidden="true" />
+              Upload
+            </Button>
+          ) : null}
           <Button
             onClick={() => openFormBuilder(form)}
             size="sm"
@@ -1655,7 +1657,7 @@ function FormStatusCards({
     );
   }
   return (
-    <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {forms.map((form, index) => {
         const readiness = Math.max(
           20,
@@ -1673,7 +1675,7 @@ function FormStatusCards({
         };
         return (
           <article
-            className="rounded-lg border bg-panel p-3 shadow-line transition hover:border-primary/35 hover:shadow-soft"
+            className="rounded-lg border bg-panel p-2.5 shadow-line transition hover:border-primary/35 hover:shadow-soft"
             key={`${form.id}-card-${index}`}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest("button, a, input, select, textarea")) return;
@@ -1713,14 +1715,14 @@ function FormStatusCards({
                   <p className="text-[10px] text-muted-foreground">version</p>
                 </div>
               </div>
-              <div className="mt-3 grid gap-1.5 text-xs md:grid-cols-2">
+              <div className="mt-2 grid gap-1.5 text-xs md:grid-cols-2">
                 <Signal label="Project" value={form.project_name || "Not attached"} />
                 <Signal label="Last updated" value={formatDate(form.updated_at)} />
                 <Signal label="Sections" value={`${form.sections}`} />
                 <Signal label="Questions" value={`${form.questions}`} />
               </div>
               {isDraft ? (
-                <div className="mt-3 rounded-lg border bg-background/60 p-2.5">
+                <div className="mt-2 rounded-lg border bg-background/60 p-2.5">
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="font-medium">Readiness</span>
                     <span>{readiness}%</span>
@@ -1735,7 +1737,7 @@ function FormStatusCards({
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-2 grid gap-1.5 grid-cols-2 xl:grid-cols-4">
                   <MiniStat label="Total" value={statValue(form, "total_submissions")} onClick={() => onOpenData(form, "filter=all")} />
                   <MiniStat label="Approved" value={statValue(form, "approved_submissions")} onClick={() => onOpenData(form, "status=approved")} />
                   <MiniStat label="Pending" value={statValue(form, "pending_review_submissions")} onClick={() => onOpenData(form, "status=pending_review")} />
@@ -1747,15 +1749,11 @@ function FormStatusCards({
                 </div>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-1.5 border-t pt-2.5">
+            <div className="mt-2.5 flex flex-wrap gap-1.5 border-t pt-2">
               {isDraft ? (
                 <>
                   <Button disabled={!canManageForms} onClick={() => onEdit(form)} size="sm" variant="primary">
                     Continue Editing
-                  </Button>
-                  <Button onClick={() => onOpenData(form, "source=uploaded")} size="sm" variant="secondary">
-                    <UploadCloud aria-hidden="true" />
-                    Upload Data
                   </Button>
                   <Button
                     disabled={!canManageForms || !form.project_id || publishMutation.isPending}
@@ -1979,6 +1977,7 @@ function FormDataGridWorkspace({
   const stagedImportRows = filteredSubmissions.filter(isImportStagedSubmission);
   const confirmableImportRows = stagedImportRows.filter((submission) => !importBlockingIssues(submission).length);
   const stats = buildFormStats(submissions).get(formId) ?? emptyStats();
+  const canUploadData = form?.status === "published";
 
   async function exportGrid(): Promise<void> {
     if (token && token !== "preview-token") {
@@ -2068,6 +2067,14 @@ function FormDataGridWorkspace({
 
   async function handleFormDataUpload(file: File | null): Promise<void> {
     if (!file) return;
+    if (!canUploadData) {
+      pushToast({
+        title: "Publish the form first",
+        description: "Data can only be uploaded to published forms. Publish this form to start collecting and uploading records.",
+        tone: "warning",
+      });
+      return;
+    }
     setUploading(true);
     try {
       const rows = await readFormUploadRows(file);
@@ -2323,41 +2330,53 @@ function FormDataGridWorkspace({
               Spreadsheet-style view of submissions, uploaded records, approval
               status, source attribution, and every question response.
             </p>
+            {form && !canUploadData ? (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1 text-xs text-warning">
+                <UploadCloud aria-hidden="true" size={13} />
+                {form.status === "draft"
+                  ? "Data upload is available once this form is published."
+                  : "Data upload is only available while a form is published."}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={onBack} variant="secondary">
               <ArrowLeft aria-hidden="true" />
               Back to forms
             </Button>
-            <Button onClick={downloadTemplate} variant="secondary">
-              <Download aria-hidden="true" />
-              Download sample
-            </Button>
-            <Button
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-              variant="secondary"
-            >
-              <UploadCloud aria-hidden="true" />
-              {uploading ? "Uploading" : "Upload data"}
-            </Button>
-            <Button
-              disabled={confirmingImports || !confirmableImportRows.length}
-              onClick={() => void confirmCleanedImportedRows()}
-              variant="primary"
-            >
-              <CheckCircle2 aria-hidden="true" />
-              {confirmingImports ? "Confirming" : "Confirm cleaned rows"}
-            </Button>
-            <input
-              accept=".csv,.tsv,.txt,.xlsx"
-              className="hidden"
-              onChange={(event) =>
-                void handleFormDataUpload(event.target.files?.[0] ?? null)
-              }
-              ref={fileInputRef}
-              type="file"
-            />
+            {canUploadData ? (
+              <>
+                <Button onClick={downloadTemplate} variant="secondary">
+                  <Download aria-hidden="true" />
+                  Download sample
+                </Button>
+                <Button
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  variant="secondary"
+                >
+                  <UploadCloud aria-hidden="true" />
+                  {uploading ? "Uploading" : "Upload data"}
+                </Button>
+                <Button
+                  disabled={confirmingImports || !confirmableImportRows.length}
+                  onClick={() => void confirmCleanedImportedRows()}
+                  variant="primary"
+                >
+                  <CheckCircle2 aria-hidden="true" />
+                  {confirmingImports ? "Confirming" : "Confirm cleaned rows"}
+                </Button>
+                <input
+                  accept=".csv,.tsv,.txt,.xlsx"
+                  className="hidden"
+                  onChange={(event) =>
+                    void handleFormDataUpload(event.target.files?.[0] ?? null)
+                  }
+                  ref={fileInputRef}
+                  type="file"
+                />
+              </>
+            ) : null}
             <Button disabled={!canExport || !filteredSubmissions.length} onClick={exportGrid} variant="secondary">
               <Download aria-hidden="true" />
               Export grid

@@ -1567,3 +1567,47 @@ async def test_beneficiary_update_corrects_profile_with_audited_reason() -> None
         assert [log.action for log in logs] == ["beneficiary.updated"]
         assert "Household relocated" in logs[0].metadata_json
         assert "enrollment_status" in logs[0].metadata_json
+
+
+@pytest.mark.asyncio
+async def test_import_form_rows_rejected_for_draft_form() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        form_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Draft Org", slug="draft-org"),
+                User(id=actor_user_id, email="owner@example.org", full_name="Owner", password_hash="x"),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    created_by_user_id=actor_user_id,
+                    name="Unpublished Survey",
+                    slug="unpublished-survey",
+                    status="draft",
+                    current_version=1,
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        # Draft forms must not accept uploaded data — only published forms can.
+        with pytest.raises(InvalidWorkflowTransitionError):
+            await service.import_form_rows(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                form_id=form_id,
+                payload=FormDataImportRequest(
+                    rows=[{"farmer_name": "Should Fail"}],
+                    source_name="draft.csv",
+                    source_system="Form spreadsheet upload",
+                    import_reason="Should be rejected",
+                ),
+            )
+    await engine.dispose()
