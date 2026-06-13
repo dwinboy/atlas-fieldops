@@ -2825,6 +2825,11 @@ class SubmissionService:
         approved_by_ids = {
             submission.approved_by_user_id for submission in submissions if submission.approved_by_user_id is not None
         }
+        attribution_user_ids = approved_by_ids | {
+            submission.imported_by_user_id for submission in submissions if submission.imported_by_user_id is not None
+        } | {
+            submission.reviewed_by_user_id for submission in submissions if submission.reviewed_by_user_id is not None
+        }
         beneficiary_codes = await self.submissions.beneficiary_codes(
             organization_id=organization_id, entity_ids=entity_ids
         )
@@ -2835,7 +2840,7 @@ class SubmissionService:
         officer_names = await self.submissions.field_officer_names(
             organization_id=organization_id, field_officer_ids=field_officer_ids
         )
-        approver_names = await self.submissions.user_names(user_ids=approved_by_ids)
+        approver_names = await self.submissions.user_names(user_ids=attribution_user_ids)
         enriched: list[SubmissionRead] = []
         for submission in submissions:
             review_summary = self._submission_review_summary(submission)
@@ -2855,6 +2860,12 @@ class SubmissionService:
                         else None,
                         "approved_by_name": approver_names.get(submission.approved_by_user_id)
                         if submission.approved_by_user_id
+                        else None,
+                        "imported_by_name": approver_names.get(submission.imported_by_user_id)
+                        if submission.imported_by_user_id
+                        else None,
+                        "reviewed_by_name": approver_names.get(submission.reviewed_by_user_id)
+                        if submission.reviewed_by_user_id
                         else None,
                         "linked_beneficiaries": linked_beneficiaries.get(submission.id, []),
                         "review_quality": self._review_quality_score(review_summary),
