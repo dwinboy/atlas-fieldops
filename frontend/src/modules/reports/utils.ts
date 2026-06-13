@@ -101,6 +101,25 @@ export function canExportReport(report: ReportRecord): boolean {
   return report.status === "Ready" && (report.governance === "Approved" || report.governance === "Internal only");
 }
 
+/**
+ * Build the machine-readable export package for a generated report. Returns
+ * null when the report has not been generated yet (no computed metrics), so the
+ * UI can prompt the user to generate it before exporting.
+ */
+export function buildReportMetricsExport(report: ReportRecord): Record<string, unknown> | null {
+  if (!report.metrics) return null;
+  return {
+    id: report.id,
+    title: report.title,
+    donor: report.donor,
+    category: report.category,
+    period: report.period,
+    governance: report.governance,
+    generatedAt: report.lastGenerated,
+    metrics: report.metrics,
+  };
+}
+
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);
