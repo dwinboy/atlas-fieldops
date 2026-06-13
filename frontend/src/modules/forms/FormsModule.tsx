@@ -1767,7 +1767,7 @@ function FormStatusCards({
               ) : null}
               {isPublished ? (
                 <>
-                  <Button onClick={() => onOpenData(form)} size="sm" variant="primary">
+                  <Button onClick={() => onOpenData(form, "status=approved")} size="sm" variant="primary">
                     <Table2 aria-hidden="true" />
                     View Data
                   </Button>
@@ -2330,6 +2330,12 @@ function FormDataGridWorkspace({
               Spreadsheet-style view of submissions, uploaded records, approval
               status, source attribution, and every question response.
             </p>
+            {statusFilter === "approved" ? (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-success/35 bg-success/10 px-2.5 py-1 text-xs text-success">
+                <CheckCircle2 aria-hidden="true" size={13} />
+                Clean dataset: approved field submissions and confirmed (cleaned) uploads. Use the status filter to inspect pending or returned rows.
+              </p>
+            ) : null}
             {form && !canUploadData ? (
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1 text-xs text-warning">
                 <UploadCloud aria-hidden="true" size={13} />
