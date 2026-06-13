@@ -62,3 +62,44 @@ def test_asset_forms_generate_asset_specific_questions() -> None:
     assert condition_check["form_type"] == "asset"
     assert "asset_condition" in question_ids
     assert "custodian" in question_ids
+    assert "serial_number" in question_ids
+
+
+def test_retail_pack_generates_retail_specific_questions() -> None:
+    pack = get_sector_pack("retail")
+
+    assert pack is not None
+    stock_count = next(form for form in pack["form_definitions"] if form["name"] == "Store Stock Count")
+    question_ids = {question["id"] for question in stock_count["questions"]}
+
+    assert stock_count["entity_type"] == "Product"
+    assert "sku_or_barcode" in question_ids
+    assert "unit_price" in question_ids
+    assert "store_channel" in question_ids
+
+
+def test_logistics_pack_generates_delivery_specific_questions() -> None:
+    pack = get_sector_pack("logistics")
+
+    assert pack is not None
+    delivery = next(form for form in pack["form_definitions"] if form["name"] == "Delivery Confirmation")
+    question_ids = {question["id"] for question in delivery["questions"]}
+
+    assert delivery["entity_type"] == "Shipment"
+    assert delivery["form_type"] == "delivery"
+    assert "route_code" in question_ids
+    assert "vehicle_id" in question_ids
+    assert "proof_of_delivery" in question_ids
+
+
+def test_hr_pack_generates_workforce_specific_questions() -> None:
+    pack = get_sector_pack("hr")
+
+    assert pack is not None
+    attendance = next(form for form in pack["form_definitions"] if form["name"] == "Attendance Check")
+    question_ids = {question["id"] for question in attendance["questions"]}
+
+    assert attendance["entity_type"] == "Employee"
+    assert "employee_id" in question_ids
+    assert "department" in question_ids
+    assert "supervisor_review" in question_ids

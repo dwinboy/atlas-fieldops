@@ -928,6 +928,7 @@ def _form_definition(pack: SectorPack, form_name: str) -> dict[str, Any]:
     entity_type = _primary_entity(pack)
     questions = _base_questions(pack, entity_type)
     questions.extend(_questions_for_kind(pack, entity_type, kind))
+    questions.extend(_sector_questions(pack, kind))
     return {
         "name": form_name,
         "code": _variable_name(form_name),
@@ -1149,6 +1150,53 @@ def _questions_for_kind(pack: SectorPack, entity_type: str, kind: str) -> list[S
         _select_question("record_status", "Record status", ["Complete", "Partial", "Requires review"], "Completeness state for reviewer triage."),
         _long_text_question("observations", "Observations", "Operational notes relevant to the project."),
     ]
+
+
+def _sector_questions(pack: SectorPack, kind: str) -> list[SectorQuestion]:
+    pack_id = str(pack.get("id") or "")
+    if pack_id == "retail":
+        return [
+            _short_text_question("sku_or_barcode", "SKU or barcode", "Product SKU, barcode, or shelf code used for lookup."),
+            _number_question("unit_price", "Unit price", "Current observed unit price.", minimum=0),
+            _select_question("store_channel", "Store channel", ["Retail store", "Kiosk", "Distributor", "Online", "Other"], "Sales or stock channel."),
+        ]
+    if pack_id == "logistics":
+        return [
+            _short_text_question("route_code", "Route code", "Assigned route, trip, or delivery lane."),
+            _short_text_question("vehicle_id", "Vehicle ID", "Vehicle, rider, or transport asset used."),
+            _select_question("proof_of_delivery", "Proof of delivery", ["Signature", "Photo", "QR scan", "Recipient confirmation", "Not available"], "Evidence collected at delivery point."),
+        ]
+    if pack_id == "sales":
+        return [
+            _select_question("lead_stage", "Lead or opportunity stage", ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"], "Sales pipeline stage."),
+            _number_question("order_value", "Order value", "Order, deal, or opportunity value.", minimum=0, indicator_component="numerator"),
+            _select_question("next_action", "Next action", ["Call back", "Send quote", "Schedule visit", "Close order", "No action"], "Follow-up action for the sales team."),
+        ]
+    if pack_id == "manufacturing":
+        return [
+            _short_text_question("production_line", "Production line", "Line, machine, or workstation where the record was captured."),
+            _number_question("output_quantity", "Output quantity", "Quantity produced in this batch or shift.", minimum=0, indicator_component="numerator"),
+            _select_question("quality_status", "Quality status", ["Pass", "Rework", "Rejected", "Hold"], "Quality disposition for this batch or check."),
+        ]
+    if pack_id == "hr":
+        return [
+            _short_text_question("employee_id", "Employee ID", "Internal employee number or workforce identifier."),
+            _select_question("department", "Department", ["Operations", "Field team", "Administration", "Finance", "HR", "Other"], "Employee department or unit."),
+            _select_question("supervisor_review", "Supervisor review", ["Not required", "Pending", "Approved", "Returned"], "Supervisor action for this workforce record."),
+        ]
+    if pack_id in {"audits", "inspections"}:
+        return [
+            _select_question("finding_category", "Finding category", ["Safety", "Compliance", "Quality", "Process", "Documentation", "Other"], "Category used for corrective action reporting."),
+            _select_question("evidence_status", "Evidence status", ["Complete", "Photo missing", "File missing", "Requires review"], "Evidence readiness for this finding."),
+            _date_question("corrective_action_due", "Corrective action due date", "Deadline for correcting the finding."),
+        ]
+    if pack_id == "assets":
+        return [
+            _short_text_question("serial_number", "Serial number", "Asset serial number, tag, or QR code."),
+            _select_question("maintenance_status", "Maintenance status", ["Not due", "Due soon", "Overdue", "Completed", "Not applicable"], "Maintenance status for this asset."),
+            _short_text_question("asset_location", "Asset location", "Current asset location or custody site."),
+        ]
+    return []
 
 
 def _form_kind(name: str) -> str:
