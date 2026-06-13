@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 
-import { ComingSoonNotice, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { dataQualityContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Data Quality Tools",
-  description: "Catch duplicates, outliers, missing data, and validation failures with versioning and audit trails built in.",
+  description:
+    "Flag duplicates, outliers, GPS issues, and missing data, with review workflows, bulk resolution, and an immutable audit trail.",
   path: "/features/data-quality",
 });
 
-export default function DataQualityPage() {
+export default function Page() {
   return (
     <MarketingShell>
-      <main>
-        <SimplePageHero
-          eyebrow="Features"
-          title="Validation, versioning, and audit trails"
-          text="Catch duplicates, outliers, missing data, and GPS issues before they reach your reports."
-        />
-        <ComingSoonNotice backHref="/features" backLabel="Back to Features" />
-      </main>
+      <FeatureDetailPage content={dataQualityContent} />
     </MarketingShell>
   );
 }

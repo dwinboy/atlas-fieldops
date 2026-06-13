@@ -400,3 +400,120 @@ export function TrustBand() {
     </div>
   );
 }
+
+export type FeatureDetailContent = {
+  eyebrow: string;
+  title: string;
+  lede: string;
+  capabilities: { title: string; description: string }[];
+  workflow: { title: string; description: string }[];
+  outcomes: string[];
+  related: { title: string; href: string }[];
+};
+
+export function FeatureDetailPage({ content }: { content: FeatureDetailContent }) {
+  return (
+    <main>
+      <section className="relative overflow-hidden px-4 pb-10 pt-16 sm:px-6 lg:px-8">
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#0d9488]/[0.07] to-transparent" />
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="inline-flex rounded-full border border-[#0d9488]/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488]">
+            {content.eyebrow}
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-5xl md:leading-[1.05]">
+            {content.title}
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#5b6a65] md:text-lg">
+            {content.lede}
+          </p>
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+            <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#0b7a70]" href="/book-demo">
+              Book demo
+            </Link>
+            <Link className="inline-flex h-11 items-center rounded-md border-2 border-[#0c1f1b]/15 bg-white px-5 text-sm font-semibold text-[#0c1f1b] transition hover:border-[#0d9488]/40 hover:text-[#0d9488]" href="/signup">
+              Start free trial
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Capabilities</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#0c1f1b] md:text-4xl">What you can do</h2>
+        </div>
+        <div className="mx-auto mt-12 grid max-w-6xl gap-4 px-0 sm:grid-cols-2 lg:grid-cols-3">
+          {content.capabilities.map((capability) => (
+            <article className="rounded-xl border border-black/10 bg-white p-6 shadow-sm" key={capability.title}>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d9488]/10 text-[#0d9488]">
+                <Check size={18} />
+              </div>
+              <h3 className="mt-4 text-base font-semibold text-[#0c1f1b]">{capability.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{capability.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-white py-16">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">How it works</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#0c1f1b] md:text-4xl">From setup to trusted data</h2>
+        </div>
+        <ol className="mx-auto mt-12 grid max-w-5xl gap-6 px-4 sm:px-6 md:grid-cols-2 lg:px-8">
+          {content.workflow.map((stepItem, index) => (
+            <li className="flex gap-4 rounded-xl border border-black/10 bg-[#fafaf8] p-5" key={stepItem.title}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0c1f1b] text-sm font-semibold text-white">
+                {index + 1}
+              </span>
+              <div>
+                <h3 className="text-base font-semibold text-[#0c1f1b]">{stepItem.title}</h3>
+                <p className="mt-1 text-sm leading-6 text-[#5b6a65]">{stepItem.description}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-6xl gap-10 rounded-3xl border border-black/10 bg-white p-8 shadow-sm lg:grid-cols-[1fr_1fr] lg:p-12">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Outcomes</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#0c1f1b] md:text-3xl">Why teams choose it</h2>
+            <p className="mt-4 text-sm leading-7 text-[#5b6a65]">
+              Built for field reality — unreliable connectivity, multi-role teams, and the audit standards donors expect.
+            </p>
+          </div>
+          <ul className="grid gap-3">
+            {content.outcomes.map((outcome) => (
+              <li className="flex items-start gap-3 text-sm leading-6 text-[#0c1f1b]" key={outcome}>
+                <Check aria-hidden="true" className="mt-0.5 shrink-0 text-[#0d9488]" size={18} />
+                {outcome}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Explore more</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {content.related.map((item) => (
+              <Link
+                className="group flex items-center justify-between gap-3 rounded-xl border border-black/10 bg-white p-4 text-sm font-semibold text-[#0c1f1b] shadow-sm transition hover:border-[#0d9488]/40 hover:text-[#0d9488]"
+                href={item.href}
+                key={item.href}
+              >
+                {item.title}
+                <ArrowRight aria-hidden="true" className="shrink-0 transition group-hover:translate-x-0.5" size={16} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <CTASection />
+    </main>
+  );
+}

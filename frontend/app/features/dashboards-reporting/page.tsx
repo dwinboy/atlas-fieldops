@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 
-import { ComingSoonNotice, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { dashboardsReportingContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Dashboards & Reporting",
-  description: "Real-time dashboards, custom reports, and donor outputs built from approved program data.",
+  title: "Dashboards and Donor Reporting",
+  description:
+    "Turn approved field data into a manager's action queue, live dashboards, indicator progress, and donor-ready report packages.",
   path: "/features/dashboards-reporting",
 });
 
-export default function DashboardsReportingPage() {
+export default function Page() {
   return (
     <MarketingShell>
-      <main>
-        <SimplePageHero
-          eyebrow="Features"
-          title="Real-time visibility into program performance"
-          text="Standard reports, custom dashboards, donor outputs, and scheduled exports built from approved data."
-        />
-        <ComingSoonNotice backHref="/features" backLabel="Back to Features" />
-      </main>
+      <FeatureDetailPage content={dashboardsReportingContent} />
     </MarketingShell>
   );
 }
