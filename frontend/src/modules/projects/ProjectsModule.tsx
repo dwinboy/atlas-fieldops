@@ -61,6 +61,7 @@ import {
   type EntityCategoryRead,
   type PredefinedEntityCategoryRead,
 } from "@/lib/api";
+import { SECTOR_TERMINOLOGY } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
@@ -156,7 +157,7 @@ const defaultProjectDraft: ProjectCreate = {
   status: "draft",
 };
 
-const previewSectorPacks: ProjectSectorPackRead[] = ([
+const richPreviewSectorPacks: ProjectSectorPackRead[] = ([
   {
     dashboard_widgets: ["Farmer coverage", "Yield progress", "Input distribution", "Training completion"],
     data_quality_rules: ["Duplicate farmer by phone or name + village", "Static GPS", "Yield outliers"],
@@ -274,6 +275,70 @@ const previewSectorPacks: ProjectSectorPackRead[] = ([
   manager_controls: {},
   report_definitions: [],
 }));
+
+// Generate a complete pack for every other canonical sector so the wizard
+// shows the full set even in preview / offline-fallback mode. IDs match the
+// backend sector packs, so a real session's richer packs supersede these.
+function buildFallbackSectorPack(sector: {
+  sectorId: string;
+  sectorName: string;
+  primaryEntity: string;
+  primaryEntityPlural: string;
+}): ProjectSectorPackRead {
+  const entity = sector.primaryEntity;
+  return {
+    id: sector.sectorId,
+    name: sector.sectorName,
+    sector: sector.sectorName,
+    description: `Starter configuration for ${sector.sectorName.toLowerCase()} — entities, forms, indicators, and governance tuned for ${sector.primaryEntityPlural.toLowerCase()}.`,
+    terminology: { primary_entity: entity, secondary_entities: "Household", field_visit: "Field visit", submission: "Record" },
+    entity_types: [entity, "Household"],
+    form_templates: [`${entity} Registration`, "Baseline Survey", "Monitoring Visit", "Endline Survey"],
+    form_definitions: [],
+    indicator_templates: [`${sector.primaryEntityPlural} registered`, `${sector.primaryEntityPlural} reached`, "Activities completed"],
+    indicator_definitions: [],
+    dashboard_widgets: [`${entity} coverage`, "Activity progress", "Data quality"],
+    report_templates: ["Monthly program report", "Donor results report"],
+    report_definitions: [],
+    validation_rules: ["Required identifiers present", "Dates cannot be in the future"],
+    data_quality_rules: [`Duplicate ${entity.toLowerCase()} by phone or name + location`, "Static GPS across many records"],
+    workflows: ["Registration → Baseline → Monitoring → Endline"],
+    mobile_guidance: ["Allow offline collection", "Capture GPS where relevant", "Prefill assigned records"],
+    governance_defaults: {
+      approvalWorkflow: "Submitted → Supervisor Review → Data Manager Review → Approved",
+      approvedDataOnly: true,
+      consentPolicy: "Consent required before collecting identifiable data",
+    },
+    recommended_settings: {
+      beneficiary: {
+        primaryEntityType: entity,
+        secondaryEntityTypes: ["Household"],
+        codeFormat: `${entity.slice(0, 3).toUpperCase()}-YYYY-000001`,
+        duplicateFields: ["Phone", "National ID", "Name + Location"],
+        profileUpdateRule: "Require review for name and contact changes",
+      },
+      forms: {
+        starterPack: "Install project starter pack",
+        journey: `${entity} Registration → Baseline → Monitoring → Endline`,
+      },
+      indicators: {
+        setupMode: "Use indicator templates",
+        frequency: "Monthly",
+        dataSource: "Approved submissions",
+        disaggregation: ["Sex", "Age", "Location"],
+      },
+    },
+    manager_controls: {},
+  };
+}
+
+const previewSectorPacks: ProjectSectorPackRead[] = (() => {
+  const covered = new Set(richPreviewSectorPacks.map((pack) => pack.id));
+  const generated = Object.values(SECTOR_TERMINOLOGY)
+    .filter((sector) => sector.sectorId !== "custom" && !covered.has(sector.sectorId))
+    .map(buildFallbackSectorPack);
+  return [...richPreviewSectorPacks, ...generated];
+})();
 
 const countryOptions = [
   "Cameroon",
