@@ -24,17 +24,17 @@ export const site = {
   name: "Atlas FieldOps",
   url: "https://atlasfieldops.com",
   description:
-    "Enterprise monitoring and evaluation software for offline data collection, survey management, GIS mapping, indicator tracking, program management, data quality, and donor reporting.",
+    "Enterprise field data collection and operations software for offline mobile forms, inspections, surveys, inventory checks, service monitoring, GIS mapping, data quality, KPI tracking, and governed reporting.",
 };
 
 export const platformModules = [
-  ["Projects", "Program setup, locations, teams, indicators, reports, and project health."],
-  ["Forms", "Enterprise form builder, survey governance, versioning, templates, validation, and publishing."],
+  ["Projects", "Sector setup, locations, teams, KPIs, reports, and project health."],
+  ["Forms", "Enterprise form builder for surveys, inspections, audits, stock counts, checklists, and mobile workflows."],
   ["Field Operations", "Assignments, field officers, supervisors, targets, work plans, and monitoring."],
   ["Submissions", "Review queues, approval workflows, corrections, attachments, quality flags, and audit history."],
   ["Mapping", "GIS maps, boundaries, coverage, GPS validation, and spatial issue discovery."],
-  ["Indicators", "Indicator library, logframes, targets, baselines, calculations, and disaggregation."],
-  ["Reports", "Standard reports, custom dashboards, donor outputs, scheduled delivery, and exports."],
+  ["Metrics & Results", "KPI library, targets, baselines, calculations, trend tracking, and disaggregation."],
+  ["Reports", "Standard reports, custom dashboards, client outputs, scheduled delivery, and exports."],
   ["Data Quality", "Duplicates, outliers, missing data, GPS issues, validation failures, and risk alerts."],
   ["Governance", "Audit trails, policies, approvals, retention, consent, compliance, and data stewardship."],
   ["Administration", "Reference data, integrations, notifications, API settings, backups, and system defaults."],
@@ -42,13 +42,13 @@ export const platformModules = [
 
 export const platformFeatures = [
   {
-    title: "Project management",
-    text: "Coordinate programs, teams, locations, surveys, indicators, targets, assignments, and project health in one workspace.",
+    title: "Project and sector setup",
+    text: "Start from sector packs for agriculture, health, education, retail, logistics, inventory, audits, inspections, HR, and custom operations.",
     icon: Building2,
   },
   {
     title: "Enterprise form builder",
-    text: "Build mobile-ready survey forms with sections, repeat groups, logic, validation, reference data, GPS, media, versioning, and governance.",
+    text: "Build mobile-ready surveys, checklists, inspections, stock counts, delivery proofs, HR records, and audits with logic, validation, GPS, media, and governance.",
     icon: ClipboardList,
   },
   {
@@ -72,8 +72,8 @@ export const platformFeatures = [
     icon: Map,
   },
   {
-    title: "Indicator tracking",
-    text: "Manage results frameworks, logframes, baselines, targets, calculations, disaggregation, and indicator reports.",
+    title: "KPI and result tracking",
+    text: "Manage indicators, operational KPIs, baselines, targets, calculations, disaggregation, and performance reports.",
     icon: BarChart3,
   },
   {
@@ -87,8 +87,8 @@ export const platformFeatures = [
     icon: ShieldCheck,
   },
   {
-    title: "Donor reporting",
-    text: "Create executive reports, donor dashboards, indicator exports, map outputs, scheduled reports, and governed downloads.",
+    title: "Governed reporting",
+    text: "Create executive reports, donor/client dashboards, KPI exports, map outputs, scheduled reports, and governed downloads.",
     icon: FileText,
   },
 ];
@@ -102,15 +102,20 @@ export const workflowSteps = [
   "Submissions",
   "Reviews",
   "Data quality",
-  "Indicators",
+  "Metrics",
   "Reports",
 ];
 
 export const industries = [
   {
-    title: "NGO monitoring platform",
-    text: "Manage programs, entities, field officers, surveys, approvals, maps, indicators, donor reports, and audit requirements.",
+    title: "NGO and humanitarian operations",
+    text: "Manage programs, entities, field officers, mobile surveys, approvals, maps, KPIs, reports, and audit requirements.",
     image: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    title: "Agriculture and farmer programs",
+    text: "Register farmers, map farms, track inputs, monitor yields, verify training, and report agriculture results with offline mobile data.",
+    image: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1200&q=80",
   },
   {
     title: "Government monitoring platform",
@@ -127,9 +132,34 @@ export const industries = [
     text: "Track school inspections, attendance, training, learning environments, feeding programs, and infrastructure gaps.",
     image: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80",
   },
+  {
+    title: "Retail and inventory field checks",
+    text: "Track products, stock levels, stores, suppliers, price checks, receipts, issues, barcode scans, and variance review.",
+    image: "https://images.unsplash.com/photo-1556742502-ec7c0e9f34b1?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    title: "Logistics and delivery operations",
+    text: "Manage shipments, routes, vehicles, proof of delivery, incidents, warehouse checks, and GPS-based delivery evidence.",
+    image: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    title: "Audits, inspections, and assets",
+    text: "Run compliance checklists, site inspections, asset condition checks, corrective actions, evidence capture, and review workflows.",
+    image: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1200&q=80",
+  },
 ];
 
 export const solutionPages = [
+  {
+    slug: "agriculture",
+    title: "Agriculture data collection software for farmer programs",
+    audience: "Agriculture programs",
+    icon: Globe2,
+    description: "Register farmers, map farms, verify input distribution, monitor yields, track training, and report agriculture KPIs with offline mobile collection.",
+    challenges: ["Farmer lists become outdated quickly", "Input distribution evidence is hard to verify", "Yield and training data arrive late", "GPS and farm coverage are difficult to prove"],
+    modules: ["Projects", "Forms", "Field Operations", "Mapping", "Metrics & Results", "Reports"],
+    outcomes: ["Cleaner farmer registries", "Verified input delivery", "Faster extension monitoring", "Traceable agriculture results"],
+  },
   {
     slug: "ngos",
     title: "Monitoring and evaluation software for NGOs",
@@ -189,6 +219,66 @@ export const solutionPages = [
     challenges: ["School inspection evidence is scattered", "Attendance and training data is delayed", "Infrastructure gaps are hard to prioritize", "Reports lack field context"],
     modules: ["Projects", "Forms", "Mapping", "Indicators", "Reports"],
     outcomes: ["Clear school coverage", "Faster inspection reporting", "Better indicator progress", "Evidence-based decisions"],
+  },
+  {
+    slug: "retail",
+    title: "Retail field operations and inventory data collection software",
+    audience: "Retail, FMCG, and store operations",
+    icon: Building2,
+    description: "Collect store audits, product availability, stock counts, price checks, supplier deliveries, shelf evidence, and sales visit data from mobile teams.",
+    challenges: ["Stock and price data is delayed", "Store visits are hard to verify", "Supplier delivery issues are missed", "Field reports stay in spreadsheets"],
+    modules: ["Projects", "Forms", "Field Operations", "Submissions", "Data Quality", "Reports"],
+    outcomes: ["Faster stock visibility", "Verified store coverage", "Cleaner price and supplier data", "Actionable retail dashboards"],
+  },
+  {
+    slug: "inventory",
+    title: "Inventory and stock count software for field teams",
+    audience: "Inventory and warehouse teams",
+    icon: Database,
+    description: "Run stock counts, receipts, issues, transfers, variance reviews, barcode capture, and warehouse checks with mobile-ready forms and approval workflows.",
+    challenges: ["Stock counts are inconsistent", "Variance reasons are not captured", "Warehouse teams work offline", "Receipts and issues are hard to reconcile"],
+    modules: ["Forms", "Mobile Collector App", "Submissions", "Data Quality", "Reports"],
+    outcomes: ["More accurate counts", "Clear variance queues", "Mobile warehouse records", "Governed stock reports"],
+  },
+  {
+    slug: "logistics",
+    title: "Logistics and delivery operations software",
+    audience: "Logistics, delivery, and route teams",
+    icon: RadioTower,
+    description: "Manage shipments, routes, vehicles, delivery confirmation, GPS evidence, proof of delivery, incidents, and exception review in one field operations platform.",
+    challenges: ["Delivery proof is scattered", "Route exceptions arrive late", "Vehicle inspections are disconnected", "Supervisors lack real-time delivery status"],
+    modules: ["Projects", "Field Operations", "Forms", "Mapping", "Submissions", "Reports"],
+    outcomes: ["Verified delivery evidence", "Clear route exceptions", "Better fleet visibility", "Faster supervisor review"],
+  },
+  {
+    slug: "manufacturing",
+    title: "Manufacturing data collection and quality inspection software",
+    audience: "Manufacturing and production teams",
+    icon: Workflow,
+    description: "Collect production batch records, quality checks, downtime reports, waste records, machine inspections, and corrective actions from the floor.",
+    challenges: ["Production records are fragmented", "Quality issues lack evidence", "Downtime is not captured consistently", "Corrective actions are hard to follow"],
+    modules: ["Forms", "Data Quality", "Field Operations", "Reports", "Governance"],
+    outcomes: ["Cleaner batch records", "Faster quality review", "Traceable downtime", "Operational performance dashboards"],
+  },
+  {
+    slug: "audits-inspections",
+    title: "Audit and inspection management software",
+    audience: "Audit, compliance, safety, and inspection teams",
+    icon: ShieldCheck,
+    description: "Build checklists, capture findings, collect photo/file evidence, assign corrective actions, review risks, and export audit-ready reports.",
+    challenges: ["Findings lack evidence", "Corrective actions are missed", "Inspection data is hard to compare", "Audit trails are incomplete"],
+    modules: ["Forms", "Submissions", "Data Quality", "Governance", "Reports"],
+    outcomes: ["Evidence-backed findings", "Closed corrective actions", "Consistent inspection data", "Audit-ready exports"],
+  },
+  {
+    slug: "hr-workforce",
+    title: "HR and workforce field data collection software",
+    audience: "HR, workforce, and training teams",
+    icon: UsersRound,
+    description: "Track employee records, attendance checks, training completion, field staff activity, asset assignment, and supervisor review workflows.",
+    challenges: ["Attendance and training records are scattered", "Field staff activity is hard to verify", "HR data needs permissions", "Managers need cleaner workforce reporting"],
+    modules: ["Users & Teams", "Forms", "Field Operations", "Governance", "Reports"],
+    outcomes: ["Cleaner workforce records", "Verified attendance", "Training compliance visibility", "Permissioned HR reporting"],
   },
 ];
 

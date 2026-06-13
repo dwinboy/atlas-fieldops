@@ -9,7 +9,7 @@ import { platformModules, site } from "@/lib/marketing/content";
 import { breadcrumbSchema, JsonLd, marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Monitoring and Evaluation Software for Field Data Collection",
+  title: "Field Data Collection Software for Every Sector",
   description: site.description,
   path: "/",
 });
@@ -42,13 +42,13 @@ export default function HomePage() {
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#fafaf8]/70 via-[#fafaf8]/94 to-[#fafaf8]" />
           <div className="mx-auto max-w-5xl text-center">
             <p className="inline-flex rounded-full border border-[#0d9488]/20 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488]">
-              Offline-ready operational intelligence
+              Offline-ready data collection for every sector
             </p>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-6xl md:leading-[0.98]">
-              Field data, M&E, and operations in one connected platform.
+              Build forms, collect field data, and run operations from one platform.
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-[#5b6a65] md:text-lg md:leading-8">
-              Atlas FieldOps helps NGOs, governments, and development teams collect trusted field data, manage entities, monitor indicators, approve submissions, map coverage, and report impact.
+              Atlas FieldOps helps organizations in agriculture, health, education, retail, logistics, inventory, audits, HR, government, and humanitarian work collect trusted mobile data, manage entities, approve submissions, map coverage, track KPIs, and report with confidence.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#0b7a70]" href="/book-demo">
@@ -70,15 +70,15 @@ export default function HomePage() {
           <SectionIntro
             eyebrow="Platform"
             title="Built for mission-critical field operations"
-            text="Replace disconnected spreadsheets, survey tools, approval queues, and reporting files with one workflow-aware operating system."
+            text="Replace disconnected spreadsheets, survey tools, inspection sheets, approval queues, inventory files, and reporting packs with one workflow-aware operating system."
           />
           <FeatureGrid />
         </section>
         <section className="bg-white py-20">
           <SectionIntro
             eyebrow="Modules"
-            title="A complete M&E platform, from projects to reports"
-            text="The public website and secure workspace stay separate, but the product story is simple: projects contain forms, forms collect submissions, approved data feeds indicators, maps, reports, and decisions."
+            title="A complete data operations platform, from projects to reports"
+            text="The product story is simple: projects define the sector context, forms collect evidence, approved submissions feed entities, KPIs, maps, reports, and management decisions."
           />
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-4 sm:px-6 md:grid-cols-2 lg:grid-cols-5 lg:px-8">
             {platformModules.map(([title, text]) => (
@@ -94,7 +94,7 @@ export default function HomePage() {
           <SectionIntro
             eyebrow="Use cases"
             title="Designed for the teams closest to the field"
-            text="Support agriculture, health, humanitarian, education, and public sector programs with workflows that stay simple for field teams and rigorous for leaders."
+            text="Support agriculture, health, humanitarian, education, retail, inventory, logistics, audits, inspections, HR, and public sector programs with workflows that stay simple for field teams and rigorous for leaders."
           />
           <IndustryGrid />
         </section>

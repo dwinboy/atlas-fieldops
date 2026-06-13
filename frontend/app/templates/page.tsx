@@ -7,7 +7,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 export const metadata: Metadata = marketingMetadata({
   title: "Template Library",
   description:
-    "Explore Atlas FieldOps project, form, dashboard, and indicator templates for faster M&E platform setup.",
+    "Explore Atlas FieldOps project, form, dashboard, KPI, inspection, inventory, audit, and reporting templates for faster field operations setup.",
   path: "/templates",
 });
 
@@ -26,10 +26,10 @@ export default function TemplatesPage() {
           <div className="mx-auto max-w-4xl text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Templates</p>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-5xl">
-              Start faster with reusable M&E templates.
+              Start faster with sector-ready templates.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#5b6a65]">
-              Templates reduce setup time while keeping governance, versioning, audit, data quality, and mobile-readiness intact.
+              Templates reduce setup time while keeping governance, versioning, audit, data quality, mobile readiness, and sector-specific terminology intact.
             </p>
           </div>
           <div className="mx-auto mt-12 grid max-w-7xl gap-4 px-0 md:grid-cols-2">

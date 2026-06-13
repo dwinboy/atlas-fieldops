@@ -7,8 +7,8 @@ import { useCasePages } from "@/lib/marketing/content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "M&E Use Cases for Surveys, Monitoring Visits, Entities, and Reporting",
-  description: "Explore Atlas FieldOps use cases for baseline surveys, endline surveys, monitoring visits, registration programs, entity tracking, needs assessments, health, education, agriculture, and humanitarian programs.",
+  title: "Field Data Collection Use Cases for Every Sector",
+  description: "Explore Atlas FieldOps use cases for surveys, inspections, stock counts, delivery proof, registration, entity tracking, needs assessments, health, education, agriculture, logistics, and humanitarian programs.",
   path: "/use-cases",
 });
 
@@ -18,8 +18,8 @@ export default function UseCasesPage() {
       <main>
         <SimplePageHero
           eyebrow="Use cases"
-          title="Field data collection workflows for real M&E programs"
-          text="Atlas FieldOps supports survey management, monitoring visits, entity tracking, needs assessments, health monitoring, education monitoring, agriculture programs, and humanitarian programs."
+          title="Field data collection workflows for real operations"
+          text="Atlas FieldOps supports surveys, monitoring visits, entity tracking, inspections, inventory checks, delivery confirmation, needs assessments, agriculture programs, health work, education programs, and humanitarian operations."
         />
         <section className="mx-auto grid max-w-7xl gap-5 px-4 pb-20 sm:px-6 md:grid-cols-2 lg:grid-cols-3 lg:px-8">
           {useCasePages.map((useCase) => (

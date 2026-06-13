@@ -8,7 +8,7 @@ import { marketingMetadata } from "@/lib/marketing/seo";
 export const metadata: Metadata = marketingMetadata({
   title: "Start Free Trial",
   description:
-    "Request an Atlas FieldOps trial workspace for monitoring and evaluation, offline data collection, entity management, imports, and donor reporting.",
+    "Request an Atlas FieldOps trial workspace for offline data collection, forms, field teams, entities, imports, dashboards, and sector reporting.",
   path: "/signup",
 });
 
@@ -20,13 +20,13 @@ export default function SignupPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#0d9488]">Start trial</p>
             <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[#0c1f1b] md:text-5xl">
-              Create a startup-ready M&E workspace.
+              Create a sector-ready field operations workspace.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-[#5b6a65]">
-              Share your organization details and we will prepare a secure onboarding path for projects, imports, forms, entities, teams, reports, and integrations.
+              Share your organization details and we will prepare a secure onboarding path for projects, sector packs, imports, forms, entities, teams, mobile collection, reports, and integrations.
             </p>
             <div className="mt-8 grid gap-3 text-sm text-[#5b6a65]">
-              {["Organization workspace setup", "First admin and team invitation readiness", "Migration assistant for historical data", "Templates for projects, forms, dashboards, and indicators"].map((item) => (
+              {["Organization workspace setup", "Sector pack and project setup", "First admin and team invitation readiness", "Migration assistant for historical data", "Templates for forms, dashboards, KPIs, reports, and mobile workflows"].map((item) => (
                 <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm" key={item}>{item}</div>
               ))}
             </div>
