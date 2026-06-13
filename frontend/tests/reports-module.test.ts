@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { previewDashboards, previewExportJobs, previewKpis, previewReports, previewScheduledReports } from "@/modules/reports/data";
 import {
+  buildReportMetricsExport,
   canExportReport,
   computeReportsSummary,
   filterReportsBySection,
@@ -36,6 +37,26 @@ describe("Reports module helpers", () => {
     expect(kpiAchievement(previewKpis[1])).toBe(96);
     expect(kpiAchievement(previewKpis[2])).toBe(85);
     expect(kpiAchievement({ ...previewKpis[0], target: 0 })).toBe(0);
+  });
+
+  it("builds a JSON metrics export only once a report has been generated", () => {
+    // Without computed metrics a report cannot be exported as a metrics package.
+    expect(buildReportMetricsExport({ ...previewReports[0], metrics: undefined })).toBeNull();
+
+    const metrics = {
+      projects: 2,
+      submissions_total: 100,
+      submissions_approved: 90,
+      beneficiaries: 50,
+      indicators: [],
+      period_start: null,
+      period_end: null,
+      generated_at: "2026-06-01T00:00:00Z",
+    };
+    const payload = buildReportMetricsExport({ ...previewReports[0], metrics });
+    expect(payload).not.toBeNull();
+    expect(payload?.id).toBe(previewReports[0].id);
+    expect(payload?.metrics).toEqual(metrics);
   });
 
   it("filters and summarizes report builder query context", () => {

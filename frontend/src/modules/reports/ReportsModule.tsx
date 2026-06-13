@@ -68,6 +68,7 @@ import {
   type VisualizationType,
 } from "@/modules/reports/data";
 import {
+  buildReportMetricsExport,
   canExportReport,
   computeReportsSummary,
   exportStatusTone,
@@ -199,6 +200,16 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 
 function downloadCsvText(filename: string, csv: string): void {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -1057,6 +1068,20 @@ function ReportDetail({
     pushToast({ description: `${report.title} is ready as a CSV definition export.`, title: "Report exported", tone: "success" });
   }
 
+  function exportReportMetricsJson(): void {
+    const payload = buildReportMetricsExport(report);
+    if (!payload) {
+      pushToast({
+        title: "Generate the report first",
+        description: "Generate this report to compute metrics before exporting the JSON package.",
+        tone: "warning",
+      });
+      return;
+    }
+    downloadJson(`atlas-report-${report.id}-metrics.json`, payload);
+    pushToast({ description: `${report.title} computed metrics JSON package is ready.`, title: "Metrics exported", tone: "success" });
+  }
+
   return (
     <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1078,6 +1103,9 @@ function ReportDetail({
           ) : null}
           {!preview ? (
             <Button onClick={() => onExportData(report)} type="button" variant="secondary"><Download aria-hidden="true" /> Export data (CSV)</Button>
+          ) : null}
+          {!preview ? (
+            <Button disabled={!report.metrics} onClick={exportReportMetricsJson} type="button" variant="secondary"><Download aria-hidden="true" /> Export JSON</Button>
           ) : null}
           <Button disabled={!canExportReport(report)} onClick={exportReportDefinition} type="button"><Download aria-hidden="true" /> Export</Button>
         </div>
