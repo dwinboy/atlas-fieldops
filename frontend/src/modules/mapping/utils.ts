@@ -212,6 +212,38 @@ export function computeProjectExtents(features: MapFeatureRecord[]): ProjectExte
     .sort((a, b) => b.pointCount - a.pointCount);
 }
 
+/**
+ * Serialize map features to a GeoJSON FeatureCollection so users can open the
+ * current view in QGIS, ArcGIS, kepler.gl, or any standard GIS tool. Sensitive
+ * coordinates are masked to the configured precision before export.
+ */
+export function toGeoJson(features: MapFeatureRecord[], visibility: LayerVisibility): string {
+  return JSON.stringify(
+    {
+      type: "FeatureCollection",
+      features: features.map((feature) => {
+        const [latitude, longitude] = maskedCoordinates(feature, visibility);
+        return {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [longitude, latitude] },
+          properties: {
+            id: feature.id,
+            label: feature.label,
+            category: feature.category,
+            project: feature.project,
+            location: feature.location,
+            status: feature.status,
+            qualityScore: feature.qualityScore,
+            gpsAccuracy: feature.gpsAccuracy,
+          },
+        };
+      }),
+    },
+    null,
+    2,
+  );
+}
+
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);
