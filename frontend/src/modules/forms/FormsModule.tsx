@@ -38,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select } from "@/components/ui/input";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
-import { ApiError, archiveForm, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, updateForm } from "@/lib/api";
+import { ApiError, archiveForm, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
@@ -601,6 +601,7 @@ function rowQualityWarnings(submission: SubmissionRead | SubmissionRecord): stri
   }
   const validationIssues = submission.payload_json?._validation_issues;
   if (Array.isArray(validationIssues) && validationIssues.length) warnings.add("Validation issue");
+  if (submission.payload_json?._duplicate_submission_signal) warnings.add("Possible duplicate");
   const importIssues = submission.payload_json?._import_issues;
   if (Array.isArray(importIssues) && importIssues.length) {
     const missingFields = importIssues
@@ -1944,6 +1945,8 @@ function FormDataGridWorkspace({
   const [sourceFilter, setSourceFilter] = useState(searchParams.get("source") ?? "all");
   const [uploading, setUploading] = useState(false);
   const [confirmingImports, setConfirmingImports] = useState(false);
+  const [returningImports, setReturningImports] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -2326,6 +2329,49 @@ function FormDataGridWorkspace({
     }
   }
 
+  async function returnStagedRowsToSource(): Promise<void> {
+    if (!token || token === "preview-token") {
+      pushToast({
+        title: "Preview rows stay local",
+        description: "Sign in to return uploaded rows to source for correction.",
+        tone: "warning",
+      });
+      return;
+    }
+    if (!stagedImportRows.length) {
+      pushToast({
+        title: "No staged rows to return",
+        description: "There are no staged uploaded rows to return to source.",
+        tone: "warning",
+      });
+      return;
+    }
+    setReturningImports(true);
+    try {
+      const response = await returnImportedFormDataRows(token, formId, {
+        comment: returnComment.trim() || "Returned to source for correction and re-upload.",
+        submission_ids: stagedImportRows.map((submission) => submission.id),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["forms-module", "submissions", token] });
+      setReturnComment("");
+      setStatusFilter("returned");
+      setSourceFilter("uploaded");
+      pushToast({
+        title: "Rows returned to source",
+        description: `${response.returned_rows} uploaded row(s) returned for correction.${response.skipped_rows ? ` ${response.skipped_rows} row(s) were skipped.` : ""}`,
+        tone: "success",
+      });
+    } catch (error) {
+      pushToast({
+        title: "Could not return rows",
+        description: error instanceof Error ? error.message : "Try again.",
+        tone: "danger",
+      });
+    } finally {
+      setReturningImports(false);
+    }
+  }
+
   return (
     <section className="space-y-3">
       <div className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -2387,6 +2433,24 @@ function FormDataGridWorkspace({
                   <CheckCircle2 aria-hidden="true" />
                   {confirmingImports ? "Confirming" : "Confirm cleaned rows"}
                 </Button>
+                {stagedImportRows.length ? (
+                  <>
+                    <Input
+                      className="h-9 w-56"
+                      onChange={(event) => setReturnComment(event.target.value)}
+                      placeholder="Reason to return (optional)"
+                      value={returnComment}
+                    />
+                    <Button
+                      disabled={returningImports || !stagedImportRows.length}
+                      onClick={() => void returnStagedRowsToSource()}
+                      variant="secondary"
+                    >
+                      <ArrowLeft aria-hidden="true" />
+                      {returningImports ? "Returning" : `Return ${stagedImportRows.length} to source`}
+                    </Button>
+                  </>
+                ) : null}
                 <input
                   accept=".csv,.tsv,.txt,.xlsx"
                   className="hidden"
