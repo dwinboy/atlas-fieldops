@@ -10,10 +10,12 @@ type LeadFormState = Required<Omit<PublicLeadCreate, "metadata">> & {
   sector: string;
 };
 
-const sectorOptions = Object.values(SECTOR_TERMINOLOGY).map((sector) => ({
-  id: sector.sectorId,
-  name: sector.sectorName,
-}));
+const sectorOptions = Object.values(SECTOR_TERMINOLOGY)
+  .filter((sector) => sector.sectorId !== "custom")
+  .map((sector) => ({
+    id: sector.sectorId,
+    name: sector.sectorName,
+  }));
 
 const initialRequest: LeadFormState = {
   name: "",
