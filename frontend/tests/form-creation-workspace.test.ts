@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assembleWorksheetRow,
   createDraftFromSpreadsheetRows,
   createEditableDraftFromListItem,
   createEnterpriseDraftForm,
@@ -111,5 +112,30 @@ describe("enterprise form creation workspace", () => {
     expect(new Set(draft.fields.map((field) => field.variableName)).size).toBe(headers.length);
     expect(draft.sections).toHaveLength(1);
     expect(draft.fields.every((field) => field.sectionId === draft.sections[0].id)).toBe(true);
+  });
+
+  it("keeps every column when xlsx cells omit their reference attribute", () => {
+    // Some exporters (LibreOffice, streamed writers) write cells without an `r`
+    // reference. They must fall back to sequential columns, not collapse to one.
+    const withoutRefs = assembleWorksheetRow([
+      { reference: null, value: "Full Name" },
+      { reference: null, value: "Age" },
+      { reference: null, value: "Email" },
+    ]);
+    expect(withoutRefs).toEqual(["Full Name", "Age", "Email"]);
+
+    // Cells with references resolve to their column, and sparse rows keep gaps.
+    const withRefs = assembleWorksheetRow([
+      { reference: "A1", value: "Full Name" },
+      { reference: "B1", value: "Age" },
+      { reference: "C1", value: "Email" },
+    ]);
+    expect(withRefs).toEqual(["Full Name", "Age", "Email"]);
+
+    const sparse = assembleWorksheetRow([
+      { reference: "A1", value: "Full Name" },
+      { reference: "C1", value: "Email" },
+    ]);
+    expect(sparse).toEqual(["Full Name", "", "Email"]);
   });
 });

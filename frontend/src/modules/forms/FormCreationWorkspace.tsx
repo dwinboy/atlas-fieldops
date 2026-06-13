@@ -1312,20 +1312,51 @@ function sharedStringsFromXml(xml: string): string[] {
   return Array.from(doc.getElementsByTagName("si")).map((item) => item.textContent?.trim() ?? "");
 }
 
+type WorksheetCell = { reference: string | null; value: string };
+
+/**
+ * Place a row's cells into column-indexed slots. Cells normally carry an `r`
+ * reference (e.g. "B2"), but some exporters (LibreOffice, streamed writers)
+ * omit it — in that case fall back to the next sequential position instead of
+ * collapsing every cell onto column A (which would drop all but one column).
+ */
+export function assembleWorksheetRow(cells: WorksheetCell[]): string[] {
+  const values: string[] = [];
+  let nextIndex = 0;
+  let maxIndex = -1;
+  for (const cell of cells) {
+    const index = cell.reference ? columnIndexFromCellRef(cell.reference) : nextIndex;
+    nextIndex = index + 1;
+    maxIndex = Math.max(maxIndex, index);
+    values[index] = cell.value;
+  }
+  // Build a dense array so sparse columns (gaps between cell references) become
+  // empty strings instead of holes that `.map` would skip and leave undefined.
+  return Array.from({ length: maxIndex + 1 }, (_, index) => values[index] ?? "");
+}
+
 function rowsFromWorksheetXml(xml: string, sharedStrings: string[]): string[][] {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   return Array.from(doc.getElementsByTagName("row")).map((row) => {
-    const values: string[] = [];
-    Array.from(row.getElementsByTagName("c")).forEach((cell) => {
-      const index = columnIndexFromCellRef(cell.getAttribute("r"));
+    const cells: WorksheetCell[] = Array.from(row.getElementsByTagName("c")).map((cell) => {
       const type = cell.getAttribute("t");
+      // Inline strings live in <is><t>, shared strings reference an index via <v>.
+      const inlineString = type === "inlineStr"
+        ? cell.getElementsByTagName("t")[0]?.textContent ?? ""
+        : null;
       const rawValue =
         cell.getElementsByTagName("v")[0]?.textContent ??
         cell.getElementsByTagName("t")[0]?.textContent ??
         "";
-      values[index] = type === "s" ? (sharedStrings[Number(rawValue)] ?? "") : decodeXmlText(rawValue);
+      const value =
+        type === "s"
+          ? (sharedStrings[Number(rawValue)] ?? "")
+          : inlineString !== null
+            ? decodeXmlText(inlineString)
+            : decodeXmlText(rawValue);
+      return { reference: cell.getAttribute("r"), value };
     });
-    return values.map((value) => value ?? "");
+    return assembleWorksheetRow(cells);
   });
 }
 
