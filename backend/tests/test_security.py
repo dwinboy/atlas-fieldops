@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.identity import UserCreate
 from app.schemas.organization_governance import AccessSimulationRequest
-from app.services.auth import AuthService, AuthenticationError
+from app.services.auth import AuthService, AuthenticationError, MultipleOrganizationsError
 from app.services.identity import UserManagementService
 from app.services.organization_governance import OrganizationGovernanceService
 
@@ -287,9 +287,11 @@ class FakeUserRepository:
         self,
         identity: tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None,
         platform_identity: tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None = None,
+        login_organizations: list[tuple[object, object]] | None = None,
     ) -> None:
         self.identity = identity
         self.platform_identity = platform_identity
+        self._login_organizations = login_organizations or []
 
     async def find_for_login(
         self,
@@ -297,6 +299,9 @@ class FakeUserRepository:
         organization_slug: str,
     ) -> tuple[object, object, object, object, list[object], list[tuple[object, object]]] | None:
         return self.identity
+
+    async def list_login_organizations(self, email: str) -> list[tuple[object, object]]:
+        return self._login_organizations
 
     async def find_platform_admin_for_user(
         self,
@@ -614,3 +619,64 @@ async def test_auth_service_rejects_invalid_or_inactive_accounts(
 
     with pytest.raises(AuthenticationError):
         await service.login(email="user@example.com", password=password, organization_slug="acme")
+
+
+async def test_email_first_login_resolves_single_organization(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    identity = build_identity(password_hash=password_hash, role_name="admin")
+    user, organization, *_ = identity
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(identity, login_organizations=[(user, organization)]),
+    )
+
+    token_response = await service.login(
+        email="user@example.com",
+        password="correct horse battery staple",
+    )
+    assert token_response.access_token
+
+
+async def test_email_first_login_rejects_wrong_password_without_listing_orgs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    identity = build_identity(password_hash=password_hash)
+    user, organization, *_ = identity
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(identity, login_organizations=[(user, organization)]),
+    )
+
+    with pytest.raises(AuthenticationError):
+        await service.login(email="user@example.com", password="wrong password")
+
+
+async def test_email_first_login_returns_choices_for_multiple_organizations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    identity = build_identity(password_hash=password_hash, organization_slug="acme")
+    user, acme_org, *_ = identity
+    second_org = SimpleNamespace(id=uuid4(), name="Beta Health", slug="beta-health", is_active=True)
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(
+            identity,
+            login_organizations=[(user, acme_org), (user, second_org)],
+        ),
+    )
+
+    with pytest.raises(MultipleOrganizationsError) as excinfo:
+        await service.login(
+            email="user@example.com",
+            password="correct horse battery staple",
+        )
+    slugs = {slug for slug, _ in excinfo.value.organizations}
+    assert slugs == {"acme", "beta-health"}

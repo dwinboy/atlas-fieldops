@@ -5,7 +5,12 @@ export type HealthResponse = {
 export type LoginRequest = {
   email: string;
   password: string;
-  organization_slug: string;
+  organization_slug?: string | null;
+};
+
+export type LoginOrganizationOption = {
+  slug: string;
+  name: string;
 };
 
 export type TokenResponse = {
@@ -2725,6 +2730,28 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * When an email-first login matches several workspaces the backend returns
+ * 409 with the choices in the body. Parse them so the caller can show a picker.
+ */
+export function parseMultipleOrganizations(error: unknown): LoginOrganizationOption[] | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  try {
+    const parsed = JSON.parse(error.message) as {
+      detail?: { reason?: string; organizations?: LoginOrganizationOption[] };
+    };
+    if (
+      parsed.detail?.reason === "multiple_organizations" &&
+      Array.isArray(parsed.detail.organizations)
+    ) {
+      return parsed.detail.organizations;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 async function request<T>(
