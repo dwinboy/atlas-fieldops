@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.app_db import get_session
 from app.api.v1.dependencies import get_current_principal
 from app.schemas.auth import CurrentPrincipal, LoginRequest, MobileQrLoginRequest, RefreshTokenRequest, TokenResponse
-from app.services.auth import AuthService, AuthenticationError
+from app.services.auth import AuthService, AuthenticationError, MultipleOrganizationsError
 
 router = APIRouter()
 
@@ -22,6 +22,18 @@ async def login(
             password=payload.password,
             organization_slug=payload.organization_slug,
         )
+    except MultipleOrganizationsError as exc:
+        # Password verified, but the account belongs to several workspaces.
+        # Return the choices so the client can re-submit with a slug.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "reason": "multiple_organizations",
+                "organizations": [
+                    {"slug": slug, "name": name} for slug, name in exc.organizations
+                ],
+            },
+        ) from exc
     except AuthenticationError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials") from exc
 

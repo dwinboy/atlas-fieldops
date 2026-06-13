@@ -4,7 +4,12 @@ from pydantic import BaseModel, EmailStr
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    organization_slug: str
+    organization_slug: str | None = None
+
+
+class LoginOrganizationOption(BaseModel):
+    slug: str
+    name: str
 
 
 class MobileQrLoginRequest(BaseModel):

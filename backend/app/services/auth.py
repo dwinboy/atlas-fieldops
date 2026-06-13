@@ -23,6 +23,15 @@ class AuthenticationError(Exception):
     pass
 
 
+class MultipleOrganizationsError(Exception):
+    """Raised when an email-first login (no slug) matches more than one active
+    organization, so the caller must choose which workspace to enter."""
+
+    def __init__(self, organizations: list[tuple[str, str]]) -> None:
+        super().__init__("Multiple organizations match this account")
+        self.organizations = organizations
+
+
 MOBILE_QR_LOGIN_TYPE = "atlas_fieldops_mobile_field_officer_login"
 MOBILE_QR_LOGIN_PREFIX = "afqr"
 
@@ -32,7 +41,32 @@ class AuthService:
         self.session = session
         self.users = UserRepository(session)
 
-    async def login(self, *, email: str, password: str, organization_slug: str) -> TokenResponse:
+    async def login(
+        self, *, email: str, password: str, organization_slug: str | None = None
+    ) -> TokenResponse:
+        if organization_slug:
+            return await self._login_with_slug(
+                email=email, password=password, organization_slug=organization_slug
+            )
+        # Email-first login: resolve the workspace from the user's memberships.
+        candidates = await self.users.list_login_organizations(email)
+        if not candidates:
+            raise AuthenticationError("Invalid credentials")
+        user = candidates[0][0]
+        if not user.is_active or not verify_password(password, user.password_hash):
+            raise AuthenticationError("Invalid credentials")
+        organizations = [organization for _, organization in candidates]
+        if len(organizations) == 1:
+            return await self._login_with_slug(
+                email=email, password=password, organization_slug=organizations[0].slug
+            )
+        raise MultipleOrganizationsError(
+            [(organization.slug, organization.name) for organization in organizations]
+        )
+
+    async def _login_with_slug(
+        self, *, email: str, password: str, organization_slug: str
+    ) -> TokenResponse:
         identity = await self.users.find_for_login(email=email, organization_slug=organization_slug)
         if identity is None:
             raise AuthenticationError("Invalid credentials")

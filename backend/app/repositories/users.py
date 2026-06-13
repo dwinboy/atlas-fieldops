@@ -43,6 +43,28 @@ class UserRepository:
         assignments = await self._role_assignments(organization_id=organization.id, user_id=user.id)
         return user, organization, membership, role, grants, assignments
 
+    async def list_login_organizations(self, email: str) -> list[tuple[User, Organization]]:
+        """All active org memberships for an email (email is globally unique, so
+        every row shares one User). Used to resolve email-first login when no
+        organization slug is supplied."""
+        statement = (
+            select(User, Organization)
+            .join(Membership, Membership.user_id == User.id)
+            .join(Organization, Organization.id == Membership.organization_id)
+            .where(
+                User.email == email,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                Organization.deleted_at.is_(None),
+                Organization.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                Membership.is_active.is_(True),
+            )
+            .order_by(Organization.name)
+        )
+        result = await self.session.execute(statement)
+        return [row.tuple() for row in result.all()]
+
     async def _access_grants(self, *, organization_id: UUID, user_id: UUID) -> list[UserAccessGrant]:
         grants_result = await self.session.execute(
             select(UserAccessGrant).where(

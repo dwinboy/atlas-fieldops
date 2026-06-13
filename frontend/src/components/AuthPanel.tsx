@@ -4,6 +4,8 @@ import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Activity,
+  Building2,
+  ChevronRight,
   DatabaseZap,
   Eye,
   EyeOff,
@@ -18,7 +20,12 @@ import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ApiError, login } from "@/lib/api";
+import {
+  ApiError,
+  login,
+  parseMultipleOrganizations,
+  type LoginOrganizationOption,
+} from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type AuthPanelProps = {
@@ -30,6 +37,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const [password, setPassword] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showSlugField, setShowSlugField] = useState(false);
+  const [organizationChoices, setOrganizationChoices] = useState<LoginOrganizationOption[]>([]);
   const demoLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
 
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -37,6 +46,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: (response) => {
+      setOrganizationChoices([]);
       pushToast({
         title: "Signed in",
         description: "Workspace ready",
@@ -44,15 +54,31 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       });
       onAuthenticated(response.access_token);
     },
+    onError: (error) => {
+      const choices = parseMultipleOrganizations(error);
+      if (choices) {
+        setOrganizationChoices(choices);
+      }
+    },
   });
 
+  function submitLogin(slug?: string): void {
+    mutation.mutate({
+      email,
+      password,
+      organization_slug: slug ?? (organizationSlug.trim() || null),
+    });
+  }
+
+  const hasOrganizationChoices = organizationChoices.length > 0;
   const signInErrorMessage =
     mutation.error instanceof ApiError && mutation.error.status === 422
-      ? "Check that the organization slug is correct and the email address uses a valid business email format."
-      : "Sign in failed. Check the organization slug, email, password, and that the account is active in that organization.";
+      ? "Check that the email address uses a valid format and the password meets the minimum length."
+      : "Sign in failed. Check your email and password, and that your account is active.";
 
   function useDemoCredentials(): void {
     setOrganizationSlug("atlas-demo");
+    setShowSlugField(true);
     setEmail("superadmin@example.com");
     setPassword("ChangeMe12345!");
     pushToast({
@@ -153,11 +179,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
         className="flex min-h-screen items-start bg-panel/95 px-5 py-8 shadow-elevated backdrop-blur sm:items-center sm:px-6 sm:py-10 lg:min-h-0 lg:border-l"
         onSubmit={(event) => {
           event.preventDefault();
-          mutation.mutate({
-            email,
-            password,
-            organization_slug: organizationSlug,
-          });
+          submitLogin();
         }}
       >
         <div className="mx-auto w-full max-w-sm">
@@ -172,7 +194,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
           </div>
           <h2 className="text-xl font-semibold tracking-tight">Sign in</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Use your organization slug, work email, and password to continue.
+            Enter your work email and password. We&apos;ll take you to your
+            organization automatically.
           </p>
           {demoLoginEnabled ? (
             <button
@@ -195,27 +218,8 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             </button>
           ) : null}
 
-          <label
-            className="mt-6 block text-sm font-medium"
-            htmlFor="organization"
-          >
-            Organization login slug
-          </label>
-          <Input
-            id="organization"
-            className="mt-2 h-10"
-            value={organizationSlug}
-            onChange={(event) => setOrganizationSlug(event.target.value)}
-            autoComplete="organization"
-            required
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Enter the slug created for your organization, for example{" "}
-            <span className="font-mono text-foreground">acme-health</span>.
-          </p>
-
-          <label className="mt-4 block text-sm font-medium" htmlFor="email">
-            Email
+          <label className="mt-6 block text-sm font-medium" htmlFor="email">
+            Work email
           </label>
           <Input
             id="email"
@@ -259,7 +263,68 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
             should be changed after first sign-in.
           </p>
 
-          {mutation.isError ? (
+          {showSlugField ? (
+            <>
+              <label
+                className="mt-4 block text-sm font-medium"
+                htmlFor="organization"
+              >
+                Organization slug (optional)
+              </label>
+              <Input
+                id="organization"
+                className="mt-2 h-10"
+                value={organizationSlug}
+                onChange={(event) => setOrganizationSlug(event.target.value)}
+                autoComplete="organization"
+                placeholder="acme-health"
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Only needed if you belong to more than one workspace and want to
+                go straight to a specific one.
+              </p>
+            </>
+          ) : (
+            <button
+              className="mt-3 text-xs font-medium text-primary hover:underline"
+              onClick={() => setShowSlugField(true)}
+              type="button"
+            >
+              Sign in to a specific workspace instead
+            </button>
+          )}
+
+          {hasOrganizationChoices ? (
+            <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-3">
+              <p className="text-sm font-medium">Choose a workspace</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your account belongs to several organizations. Select the one to
+                open.
+              </p>
+              <div className="mt-3 space-y-1.5">
+                {organizationChoices.map((organization) => (
+                  <button
+                    className="flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5"
+                    disabled={mutation.isPending}
+                    key={organization.slug}
+                    onClick={() => submitLogin(organization.slug)}
+                    type="button"
+                  >
+                    <Building2 aria-hidden="true" className="text-muted-foreground" size={15} />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="block font-medium">{organization.name}</span>
+                      <span className="block font-mono text-[11px] text-muted-foreground">
+                        {organization.slug}
+                      </span>
+                    </span>
+                    <ChevronRight aria-hidden="true" className="text-muted-foreground" size={15} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {mutation.isError && !hasOrganizationChoices ? (
             <p
               className="mt-4 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger"
               role="alert"
