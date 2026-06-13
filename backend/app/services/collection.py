@@ -70,6 +70,7 @@ from app.schemas.collection import (
     SpatialQualityIssueRead,
     SubmissionRead,
     SubmissionCreate,
+    SubmissionHistoryRead,
     SubmissionRepeatRowRead,
     SubmissionReviewAction,
     SubmissionResponsesUpdate,
@@ -4424,8 +4425,16 @@ class SubmissionService:
             },
         }
 
-    async def history(self, *, organization_id: UUID, submission_id: UUID) -> list[object]:
-        return list(await self.submissions.history(organization_id=organization_id, submission_id=submission_id))
+    async def history(self, *, organization_id: UUID, submission_id: UUID) -> list[SubmissionHistoryRead]:
+        records = list(await self.submissions.history(organization_id=organization_id, submission_id=submission_id))
+        actor_ids = {record.actor_user_id for record in records if record.actor_user_id is not None}
+        actor_names = await self.submissions.user_names(user_ids=actor_ids)
+        return [
+            SubmissionHistoryRead.model_validate(record, from_attributes=True).model_copy(
+                update={"actor_name": actor_names.get(record.actor_user_id)}
+            )
+            for record in records
+        ]
 
     async def sync_batch(
         self,
