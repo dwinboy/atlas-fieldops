@@ -504,6 +504,12 @@ async def test_confirmed_imported_form_row_creates_linked_beneficiary() -> None:
         assert imported_row.reviewed_by_name == "Manager"
         assert imported_row.approved_by_name == "Manager"
 
+        # The recorded status timeline must surface the actor's name, not a UUID.
+        timeline = await service.history(organization_id=organization_id, submission_id=submission_id)
+        assert timeline, "status history should be recorded"
+        assert timeline[-1].to_status == "approved"
+        assert timeline[-1].actor_name == "Manager"
+
 
 @pytest.mark.asyncio
 async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after_approval() -> None:

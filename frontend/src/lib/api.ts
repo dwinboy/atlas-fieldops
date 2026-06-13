@@ -3797,6 +3797,20 @@ export async function listSubmissionCorrections(token: string, submissionId: str
   return request<CorrectionLogEntryRead[]>(`/submissions/${submissionId}/corrections`, { token });
 }
 
+export type SubmissionHistoryRead = {
+  id: string;
+  from_status: string | null;
+  to_status: string;
+  actor_user_id: string;
+  actor_name: string | null;
+  comment: string | null;
+  created_at: string;
+};
+
+export async function listSubmissionHistory(token: string, submissionId: string): Promise<SubmissionHistoryRead[]> {
+  return request<SubmissionHistoryRead[]>(`/submissions/${submissionId}/history`, { token });
+}
+
 export type SubmissionRepeatRowRead = {
   id: string;
   submission_id: string;
@@ -4518,6 +4532,7 @@ export const api = {
   listRoles,
   listSessionLogs,
   listSubmissionCorrections,
+  listSubmissionHistory,
   listSubmissionRepeatRows,
   listSubmissions,
   listTeams,
