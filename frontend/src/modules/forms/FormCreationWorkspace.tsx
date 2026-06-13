@@ -709,9 +709,9 @@ const startMethods: {
     icon: GitBranch,
   },
   {
-    description: "Create a shell now and import XLSForm or CSV columns later.",
+    description: "Upload a spreadsheet — the first row becomes your questions, ready to edit in the builder.",
     id: "import",
-    label: "Import XLSForm or CSV Later",
+    label: "Upload a Spreadsheet",
     icon: FileSpreadsheet,
   },
 ];
@@ -1364,7 +1364,7 @@ function inferFieldType(header: string, values: string[]): FieldType {
   return "text";
 }
 
-function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
+export function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
   const form = createEnterpriseDraftForm(setup, "import", []);
   const page = (form.pages ?? [])[0] ?? createPage("Page 1");
   const section = {
@@ -4838,6 +4838,7 @@ export function FormCreationWorkspace({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [importPreview, setImportPreview] = useState<string[] | null>(null);
   const [draftSaving, setDraftSaving] = useState(false);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -5768,6 +5769,27 @@ export function FormCreationWorkspace({
     if (selectedDuplicateFormId || !existingForms.length) return;
     setSelectedDuplicateFormId(existingForms[0]?.id ?? "");
   }, [existingForms, selectedDuplicateFormId]);
+
+  async function handleImportFileSelected(file: File | null): Promise<void> {
+    setImportFile(file);
+    setImportMessage("");
+    setImportPreview(null);
+    if (!file) return;
+    setImportBusy(true);
+    try {
+      const rows = await readSpreadsheetRows(file);
+      const headers = (rows[0] ?? []).map((header) => header.trim()).filter(Boolean);
+      if (!headers.length) {
+        setImportMessage("The spreadsheet must have question names in the first row.");
+      } else {
+        setImportPreview(headers);
+        setImportMessage(`Detected ${headers.length} question(s) from the first row.`);
+      }
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The spreadsheet could not be read.");
+    }
+    setImportBusy(false);
+  }
 
   async function createDraftAndOpenBuilder(method = startMethod): Promise<void> {
     setImportMessage("");
@@ -6839,10 +6861,7 @@ export function FormCreationWorkspace({
                 <input
                   accept=".csv,.tsv,.txt,.xlsx"
                   className="hidden"
-                  onChange={(event) => {
-                    setImportFile(event.target.files?.[0] ?? null);
-                    setImportMessage("");
-                  }}
+                  onChange={(event) => void handleImportFileSelected(event.target.files?.[0] ?? null)}
                   ref={importFileRef}
                   type="file"
                 />
@@ -6852,12 +6871,37 @@ export function FormCreationWorkspace({
                   variant="secondary"
                 >
                   <UploadCloud aria-hidden="true" />
-                  Choose file
+                  {importFile ? "Choose another file" : "Choose file"}
                 </Button>
               </div>
               {importMessage ? (
                 <div className="mt-3 rounded-lg border bg-panel px-3 py-2 text-sm text-muted-foreground">
                   {importMessage}
+                </div>
+              ) : null}
+              {importPreview?.length ? (
+                <div className="mt-3 rounded-lg border bg-panel p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Questions detected from the first row
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {importPreview.slice(0, 24).map((header, index) => (
+                      <span
+                        className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium"
+                        key={`${header}-${index}`}
+                      >
+                        {header}
+                      </span>
+                    ))}
+                    {importPreview.length > 24 ? (
+                      <span className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                        +{importPreview.length - 24} more
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Continue to the builder to edit labels, types, options, and required status.
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -6870,7 +6914,8 @@ export function FormCreationWorkspace({
               disabled={
                 importBusy ||
                 (startMethod === "duplicate" && !selectedDuplicateFormId) ||
-                (startMethod === "template" && !selectedTemplateId)
+                (startMethod === "template" && !selectedTemplateId) ||
+                (startMethod === "import" && !importFile)
               }
               onClick={() => void createDraftAndOpenBuilder()}
               variant="primary"
