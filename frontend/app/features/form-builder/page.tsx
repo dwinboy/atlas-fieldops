@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 
-import { ComingSoonNotice, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { formBuilderContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Form Builder",
-  description: "Design mobile-ready survey forms backwards from your indicators with sections, logic, validation, and versioning.",
+  title: "Form Builder for M&E Surveys",
+  description:
+    "Design mobile-ready data collection forms with sections, repeat groups, skip logic, validation, and versioning — backwards from your indicators.",
   path: "/features/form-builder",
 });
 
-export default function FormBuilderPage() {
+export default function Page() {
   return (
     <MarketingShell>
-      <main>
-        <SimplePageHero
-          eyebrow="Features"
-          title="Design forms backwards from your indicators"
-          text="Build mobile-ready forms with sections, repeat groups, logic, validation, and versioning."
-        />
-        <ComingSoonNotice backHref="/features" backLabel="Back to Features" />
-      </main>
+      <FeatureDetailPage content={formBuilderContent} />
     </MarketingShell>
   );
 }

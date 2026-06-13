@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 
-import { ComingSoonNotice, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { indicatorFrameworksContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
-  title: "Indicator Frameworks",
-  description: "Link every submission to your results framework with logframes, baselines, targets, and disaggregation.",
+  title: "Indicator Frameworks and Results Tracking",
+  description:
+    "Define indicators with baselines, targets, and formulas, and let approved field data compute achievement automatically.",
   path: "/features/indicator-frameworks",
 });
 
-export default function IndicatorFrameworksPage() {
+export default function Page() {
   return (
     <MarketingShell>
-      <main>
-        <SimplePageHero
-          eyebrow="Features"
-          title="Link every submission to your results framework"
-          text="Manage logframes, baselines, targets, calculations, and disaggregation in one place."
-        />
-        <ComingSoonNotice backHref="/features" backLabel="Back to Features" />
-      </main>
+      <FeatureDetailPage content={indicatorFrameworksContent} />
     </MarketingShell>
   );
 }

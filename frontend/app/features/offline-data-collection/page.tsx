@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 
-import { ComingSoonNotice, SimplePageHero } from "@/components/marketing/MarketingBlocks";
+import { FeatureDetailPage } from "@/components/marketing/MarketingBlocks";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { offlineDataCollectionContent } from "@/lib/marketing/feature-content";
 import { marketingMetadata } from "@/lib/marketing/seo";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Offline Data Collection",
-  description: "Collect data anywhere and sync automatically when your team is back online, with GPS, media, and timestamps preserved.",
+  description:
+    "Capture field data fully offline on Android — forms, GPS, photos, consent — and sync safely when a connection returns, with no lost work.",
   path: "/features/offline-data-collection",
 });
 
-export default function OfflineDataCollectionPage() {
+export default function Page() {
   return (
     <MarketingShell>
-      <main>
-        <SimplePageHero
-          eyebrow="Features"
-          title="Collect anywhere, sync when connected"
-          text="Field teams keep working offline while GPS, media, and timestamps are preserved until sync."
-        />
-        <ComingSoonNotice backHref="/features" backLabel="Back to Features" />
-      </main>
+      <FeatureDetailPage content={offlineDataCollectionContent} />
     </MarketingShell>
   );
 }
