@@ -9,6 +9,7 @@ import {
   computeMappingSummary,
   filterFeaturesBySection,
   maskCoordinate,
+  toGeoJson,
   validateGpsPoint,
 } from "@/modules/mapping/utils";
 
@@ -44,5 +45,26 @@ describe("Mapping module helpers", () => {
     expect(validateGpsPoint({ accuracy: 35, insideBoundary: true })).toBe("Warning");
     expect(validateGpsPoint({ accuracy: 8, insideBoundary: true, manual: true })).toBe("Warning");
     expect(validateGpsPoint({ accuracy: 8, insideBoundary: false })).toBe("Failed");
+  });
+
+  it("exports map features as standard GeoJSON with [lng, lat] order and masks sensitive points", () => {
+    const geojson = JSON.parse(toGeoJson(previewMapFeatures, "Internal"));
+    expect(geojson.type).toBe("FeatureCollection");
+    expect(geojson.features).toHaveLength(previewMapFeatures.length);
+    const first = geojson.features[0];
+    expect(first.type).toBe("Feature");
+    expect(first.geometry.type).toBe("Point");
+    // GeoJSON coordinate order is [longitude, latitude].
+    expect(first.geometry.coordinates).toEqual([previewMapFeatures[0].longitude, previewMapFeatures[0].latitude]);
+    expect(first.properties.category).toBe(previewMapFeatures[0].category);
+
+    // Sensitive features are rounded (masked) when visibility is aggregated.
+    const sensitive = previewMapFeatures.find((feature) => feature.sensitive);
+    if (sensitive) {
+      const aggregated = JSON.parse(toGeoJson([sensitive], "Aggregated"));
+      const [lng, lat] = aggregated.features[0].geometry.coordinates;
+      expect(lat).toBe(Math.round(sensitive.latitude * 100) / 100);
+      expect(lng).toBe(Math.round(sensitive.longitude * 100) / 100);
+    }
   });
 });

@@ -6,6 +6,7 @@ import {
   CircleDot,
   Download,
   Eye,
+  EyeOff,
   FileWarning,
   Filter,
   Layers,
@@ -73,6 +74,7 @@ import {
   severityTone,
   statusTone,
   toCsv,
+  toGeoJson,
   validateGpsPoint,
   visibilityTone,
   type BoundingBox,
@@ -87,9 +89,11 @@ type MappingModuleProps = {
 type MapViewerProps = {
   activeSection: MappingSection;
   areaBounds: BoundingBox | null;
+  availableCategories: string[];
   basemap: MapBasemap;
   drawMode: boolean;
   features: MapFeatureRecord[];
+  hiddenCategories: string[];
   layers: MapLayerRecord[];
   mapQuery: string;
   onAreaBoundsChange: (bounds: BoundingBox | null) => void;
@@ -97,6 +101,7 @@ type MapViewerProps = {
   onDrawModeChange: (active: boolean) => void;
   onFeatureSelect: (feature: MapFeatureRecord) => void;
   onMapQueryChange: (query: string) => void;
+  onToggleCategory: (category: string) => void;
   privacyVisibility: LayerVisibility;
   sectionInfo: { label: string; description: string };
   selectedFeature: MapFeatureRecord | null;
@@ -133,6 +138,17 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
+function downloadTextFile(filename: string, contents: string, mimeType: string): void {
+  if (!contents) return;
+  const blob = new Blob([contents], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function MappingModule({ principal, token }: MappingModuleProps) {
   const [activeSection, setActiveSection] = useState<MappingSection>("dashboard");
   const [basemap, setBasemap] = useState<MapBasemap>("Light");
@@ -141,6 +157,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const [mapQuery, setMapQuery] = useState("");
   const [drawMode, setDrawMode] = useState(false);
   const [areaBounds, setAreaBounds] = useState<BoundingBox | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
   const preserveFeatureIdRef = useRef<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pendingMapFeatureId = useWorkspaceStore((state) => state.pendingMapFeatureId);
@@ -298,6 +315,22 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     [areaBounds, searchedFeatures],
   );
 
+  // Feature-category layer toggles: which kinds of points (Submissions,
+  // entities, etc.) are present, and which the user has hidden on the map.
+  const availableCategories = useMemo(
+    () => Array.from(new Set(visibleFeatures.map((feature) => feature.category))).sort(),
+    [visibleFeatures],
+  );
+  const shownFeatures = useMemo(
+    () => spatiallyFilteredFeatures.filter((feature) => !hiddenCategories.includes(feature.category)),
+    [hiddenCategories, spatiallyFilteredFeatures],
+  );
+  function toggleCategory(category: string): void {
+    setHiddenCategories((current) =>
+      current.includes(category) ? current.filter((item) => item !== category) : [...current, category],
+    );
+  }
+
   const searchedLayers = useMemo(() => {
     const query = mapQuery.trim().toLowerCase();
     if (!query) return mapLayers;
@@ -358,22 +391,32 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     setDrawMode(false);
   }
 
-  function exportCurrentView(): void {
-    downloadCsv(
-      "atlas-mapping-view.csv",
-      visibleFeatures.map((feature) => ({
-        category: feature.category,
-        gpsAccuracy: feature.gpsAccuracy,
-        label: feature.label,
-        latitude: maskCoordinate(feature.latitude, privacyVisibility),
-        location: feature.location,
-        longitude: maskCoordinate(feature.longitude, privacyVisibility),
-        project: feature.project,
-        qualityScore: feature.qualityScore,
-        status: feature.status,
-      })),
+  function exportCurrentView(format: "csv" | "geojson"): void {
+    if (!shownFeatures.length) {
+      setMapResult("Nothing to export — no map features match the current view, search, area, or layer filters.");
+      return;
+    }
+    if (format === "geojson") {
+      downloadTextFile("atlas-mapping-view.geojson", toGeoJson(shownFeatures, privacyVisibility), "application/geo+json");
+    } else {
+      downloadCsv(
+        "atlas-mapping-view.csv",
+        shownFeatures.map((feature) => ({
+          category: feature.category,
+          gpsAccuracy: feature.gpsAccuracy,
+          label: feature.label,
+          latitude: maskCoordinate(feature.latitude, privacyVisibility),
+          location: feature.location,
+          longitude: maskCoordinate(feature.longitude, privacyVisibility),
+          project: feature.project,
+          qualityScore: feature.qualityScore,
+          status: feature.status,
+        })),
+      );
+    }
+    setMapResult(
+      `Exported ${shownFeatures.length} visible feature(s) as ${format.toUpperCase()}. Export access should be audited by Governance for production deployments.`,
     );
-    setMapResult("Map export prepared. Export access should be audited by Governance for production deployments.");
   }
 
   return (
@@ -402,9 +445,13 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
               <Upload aria-hidden="true" />
               Upload layer
             </Button>
-            <Button onClick={exportCurrentView} variant="secondary">
+            <Button onClick={() => exportCurrentView("csv")} variant="secondary">
               <Download aria-hidden="true" />
-              Export map
+              Export CSV
+            </Button>
+            <Button onClick={() => exportCurrentView("geojson")} variant="secondary">
+              <Download aria-hidden="true" />
+              Export GeoJSON
             </Button>
           </div>
         </div>
@@ -458,9 +505,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           <EnterpriseMapViewer
             activeSection={activeSection}
             areaBounds={areaBounds}
+            availableCategories={availableCategories}
             basemap={basemap}
             drawMode={drawMode}
-            features={spatiallyFilteredFeatures}
+            features={shownFeatures}
+            hiddenCategories={hiddenCategories}
             layers={searchedLayers}
             mapQuery={mapQuery}
             onAreaBoundsChange={setAreaBounds}
@@ -468,6 +517,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onDrawModeChange={setDrawMode}
             onFeatureSelect={setSelectedFeature}
             onMapQueryChange={setMapQuery}
+            onToggleCategory={toggleCategory}
             privacyVisibility={privacyVisibility}
             sectionInfo={activeInfo}
             selectedFeature={selectedFeature}
@@ -478,7 +528,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             boundaries={boundaries}
             coverage={coverage}
             indicatorGeography={indicatorGeography}
-            mapFeatures={spatiallyFilteredFeatures}
+            mapFeatures={shownFeatures}
             mapLayers={mapLayers}
             projectDataCoverage={projectDataCoverage}
             onOpenDataQuality={() => setActiveView("dataQuality")}
@@ -591,11 +641,12 @@ function MappingDashboard({
 }
 
 function EnterpriseMapViewer({
-  activeSection,
   areaBounds,
+  availableCategories,
   basemap,
   drawMode,
   features,
+  hiddenCategories,
   layers,
   mapQuery,
   onAreaBoundsChange,
@@ -603,6 +654,7 @@ function EnterpriseMapViewer({
   onDrawModeChange,
   onFeatureSelect,
   onMapQueryChange,
+  onToggleCategory,
   privacyVisibility,
   sectionInfo,
   selectedFeature,
@@ -638,7 +690,39 @@ function EnterpriseMapViewer({
           </div>
           <Layers aria-hidden="true" className="text-primary" size={18} />
         </div>
+        {availableCategories.length ? (
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Feature layers</p>
+            <div className="mt-2 space-y-1.5">
+              {availableCategories.map((category) => {
+                const hidden = hiddenCategories.includes(category);
+                const count = features.filter((feature) => feature.category === category).length;
+                return (
+                  <button
+                    aria-pressed={!hidden}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition",
+                      hidden ? "bg-muted/30 text-muted-foreground" : "bg-background/70 hover:border-primary/30",
+                    )}
+                    key={category}
+                    onClick={() => onToggleCategory(category)}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2">
+                      {hidden ? <EyeOff aria-hidden="true" size={14} /> : <Eye aria-hidden="true" size={14} />}
+                      {category}
+                    </span>
+                    <Badge tone={hidden ? "neutral" : "accent"}>{hidden ? "Hidden" : count}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4 space-y-2">
+          {layers.length ? (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Uploaded layers</p>
+          ) : null}
           {layers.map((layer) => (
             <button className="w-full rounded-xl border bg-background/70 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5" key={layer.id} onClick={() => setMetadataLayer(layer)} type="button">
               <div className="flex items-start justify-between gap-2">
