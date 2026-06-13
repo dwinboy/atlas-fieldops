@@ -227,7 +227,7 @@ async def get_form_schema(
     "/{form_id}/data-import",
     response_model=FormDataImportResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Import spreadsheet rows into a draft or published form",
+    summary="Import spreadsheet rows into a published form",
 )
 async def import_form_data(
     form_id: UUID,
@@ -247,6 +247,9 @@ async def import_form_data(
     except CollectionNotFoundError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidWorkflowTransitionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

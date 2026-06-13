@@ -2157,6 +2157,8 @@ class SubmissionService:
         form = await self.forms.get(organization_id=organization_id, form_id=form_id)
         if form is None:
             raise CollectionNotFoundError("Form not found")
+        if form.status != "published":
+            raise InvalidWorkflowTransitionError("Data can only be uploaded to published forms. Publish this form before uploading records.")
         form_version = await self.forms.get_current_version(organization_id=organization_id, form_id=form_id)
         if form_version is None:
             raise CollectionNotFoundError("Form version not found")
