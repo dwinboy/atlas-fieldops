@@ -133,11 +133,15 @@ const defaultProjectDraft: ProjectCreate = {
       setupMode: "Configure later",
     },
     program: {
+      budgetAmount: "",
+      budgetCurrency: "USD",
       expectedOutcomes: "",
       expectedOutputs: "",
       fundingSource: "",
+      grantReference: "",
       objective: "",
       resultAreas: "",
+      targetBeneficiaries: "",
     },
     team: {
       dataManager: "",
@@ -696,6 +700,15 @@ function projectReadiness(draft: ProjectCreate): {
       status: typeof program.objective === "string" && program.objective.trim()
         ? "passed"
         : "warning",
+      targetStep: 1,
+    },
+    {
+      label: "Budget and funding are recorded",
+      status:
+        (typeof program.budgetAmount === "string" && program.budgetAmount.trim()) ||
+        (typeof program.fundingSource === "string" && program.fundingSource.trim())
+          ? "passed"
+          : "warning",
       targetStep: 1,
     },
     {
@@ -3540,6 +3553,46 @@ function ProjectWizardStepContent({
             }
           />
           <Input
+            placeholder="Grant / award reference"
+            value={settingText(draft, "program", "grantReference")}
+            onChange={(event) =>
+              updateSettings("program", { grantReference: event.target.value })
+            }
+          />
+          <div className="grid grid-cols-[1fr_120px] gap-2">
+            <Input
+              inputMode="decimal"
+              placeholder="Total budget"
+              value={settingText(draft, "program", "budgetAmount")}
+              onChange={(event) =>
+                updateSettings("program", {
+                  budgetAmount: event.target.value.replace(/[^0-9.]/g, ""),
+                })
+              }
+            />
+            <Select
+              aria-label="Budget currency"
+              value={settingText(draft, "program", "budgetCurrency", "USD")}
+              onChange={(event) =>
+                updateSettings("program", { budgetCurrency: event.target.value })
+              }
+            >
+              {["USD", "EUR", "GBP", "XAF", "XOF", "KES", "NGN", "GHS", "ETB", "UGX", "TZS", "RWF", "ZAR"].map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </Select>
+          </div>
+          <Input
+            inputMode="numeric"
+            placeholder="Target beneficiaries (reach)"
+            value={settingText(draft, "program", "targetBeneficiaries")}
+            onChange={(event) =>
+              updateSettings("program", {
+                targetBeneficiaries: event.target.value.replace(/[^0-9]/g, ""),
+              })
+            }
+          />
+          <Input
             placeholder="Donor"
             value={draft.donor ?? ""}
             onChange={(event) => onChange({ ...draft, donor: event.target.value })}
@@ -4027,6 +4080,24 @@ function ProjectWizardStepContent({
                 ? "success"
                 : "warning"
             }
+          />
+          <Signal
+            label="Budget"
+            value={
+              settingText(draft, "program", "budgetAmount")
+                ? `${settingText(draft, "program", "budgetCurrency", "USD")} ${Number(settingText(draft, "program", "budgetAmount")).toLocaleString()}`
+                : "Not set"
+            }
+            tone={settingText(draft, "program", "budgetAmount") ? "success" : "neutral"}
+          />
+          <Signal
+            label="Target reach"
+            value={
+              settingText(draft, "program", "targetBeneficiaries")
+                ? `${Number(settingText(draft, "program", "targetBeneficiaries")).toLocaleString()} ${settingText(draft, "beneficiary", "primaryEntityPlural") || "beneficiaries"}`
+                : "Not set"
+            }
+            tone={settingText(draft, "program", "targetBeneficiaries") ? "success" : "neutral"}
           />
         </div>
         <ReadinessChecklist checks={readiness.checks} onSelectStep={setStep} />
