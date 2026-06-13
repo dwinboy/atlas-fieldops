@@ -324,19 +324,27 @@ const formTypes = [
   "Custom",
 ];
 
-const sectorFormTypeOptions: Record<string, string[]> = {
+export const sectorFormTypeOptions: Record<string, string[]> = {
   agriculture: ["Farmer Registration", "Farm Assessment", "Crop Monitoring", "Yield Survey", "Training Attendance", "Input Distribution", "Custom"],
   assets: ["Asset Registration", "Condition Check", "Maintenance Visit", "Asset Transfer", "Loss Report", "Custom"],
   audits: ["Audit Checklist", "Compliance Review", "Finding Report", "Corrective Action Follow-up", "Risk Assessment", "Custom"],
   education: ["School Registration", "Classroom Observation", "Attendance Check", "Learning Assessment", "Teacher Visit", "Custom"],
+  environment: ["Site Registration", "Baseline Environmental Assessment", "Tree Planting Record", "Conservation Activity", "Climate Adaptation Survey", "Endline Assessment", "Custom"],
+  governance: ["Citizen Registration", "Service Delivery Scorecard", "Public Facility Assessment", "Civic Education Attendance", "Community Feedback", "Endline Survey", "Custom"],
   health: ["Facility Assessment", "Patient Intake", "Service Visit", "Referral Follow-up", "Quality Checklist", "Custom"],
   hr: ["Employee Profile", "Attendance Check", "Training Record", "Performance Review", "Asset Assignment", "Custom"],
+  humanitarian: ["Rapid Household Registration", "Vulnerability Assessment", "Distribution Verification", "Complaint Intake", "Incident Report", "Post-Distribution Monitoring", "Custom"],
   inspections: ["Site Inspection", "Safety Checklist", "Defect Report", "Corrective Action Follow-up", "Compliance Visit", "Custom"],
   inventory: ["Stock Count", "Stock Receipt", "Stock Issue", "Supplier Delivery", "Variance Report", "Custom"],
+  livelihoods: ["Participant Registration", "Baseline Income Survey", "Cash Transfer Distribution", "Training Attendance", "Savings Group Monitoring", "Endline Income Survey", "Custom"],
   logistics: ["Delivery Confirmation", "Route Check", "Vehicle Inspection", "Warehouse Count", "Incident Report", "Custom"],
   manufacturing: ["Production Batch", "Quality Check", "Machine Inspection", "Downtime Report", "Waste Record", "Custom"],
+  nutrition: ["Child Enrollment", "Anthropometric Screening", "MUAC Screening", "Supplementary Feeding Distribution", "IYCF Counselling", "Discharge Survey", "Custom"],
+  protection: ["Case Intake", "Needs Assessment", "Referral Form", "Psychosocial Support Session", "Case Follow-up", "Case Closure", "Custom"],
+  research: ["Respondent Listing", "Household Roster", "Baseline Questionnaire", "Follow-up Questionnaire", "Endline Questionnaire", "Consent Form", "Custom"],
   retail: ["Product Registration", "Store Stock Count", "Price Check", "Sales Visit", "Supplier Delivery", "Custom"],
   sales: ["Lead Capture", "Customer Visit", "Opportunity Update", "Order Capture", "Customer Feedback", "Custom"],
+  wash: ["Household WASH Survey", "Water Point Assessment", "Hygiene Session Attendance", "Infrastructure Verification", "Sanitation Monitoring", "Custom"],
 };
 
 const projectOptions = [

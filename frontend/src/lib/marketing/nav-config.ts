@@ -33,12 +33,12 @@ export const NAV_CONFIG: NavMenu[] = [
         links: [
           {
             title: "Product Overview",
-            description: "One platform for the full M&E data lifecycle",
+            description: "One platform for field data, operations, and reporting",
             href: "/features",
           },
           {
             title: "How It Works",
-            description: "From form design to indicator reporting",
+            description: "From sector setup to mobile collection and dashboards",
             href: "/how-it-works",
           },
           {
@@ -53,7 +53,7 @@ export const NAV_CONFIG: NavMenu[] = [
         links: [
           {
             title: "Form Builder",
-            description: "Design forms backwards from your indicators",
+            description: "Create sector-ready forms, checklists, and inspections",
             href: "/features/form-builder",
           },
           {
@@ -63,7 +63,7 @@ export const NAV_CONFIG: NavMenu[] = [
           },
           {
             title: "Indicator Frameworks",
-            description: "Link every submission to your results framework",
+            description: "Track KPIs, metrics, targets, and results",
             href: "/features/indicator-frameworks",
           },
           {
@@ -95,8 +95,8 @@ export const NAV_CONFIG: NavMenu[] = [
       },
     ],
     ctaCard: {
-      heading: "Better M&E starts with better data",
-      text: "See how Atlas FieldOps connects collection, quality, and reporting in one workspace.",
+      heading: "Better operations start with trusted field data",
+      text: "See how Atlas FieldOps connects sector setup, mobile collection, quality review, and reporting in one workspace.",
       cta: { label: "Request a Demo", href: "/demo" },
     },
   },
@@ -149,8 +149,18 @@ export const NAV_CONFIG: NavMenu[] = [
           },
           {
             title: "Humanitarian & NGOs",
-            description: "Manage entity registries, distributions, and donor reporting",
+            description: "Manage entity registries, distributions, and reporting",
             href: "/solutions/ngos",
+          },
+          {
+            title: "Retail & Inventory",
+            description: "Track products, stores, stock counts, suppliers, and assets",
+            href: "/solutions/retail",
+          },
+          {
+            title: "Logistics & Inspections",
+            description: "Manage routes, deliveries, proof, audits, and field checks",
+            href: "/solutions/logistics",
           },
         ],
       },
@@ -175,7 +185,7 @@ export const NAV_CONFIG: NavMenu[] = [
         links: [
           {
             title: "Blog",
-            description: "Insights on M&E practice, data quality, and field operations",
+            description: "Insights on data collection, data quality, and operations",
             href: "/blog",
           },
           {

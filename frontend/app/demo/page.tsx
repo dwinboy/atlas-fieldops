@@ -13,10 +13,10 @@ export const metadata: Metadata = marketingMetadata({
 });
 
 const demoModules = [
-  ["Demo Project", "Rice Resilience Program with locations, targets, teams, and donor reporting readiness."],
-  ["Demo Entities", "Farmers, households, groups, and facilities with longitudinal records and duplicate checks."],
-  ["Demo Forms", "Registration, baseline, monitoring visit, training attendance, and endline forms."],
-  ["Demo Dashboards", "Operational KPIs, data quality alerts, indicator progress, maps, and review queues."],
+  ["Demo Projects", "Sector-ready examples for agriculture, health, education, retail, logistics, inventory, audits, and custom operations."],
+  ["Demo Entities", "Farmers, households, facilities, stores, products, assets, shipments, employees, and custom records with duplicate checks."],
+  ["Demo Forms", "Registration, surveys, inspections, stock counts, delivery confirmations, training attendance, and mobile checklists."],
+  ["Demo Dashboards", "Operational KPIs, data quality alerts, approval queues, GPS evidence, maps, and reporting readiness."],
 ];
 
 export default function DemoPage() {
@@ -31,7 +31,7 @@ export default function DemoPage() {
               Try the platform with safe sample data.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-[#5b6a65]">
-              The demo workspace shows how a real M&E team can create a project, build forms, register entities, review submissions, monitor quality, and report impact without exposing customer data.
+              The demo workspace shows how a real operations team can create a sector project, build forms, register entities, review submissions, monitor quality, map coverage, and report results without exposing customer data.
             </p>
             <div className="mt-7 flex flex-wrap justify-center gap-3">
               <Link className="inline-flex h-11 items-center rounded-md bg-[#0d9488] px-5 text-sm font-semibold text-white hover:bg-[#0b7a70]" href="/login">

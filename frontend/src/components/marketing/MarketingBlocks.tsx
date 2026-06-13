@@ -190,22 +190,40 @@ export function IndustryGrid() {
       label: "Service monitoring",
       gradient: "linear-gradient(135deg, #e5e7eb 0%, #fafaf8 48%, #cbd5e1 100%)",
       metric: "64 districts"
+    },
+    {
+      label: "Inventory control",
+      gradient: "linear-gradient(135deg, #dcfce7 0%, #fafaf8 48%, #bbf7d0 100%)",
+      metric: "12k items"
+    },
+    {
+      label: "Delivery proof",
+      gradient: "linear-gradient(135deg, #ede9fe 0%, #fafaf8 48%, #bfdbfe 100%)",
+      metric: "98% verified"
+    },
+    {
+      label: "Audit evidence",
+      gradient: "linear-gradient(135deg, #fee2e2 0%, #fafaf8 48%, #fef3c7 100%)",
+      metric: "214 findings"
     }
   ];
 
   return (
     <div className="mx-auto mt-12 grid max-w-7xl gap-5 px-4 sm:px-6 md:grid-cols-2 lg:px-8">
       {industries.map((industry, index) => (
-        <article className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm" key={industry.title}>
+        <article className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg" key={industry.title}>
+          {(() => {
+            const visual = visuals[index % visuals.length];
+            return (
           <div
             aria-label={`${industry.title} operational preview`}
             className="relative h-56 w-full overflow-hidden"
             role="img"
-            style={{ background: visuals[index]?.gradient }}
+            style={{ background: visual.gradient }}
           >
             <div className="absolute inset-x-6 top-6 flex items-center justify-between rounded-xl border border-black/10 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488]">{visuals[index]?.label}</span>
-              <span className="rounded-full bg-[#0d9488]/10 px-3 py-1 text-xs font-semibold text-[#0d9488]">{visuals[index]?.metric}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488]">{visual.label}</span>
+              <span className="rounded-full bg-[#0d9488]/10 px-3 py-1 text-xs font-semibold text-[#0d9488]">{visual.metric}</span>
             </div>
             <div className="absolute bottom-6 left-6 right-6 grid grid-cols-[1fr_120px] gap-4">
               <div className="rounded-xl border border-black/10 bg-white/82 p-4 shadow-sm backdrop-blur">
@@ -227,6 +245,8 @@ export function IndustryGrid() {
               </div>
             </div>
           </div>
+            );
+          })()}
           <div className="p-6">
             <h3 className="text-xl font-semibold">{industry.title}</h3>
             <p className="mt-2 text-sm leading-6 text-[#5b6a65]">{industry.text}</p>
@@ -246,7 +266,7 @@ export function CTASection() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#5eead4]">Ready for field operations</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Run connected programs with trusted data, even offline.</h2>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70">
-              See how Atlas FieldOps can support your field teams, M&E workflows, entity operations, geospatial intelligence, and donor reporting.
+              See how Atlas FieldOps can support your field teams, sector workflows, entity operations, geospatial intelligence, KPI tracking, and governed reporting.
             </p>
           </div>
           <div className="flex flex-wrap gap-3 lg:justify-end">

@@ -5,9 +5,11 @@ import {
   createDraftFromSpreadsheetRows,
   createEditableDraftFromListItem,
   createEnterpriseDraftForm,
+  sectorFormTypeOptions,
   validateFormForPublish,
   type FormSetupDraft,
 } from "@/modules/forms/FormCreationWorkspace";
+import { SECTOR_TERMINOLOGY } from "@/lib/sectorTerminology";
 
 const setup: FormSetupDraft = {
   collectionMethod: "web_mobile",
@@ -112,6 +114,23 @@ describe("enterprise form creation workspace", () => {
     expect(new Set(draft.fields.map((field) => field.variableName)).size).toBe(headers.length);
     expect(draft.sections).toHaveLength(1);
     expect(draft.fields.every((field) => field.sectionId === draft.sections[0].id)).toBe(true);
+  });
+
+  it("offers sector-specific form types for every supported sector", () => {
+    // Every non-custom sector the workspace can adapt to must have its own
+    // form-type options, otherwise that sector silently falls back to the
+    // generic M&E list — the gap that left humanitarian, nutrition, WASH, etc.
+    // without sector-aware form types.
+    const sectorsNeedingFormTypes = Object.keys(SECTOR_TERMINOLOGY).filter(
+      (sectorId) => sectorId !== "custom",
+    );
+    for (const sectorId of sectorsNeedingFormTypes) {
+      const options = sectorFormTypeOptions[sectorId];
+      expect(options, `missing form types for sector "${sectorId}"`).toBeDefined();
+      expect(options.length).toBeGreaterThan(1);
+      // "Custom" must always be offered as an escape hatch.
+      expect(options).toContain("Custom");
+    }
   });
 
   it("keeps every column when xlsx cells omit their reference attribute", () => {
