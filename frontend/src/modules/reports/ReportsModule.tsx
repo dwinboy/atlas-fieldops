@@ -32,11 +32,14 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
+  createReport,
   exportReportCsv,
   generateReport,
+  listProjects,
   listReports,
   type CurrentPrincipal,
   type DonorReportIndicatorMetric,
@@ -104,6 +107,24 @@ const visualizationIcons: Record<VisualizationType, LucideIcon> = {
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
+
+const REPORT_TYPE_OPTIONS = [
+  { value: "indicator", label: "Indicator progress" },
+  { value: "donor", label: "Donor package" },
+  { value: "beneficiary", label: "Entity / beneficiary summary" },
+  { value: "submission", label: "Submission summary" },
+  { value: "custom", label: "Custom" },
+];
+
+const emptyReportDraft = {
+  name: "",
+  donor: "",
+  reportType: "indicator",
+  projectId: "",
+  periodStart: "",
+  periodEnd: "",
+  summary: "",
+};
 
 function titleCase(value: string): string {
   return value
@@ -191,6 +212,8 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<ReportDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState(emptyReportDraft);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
@@ -200,6 +223,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const reportsQuery = useQuery({
     queryKey: ["reports-module", token],
     queryFn: () => listReports(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const projectsQuery = useQuery({
+    queryKey: ["reports-module", "projects", token],
+    queryFn: () => listProjects(token ?? ""),
     enabled: Boolean(token && !preview),
   });
 
@@ -220,6 +248,39 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       pushToast({ title: "Could not generate report", description, tone: "danger" });
     },
   });
+
+  const createReportMutation = useMutation({
+    mutationFn: () =>
+      createReport(token ?? "", {
+        name: createDraft.name.trim(),
+        donor: createDraft.donor.trim() || null,
+        report_type: createDraft.reportType,
+        project_id: createDraft.projectId || null,
+        period_start: createDraft.periodStart || null,
+        period_end: createDraft.periodEnd || null,
+        summary: createDraft.summary.trim() || null,
+      }),
+    onSuccess: async (report) => {
+      await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
+      setCreateOpen(false);
+      setCreateDraft(emptyReportDraft);
+      setActiveSection("standard");
+      pushToast({
+        title: "Report created",
+        description: `${report.name} is ready. Generate it to compute KPIs from approved submissions.`,
+        tone: "success",
+      });
+      generateReportMutation.mutate(report.id);
+    },
+    onError: (error) => {
+      pushToast({ title: "Could not create report", description: messageFromError(error), tone: "danger" });
+    },
+  });
+
+  function openCreateReport(): void {
+    setCreateDraft(emptyReportDraft);
+    setCreateOpen(true);
+  }
 
   async function exportReportData(report: ReportRecord): Promise<void> {
     try {
@@ -301,10 +362,13 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button disabled={preview} onClick={openCreateReport} type="button" variant="primary">
+              <FileText aria-hidden="true" /> Create report
+            </Button>
             <Button onClick={() => setActiveSection("custom")} type="button" variant="secondary">
               <Settings2 aria-hidden="true" /> Build custom report
             </Button>
-            <Button onClick={exportReports} type="button">
+            <Button onClick={exportReports} type="button" variant="secondary">
               <Download aria-hidden="true" /> Export index
             </Button>
           </div>
@@ -376,6 +440,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       {!selectedReport && activeSection === "standard" ? (
         <StandardReports
           generatingId={generateReportMutation.isPending ? generateReportMutation.variables ?? null : null}
+          onCreate={openCreateReport}
           onExportData={exportReportData}
           onGenerate={(report) => generateReportMutation.mutate(report.id)}
           onOpenReport={openReport}
@@ -447,6 +512,110 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           </div>
         </div>
       </section>
+
+      <Modal
+        contentClassName="max-w-2xl"
+        description="Create a report package from approved Atlas FieldOps evidence. After it is created, the platform computes KPIs from approved submissions and indicators automatically."
+        onOpenChange={setCreateOpen}
+        open={createOpen}
+        title="Create report"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium md:col-span-2">
+            Report name
+            <Input
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))}
+              placeholder="e.g. Q2 2026 Agricultural Resilience donor report"
+              value={createDraft.name}
+            />
+          </label>
+          <label className="text-sm font-medium">
+            Report type
+            <Select
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, reportType: event.target.value }))}
+              value={createDraft.reportType}
+            >
+              {REPORT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Donor (optional)
+            <Input
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, donor: event.target.value }))}
+              placeholder="Leave blank for an internal report"
+              value={createDraft.donor}
+            />
+          </label>
+          <label className="text-sm font-medium md:col-span-2">
+            Project scope
+            <Select
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, projectId: event.target.value }))}
+              value={createDraft.projectId}
+            >
+              <option value="">Organization-wide (all assigned projects)</option>
+              {(projectsQuery.data ?? []).map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Period start
+            <Input
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, periodStart: event.target.value }))}
+              type="date"
+              value={createDraft.periodStart}
+            />
+          </label>
+          <label className="text-sm font-medium">
+            Period end
+            <Input
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, periodEnd: event.target.value }))}
+              type="date"
+              value={createDraft.periodEnd}
+            />
+          </label>
+          <label className="text-sm font-medium md:col-span-2">
+            Summary (optional)
+            <Textarea
+              className="mt-2"
+              onChange={(event) => setCreateDraft((current) => ({ ...current, summary: event.target.value }))}
+              placeholder="Narrative context for reviewers and donors."
+              rows={3}
+              value={createDraft.summary}
+            />
+          </label>
+        </div>
+        {createDraft.periodStart && createDraft.periodEnd && createDraft.periodEnd < createDraft.periodStart ? (
+          <p className="mt-2 text-xs text-danger">Period end must be on or after period start.</p>
+        ) : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setCreateOpen(false)} type="button" variant="secondary">Cancel</Button>
+          <Button
+            disabled={
+              createReportMutation.isPending ||
+              createDraft.name.trim().length < 2 ||
+              Boolean(
+                createDraft.periodStart &&
+                  createDraft.periodEnd &&
+                  createDraft.periodEnd < createDraft.periodStart,
+              )
+            }
+            onClick={() => createReportMutation.mutate()}
+            type="button"
+            variant="primary"
+          >
+            {createReportMutation.isPending ? "Creating…" : "Create & generate"}
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -551,6 +720,7 @@ function ReportsDashboard({
 
 function StandardReports({
   generatingId,
+  onCreate,
   onExportData,
   onGenerate,
   onOpenReport,
@@ -560,6 +730,7 @@ function StandardReports({
   syncing,
 }: {
   generatingId: string | null;
+  onCreate: () => void;
   onExportData: (report: ReportRecord) => void;
   onGenerate: (report: ReportRecord) => void;
   onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
@@ -568,7 +739,6 @@ function StandardReports({
   reports: ReportRecord[];
   syncing: boolean;
 }) {
-  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<ReportRecord>[] = [
     {
       header: "Report",
@@ -628,12 +798,20 @@ function StandardReports({
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Creating new standard report templates is on our roadmap. Use Generate to refresh metrics on the existing reports below.", title: "Creating reports isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> New standard report</Button>}
+        action={<Button disabled={preview} onClick={onCreate} type="button"><Plus aria-hidden="true" /> New report</Button>}
         description="Prebuilt program, project, submission, indicator, data quality, coverage, field operations, beneficiary, and donor reports with run, export, schedule, and share actions."
         route="/reports/standard"
         title="Standard Reports"
       />
-      <DataTable columns={columns} emptyLabel="No standard reports yet" rows={reports} searchLabel="Search standard reports, categories, owners, projects" title={syncing ? "Standard reports syncing" : "Standard reports"} />
+      <DataTable
+        columns={columns}
+        emptyAction={preview ? undefined : { label: "Create report", onClick: onCreate }}
+        emptyDescription="Reports compute KPIs from approved submissions and indicators. Create one scoped to a project and period, then generate it."
+        emptyLabel="No standard reports yet"
+        rows={reports}
+        searchLabel="Search standard reports, categories, owners, projects"
+        title={syncing ? "Standard reports syncing" : "Standard reports"}
+      />
     </div>
   );
 }

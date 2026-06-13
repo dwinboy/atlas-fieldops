@@ -57,6 +57,7 @@ import {
   type MapLayerRecord,
   type MappingSection,
   type MappingSummary,
+  type ProjectDataCoverage,
   type ProjectExtent,
   type SpatialQualityIssue,
 } from "@/modules/mapping/data";
@@ -64,6 +65,7 @@ import {
   computeMappingSummary,
   computeProjectExtents,
   coverageTone,
+  deriveProjectDataCoverage,
   deriveQualityIssues,
   filterFeaturesBySection,
   isFeatureInBounds,
@@ -102,7 +104,7 @@ type MapViewerProps = {
 
 const basemaps: MapBasemap[] = ["Light", "Streets", "Terrain", "Satellite"];
 
-const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "data-quality-maps"];
+const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "coverage-maps", "data-quality-maps"];
 
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
   loading: () => (
@@ -244,6 +246,16 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     [preview, realMapFeatures],
   );
   const projectExtents = useMemo(() => computeProjectExtents(realMapFeatures), [realMapFeatures]);
+  const projectDataCoverage = useMemo<ProjectDataCoverage[]>(
+    () =>
+      preview
+        ? []
+        : deriveProjectDataCoverage(
+            realMapFeatures,
+            (projectsQuery.data ?? []).map((project) => project.name),
+          ),
+    [preview, projectsQuery.data, realMapFeatures],
+  );
   const restricted = isRestrictedMapViewer(principal);
   const privacyVisibility: LayerVisibility = restricted ? "Aggregated" : "Internal";
   const sections = useMemo(
@@ -468,6 +480,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             indicatorGeography={indicatorGeography}
             mapFeatures={spatiallyFilteredFeatures}
             mapLayers={mapLayers}
+            projectDataCoverage={projectDataCoverage}
             onOpenDataQuality={() => setActiveView("dataQuality")}
             onViewProjectExtent={viewProjectExtentOnMap}
             preview={preview}
@@ -778,6 +791,7 @@ function SectionContent({
   indicatorGeography,
   mapFeatures,
   mapLayers,
+  projectDataCoverage,
   onOpenDataQuality,
   onViewProjectExtent,
   preview,
@@ -794,6 +808,7 @@ function SectionContent({
   indicatorGeography: IndicatorGeography[];
   mapFeatures: MapFeatureRecord[];
   mapLayers: MapLayerRecord[];
+  projectDataCoverage: ProjectDataCoverage[];
   onOpenDataQuality: () => void;
   onViewProjectExtent: (extent: ProjectExtent) => void;
   preview: boolean;
@@ -806,7 +821,7 @@ function SectionContent({
 }) {
   if (activeSection === "layers") return <LayersTable layers={mapLayers} />;
   if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} />;
-  if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} />;
+  if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} preview={preview} projectDataCoverage={projectDataCoverage} />;
   if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} />;
   if (activeSection === "data-quality-maps") {
     return <SpatialQualityWorkspace issues={spatialIssues} onOpenDataQuality={onOpenDataQuality} />;
@@ -1029,7 +1044,63 @@ function BoundaryDetailsModal({ boundary, onOpenChange }: { boundary: BoundaryRe
   );
 }
 
-function CoverageWorkspace({ coverage }: { coverage: CoverageRecord[] }) {
+function CoverageWorkspace({
+  coverage,
+  preview,
+  projectDataCoverage,
+}: {
+  coverage: CoverageRecord[];
+  preview: boolean;
+  projectDataCoverage: ProjectDataCoverage[];
+}) {
+  if (!preview) {
+    const projectsWithData = projectDataCoverage.filter((item) => item.hasData);
+    const noDataProjects = projectDataCoverage.filter((item) => !item.hasData);
+    const totalRecords = projectDataCoverage.reduce((sum, item) => sum + item.recordCount, 0);
+    return (
+      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <Panel title="Data coverage by project">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Geographic evidence captured per project from approved submissions and located entities. Target-based coverage gaps populate once coverage targets and boundary geometry are configured.
+          </p>
+          {projectDataCoverage.length === 0 ? (
+            <EmptyMini label="No GPS-tagged submissions or entities yet. Coverage appears once field teams sync located records." />
+          ) : (
+            <div className="space-y-2">
+              {projectDataCoverage.map((item) => {
+                const share = totalRecords ? Math.round((item.recordCount / totalRecords) * 100) : 0;
+                return (
+                  <div className="rounded-xl border bg-background/70 p-3" key={item.project}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="min-w-0 truncate font-medium">{item.project}</p>
+                      <Badge tone={statusTone(item.status)}>
+                        {item.hasData ? `${item.recordCount} record(s)` : "No data"}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn("h-full rounded-full", item.hasData ? "bg-primary" : "bg-danger/40")}
+                        style={{ width: `${item.hasData ? Math.max(6, share) : 4}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {item.submissions} submission(s) · {item.beneficiaries} entity record(s){item.hasData ? ` · ${share}% of org records` : " · needs field GPS evidence"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+        <Panel title="Coverage outputs">
+          <Signal label="Projects with geographic data" value={`${projectsWithData.length} project(s)`} tone={projectsWithData.length ? "success" : "warning"} />
+          <Signal label="Projects with no GPS evidence" value={`${noDataProjects.length} project(s)`} tone={noDataProjects.length ? "danger" : "success"} />
+          <Signal label="Total located records" value={`${totalRecords.toLocaleString()} record(s)`} tone="accent" />
+          <Signal label="Target-based gap analysis" value="Requires coverage targets (roadmap)" tone="neutral" />
+        </Panel>
+      </section>
+    );
+  }
   return (
     <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
       <Panel title="Coverage Summary">

@@ -4085,6 +4085,22 @@ export async function listReports(token: string): Promise<DonorReportRead[]> {
   return request<DonorReportRead[]>("/operations/reports", { token });
 }
 
+export type DonorReportCreate = {
+  name: string;
+  project_id?: string | null;
+  survey_id?: string | null;
+  donor?: string | null;
+  report_type?: string;
+  period_start?: string | null;
+  period_end?: string | null;
+  summary?: string | null;
+  export_formats?: string[];
+};
+
+export async function createReport(token: string, payload: DonorReportCreate): Promise<DonorReportRead> {
+  return request<DonorReportRead>("/operations/reports", { method: "POST", token, bodyJson: payload });
+}
+
 export async function generateReport(token: string, reportId: string): Promise<DonorReportRead> {
   return request<DonorReportRead>(`/operations/reports/${reportId}/generate`, { method: "POST", token });
 }
