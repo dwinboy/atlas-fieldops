@@ -324,6 +324,212 @@ class PlatformOrganizationPlanUpdate(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class PlatformTenantLifecyclePolicyRead(BaseModel):
+    trial_days: int = 14
+    grace_days: int = 7
+    suspend_after_grace: bool = True
+    require_owner_before_activation: bool = True
+    require_project_before_activation: bool = False
+    default_plan: str = "Professional"
+    default_user_limit: int = 50
+    default_submission_limit: int = 100_000
+    onboarding_checklist: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class PlatformTenantLifecyclePolicyUpdate(BaseModel):
+    trial_days: int = Field(ge=0, le=365)
+    grace_days: int = Field(ge=0, le=180)
+    suspend_after_grace: bool = True
+    require_owner_before_activation: bool = True
+    require_project_before_activation: bool = False
+    default_plan: str = Field(min_length=2, max_length=80)
+    default_user_limit: int = Field(ge=1, le=1_000_000)
+    default_submission_limit: int = Field(ge=1, le=100_000_000)
+    onboarding_checklist: list[str] = Field(default_factory=list)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformCompliancePolicyRead(BaseModel):
+    default_data_region: str = "EU"
+    allowed_data_regions: list[str] = Field(default_factory=list)
+    pii_masking_default: bool = True
+    require_export_approval: bool = True
+    require_dpa_for_exports: bool = True
+    audit_retention_days: int = 3650
+    data_processing_contact: str = ""
+    subprocessors_public_url: str = ""
+    updated_at: datetime | None = None
+
+
+class PlatformCompliancePolicyUpdate(BaseModel):
+    default_data_region: str = Field(min_length=2, max_length=80)
+    allowed_data_regions: list[str] = Field(default_factory=list)
+    pii_masking_default: bool = True
+    require_export_approval: bool = True
+    require_dpa_for_exports: bool = True
+    audit_retention_days: int = Field(ge=30, le=36500)
+    data_processing_contact: str = Field(default="", max_length=200)
+    subprocessors_public_url: str = Field(default="", max_length=500)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformSlaPolicyRead(BaseModel):
+    uptime_target_percent: float = 99.5
+    critical_response_minutes: int = 60
+    high_response_hours: int = 4
+    normal_response_hours: int = 24
+    support_session_max_minutes: int = 60
+    escalation_email: str = ""
+    incident_manager: str = ""
+    status_page_url: str = ""
+    updated_at: datetime | None = None
+
+
+class PlatformSlaPolicyUpdate(BaseModel):
+    uptime_target_percent: float = Field(ge=90, le=100)
+    critical_response_minutes: int = Field(ge=5, le=1440)
+    high_response_hours: int = Field(ge=1, le=168)
+    normal_response_hours: int = Field(ge=1, le=720)
+    support_session_max_minutes: int = Field(ge=5, le=480)
+    escalation_email: str = Field(default="", max_length=200)
+    incident_manager: str = Field(default="", max_length=200)
+    status_page_url: str = Field(default="", max_length=500)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformQuotaPolicyRead(BaseModel):
+    warning_threshold_percent: int = 80
+    critical_threshold_percent: int = 95
+    api_rate_limit_per_minute: int = 600
+    storage_overage_action: str = "warn"
+    submission_overage_action: str = "warn"
+    notify_owners_on_warning: bool = True
+    notify_super_admins_on_critical: bool = True
+    updated_at: datetime | None = None
+
+
+class PlatformQuotaPolicyUpdate(BaseModel):
+    warning_threshold_percent: int = Field(ge=1, le=100)
+    critical_threshold_percent: int = Field(ge=1, le=100)
+    api_rate_limit_per_minute: int = Field(ge=1, le=1_000_000)
+    storage_overage_action: str = Field(min_length=2, max_length=40)
+    submission_overage_action: str = Field(min_length=2, max_length=40)
+    notify_owners_on_warning: bool = True
+    notify_super_admins_on_critical: bool = True
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformObservabilityPolicyRead(BaseModel):
+    health_check_interval_seconds: int = 60
+    api_error_rate_threshold_percent: float = 5.0
+    slow_request_threshold_ms: int = 2000
+    mobile_sync_failure_threshold_percent: float = 10.0
+    offline_device_alert_days: int = 7
+    alert_email: str = ""
+    pager_channel: str = ""
+    updated_at: datetime | None = None
+
+
+class PlatformObservabilityPolicyUpdate(BaseModel):
+    health_check_interval_seconds: int = Field(ge=10, le=3600)
+    api_error_rate_threshold_percent: float = Field(ge=0, le=100)
+    slow_request_threshold_ms: int = Field(ge=100, le=60000)
+    mobile_sync_failure_threshold_percent: float = Field(ge=0, le=100)
+    offline_device_alert_days: int = Field(ge=1, le=90)
+    alert_email: str = Field(default="", max_length=200)
+    pager_channel: str = Field(default="", max_length=200)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformRetentionPolicyRead(BaseModel):
+    tenant_data_retention_days: int = 2555
+    audit_log_retention_days: int = 3650
+    backup_retention_days: int = 90
+    export_retention_days: int = 30
+    inactive_tenant_archive_days: int = 180
+    anonymize_deleted_user_days: int = 30
+    legal_hold_enabled: bool = True
+    updated_at: datetime | None = None
+
+
+class PlatformRetentionPolicyUpdate(BaseModel):
+    tenant_data_retention_days: int = Field(ge=30, le=36500)
+    audit_log_retention_days: int = Field(ge=365, le=36500)
+    backup_retention_days: int = Field(ge=7, le=3650)
+    export_retention_days: int = Field(ge=1, le=3650)
+    inactive_tenant_archive_days: int = Field(ge=30, le=3650)
+    anonymize_deleted_user_days: int = Field(ge=1, le=3650)
+    legal_hold_enabled: bool = True
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformApiGovernancePolicyRead(BaseModel):
+    public_api_enabled: bool = True
+    api_key_expiry_days: int = 180
+    webhook_retry_attempts: int = 5
+    webhook_timeout_seconds: int = 15
+    secret_rotation_days: int = 90
+    require_scoped_api_keys: bool = True
+    audit_external_access: bool = True
+    updated_at: datetime | None = None
+
+
+class PlatformApiGovernancePolicyUpdate(BaseModel):
+    public_api_enabled: bool = True
+    api_key_expiry_days: int = Field(ge=1, le=3650)
+    webhook_retry_attempts: int = Field(ge=0, le=20)
+    webhook_timeout_seconds: int = Field(ge=1, le=120)
+    secret_rotation_days: int = Field(ge=1, le=3650)
+    require_scoped_api_keys: bool = True
+    audit_external_access: bool = True
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformAiGovernancePolicyRead(BaseModel):
+    ai_features_enabled: bool = True
+    default_provider: str = "OpenAI"
+    pii_redaction_required: bool = True
+    human_review_required: bool = True
+    monthly_token_budget: int = 1_000_000
+    max_prompt_retention_days: int = 30
+    audit_ai_actions: bool = True
+    updated_at: datetime | None = None
+
+
+class PlatformAiGovernancePolicyUpdate(BaseModel):
+    ai_features_enabled: bool = True
+    default_provider: str = Field(default="OpenAI", min_length=2, max_length=80)
+    pii_redaction_required: bool = True
+    human_review_required: bool = True
+    monthly_token_budget: int = Field(ge=0, le=1_000_000_000)
+    max_prompt_retention_days: int = Field(ge=0, le=3650)
+    audit_ai_actions: bool = True
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class PlatformCommunicationPolicyRead(BaseModel):
+    transactional_email_enabled: bool = True
+    default_from_email: str = "support@atlasfieldops.com"
+    support_reply_to_email: str = "support@atlasfieldops.com"
+    sms_enabled: bool = False
+    push_notifications_enabled: bool = True
+    tenant_broadcasts_enabled: bool = True
+    notification_log_retention_days: int = 365
+    updated_at: datetime | None = None
+
+
+class PlatformCommunicationPolicyUpdate(BaseModel):
+    transactional_email_enabled: bool = True
+    default_from_email: str = Field(min_length=3, max_length=200)
+    support_reply_to_email: str = Field(min_length=3, max_length=200)
+    sms_enabled: bool = False
+    push_notifications_enabled: bool = True
+    tenant_broadcasts_enabled: bool = True
+    notification_log_retention_days: int = Field(ge=30, le=3650)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class PlatformActionResult(BaseModel):
     status: str = "accepted"
     message: str
