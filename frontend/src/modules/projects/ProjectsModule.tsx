@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Archive,
   BarChart3,
   Building2,
@@ -3215,24 +3216,51 @@ function ProjectWizard({
     >
       <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 product-scrollbar lg:grid-cols-[220px_1fr]">
         <aside className="space-y-2">
-          {wizardSteps.map((label, index) => (
-            <button
-              className={cn(
-                "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm",
-                step === index
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "hover:bg-muted",
-              )}
-              key={label}
-              onClick={() => setStep(index)}
-              type="button"
-            >
-              <span className="grid size-6 place-items-center rounded-full bg-muted text-xs font-semibold">
-                {index + 1}
-              </span>
-              {label}
-            </button>
-          ))}
+          {wizardSteps.map((label, index) => {
+            const stepChecks = readiness.checks.filter((check) => check.targetStep === index);
+            const stepStatus = stepChecks.some((check) => check.status === "failed")
+              ? "failed"
+              : stepChecks.some((check) => check.status === "warning")
+                ? "warning"
+                : stepChecks.length
+                  ? "passed"
+                  : "neutral";
+            return (
+              <button
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm",
+                  step === index
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "hover:bg-muted",
+                )}
+                key={label}
+                onClick={() => setStep(index)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    "grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold",
+                    stepStatus === "passed"
+                      ? "bg-success/15 text-success"
+                      : stepStatus === "failed"
+                        ? "bg-danger/15 text-danger"
+                        : stepStatus === "warning"
+                          ? "bg-warning/15 text-warning"
+                          : "bg-muted",
+                  )}
+                >
+                  {stepStatus === "passed" ? (
+                    <CheckCircle2 aria-hidden="true" size={14} />
+                  ) : stepStatus === "failed" || stepStatus === "warning" ? (
+                    <AlertTriangle aria-hidden="true" size={14} />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+              </button>
+            );
+          })}
         </aside>
         <div className="space-y-4">
           <div className="rounded-2xl border bg-muted/25 p-4">
