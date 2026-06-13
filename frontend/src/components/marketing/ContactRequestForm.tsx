@@ -4,8 +4,16 @@ import { CheckCircle2, Send } from "lucide-react";
 import { useState } from "react";
 
 import { createPublicLead, type PublicLeadCreate } from "@/lib/api";
+import { SECTOR_TERMINOLOGY } from "@/lib/sectorTerminology";
 
-type LeadFormState = Required<Omit<PublicLeadCreate, "metadata">>;
+type LeadFormState = Required<Omit<PublicLeadCreate, "metadata">> & {
+  sector: string;
+};
+
+const sectorOptions = Object.values(SECTOR_TERMINOLOGY).map((sector) => ({
+  id: sector.sectorId,
+  name: sector.sectorName,
+}));
 
 const initialRequest: LeadFormState = {
   name: "",
@@ -15,6 +23,7 @@ const initialRequest: LeadFormState = {
   phone: "",
   organization_size: "",
   interest_area: "",
+  sector: "",
   source: "contact",
   message: "",
 };
@@ -38,11 +47,13 @@ export function ContactRequestForm({
     event.preventDefault();
     setSubmitState("submitting");
     try {
+      const { sector, ...leadFields } = request;
       await createPublicLead({
-        ...request,
+        ...leadFields,
         metadata: {
           page_source: source,
           captured_in: "public_website",
+          sector: sector || "unspecified",
         },
       });
       setSubmitState("stored");
@@ -87,6 +98,15 @@ export function ContactRequestForm({
             <div>
               <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Interest</dt>
               <dd className="mt-1">{submittedRequest.interest_area || "Not provided"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-[0.16em] text-[#5b6a65]">Sector</dt>
+              <dd className="mt-1">
+                {submittedRequest.sector === "other"
+                  ? "Other / multi-sector"
+                  : sectorOptions.find((sector) => sector.id === submittedRequest.sector)?.name ||
+                    "Not provided"}
+              </dd>
             </div>
           </dl>
         </div>
@@ -152,7 +172,21 @@ export function ContactRequestForm({
             <option value="500+">500+ users</option>
           </select>
         </label>
-        <label className="text-sm font-medium text-[#0c1f1b] md:col-span-2">
+        <label className="text-sm font-medium text-[#0c1f1b]">
+          Primary sector
+          <select
+            className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
+            onChange={(event) => updateField("sector", event.target.value)}
+            value={request.sector}
+          >
+            <option value="">Select sector</option>
+            {sectorOptions.map((sector) => (
+              <option key={sector.id} value={sector.id}>{sector.name}</option>
+            ))}
+            <option value="other">Other / multi-sector</option>
+          </select>
+        </label>
+        <label className="text-sm font-medium text-[#0c1f1b]">
           Interest area
           <select
             className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
@@ -170,6 +204,15 @@ export function ContactRequestForm({
             <option value="Enterprise Deployment">Enterprise Deployment</option>
           </select>
         </label>
+        {request.sector && request.sector !== "other" ? (
+          <p className="text-xs text-[#5b6a65] md:col-span-2">
+            Your workspace will be prepared with the{" "}
+            <span className="font-semibold text-[#0c1f1b]">
+              {sectorOptions.find((sector) => sector.id === request.sector)?.name}
+            </span>{" "}
+            starter pack — sector terminology, forms, and indicators ready on day one.
+          </p>
+        ) : null}
       </div>
       <label className="mt-4 block text-sm font-medium text-[#0c1f1b]">
         What are you trying to improve?
