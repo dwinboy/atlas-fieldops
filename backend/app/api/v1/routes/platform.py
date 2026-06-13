@@ -23,10 +23,18 @@ from app.repositories.identity import OrganizationRepository
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.platform import (
     PlatformActionResult,
+    PlatformApiGovernancePolicyRead,
+    PlatformApiGovernancePolicyUpdate,
+    PlatformAiGovernancePolicyRead,
+    PlatformAiGovernancePolicyUpdate,
     PlatformAuditLogRead,
     PlatformBackupJobRead,
     PlatformBackupPolicyRead,
     PlatformBackupPolicyUpdate,
+    PlatformCompliancePolicyRead,
+    PlatformCompliancePolicyUpdate,
+    PlatformCommunicationPolicyRead,
+    PlatformCommunicationPolicyUpdate,
     PlatformDataIsolationIssueRead,
     PlatformFeatureFlagUpdate,
     PlatformFeatureFlagRead,
@@ -36,21 +44,31 @@ from app.schemas.platform import (
     PlatformLeadRead,
     PlatformMobileFleetDeviceRead,
     PlatformMobileFleetSummaryRead,
+    PlatformObservabilityPolicyRead,
+    PlatformObservabilityPolicyUpdate,
     PlatformOrganizationPlanRead,
     PlatformOrganizationPlanUpdate,
     PlatformOrganizationUsageRead,
+    PlatformQuotaPolicyRead,
+    PlatformQuotaPolicyUpdate,
     PlatformReleaseRead,
     PlatformReleaseUpdate,
+    PlatformRetentionPolicyRead,
+    PlatformRetentionPolicyUpdate,
     PlatformRoleTemplateRead,
     PlatformSecurityEventRead,
     PlatformSecurityPolicyRead,
     PlatformSecurityPolicyUpdate,
     PlatformSectorPackRead,
+    PlatformSlaPolicyRead,
+    PlatformSlaPolicyUpdate,
     PlatformSettingsRead,
     PlatformSummaryRead,
     PlatformSupportSessionRead,
     PlatformSystemHealthRead,
     PlatformTenantSupportQueueItemRead,
+    PlatformTenantLifecyclePolicyRead,
+    PlatformTenantLifecyclePolicyUpdate,
     PlatformUserSecurityAction,
     PlatformUserRead,
 )
@@ -131,6 +149,133 @@ def default_backup_policy(updated_at: datetime | None = None) -> PlatformBackupP
         restore_requires_approval=True,
         restore_approver_role="super_admin",
         anonymize_archived_data=False,
+        updated_at=updated_at,
+    )
+
+
+def default_tenant_lifecycle_policy(updated_at: datetime | None = None) -> PlatformTenantLifecyclePolicyRead:
+    return PlatformTenantLifecyclePolicyRead(
+        trial_days=14,
+        grace_days=7,
+        suspend_after_grace=True,
+        require_owner_before_activation=True,
+        require_project_before_activation=False,
+        default_plan="Professional",
+        default_user_limit=50,
+        default_submission_limit=100_000,
+        onboarding_checklist=[
+            "Create organization owner",
+            "Invite core users",
+            "Create first project",
+            "Publish first form",
+            "Assign field officers",
+        ],
+        updated_at=updated_at,
+    )
+
+
+def default_compliance_policy(updated_at: datetime | None = None) -> PlatformCompliancePolicyRead:
+    return PlatformCompliancePolicyRead(
+        default_data_region="EU",
+        allowed_data_regions=["EU", "US", "Africa", "Custom"],
+        pii_masking_default=True,
+        require_export_approval=True,
+        require_dpa_for_exports=True,
+        audit_retention_days=3650,
+        data_processing_contact="",
+        subprocessors_public_url="",
+        updated_at=updated_at,
+    )
+
+
+def default_sla_policy(updated_at: datetime | None = None) -> PlatformSlaPolicyRead:
+    return PlatformSlaPolicyRead(
+        uptime_target_percent=99.5,
+        critical_response_minutes=60,
+        high_response_hours=4,
+        normal_response_hours=24,
+        support_session_max_minutes=60,
+        escalation_email="",
+        incident_manager="",
+        status_page_url="",
+        updated_at=updated_at,
+    )
+
+
+def default_quota_policy(updated_at: datetime | None = None) -> PlatformQuotaPolicyRead:
+    return PlatformQuotaPolicyRead(
+        warning_threshold_percent=80,
+        critical_threshold_percent=95,
+        api_rate_limit_per_minute=600,
+        storage_overage_action="warn",
+        submission_overage_action="warn",
+        notify_owners_on_warning=True,
+        notify_super_admins_on_critical=True,
+        updated_at=updated_at,
+    )
+
+
+def default_observability_policy(updated_at: datetime | None = None) -> PlatformObservabilityPolicyRead:
+    return PlatformObservabilityPolicyRead(
+        health_check_interval_seconds=60,
+        api_error_rate_threshold_percent=5.0,
+        slow_request_threshold_ms=2000,
+        mobile_sync_failure_threshold_percent=10.0,
+        offline_device_alert_days=7,
+        alert_email="",
+        pager_channel="",
+        updated_at=updated_at,
+    )
+
+
+def default_retention_policy(updated_at: datetime | None = None) -> PlatformRetentionPolicyRead:
+    return PlatformRetentionPolicyRead(
+        tenant_data_retention_days=2555,
+        audit_log_retention_days=3650,
+        backup_retention_days=90,
+        export_retention_days=30,
+        inactive_tenant_archive_days=180,
+        anonymize_deleted_user_days=30,
+        legal_hold_enabled=True,
+        updated_at=updated_at,
+    )
+
+
+def default_api_governance_policy(updated_at: datetime | None = None) -> PlatformApiGovernancePolicyRead:
+    return PlatformApiGovernancePolicyRead(
+        public_api_enabled=True,
+        api_key_expiry_days=180,
+        webhook_retry_attempts=5,
+        webhook_timeout_seconds=15,
+        secret_rotation_days=90,
+        require_scoped_api_keys=True,
+        audit_external_access=True,
+        updated_at=updated_at,
+    )
+
+
+def default_ai_governance_policy(updated_at: datetime | None = None) -> PlatformAiGovernancePolicyRead:
+    return PlatformAiGovernancePolicyRead(
+        ai_features_enabled=True,
+        default_provider="OpenAI",
+        pii_redaction_required=True,
+        human_review_required=True,
+        monthly_token_budget=1_000_000,
+        max_prompt_retention_days=30,
+        audit_ai_actions=True,
+        updated_at=updated_at,
+    )
+
+
+def default_communication_policy(updated_at: datetime | None = None) -> PlatformCommunicationPolicyRead:
+    return PlatformCommunicationPolicyRead(
+        transactional_email_enabled=True,
+        default_from_email="support@atlasfieldops.com",
+        support_reply_to_email="support@atlasfieldops.com",
+        sms_enabled=False,
+        push_notifications_enabled=True,
+        tenant_broadcasts_enabled=True,
+        notification_log_retention_days=365,
         updated_at=updated_at,
     )
 
@@ -1052,6 +1197,687 @@ async def update_platform_organization_plan(
         enabled_modules=payload.enabled_modules,
         usage_percent=min(usage_percent, 100),
     )
+
+
+@router.get("/tenant-lifecycle-policy", response_model=PlatformTenantLifecyclePolicyRead, summary="Read tenant lifecycle policy")
+async def platform_tenant_lifecycle_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformTenantLifecyclePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "tenant-lifecycle-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_tenant_lifecycle_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    checklist = value.get("onboarding_checklist")
+    return PlatformTenantLifecyclePolicyRead(
+        trial_days=int(value.get("trial_days", policy.trial_days)),
+        grace_days=int(value.get("grace_days", policy.grace_days)),
+        suspend_after_grace=bool(value.get("suspend_after_grace", policy.suspend_after_grace)),
+        require_owner_before_activation=bool(value.get("require_owner_before_activation", policy.require_owner_before_activation)),
+        require_project_before_activation=bool(value.get("require_project_before_activation", policy.require_project_before_activation)),
+        default_plan=str(value.get("default_plan", policy.default_plan)),
+        default_user_limit=int(value.get("default_user_limit", policy.default_user_limit)),
+        default_submission_limit=int(value.get("default_submission_limit", policy.default_submission_limit)),
+        onboarding_checklist=[str(item) for item in checklist] if isinstance(checklist, list) else policy.onboarding_checklist,
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/tenant-lifecycle-policy", response_model=PlatformTenantLifecyclePolicyRead, summary="Update tenant lifecycle policy")
+async def update_platform_tenant_lifecycle_policy(
+    payload: PlatformTenantLifecyclePolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformTenantLifecyclePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "tenant-lifecycle-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_tenant_lifecycle_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Tenant Lifecycle",
+            setting_key="tenant-lifecycle-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.tenant_lifecycle_policy_updated",
+        resource_type="tenant_lifecycle_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformTenantLifecyclePolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/compliance-policy", response_model=PlatformCompliancePolicyRead, summary="Read platform compliance policy")
+async def platform_compliance_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformCompliancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "compliance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_compliance_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    regions = value.get("allowed_data_regions")
+    return PlatformCompliancePolicyRead(
+        default_data_region=str(value.get("default_data_region", policy.default_data_region)),
+        allowed_data_regions=[str(item) for item in regions] if isinstance(regions, list) else policy.allowed_data_regions,
+        pii_masking_default=bool(value.get("pii_masking_default", policy.pii_masking_default)),
+        require_export_approval=bool(value.get("require_export_approval", policy.require_export_approval)),
+        require_dpa_for_exports=bool(value.get("require_dpa_for_exports", policy.require_dpa_for_exports)),
+        audit_retention_days=int(value.get("audit_retention_days", policy.audit_retention_days)),
+        data_processing_contact=str(value.get("data_processing_contact", policy.data_processing_contact)),
+        subprocessors_public_url=str(value.get("subprocessors_public_url", policy.subprocessors_public_url)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/compliance-policy", response_model=PlatformCompliancePolicyRead, summary="Update platform compliance policy")
+async def update_platform_compliance_policy(
+    payload: PlatformCompliancePolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformCompliancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "compliance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_compliance_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Compliance",
+            setting_key="compliance-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.compliance_policy_updated",
+        resource_type="compliance_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformCompliancePolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/sla-policy", response_model=PlatformSlaPolicyRead, summary="Read platform SLA policy")
+async def platform_sla_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformSlaPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "sla-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_sla_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformSlaPolicyRead(
+        uptime_target_percent=float(value.get("uptime_target_percent", policy.uptime_target_percent)),
+        critical_response_minutes=int(value.get("critical_response_minutes", policy.critical_response_minutes)),
+        high_response_hours=int(value.get("high_response_hours", policy.high_response_hours)),
+        normal_response_hours=int(value.get("normal_response_hours", policy.normal_response_hours)),
+        support_session_max_minutes=int(value.get("support_session_max_minutes", policy.support_session_max_minutes)),
+        escalation_email=str(value.get("escalation_email", policy.escalation_email)),
+        incident_manager=str(value.get("incident_manager", policy.incident_manager)),
+        status_page_url=str(value.get("status_page_url", policy.status_page_url)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/sla-policy", response_model=PlatformSlaPolicyRead, summary="Update platform SLA policy")
+async def update_platform_sla_policy(
+    payload: PlatformSlaPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformSlaPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "sla-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_sla_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="SLA",
+            setting_key="sla-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.sla_policy_updated",
+        resource_type="sla_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformSlaPolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/quota-policy", response_model=PlatformQuotaPolicyRead, summary="Read platform quota policy")
+async def platform_quota_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformQuotaPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "quota-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_quota_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformQuotaPolicyRead(
+        warning_threshold_percent=int(value.get("warning_threshold_percent", policy.warning_threshold_percent)),
+        critical_threshold_percent=int(value.get("critical_threshold_percent", policy.critical_threshold_percent)),
+        api_rate_limit_per_minute=int(value.get("api_rate_limit_per_minute", policy.api_rate_limit_per_minute)),
+        storage_overage_action=str(value.get("storage_overage_action", policy.storage_overage_action)),
+        submission_overage_action=str(value.get("submission_overage_action", policy.submission_overage_action)),
+        notify_owners_on_warning=bool(value.get("notify_owners_on_warning", policy.notify_owners_on_warning)),
+        notify_super_admins_on_critical=bool(value.get("notify_super_admins_on_critical", policy.notify_super_admins_on_critical)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/quota-policy", response_model=PlatformQuotaPolicyRead, summary="Update platform quota policy")
+async def update_platform_quota_policy(
+    payload: PlatformQuotaPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformQuotaPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "quota-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_quota_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Quota",
+            setting_key="quota-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.quota_policy_updated",
+        resource_type="quota_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformQuotaPolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/observability-policy", response_model=PlatformObservabilityPolicyRead, summary="Read platform observability policy")
+async def platform_observability_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformObservabilityPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "observability-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_observability_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformObservabilityPolicyRead(
+        health_check_interval_seconds=int(value.get("health_check_interval_seconds", policy.health_check_interval_seconds)),
+        api_error_rate_threshold_percent=float(value.get("api_error_rate_threshold_percent", policy.api_error_rate_threshold_percent)),
+        slow_request_threshold_ms=int(value.get("slow_request_threshold_ms", policy.slow_request_threshold_ms)),
+        mobile_sync_failure_threshold_percent=float(value.get("mobile_sync_failure_threshold_percent", policy.mobile_sync_failure_threshold_percent)),
+        offline_device_alert_days=int(value.get("offline_device_alert_days", policy.offline_device_alert_days)),
+        alert_email=str(value.get("alert_email", policy.alert_email)),
+        pager_channel=str(value.get("pager_channel", policy.pager_channel)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/observability-policy", response_model=PlatformObservabilityPolicyRead, summary="Update platform observability policy")
+async def update_platform_observability_policy(
+    payload: PlatformObservabilityPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformObservabilityPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "observability-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_observability_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Observability",
+            setting_key="observability-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.observability_policy_updated",
+        resource_type="observability_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformObservabilityPolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/retention-policy", response_model=PlatformRetentionPolicyRead, summary="Read platform retention policy")
+async def platform_retention_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformRetentionPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "retention-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_retention_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformRetentionPolicyRead(
+        tenant_data_retention_days=int(value.get("tenant_data_retention_days", policy.tenant_data_retention_days)),
+        audit_log_retention_days=int(value.get("audit_log_retention_days", policy.audit_log_retention_days)),
+        backup_retention_days=int(value.get("backup_retention_days", policy.backup_retention_days)),
+        export_retention_days=int(value.get("export_retention_days", policy.export_retention_days)),
+        inactive_tenant_archive_days=int(value.get("inactive_tenant_archive_days", policy.inactive_tenant_archive_days)),
+        anonymize_deleted_user_days=int(value.get("anonymize_deleted_user_days", policy.anonymize_deleted_user_days)),
+        legal_hold_enabled=bool(value.get("legal_hold_enabled", policy.legal_hold_enabled)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/retention-policy", response_model=PlatformRetentionPolicyRead, summary="Update platform retention policy")
+async def update_platform_retention_policy(
+    payload: PlatformRetentionPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformRetentionPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "retention-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_retention_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Retention",
+            setting_key="retention-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.retention_policy_updated",
+        resource_type="retention_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformRetentionPolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/api-governance-policy", response_model=PlatformApiGovernancePolicyRead, summary="Read platform API governance policy")
+async def platform_api_governance_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformApiGovernancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "api-governance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_api_governance_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformApiGovernancePolicyRead(
+        public_api_enabled=bool(value.get("public_api_enabled", policy.public_api_enabled)),
+        api_key_expiry_days=int(value.get("api_key_expiry_days", policy.api_key_expiry_days)),
+        webhook_retry_attempts=int(value.get("webhook_retry_attempts", policy.webhook_retry_attempts)),
+        webhook_timeout_seconds=int(value.get("webhook_timeout_seconds", policy.webhook_timeout_seconds)),
+        secret_rotation_days=int(value.get("secret_rotation_days", policy.secret_rotation_days)),
+        require_scoped_api_keys=bool(value.get("require_scoped_api_keys", policy.require_scoped_api_keys)),
+        audit_external_access=bool(value.get("audit_external_access", policy.audit_external_access)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/api-governance-policy", response_model=PlatformApiGovernancePolicyRead, summary="Update platform API governance policy")
+async def update_platform_api_governance_policy(
+    payload: PlatformApiGovernancePolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformApiGovernancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "api-governance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_api_governance_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="API Governance",
+            setting_key="api-governance-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.api_governance_policy_updated",
+        resource_type="api_governance_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformApiGovernancePolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/ai-governance-policy", response_model=PlatformAiGovernancePolicyRead, summary="Read platform AI governance policy")
+async def platform_ai_governance_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformAiGovernancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "ai-governance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_ai_governance_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformAiGovernancePolicyRead(
+        ai_features_enabled=bool(value.get("ai_features_enabled", policy.ai_features_enabled)),
+        default_provider=str(value.get("default_provider", policy.default_provider)),
+        pii_redaction_required=bool(value.get("pii_redaction_required", policy.pii_redaction_required)),
+        human_review_required=bool(value.get("human_review_required", policy.human_review_required)),
+        monthly_token_budget=int(value.get("monthly_token_budget", policy.monthly_token_budget)),
+        max_prompt_retention_days=int(value.get("max_prompt_retention_days", policy.max_prompt_retention_days)),
+        audit_ai_actions=bool(value.get("audit_ai_actions", policy.audit_ai_actions)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/ai-governance-policy", response_model=PlatformAiGovernancePolicyRead, summary="Update platform AI governance policy")
+async def update_platform_ai_governance_policy(
+    payload: PlatformAiGovernancePolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformAiGovernancePolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "ai-governance-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_ai_governance_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="AI Governance",
+            setting_key="ai-governance-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.ai_governance_policy_updated",
+        resource_type="ai_governance_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformAiGovernancePolicyRead(**value, updated_at=datetime.now(UTC))
+
+
+@router.get("/communication-policy", response_model=PlatformCommunicationPolicyRead, summary="Read platform communication policy")
+async def platform_communication_policy(
+    _principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformCommunicationPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "communication-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    policy = default_communication_policy(setting.updated_at if setting else None)
+    if setting is None:
+        return policy
+    value = setting.setting_value_json
+    return PlatformCommunicationPolicyRead(
+        transactional_email_enabled=bool(value.get("transactional_email_enabled", policy.transactional_email_enabled)),
+        default_from_email=str(value.get("default_from_email", policy.default_from_email)),
+        support_reply_to_email=str(value.get("support_reply_to_email", policy.support_reply_to_email)),
+        sms_enabled=bool(value.get("sms_enabled", policy.sms_enabled)),
+        push_notifications_enabled=bool(value.get("push_notifications_enabled", policy.push_notifications_enabled)),
+        tenant_broadcasts_enabled=bool(value.get("tenant_broadcasts_enabled", policy.tenant_broadcasts_enabled)),
+        notification_log_retention_days=int(value.get("notification_log_retention_days", policy.notification_log_retention_days)),
+        updated_at=setting.updated_at,
+    )
+
+
+@router.patch("/communication-policy", response_model=PlatformCommunicationPolicyRead, summary="Update platform communication policy")
+async def update_platform_communication_policy(
+    payload: PlatformCommunicationPolicyUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformCommunicationPolicyRead:
+    result = await session.execute(
+        select(SystemSetting).where(
+            SystemSetting.organization_id.is_(None),
+            SystemSetting.environment == settings.app_env,
+            SystemSetting.setting_key == "communication-policy",
+            SystemSetting.deleted_at.is_(None),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    actor_id = principal_user_uuid(principal)
+    value = payload.model_dump(exclude={"reason"}, mode="json")
+    old_value = setting.setting_value_json if setting else default_communication_policy().model_dump(mode="json")
+    if setting is None:
+        setting = SystemSetting(
+            organization_id=None,
+            category="Communications",
+            setting_key="communication-policy",
+            setting_value_json=value,
+            environment=settings.app_env,
+            is_sensitive=False,
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        )
+        session.add(setting)
+    else:
+        setting.setting_value_json = value
+        setting.updated_by_user_id = actor_id
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.communication_policy_updated",
+        resource_type="communication_policy",
+        resource_id="global",
+        metadata={"reason": payload.reason, "old_value": old_value, "new_value": value, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformCommunicationPolicyRead(**value, updated_at=datetime.now(UTC))
 
 
 @router.get("/support-sessions", response_model=list[PlatformSupportSessionRead], summary="List recent support access sessions")

@@ -39,11 +39,20 @@ import { Modal } from "@/components/ui/modal";
 import {
   createOrganization,
   createOrganizationSupportSession,
+  getPlatformApiGovernancePolicy,
+  getPlatformAiGovernancePolicy,
+  getPlatformCommunicationPolicy,
+  getPlatformCompliancePolicy,
   getPlatformSettings,
   getPlatformBackupPolicy,
+  getPlatformTenantLifecyclePolicy,
   getPlatformMobileFleet,
+  getPlatformObservabilityPolicy,
+  getPlatformQuotaPolicy,
   getPlatformRelease,
+  getPlatformRetentionPolicy,
   getPlatformSecurityPolicy,
+  getPlatformSlaPolicy,
   getPlatformSummary,
   getPlatformSystemHealth,
   listPlatformAuditLogs,
@@ -63,16 +72,29 @@ import {
   listPlatformUsers,
   runPlatformUserSecurityAction,
   updatePlatformFeatureFlag,
+  updatePlatformApiGovernancePolicy,
+  updatePlatformAiGovernancePolicy,
+  updatePlatformCommunicationPolicy,
   updatePlatformBackupPolicy,
+  updatePlatformCompliancePolicy,
   updatePlatformIntegration,
   updatePlatformOrganizationPlan,
+  updatePlatformObservabilityPolicy,
+  updatePlatformQuotaPolicy,
   updatePlatformRelease,
+  updatePlatformRetentionPolicy,
   updatePlatformOrganizationStatus,
   updatePlatformSecurityPolicy,
+  updatePlatformSlaPolicy,
+  updatePlatformTenantLifecyclePolicy,
   type CurrentPrincipal,
+  type PlatformApiGovernancePolicyRead,
+  type PlatformAiGovernancePolicyRead,
   type PlatformAuditLogRead,
   type PlatformBackupJobRead,
   type PlatformBackupPolicyRead,
+  type PlatformCommunicationPolicyRead,
+  type PlatformCompliancePolicyRead,
   type PlatformDataIsolationIssueRead,
   type PlatformFeatureFlagRead,
   type PlatformHealthServiceRead,
@@ -80,16 +102,21 @@ import {
   type PlatformLeadRead,
   type PlatformMobileFleetDeviceRead,
   type PlatformMobileFleetSummaryRead,
+  type PlatformObservabilityPolicyRead,
   type PlatformOrganizationRead,
   type PlatformOrganizationPlanRead,
   type PlatformOrganizationUsageRead,
+  type PlatformQuotaPolicyRead,
   type PlatformReleaseRead,
+  type PlatformRetentionPolicyRead,
   type PlatformRoleTemplateRead,
   type PlatformSecurityEventRead,
   type PlatformSecurityPolicyRead,
   type PlatformSectorPackRead,
+  type PlatformSlaPolicyRead,
   type PlatformSupportSessionRead,
   type PlatformTenantSupportQueueItemRead,
+  type PlatformTenantLifecyclePolicyRead,
   type PlatformUserRead,
 } from "@/lib/api";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
@@ -113,6 +140,15 @@ type PlatformSection =
   | "system-health"
   | "audit-logs"
   | "support-queue"
+  | "tenant-lifecycle"
+  | "compliance"
+  | "sla"
+  | "quotas"
+  | "observability"
+  | "retention"
+  | "api-governance"
+  | "ai-governance"
+  | "communications"
   | "security"
   | "mobile-fleet"
   | "sector-packs"
@@ -155,6 +191,44 @@ type BackupPolicyDraft = Omit<PlatformBackupPolicyRead, "updated_at"> & {
   reason: string;
 };
 
+type TenantLifecycleDraft = Omit<PlatformTenantLifecyclePolicyRead, "updated_at"> & {
+  onboarding_checklist_text: string;
+  reason: string;
+};
+
+type ComplianceDraft = Omit<PlatformCompliancePolicyRead, "updated_at"> & {
+  allowed_data_regions_text: string;
+  reason: string;
+};
+
+type SlaDraft = Omit<PlatformSlaPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type QuotaDraft = Omit<PlatformQuotaPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type ObservabilityDraft = Omit<PlatformObservabilityPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type RetentionDraft = Omit<PlatformRetentionPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type ApiGovernanceDraft = Omit<PlatformApiGovernancePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type AiGovernanceDraft = Omit<PlatformAiGovernancePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+type CommunicationDraft = Omit<PlatformCommunicationPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
 type ReleaseDraft = Pick<
   PlatformReleaseRead,
   | "backend_version"
@@ -193,6 +267,15 @@ const consoleSections: ConsoleSection[] = [
   { id: "system-health", label: "System Health", route: "/platform/system-health", icon: HeartPulse, description: "API, database, jobs, and services." },
   { id: "audit-logs", label: "Audit Logs", route: "/platform/audit-logs", icon: FileClock, description: "Immutable platform events." },
   { id: "support-queue", label: "Support Queue", route: "/platform/support-queue", icon: LifeBuoy, description: "Tenants that likely need platform intervention." },
+  { id: "tenant-lifecycle", label: "Tenant Lifecycle", route: "/platform/tenant-lifecycle", icon: Building2, description: "Default onboarding, trial, grace, and suspension controls." },
+  { id: "compliance", label: "Compliance", route: "/platform/compliance", icon: ShieldCheck, description: "Data residency, export approval, masking, and retention posture." },
+  { id: "sla", label: "SLA & Support", route: "/platform/sla", icon: LifeBuoy, description: "Support response targets, escalation contacts, and incident posture." },
+  { id: "quotas", label: "Quotas", route: "/platform/quotas", icon: Database, description: "Usage warning thresholds, rate limits, overage behavior, and notifications." },
+  { id: "observability", label: "Observability", route: "/platform/observability", icon: HeartPulse, description: "Health checks, alert thresholds, mobile sync risk, and alert routing." },
+  { id: "retention", label: "Retention", route: "/platform/retention", icon: Archive, description: "Tenant data, audit log, export, backup, and anonymization retention." },
+  { id: "api-governance", label: "API Governance", route: "/platform/api-governance", icon: KeyRound, description: "Public API access, API key expiry, webhook retries, and secret rotation." },
+  { id: "ai-governance", label: "AI Governance", route: "/platform/ai-governance", icon: Activity, description: "AI assistance, PII redaction, human review, budgets, and audit controls." },
+  { id: "communications", label: "Communications", route: "/platform/communications", icon: LifeBuoy, description: "Email, SMS, push, tenant broadcasts, and notification log defaults." },
   { id: "security", label: "Security", route: "/platform/security", icon: LockKeyhole, description: "Sessions, MFA, and risk events." },
   { id: "mobile-fleet", label: "Mobile Fleet", route: "/platform/mobile-fleet", icon: Smartphone, description: "App versions, devices, sync health, and offline risk." },
   { id: "sector-packs", label: "Sector Packs", route: "/platform/sector-packs", icon: PackageCheck, description: "Starter content for sectors, forms, entities, indicators, reports, and mobile rules." },
@@ -344,6 +427,102 @@ export function PlatformConsole({
     retention_days: 90,
     tenant_export_enabled: true,
   });
+  const [tenantLifecycleDraft, setTenantLifecycleDraft] = useState<TenantLifecycleDraft>({
+    default_plan: "Professional",
+    default_submission_limit: 100000,
+    default_user_limit: 50,
+    grace_days: 7,
+    onboarding_checklist: [],
+    onboarding_checklist_text: "",
+    reason: "",
+    require_owner_before_activation: true,
+    require_project_before_activation: false,
+    suspend_after_grace: true,
+    trial_days: 14,
+  });
+  const [complianceDraft, setComplianceDraft] = useState<ComplianceDraft>({
+    allowed_data_regions: ["EU", "US", "Africa", "Custom"],
+    allowed_data_regions_text: "EU\nUS\nAfrica\nCustom",
+    audit_retention_days: 3650,
+    data_processing_contact: "",
+    default_data_region: "EU",
+    pii_masking_default: true,
+    reason: "",
+    require_dpa_for_exports: true,
+    require_export_approval: true,
+    subprocessors_public_url: "",
+  });
+  const [slaDraft, setSlaDraft] = useState<SlaDraft>({
+    critical_response_minutes: 60,
+    escalation_email: "",
+    high_response_hours: 4,
+    incident_manager: "",
+    normal_response_hours: 24,
+    reason: "",
+    status_page_url: "",
+    support_session_max_minutes: 60,
+    uptime_target_percent: 99.5,
+  });
+  const [quotaDraft, setQuotaDraft] = useState<QuotaDraft>({
+    api_rate_limit_per_minute: 600,
+    critical_threshold_percent: 95,
+    notify_owners_on_warning: true,
+    notify_super_admins_on_critical: true,
+    reason: "",
+    storage_overage_action: "warn",
+    submission_overage_action: "warn",
+    warning_threshold_percent: 80,
+  });
+  const [observabilityDraft, setObservabilityDraft] = useState<ObservabilityDraft>({
+    alert_email: "",
+    api_error_rate_threshold_percent: 5,
+    health_check_interval_seconds: 60,
+    mobile_sync_failure_threshold_percent: 10,
+    offline_device_alert_days: 7,
+    pager_channel: "",
+    reason: "",
+    slow_request_threshold_ms: 2000,
+  });
+  const [retentionDraft, setRetentionDraft] = useState<RetentionDraft>({
+    anonymize_deleted_user_days: 30,
+    audit_log_retention_days: 3650,
+    backup_retention_days: 90,
+    export_retention_days: 30,
+    inactive_tenant_archive_days: 180,
+    legal_hold_enabled: true,
+    reason: "",
+    tenant_data_retention_days: 2555,
+  });
+  const [apiGovernanceDraft, setApiGovernanceDraft] = useState<ApiGovernanceDraft>({
+    api_key_expiry_days: 180,
+    audit_external_access: true,
+    public_api_enabled: true,
+    reason: "",
+    require_scoped_api_keys: true,
+    secret_rotation_days: 90,
+    webhook_retry_attempts: 5,
+    webhook_timeout_seconds: 15,
+  });
+  const [aiGovernanceDraft, setAiGovernanceDraft] = useState<AiGovernanceDraft>({
+    ai_features_enabled: true,
+    audit_ai_actions: true,
+    default_provider: "OpenAI",
+    human_review_required: true,
+    max_prompt_retention_days: 30,
+    monthly_token_budget: 1_000_000,
+    pii_redaction_required: true,
+    reason: "",
+  });
+  const [communicationDraft, setCommunicationDraft] = useState<CommunicationDraft>({
+    default_from_email: "support@atlasfieldops.com",
+    notification_log_retention_days: 365,
+    push_notifications_enabled: true,
+    reason: "",
+    sms_enabled: false,
+    support_reply_to_email: "support@atlasfieldops.com",
+    tenant_broadcasts_enabled: true,
+    transactional_email_enabled: true,
+  });
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>({
     announcement_body: "",
     announcement_enabled: false,
@@ -396,6 +575,15 @@ export function PlatformConsole({
   const integrationsQuery = useQuery({ queryKey: ["platform-integrations", token], queryFn: () => listPlatformIntegrations(token ?? ""), enabled });
   const backupsQuery = useQuery({ queryKey: ["platform-backups", token], queryFn: () => listPlatformBackups(token ?? ""), enabled });
   const backupPolicyQuery = useQuery({ queryKey: ["platform-backup-policy", token], queryFn: () => getPlatformBackupPolicy(token ?? ""), enabled });
+  const tenantLifecycleQuery = useQuery({ queryKey: ["platform-tenant-lifecycle-policy", token], queryFn: () => getPlatformTenantLifecyclePolicy(token ?? ""), enabled });
+  const compliancePolicyQuery = useQuery({ queryKey: ["platform-compliance-policy", token], queryFn: () => getPlatformCompliancePolicy(token ?? ""), enabled });
+  const slaPolicyQuery = useQuery({ queryKey: ["platform-sla-policy", token], queryFn: () => getPlatformSlaPolicy(token ?? ""), enabled });
+  const quotaPolicyQuery = useQuery({ queryKey: ["platform-quota-policy", token], queryFn: () => getPlatformQuotaPolicy(token ?? ""), enabled });
+  const observabilityPolicyQuery = useQuery({ queryKey: ["platform-observability-policy", token], queryFn: () => getPlatformObservabilityPolicy(token ?? ""), enabled });
+  const retentionPolicyQuery = useQuery({ queryKey: ["platform-retention-policy", token], queryFn: () => getPlatformRetentionPolicy(token ?? ""), enabled });
+  const apiGovernancePolicyQuery = useQuery({ queryKey: ["platform-api-governance-policy", token], queryFn: () => getPlatformApiGovernancePolicy(token ?? ""), enabled });
+  const aiGovernancePolicyQuery = useQuery({ queryKey: ["platform-ai-governance-policy", token], queryFn: () => getPlatformAiGovernancePolicy(token ?? ""), enabled });
+  const communicationPolicyQuery = useQuery({ queryKey: ["platform-communication-policy", token], queryFn: () => getPlatformCommunicationPolicy(token ?? ""), enabled });
   const usageQuery = useQuery({ queryKey: ["platform-usage", token], queryFn: () => listPlatformUsage(token ?? ""), enabled });
   const dataIsolationQuery = useQuery({ queryKey: ["platform-data-isolation", token], queryFn: () => listPlatformDataIsolationIssues(token ?? ""), enabled });
   const leadsQuery = useQuery({ queryKey: ["platform-leads", token], queryFn: () => listPlatformLeads(token ?? ""), enabled });
@@ -638,6 +826,218 @@ export function PlatformConsole({
     },
   });
 
+  const tenantLifecycleMutation = useMutation({
+    mutationFn: () =>
+      updatePlatformTenantLifecyclePolicy(token ?? "", {
+        default_plan: tenantLifecycleDraft.default_plan,
+        default_submission_limit: tenantLifecycleDraft.default_submission_limit,
+        default_user_limit: tenantLifecycleDraft.default_user_limit,
+        grace_days: tenantLifecycleDraft.grace_days,
+        onboarding_checklist: tenantLifecycleDraft.onboarding_checklist_text.split("\n").map((item) => item.trim()).filter(Boolean),
+        reason: tenantLifecycleDraft.reason,
+        require_owner_before_activation: tenantLifecycleDraft.require_owner_before_activation,
+        require_project_before_activation: tenantLifecycleDraft.require_project_before_activation,
+        suspend_after_grace: tenantLifecycleDraft.suspend_after_grace,
+        trial_days: tenantLifecycleDraft.trial_days,
+      }),
+    onSuccess: async () => {
+      await tenantLifecycleQuery.refetch();
+      await auditQuery.refetch();
+      setTenantLifecycleDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Tenant lifecycle policy updated",
+        description: "Trial, grace, activation, and onboarding defaults were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Tenant lifecycle policy was not updated",
+        description: "Check numeric limits, checklist, audit reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const compliancePolicyMutation = useMutation({
+    mutationFn: () =>
+      updatePlatformCompliancePolicy(token ?? "", {
+        allowed_data_regions: complianceDraft.allowed_data_regions_text.split("\n").map((item) => item.trim()).filter(Boolean),
+        audit_retention_days: complianceDraft.audit_retention_days,
+        data_processing_contact: complianceDraft.data_processing_contact,
+        default_data_region: complianceDraft.default_data_region,
+        pii_masking_default: complianceDraft.pii_masking_default,
+        reason: complianceDraft.reason,
+        require_dpa_for_exports: complianceDraft.require_dpa_for_exports,
+        require_export_approval: complianceDraft.require_export_approval,
+        subprocessors_public_url: complianceDraft.subprocessors_public_url,
+      }),
+    onSuccess: async () => {
+      await compliancePolicyQuery.refetch();
+      await auditQuery.refetch();
+      setComplianceDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Compliance policy updated",
+        description: "Data residency, masking, export, and audit retention defaults were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Compliance policy was not updated",
+        description: "Check regions, retention days, contact details, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const slaPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformSlaPolicy(token ?? "", slaDraft),
+    onSuccess: async () => {
+      await slaPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setSlaDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "SLA policy updated",
+        description: "Support targets, escalation contacts, and incident defaults were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "SLA policy was not updated",
+        description: "Check response targets, escalation contacts, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const quotaPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformQuotaPolicy(token ?? "", quotaDraft),
+    onSuccess: async () => {
+      await quotaPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setQuotaDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Quota policy updated",
+        description: "Usage thresholds, rate limits, overage behavior, and notifications were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Quota policy was not updated",
+        description: "Check thresholds, rate limit, overage actions, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const observabilityPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformObservabilityPolicy(token ?? "", observabilityDraft),
+    onSuccess: async () => {
+      await observabilityPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setObservabilityDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Observability policy updated",
+        description: "Health cadence, alert thresholds, mobile sync risk, and routing were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Observability policy was not updated",
+        description: "Check thresholds, alert routing, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const retentionPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformRetentionPolicy(token ?? "", retentionDraft),
+    onSuccess: async () => {
+      await retentionPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setRetentionDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Retention policy updated",
+        description: "Tenant data, audit log, backup, export, and anonymization retention were saved and audited.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Retention policy was not updated",
+        description: "Check retention windows, legal hold, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const apiGovernancePolicyMutation = useMutation({
+    mutationFn: () => updatePlatformApiGovernancePolicy(token ?? "", apiGovernanceDraft),
+    onSuccess: async () => {
+      await apiGovernancePolicyQuery.refetch();
+      await auditQuery.refetch();
+      setApiGovernanceDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "API governance policy updated",
+        description: "API access, key expiry, webhook retry, secret rotation, and external audit defaults were saved.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "API governance policy was not updated",
+        description: "Check API defaults, webhook settings, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const aiGovernancePolicyMutation = useMutation({
+    mutationFn: () => updatePlatformAiGovernancePolicy(token ?? "", aiGovernanceDraft),
+    onSuccess: async () => {
+      await aiGovernancePolicyQuery.refetch();
+      await auditQuery.refetch();
+      setAiGovernanceDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "AI governance policy updated",
+        description: "AI defaults, PII redaction, human review, token budget, and audit controls were saved.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "AI governance policy was not updated",
+        description: "Check provider, budget, retention, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
+  const communicationPolicyMutation = useMutation({
+    mutationFn: () => updatePlatformCommunicationPolicy(token ?? "", communicationDraft),
+    onSuccess: async () => {
+      await communicationPolicyQuery.refetch();
+      await auditQuery.refetch();
+      setCommunicationDraft((draft) => ({ ...draft, reason: "" }));
+      pushToast({
+        title: "Communication policy updated",
+        description: "Email, SMS, push, tenant broadcasts, and notification retention were saved.",
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Communication policy was not updated",
+        description: "Check sender addresses, notification defaults, reason, and Super Admin permissions.",
+        tone: "danger",
+      });
+    },
+  });
+
   const integrationMutation = useMutation({
     mutationFn: (integration: PlatformIntegrationRead) =>
       updatePlatformIntegration(token ?? "", integration.key, integrationDraft),
@@ -690,6 +1090,15 @@ export function PlatformConsole({
   const organizationPlans = plansQuery.data ?? [];
   const supportSessions = supportSessionsQuery.data ?? [];
   const supportQueue = supportQueueQuery.data ?? [];
+  const tenantLifecycle = tenantLifecycleQuery.data;
+  const compliancePolicy = compliancePolicyQuery.data;
+  const slaPolicy = slaPolicyQuery.data;
+  const quotaPolicy = quotaPolicyQuery.data;
+  const observabilityPolicy = observabilityPolicyQuery.data;
+  const retentionPolicy = retentionPolicyQuery.data;
+  const apiGovernancePolicy = apiGovernancePolicyQuery.data;
+  const aiGovernancePolicy = aiGovernancePolicyQuery.data;
+  const communicationPolicy = communicationPolicyQuery.data;
 
   useEffect(() => {
     const policy = securityPolicyQuery.data;
@@ -744,6 +1153,147 @@ export function PlatformConsole({
     });
   }, [releaseQuery.data]);
 
+  useEffect(() => {
+    const policy = tenantLifecycleQuery.data;
+    if (!policy) return;
+    setTenantLifecycleDraft({
+      default_plan: policy.default_plan,
+      default_submission_limit: policy.default_submission_limit,
+      default_user_limit: policy.default_user_limit,
+      grace_days: policy.grace_days,
+      onboarding_checklist: policy.onboarding_checklist,
+      onboarding_checklist_text: policy.onboarding_checklist.join("\n"),
+      reason: "",
+      require_owner_before_activation: policy.require_owner_before_activation,
+      require_project_before_activation: policy.require_project_before_activation,
+      suspend_after_grace: policy.suspend_after_grace,
+      trial_days: policy.trial_days,
+    });
+  }, [tenantLifecycleQuery.data]);
+
+  useEffect(() => {
+    const policy = compliancePolicyQuery.data;
+    if (!policy) return;
+    setComplianceDraft({
+      allowed_data_regions: policy.allowed_data_regions,
+      allowed_data_regions_text: policy.allowed_data_regions.join("\n"),
+      audit_retention_days: policy.audit_retention_days,
+      data_processing_contact: policy.data_processing_contact,
+      default_data_region: policy.default_data_region,
+      pii_masking_default: policy.pii_masking_default,
+      reason: "",
+      require_dpa_for_exports: policy.require_dpa_for_exports,
+      require_export_approval: policy.require_export_approval,
+      subprocessors_public_url: policy.subprocessors_public_url,
+    });
+  }, [compliancePolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = slaPolicyQuery.data;
+    if (!policy) return;
+    setSlaDraft({
+      critical_response_minutes: policy.critical_response_minutes,
+      escalation_email: policy.escalation_email,
+      high_response_hours: policy.high_response_hours,
+      incident_manager: policy.incident_manager,
+      normal_response_hours: policy.normal_response_hours,
+      reason: "",
+      status_page_url: policy.status_page_url,
+      support_session_max_minutes: policy.support_session_max_minutes,
+      uptime_target_percent: policy.uptime_target_percent,
+    });
+  }, [slaPolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = quotaPolicyQuery.data;
+    if (!policy) return;
+    setQuotaDraft({
+      api_rate_limit_per_minute: policy.api_rate_limit_per_minute,
+      critical_threshold_percent: policy.critical_threshold_percent,
+      notify_owners_on_warning: policy.notify_owners_on_warning,
+      notify_super_admins_on_critical: policy.notify_super_admins_on_critical,
+      reason: "",
+      storage_overage_action: policy.storage_overage_action,
+      submission_overage_action: policy.submission_overage_action,
+      warning_threshold_percent: policy.warning_threshold_percent,
+    });
+  }, [quotaPolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = observabilityPolicyQuery.data;
+    if (!policy) return;
+    setObservabilityDraft({
+      alert_email: policy.alert_email,
+      api_error_rate_threshold_percent: policy.api_error_rate_threshold_percent,
+      health_check_interval_seconds: policy.health_check_interval_seconds,
+      mobile_sync_failure_threshold_percent: policy.mobile_sync_failure_threshold_percent,
+      offline_device_alert_days: policy.offline_device_alert_days,
+      pager_channel: policy.pager_channel,
+      reason: "",
+      slow_request_threshold_ms: policy.slow_request_threshold_ms,
+    });
+  }, [observabilityPolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = retentionPolicyQuery.data;
+    if (!policy) return;
+    setRetentionDraft({
+      anonymize_deleted_user_days: policy.anonymize_deleted_user_days,
+      audit_log_retention_days: policy.audit_log_retention_days,
+      backup_retention_days: policy.backup_retention_days,
+      export_retention_days: policy.export_retention_days,
+      inactive_tenant_archive_days: policy.inactive_tenant_archive_days,
+      legal_hold_enabled: policy.legal_hold_enabled,
+      reason: "",
+      tenant_data_retention_days: policy.tenant_data_retention_days,
+    });
+  }, [retentionPolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = apiGovernancePolicyQuery.data;
+    if (!policy) return;
+    setApiGovernanceDraft({
+      api_key_expiry_days: policy.api_key_expiry_days,
+      audit_external_access: policy.audit_external_access,
+      public_api_enabled: policy.public_api_enabled,
+      reason: "",
+      require_scoped_api_keys: policy.require_scoped_api_keys,
+      secret_rotation_days: policy.secret_rotation_days,
+      webhook_retry_attempts: policy.webhook_retry_attempts,
+      webhook_timeout_seconds: policy.webhook_timeout_seconds,
+    });
+  }, [apiGovernancePolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = aiGovernancePolicyQuery.data;
+    if (!policy) return;
+    setAiGovernanceDraft({
+      ai_features_enabled: policy.ai_features_enabled,
+      audit_ai_actions: policy.audit_ai_actions,
+      default_provider: policy.default_provider,
+      human_review_required: policy.human_review_required,
+      max_prompt_retention_days: policy.max_prompt_retention_days,
+      monthly_token_budget: policy.monthly_token_budget,
+      pii_redaction_required: policy.pii_redaction_required,
+      reason: "",
+    });
+  }, [aiGovernancePolicyQuery.data]);
+
+  useEffect(() => {
+    const policy = communicationPolicyQuery.data;
+    if (!policy) return;
+    setCommunicationDraft({
+      default_from_email: policy.default_from_email,
+      notification_log_retention_days: policy.notification_log_retention_days,
+      push_notifications_enabled: policy.push_notifications_enabled,
+      reason: "",
+      sms_enabled: policy.sms_enabled,
+      support_reply_to_email: policy.support_reply_to_email,
+      tenant_broadcasts_enabled: policy.tenant_broadcasts_enabled,
+      transactional_email_enabled: policy.transactional_email_enabled,
+    });
+  }, [communicationPolicyQuery.data]);
+
   const platformCards = [
     { label: "Organizations", value: String(summaryQuery.data?.organization_count ?? organizations.length), icon: Building2, tone: "platform" as const },
     { label: "Active Organizations", value: String(summaryQuery.data?.active_organization_count ?? organizations.filter((item) => item.is_active).length), icon: CheckCircle2, tone: "success" as const },
@@ -752,6 +1302,15 @@ export function PlatformConsole({
     { label: "Isolation Issues", value: String(dataIsolationIssues.length), icon: AlertTriangle, tone: dataIsolationIssues.some((issue) => issue.severity === "critical") ? "danger" as const : dataIsolationIssues.length ? "warning" as const : "success" as const },
     { label: "Mobile Devices", value: String(mobileFleet?.active_devices ?? 0), icon: Smartphone, tone: mobileFleet?.offline_devices ? "warning" as const : "success" as const },
     { label: "Support Queue", value: String(supportQueue.length), icon: LifeBuoy, tone: supportQueue.some((item) => item.priority === "critical") ? "danger" as const : supportQueue.length ? "warning" as const : "success" as const },
+    { label: "Trial Days", value: String(tenantLifecycle?.trial_days ?? 14), icon: Building2, tone: "neutral" as const },
+    { label: "Data Region", value: compliancePolicy?.default_data_region ?? "EU", icon: ShieldCheck, tone: compliancePolicy?.require_export_approval ? "success" as const : "warning" as const },
+    { label: "Uptime Target", value: `${slaPolicy?.uptime_target_percent ?? 99.5}%`, icon: HeartPulse, tone: "success" as const },
+    { label: "Quota Warning", value: `${quotaPolicy?.warning_threshold_percent ?? 80}%`, icon: Database, tone: "warning" as const },
+    { label: "Health Cadence", value: `${observabilityPolicy?.health_check_interval_seconds ?? 60}s`, icon: HeartPulse, tone: "success" as const },
+    { label: "Audit Retention", value: `${retentionPolicy?.audit_log_retention_days ?? 3650}d`, icon: Archive, tone: "platform" as const },
+    { label: "Public API", value: apiGovernancePolicy?.public_api_enabled === false ? "Off" : "On", icon: KeyRound, tone: apiGovernancePolicy?.public_api_enabled === false ? "warning" as const : "success" as const },
+    { label: "AI Controls", value: aiGovernancePolicy?.ai_features_enabled === false ? "Off" : "On", icon: Activity, tone: aiGovernancePolicy?.ai_features_enabled === false ? "warning" as const : "success" as const },
+    { label: "Email", value: communicationPolicy?.transactional_email_enabled === false ? "Off" : "On", icon: LifeBuoy, tone: communicationPolicy?.transactional_email_enabled === false ? "warning" as const : "success" as const },
     { label: "Sector Packs", value: String(sectorPacks.length), icon: PackageCheck, tone: "platform" as const },
     { label: "Feature Flags", value: String(flags.length), icon: Flag, tone: "neutral" as const },
     { label: "System Health", value: healthQuery.data?.status ?? "checking", icon: HeartPulse, tone: statusTone(healthQuery.data?.status ?? "warning") },
@@ -1087,6 +1646,114 @@ export function PlatformConsole({
       );
     }
     if (activeSection === "mobile-fleet") return <MobileFleet columns={mobileDeviceColumns} fleet={mobileFleet} isLoading={mobileFleetQuery.isFetching} />;
+    if (activeSection === "tenant-lifecycle") {
+      return (
+        <TenantLifecyclePolicy
+          draft={tenantLifecycleDraft}
+          isLoading={tenantLifecycleQuery.isFetching}
+          isSaving={tenantLifecycleMutation.isPending}
+          onDraftChange={setTenantLifecycleDraft}
+          onSave={() => tenantLifecycleMutation.mutate()}
+          policy={tenantLifecycle}
+        />
+      );
+    }
+    if (activeSection === "compliance") {
+      return (
+        <CompliancePolicy
+          draft={complianceDraft}
+          isLoading={compliancePolicyQuery.isFetching}
+          isSaving={compliancePolicyMutation.isPending}
+          onDraftChange={setComplianceDraft}
+          onSave={() => compliancePolicyMutation.mutate()}
+          policy={compliancePolicy}
+        />
+      );
+    }
+    if (activeSection === "sla") {
+      return (
+        <SlaPolicy
+          draft={slaDraft}
+          isLoading={slaPolicyQuery.isFetching}
+          isSaving={slaPolicyMutation.isPending}
+          onDraftChange={setSlaDraft}
+          onSave={() => slaPolicyMutation.mutate()}
+          policy={slaPolicy}
+        />
+      );
+    }
+    if (activeSection === "quotas") {
+      return (
+        <QuotaPolicy
+          draft={quotaDraft}
+          isLoading={quotaPolicyQuery.isFetching}
+          isSaving={quotaPolicyMutation.isPending}
+          onDraftChange={setQuotaDraft}
+          onSave={() => quotaPolicyMutation.mutate()}
+          policy={quotaPolicy}
+        />
+      );
+    }
+    if (activeSection === "observability") {
+      return (
+        <ObservabilityPolicy
+          draft={observabilityDraft}
+          isLoading={observabilityPolicyQuery.isFetching}
+          isSaving={observabilityPolicyMutation.isPending}
+          onDraftChange={setObservabilityDraft}
+          onSave={() => observabilityPolicyMutation.mutate()}
+          policy={observabilityPolicy}
+        />
+      );
+    }
+    if (activeSection === "retention") {
+      return (
+        <RetentionPolicy
+          draft={retentionDraft}
+          isLoading={retentionPolicyQuery.isFetching}
+          isSaving={retentionPolicyMutation.isPending}
+          onDraftChange={setRetentionDraft}
+          onSave={() => retentionPolicyMutation.mutate()}
+          policy={retentionPolicy}
+        />
+      );
+    }
+    if (activeSection === "api-governance") {
+      return (
+        <ApiGovernancePolicy
+          draft={apiGovernanceDraft}
+          isLoading={apiGovernancePolicyQuery.isFetching}
+          isSaving={apiGovernancePolicyMutation.isPending}
+          onDraftChange={setApiGovernanceDraft}
+          onSave={() => apiGovernancePolicyMutation.mutate()}
+          policy={apiGovernancePolicy}
+        />
+      );
+    }
+    if (activeSection === "ai-governance") {
+      return (
+        <AiGovernancePolicy
+          draft={aiGovernanceDraft}
+          isLoading={aiGovernancePolicyQuery.isFetching}
+          isSaving={aiGovernancePolicyMutation.isPending}
+          onDraftChange={setAiGovernanceDraft}
+          onSave={() => aiGovernancePolicyMutation.mutate()}
+          policy={aiGovernancePolicy}
+        />
+      );
+    }
+    if (activeSection === "communications") {
+      return (
+        <CommunicationPolicy
+          draft={communicationDraft}
+          isLoading={communicationPolicyQuery.isFetching}
+          isSaving={communicationPolicyMutation.isPending}
+          onDraftChange={setCommunicationDraft}
+          onSave={() => communicationPolicyMutation.mutate()}
+          policy={communicationPolicy}
+        />
+      );
+    }
     if (activeSection === "sector-packs") return <SectorPacks packs={sectorPacks} isLoading={sectorPacksQuery.isFetching} />;
     if (activeSection === "integrations") return <Integrations onEdit={openIntegrationEditor} rows={integrations} />;
     if (activeSection === "backups") {
@@ -1254,7 +1921,7 @@ export function PlatformConsole({
             {activeSection === "feature-flags" ? renderFlags() : null}
             {activeSection === "system-health" ? renderHealth() : null}
             {activeSection === "settings" ? renderSettings() : null}
-            {["users", "support-queue", "data-isolation", "audit-logs", "security", "mobile-fleet", "sector-packs", "integrations", "backups", "release-center"].includes(activeSection) ? renderTableSection() : null}
+            {["users", "support-queue", "data-isolation", "audit-logs", "security", "mobile-fleet", "tenant-lifecycle", "compliance", "sla", "quotas", "observability", "retention", "api-governance", "ai-governance", "communications", "sector-packs", "integrations", "backups", "release-center"].includes(activeSection) ? renderTableSection() : null}
           </div>
         </section>
       </div>
@@ -1683,6 +2350,698 @@ function MobileFleet({
         </div>
       </Panel>
       <DataTable columns={columns} emptyLabel="No registered field devices found." rows={fleet.devices} searchLabel="Search devices" title="Mobile fleet devices" />
+    </div>
+  );
+}
+
+function TenantLifecyclePolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: TenantLifecycleDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<TenantLifecycleDraft>>;
+  onSave: () => void;
+  policy?: PlatformTenantLifecyclePolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading tenant lifecycle policy" : "Tenant lifecycle policy unavailable"} detail="Trial, grace, activation, and onboarding defaults will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Building2} label="Trial" value={`${policy.trial_days} days`} tone="neutral" />
+        <StatCard icon={AlertTriangle} label="Grace Period" value={`${policy.grace_days} days`} tone={policy.suspend_after_grace ? "warning" : "neutral"} />
+        <StatCard icon={UsersRound} label="Default Users" value={policy.default_user_limit.toLocaleString()} tone="neutral" />
+        <StatCard icon={Activity} label="Default Submissions" value={policy.default_submission_limit.toLocaleString()} tone="neutral" />
+      </div>
+      <Panel title="Tenant lifecycle policy" description="Set the default SaaS rules used when organizations are onboarded, reviewed, or suspended. Tenant-specific plan overrides stay on the Organizations page.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Trial days
+            <Input min={0} type="number" value={draft.trial_days} onChange={(event) => onDraftChange((current) => ({ ...current, trial_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Grace days
+            <Input min={0} type="number" value={draft.grace_days} onChange={(event) => onDraftChange((current) => ({ ...current, grace_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Default plan
+            <Input value={draft.default_plan} onChange={(event) => onDraftChange((current) => ({ ...current, default_plan: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Default user limit
+            <Input min={1} type="number" value={draft.default_user_limit} onChange={(event) => onDraftChange((current) => ({ ...current, default_user_limit: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Default submission limit
+            <Input min={1} type="number" value={draft.default_submission_limit} onChange={(event) => onDraftChange((current) => ({ ...current, default_submission_limit: Number(event.target.value) }))} />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.suspend_after_grace} onChange={(event) => onDraftChange((current) => ({ ...current, suspend_after_grace: event.target.checked }))} type="checkbox" />
+            Suspend after grace
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.require_owner_before_activation} onChange={(event) => onDraftChange((current) => ({ ...current, require_owner_before_activation: event.target.checked }))} type="checkbox" />
+            Require owner before activation
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.require_project_before_activation} onChange={(event) => onDraftChange((current) => ({ ...current, require_project_before_activation: event.target.checked }))} type="checkbox" />
+            Require project before activation
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Onboarding checklist
+          <textarea
+            className="min-h-32 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, onboarding_checklist_text: event.target.value }))}
+            placeholder="One onboarding step per line."
+            value={draft.onboarding_checklist_text}
+          />
+        </label>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Updating tenant defaults before onboarding new customers."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save lifecycle policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function CompliancePolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: ComplianceDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<ComplianceDraft>>;
+  onSave: () => void;
+  policy?: PlatformCompliancePolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading compliance policy" : "Compliance policy unavailable"} detail="Data residency, export, masking, and audit retention controls will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={ShieldCheck} label="Default Region" value={policy.default_data_region} tone="platform" />
+        <StatCard icon={Database} label="Allowed Regions" value={String(policy.allowed_data_regions.length)} tone="neutral" />
+        <StatCard icon={Archive} label="Audit Retention" value={`${policy.audit_retention_days} days`} tone="neutral" />
+        <StatCard icon={CheckCircle2} label="Export Approval" value={policy.require_export_approval ? "Required" : "Optional"} tone={policy.require_export_approval ? "success" : "warning"} />
+      </div>
+      <Panel title="Compliance and data residency policy" description="Set global defaults for data residency, export approval, PII masking, audit retention, and compliance contact metadata.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Default data region
+            <Input value={draft.default_data_region} onChange={(event) => onDraftChange((current) => ({ ...current, default_data_region: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Audit retention days
+            <Input min={30} type="number" value={draft.audit_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, audit_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Data processing contact
+            <Input value={draft.data_processing_contact} onChange={(event) => onDraftChange((current) => ({ ...current, data_processing_contact: event.target.value }))} placeholder="privacy@atlasfieldops.com" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Subprocessors URL
+            <Input value={draft.subprocessors_public_url} onChange={(event) => onDraftChange((current) => ({ ...current, subprocessors_public_url: event.target.value }))} placeholder="https://..." />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.pii_masking_default} onChange={(event) => onDraftChange((current) => ({ ...current, pii_masking_default: event.target.checked }))} type="checkbox" />
+            Mask PII by default
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.require_export_approval} onChange={(event) => onDraftChange((current) => ({ ...current, require_export_approval: event.target.checked }))} type="checkbox" />
+            Require export approval
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.require_dpa_for_exports} onChange={(event) => onDraftChange((current) => ({ ...current, require_dpa_for_exports: event.target.checked }))} type="checkbox" />
+            Require DPA for exports
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Allowed data regions
+          <textarea
+            className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, allowed_data_regions_text: event.target.value }))}
+            placeholder="One region per line."
+            value={draft.allowed_data_regions_text}
+          />
+        </label>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Updating data residency defaults for enterprise rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save compliance policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function SlaPolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: SlaDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<SlaDraft>>;
+  onSave: () => void;
+  policy?: PlatformSlaPolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading SLA policy" : "SLA policy unavailable"} detail="Support response targets and escalation contacts will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={HeartPulse} label="Uptime Target" value={`${policy.uptime_target_percent}%`} tone="success" />
+        <StatCard icon={AlertTriangle} label="Critical Response" value={`${policy.critical_response_minutes} min`} tone="warning" />
+        <StatCard icon={LifeBuoy} label="High Response" value={`${policy.high_response_hours} hrs`} tone="neutral" />
+        <StatCard icon={KeyRound} label="Support Session Max" value={`${policy.support_session_max_minutes} min`} tone="platform" />
+      </div>
+      <Panel title="SLA and support policy" description="Set global support targets and escalation details for incidents, tenant support, and production operations.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Uptime target %
+            <Input min={90} max={100} step={0.1} type="number" value={draft.uptime_target_percent} onChange={(event) => onDraftChange((current) => ({ ...current, uptime_target_percent: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Critical response minutes
+            <Input min={5} type="number" value={draft.critical_response_minutes} onChange={(event) => onDraftChange((current) => ({ ...current, critical_response_minutes: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            High response hours
+            <Input min={1} type="number" value={draft.high_response_hours} onChange={(event) => onDraftChange((current) => ({ ...current, high_response_hours: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Normal response hours
+            <Input min={1} type="number" value={draft.normal_response_hours} onChange={(event) => onDraftChange((current) => ({ ...current, normal_response_hours: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Support session max minutes
+            <Input min={5} type="number" value={draft.support_session_max_minutes} onChange={(event) => onDraftChange((current) => ({ ...current, support_session_max_minutes: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Escalation email
+            <Input value={draft.escalation_email} onChange={(event) => onDraftChange((current) => ({ ...current, escalation_email: event.target.value }))} placeholder="support@atlasfieldops.com" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Incident manager
+            <Input value={draft.incident_manager} onChange={(event) => onDraftChange((current) => ({ ...current, incident_manager: event.target.value }))} placeholder="Platform Operations" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Status page URL
+            <Input value={draft.status_page_url} onChange={(event) => onDraftChange((current) => ({ ...current, status_page_url: event.target.value }))} placeholder="https://status.atlasfieldops.com" />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Updating production support targets before enterprise rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save SLA policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function QuotaPolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: QuotaDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<QuotaDraft>>;
+  onSave: () => void;
+  policy?: PlatformQuotaPolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading quota policy" : "Quota policy unavailable"} detail="Usage thresholds, rate limits, and overage controls will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={AlertTriangle} label="Warning Threshold" value={`${policy.warning_threshold_percent}%`} tone="warning" />
+        <StatCard icon={ShieldCheck} label="Critical Threshold" value={`${policy.critical_threshold_percent}%`} tone="danger" />
+        <StatCard icon={Activity} label="API Rate Limit" value={`${policy.api_rate_limit_per_minute}/min`} tone="neutral" />
+        <StatCard icon={UsersRound} label="Owner Alerts" value={policy.notify_owners_on_warning ? "On" : "Off"} tone={policy.notify_owners_on_warning ? "success" : "warning"} />
+      </div>
+      <Panel title="Usage and quota policy" description="Set global thresholds and default overage behavior for tenant plan limits, API consumption, storage, and submissions.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Warning threshold %
+            <Input min={1} max={100} type="number" value={draft.warning_threshold_percent} onChange={(event) => onDraftChange((current) => ({ ...current, warning_threshold_percent: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Critical threshold %
+            <Input min={1} max={100} type="number" value={draft.critical_threshold_percent} onChange={(event) => onDraftChange((current) => ({ ...current, critical_threshold_percent: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            API rate limit per minute
+            <Input min={1} type="number" value={draft.api_rate_limit_per_minute} onChange={(event) => onDraftChange((current) => ({ ...current, api_rate_limit_per_minute: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Storage overage action
+            <Input value={draft.storage_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, storage_overage_action: event.target.value }))} placeholder="warn, block_uploads, suspend" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Submission overage action
+            <Input value={draft.submission_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, submission_overage_action: event.target.value }))} placeholder="warn, block_new, suspend" />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.notify_owners_on_warning} onChange={(event) => onDraftChange((current) => ({ ...current, notify_owners_on_warning: event.target.checked }))} type="checkbox" />
+            Notify owners on warning
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.notify_super_admins_on_critical} onChange={(event) => onDraftChange((current) => ({ ...current, notify_super_admins_on_critical: event.target.checked }))} type="checkbox" />
+            Notify Super Admins on critical
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Updating quota thresholds before enterprise tenant rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save quota policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ObservabilityPolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: ObservabilityDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<ObservabilityDraft>>;
+  onSave: () => void;
+  policy?: PlatformObservabilityPolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading observability policy" : "Observability policy unavailable"} detail="Health checks, alert thresholds, and mobile sync risk controls will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={HeartPulse} label="Health Cadence" value={`${policy.health_check_interval_seconds}s`} tone="success" />
+        <StatCard icon={AlertTriangle} label="API Error Alert" value={`${policy.api_error_rate_threshold_percent}%`} tone="warning" />
+        <StatCard icon={Smartphone} label="Mobile Sync Alert" value={`${policy.mobile_sync_failure_threshold_percent}%`} tone="warning" />
+        <StatCard icon={Activity} label="Slow Request" value={`${policy.slow_request_threshold_ms}ms`} tone="neutral" />
+      </div>
+      <Panel title="Observability and alerting policy" description="Set global health-check cadence, alert thresholds, mobile sync risk, offline-device alerts, and support routing for platform operations.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Health check interval seconds
+            <Input min={10} type="number" value={draft.health_check_interval_seconds} onChange={(event) => onDraftChange((current) => ({ ...current, health_check_interval_seconds: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            API error threshold %
+            <Input min={0} max={100} step={0.1} type="number" value={draft.api_error_rate_threshold_percent} onChange={(event) => onDraftChange((current) => ({ ...current, api_error_rate_threshold_percent: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Slow request threshold ms
+            <Input min={100} type="number" value={draft.slow_request_threshold_ms} onChange={(event) => onDraftChange((current) => ({ ...current, slow_request_threshold_ms: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Mobile sync failure %
+            <Input min={0} max={100} step={0.1} type="number" value={draft.mobile_sync_failure_threshold_percent} onChange={(event) => onDraftChange((current) => ({ ...current, mobile_sync_failure_threshold_percent: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Offline device alert days
+            <Input min={1} type="number" value={draft.offline_device_alert_days} onChange={(event) => onDraftChange((current) => ({ ...current, offline_device_alert_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Alert email
+            <Input value={draft.alert_email} onChange={(event) => onDraftChange((current) => ({ ...current, alert_email: event.target.value }))} placeholder="ops@atlasfieldops.com" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Pager channel
+            <Input value={draft.pager_channel} onChange={(event) => onDraftChange((current) => ({ ...current, pager_channel: event.target.value }))} placeholder="#platform-alerts" />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Tightening mobile sync alerts before a large pilot rollout."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save observability policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function RetentionPolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: RetentionDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<RetentionDraft>>;
+  onSave: () => void;
+  policy?: PlatformRetentionPolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading retention policy" : "Retention policy unavailable"} detail="Tenant data, audit log, export, backup, and anonymization retention will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Database} label="Tenant Data" value={`${policy.tenant_data_retention_days}d`} tone="platform" />
+        <StatCard icon={FileClock} label="Audit Logs" value={`${policy.audit_log_retention_days}d`} tone="success" />
+        <StatCard icon={Archive} label="Backups" value={`${policy.backup_retention_days}d`} tone="neutral" />
+        <StatCard icon={ShieldCheck} label="Legal Hold" value={policy.legal_hold_enabled ? "Enabled" : "Off"} tone={policy.legal_hold_enabled ? "success" : "warning"} />
+      </div>
+      <Panel title="Data retention and archiving policy" description="Set platform defaults for tenant records, audit trails, exports, backups, inactive tenant archiving, deleted-user anonymization, and legal hold behavior.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-2 text-sm font-medium">
+            Tenant data retention days
+            <Input min={30} type="number" value={draft.tenant_data_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, tenant_data_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Audit log retention days
+            <Input min={365} type="number" value={draft.audit_log_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, audit_log_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Backup retention days
+            <Input min={7} type="number" value={draft.backup_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, backup_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Export retention days
+            <Input min={1} type="number" value={draft.export_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, export_retention_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Archive inactive tenant after days
+            <Input min={30} type="number" value={draft.inactive_tenant_archive_days} onChange={(event) => onDraftChange((current) => ({ ...current, inactive_tenant_archive_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Anonymize deleted users after days
+            <Input min={1} type="number" value={draft.anonymize_deleted_user_days} onChange={(event) => onDraftChange((current) => ({ ...current, anonymize_deleted_user_days: Number(event.target.value) }))} />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.legal_hold_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, legal_hold_enabled: event.target.checked }))} type="checkbox" />
+            Legal hold can pause deletion
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Aligning retention defaults with enterprise customer data governance requirements."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save retention policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ApiGovernancePolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: ApiGovernanceDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<ApiGovernanceDraft>>;
+  onSave: () => void;
+  policy?: PlatformApiGovernancePolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading API governance policy" : "API governance policy unavailable"} detail="Public API, API key, webhook, and secret rotation controls will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={KeyRound} label="Public API" value={policy.public_api_enabled ? "Enabled" : "Disabled"} tone={policy.public_api_enabled ? "success" : "warning"} />
+        <StatCard icon={ShieldCheck} label="Scoped Keys" value={policy.require_scoped_api_keys ? "Required" : "Optional"} tone={policy.require_scoped_api_keys ? "success" : "warning"} />
+        <StatCard icon={PlugZap} label="Webhook Retries" value={String(policy.webhook_retry_attempts)} tone="neutral" />
+        <StatCard icon={FileClock} label="Secret Rotation" value={`${policy.secret_rotation_days}d`} tone="platform" />
+      </div>
+      <Panel title="API and integration governance policy" description="Set global defaults for public API access, API key expiry, webhook retry behavior, connector secret rotation, and external-access auditing.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.public_api_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, public_api_enabled: event.target.checked }))} type="checkbox" />
+            Public API enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.require_scoped_api_keys} onChange={(event) => onDraftChange((current) => ({ ...current, require_scoped_api_keys: event.target.checked }))} type="checkbox" />
+            Require scoped API keys
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.audit_external_access} onChange={(event) => onDraftChange((current) => ({ ...current, audit_external_access: event.target.checked }))} type="checkbox" />
+            Audit external access
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            API key expiry days
+            <Input min={1} type="number" value={draft.api_key_expiry_days} onChange={(event) => onDraftChange((current) => ({ ...current, api_key_expiry_days: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Webhook retry attempts
+            <Input min={0} type="number" value={draft.webhook_retry_attempts} onChange={(event) => onDraftChange((current) => ({ ...current, webhook_retry_attempts: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Webhook timeout seconds
+            <Input min={1} type="number" value={draft.webhook_timeout_seconds} onChange={(event) => onDraftChange((current) => ({ ...current, webhook_timeout_seconds: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Secret rotation days
+            <Input min={1} type="number" value={draft.secret_rotation_days} onChange={(event) => onDraftChange((current) => ({ ...current, secret_rotation_days: Number(event.target.value) }))} />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Enforcing scoped API keys before enabling partner integrations."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save API governance policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function AiGovernancePolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: AiGovernanceDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<AiGovernanceDraft>>;
+  onSave: () => void;
+  policy?: PlatformAiGovernancePolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading AI governance policy" : "AI governance policy unavailable"} detail="AI assistance, PII redaction, review, token budget, and audit controls will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={Activity} label="AI Features" value={policy.ai_features_enabled ? "Enabled" : "Disabled"} tone={policy.ai_features_enabled ? "success" : "warning"} />
+        <StatCard icon={ShieldCheck} label="PII Redaction" value={policy.pii_redaction_required ? "Required" : "Optional"} tone={policy.pii_redaction_required ? "success" : "warning"} />
+        <StatCard icon={UserCog} label="Human Review" value={policy.human_review_required ? "Required" : "Optional"} tone={policy.human_review_required ? "success" : "warning"} />
+        <StatCard icon={Database} label="Token Budget" value={policy.monthly_token_budget.toLocaleString()} tone="platform" />
+      </div>
+      <Panel title="AI governance policy" description="Set platform defaults for AI-assisted workflows, provider selection, PII protection, human review, prompt retention, token budget, and audit logging.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.ai_features_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, ai_features_enabled: event.target.checked }))} type="checkbox" />
+            AI features enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.pii_redaction_required} onChange={(event) => onDraftChange((current) => ({ ...current, pii_redaction_required: event.target.checked }))} type="checkbox" />
+            Require PII redaction
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.human_review_required} onChange={(event) => onDraftChange((current) => ({ ...current, human_review_required: event.target.checked }))} type="checkbox" />
+            Require human review
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.audit_ai_actions} onChange={(event) => onDraftChange((current) => ({ ...current, audit_ai_actions: event.target.checked }))} type="checkbox" />
+            Audit AI actions
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Default provider
+            <Input value={draft.default_provider} onChange={(event) => onDraftChange((current) => ({ ...current, default_provider: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Monthly token budget
+            <Input min={0} type="number" value={draft.monthly_token_budget} onChange={(event) => onDraftChange((current) => ({ ...current, monthly_token_budget: Number(event.target.value) }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Prompt retention days
+            <Input min={0} type="number" value={draft.max_prompt_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, max_prompt_retention_days: Number(event.target.value) }))} />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Requiring human review before enabling AI-assisted data cleaning for tenants."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save AI governance policy
+          </Button>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function CommunicationPolicy({
+  draft,
+  isLoading,
+  isSaving,
+  onDraftChange,
+  onSave,
+  policy,
+}: {
+  draft: CommunicationDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  onDraftChange: React.Dispatch<React.SetStateAction<CommunicationDraft>>;
+  onSave: () => void;
+  policy?: PlatformCommunicationPolicyRead;
+}) {
+  if (!policy) return <EmptyState title={isLoading ? "Loading communication policy" : "Communication policy unavailable"} detail="Email, SMS, push, broadcast, and notification log defaults will appear after the platform API responds." />;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={LifeBuoy} label="Transactional Email" value={policy.transactional_email_enabled ? "Enabled" : "Disabled"} tone={policy.transactional_email_enabled ? "success" : "warning"} />
+        <StatCard icon={Smartphone} label="SMS" value={policy.sms_enabled ? "Enabled" : "Disabled"} tone={policy.sms_enabled ? "success" : "neutral"} />
+        <StatCard icon={Activity} label="Push" value={policy.push_notifications_enabled ? "Enabled" : "Disabled"} tone={policy.push_notifications_enabled ? "success" : "warning"} />
+        <StatCard icon={FileClock} label="Log Retention" value={`${policy.notification_log_retention_days}d`} tone="platform" />
+      </div>
+      <Panel title="Communication policy" description="Set platform defaults for transactional email, support replies, SMS, push notifications, tenant broadcasts, and notification log retention.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.transactional_email_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, transactional_email_enabled: event.target.checked }))} type="checkbox" />
+            Transactional email enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.sms_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, sms_enabled: event.target.checked }))} type="checkbox" />
+            SMS enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.push_notifications_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, push_notifications_enabled: event.target.checked }))} type="checkbox" />
+            Push notifications enabled
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
+            <input checked={draft.tenant_broadcasts_enabled} onChange={(event) => onDraftChange((current) => ({ ...current, tenant_broadcasts_enabled: event.target.checked }))} type="checkbox" />
+            Tenant broadcasts enabled
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Default from email
+            <Input value={draft.default_from_email} onChange={(event) => onDraftChange((current) => ({ ...current, default_from_email: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Support reply-to email
+            <Input value={draft.support_reply_to_email} onChange={(event) => onDraftChange((current) => ({ ...current, support_reply_to_email: event.target.value }))} />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Notification log retention days
+            <Input min={30} type="number" value={draft.notification_log_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, notification_log_retention_days: Number(event.target.value) }))} />
+          </label>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-medium">
+          Audit reason
+          <textarea
+            className="min-h-20 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            onChange={(event) => onDraftChange((current) => ({ ...current, reason: event.target.value }))}
+            placeholder="Example: Enabling tenant broadcasts before the next release communication."
+            value={draft.reason}
+          />
+        </label>
+        <div className="mt-4 flex justify-end">
+          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+            Save communication policy
+          </Button>
+        </div>
+      </Panel>
     </div>
   );
 }

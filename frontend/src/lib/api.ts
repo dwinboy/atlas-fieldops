@@ -378,6 +378,145 @@ export type PlatformOrganizationPlanUpdate = {
   reason: string;
 };
 
+export type PlatformTenantLifecyclePolicyRead = {
+  trial_days: number;
+  grace_days: number;
+  suspend_after_grace: boolean;
+  require_owner_before_activation: boolean;
+  require_project_before_activation: boolean;
+  default_plan: string;
+  default_user_limit: number;
+  default_submission_limit: number;
+  onboarding_checklist: string[];
+  updated_at?: string | null;
+};
+
+export type PlatformTenantLifecyclePolicyUpdate = Omit<PlatformTenantLifecyclePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformCompliancePolicyRead = {
+  default_data_region: string;
+  allowed_data_regions: string[];
+  pii_masking_default: boolean;
+  require_export_approval: boolean;
+  require_dpa_for_exports: boolean;
+  audit_retention_days: number;
+  data_processing_contact: string;
+  subprocessors_public_url: string;
+  updated_at?: string | null;
+};
+
+export type PlatformCompliancePolicyUpdate = Omit<PlatformCompliancePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformSlaPolicyRead = {
+  uptime_target_percent: number;
+  critical_response_minutes: number;
+  high_response_hours: number;
+  normal_response_hours: number;
+  support_session_max_minutes: number;
+  escalation_email: string;
+  incident_manager: string;
+  status_page_url: string;
+  updated_at?: string | null;
+};
+
+export type PlatformSlaPolicyUpdate = Omit<PlatformSlaPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformQuotaPolicyRead = {
+  warning_threshold_percent: number;
+  critical_threshold_percent: number;
+  api_rate_limit_per_minute: number;
+  storage_overage_action: string;
+  submission_overage_action: string;
+  notify_owners_on_warning: boolean;
+  notify_super_admins_on_critical: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformQuotaPolicyUpdate = Omit<PlatformQuotaPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformObservabilityPolicyRead = {
+  health_check_interval_seconds: number;
+  api_error_rate_threshold_percent: number;
+  slow_request_threshold_ms: number;
+  mobile_sync_failure_threshold_percent: number;
+  offline_device_alert_days: number;
+  alert_email: string;
+  pager_channel: string;
+  updated_at?: string | null;
+};
+
+export type PlatformObservabilityPolicyUpdate = Omit<PlatformObservabilityPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformRetentionPolicyRead = {
+  tenant_data_retention_days: number;
+  audit_log_retention_days: number;
+  backup_retention_days: number;
+  export_retention_days: number;
+  inactive_tenant_archive_days: number;
+  anonymize_deleted_user_days: number;
+  legal_hold_enabled: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformRetentionPolicyUpdate = Omit<PlatformRetentionPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformApiGovernancePolicyRead = {
+  public_api_enabled: boolean;
+  api_key_expiry_days: number;
+  webhook_retry_attempts: number;
+  webhook_timeout_seconds: number;
+  secret_rotation_days: number;
+  require_scoped_api_keys: boolean;
+  audit_external_access: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformApiGovernancePolicyUpdate = Omit<PlatformApiGovernancePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformAiGovernancePolicyRead = {
+  ai_features_enabled: boolean;
+  default_provider: string;
+  pii_redaction_required: boolean;
+  human_review_required: boolean;
+  monthly_token_budget: number;
+  max_prompt_retention_days: number;
+  audit_ai_actions: boolean;
+  updated_at?: string | null;
+};
+
+export type PlatformAiGovernancePolicyUpdate = Omit<PlatformAiGovernancePolicyRead, "updated_at"> & {
+  reason: string;
+};
+
+export type PlatformCommunicationPolicyRead = {
+  transactional_email_enabled: boolean;
+  default_from_email: string;
+  support_reply_to_email: string;
+  sms_enabled: boolean;
+  push_notifications_enabled: boolean;
+  tenant_broadcasts_enabled: boolean;
+  notification_log_retention_days: number;
+  updated_at?: string | null;
+};
+
+export type PlatformCommunicationPolicyUpdate = Omit<PlatformCommunicationPolicyRead, "updated_at"> & {
+  reason: string;
+};
+
 export type PlatformActionResult = {
   status: string;
   message: string;
@@ -2695,6 +2834,78 @@ export async function updatePlatformOrganizationPlan(
   return request<PlatformOrganizationPlanRead>(`/platform/organization-plans/${organizationId}`, { method: "PATCH", token, bodyJson: payload });
 }
 
+export async function getPlatformTenantLifecyclePolicy(token: string): Promise<PlatformTenantLifecyclePolicyRead> {
+  return request<PlatformTenantLifecyclePolicyRead>("/platform/tenant-lifecycle-policy", { token });
+}
+
+export async function updatePlatformTenantLifecyclePolicy(token: string, payload: PlatformTenantLifecyclePolicyUpdate): Promise<PlatformTenantLifecyclePolicyRead> {
+  return request<PlatformTenantLifecyclePolicyRead>("/platform/tenant-lifecycle-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformCompliancePolicy(token: string): Promise<PlatformCompliancePolicyRead> {
+  return request<PlatformCompliancePolicyRead>("/platform/compliance-policy", { token });
+}
+
+export async function updatePlatformCompliancePolicy(token: string, payload: PlatformCompliancePolicyUpdate): Promise<PlatformCompliancePolicyRead> {
+  return request<PlatformCompliancePolicyRead>("/platform/compliance-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformSlaPolicy(token: string): Promise<PlatformSlaPolicyRead> {
+  return request<PlatformSlaPolicyRead>("/platform/sla-policy", { token });
+}
+
+export async function updatePlatformSlaPolicy(token: string, payload: PlatformSlaPolicyUpdate): Promise<PlatformSlaPolicyRead> {
+  return request<PlatformSlaPolicyRead>("/platform/sla-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformQuotaPolicy(token: string): Promise<PlatformQuotaPolicyRead> {
+  return request<PlatformQuotaPolicyRead>("/platform/quota-policy", { token });
+}
+
+export async function updatePlatformQuotaPolicy(token: string, payload: PlatformQuotaPolicyUpdate): Promise<PlatformQuotaPolicyRead> {
+  return request<PlatformQuotaPolicyRead>("/platform/quota-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformObservabilityPolicy(token: string): Promise<PlatformObservabilityPolicyRead> {
+  return request<PlatformObservabilityPolicyRead>("/platform/observability-policy", { token });
+}
+
+export async function updatePlatformObservabilityPolicy(token: string, payload: PlatformObservabilityPolicyUpdate): Promise<PlatformObservabilityPolicyRead> {
+  return request<PlatformObservabilityPolicyRead>("/platform/observability-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformRetentionPolicy(token: string): Promise<PlatformRetentionPolicyRead> {
+  return request<PlatformRetentionPolicyRead>("/platform/retention-policy", { token });
+}
+
+export async function updatePlatformRetentionPolicy(token: string, payload: PlatformRetentionPolicyUpdate): Promise<PlatformRetentionPolicyRead> {
+  return request<PlatformRetentionPolicyRead>("/platform/retention-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformApiGovernancePolicy(token: string): Promise<PlatformApiGovernancePolicyRead> {
+  return request<PlatformApiGovernancePolicyRead>("/platform/api-governance-policy", { token });
+}
+
+export async function updatePlatformApiGovernancePolicy(token: string, payload: PlatformApiGovernancePolicyUpdate): Promise<PlatformApiGovernancePolicyRead> {
+  return request<PlatformApiGovernancePolicyRead>("/platform/api-governance-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformAiGovernancePolicy(token: string): Promise<PlatformAiGovernancePolicyRead> {
+  return request<PlatformAiGovernancePolicyRead>("/platform/ai-governance-policy", { token });
+}
+
+export async function updatePlatformAiGovernancePolicy(token: string, payload: PlatformAiGovernancePolicyUpdate): Promise<PlatformAiGovernancePolicyRead> {
+  return request<PlatformAiGovernancePolicyRead>("/platform/ai-governance-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function getPlatformCommunicationPolicy(token: string): Promise<PlatformCommunicationPolicyRead> {
+  return request<PlatformCommunicationPolicyRead>("/platform/communication-policy", { token });
+}
+
+export async function updatePlatformCommunicationPolicy(token: string, payload: PlatformCommunicationPolicyUpdate): Promise<PlatformCommunicationPolicyRead> {
+  return request<PlatformCommunicationPolicyRead>("/platform/communication-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
 export async function listPlatformSupportSessions(token: string): Promise<PlatformSupportSessionRead[]> {
   return request<PlatformSupportSessionRead[]>("/platform/support-sessions", { token });
 }
@@ -4150,11 +4361,19 @@ export const api = {
   getFormControls,
   getImportErrorReport,
   getImportMigrationOverview,
+  getPlatformApiGovernancePolicy,
+  getPlatformAiGovernancePolicy,
   getPlatformBackupPolicy,
   getPlatformAnnouncement,
+  getPlatformCommunicationPolicy,
+  getPlatformCompliancePolicy,
   getPlatformRelease,
+  getPlatformQuotaPolicy,
   getPlatformMobileFleet,
+  getPlatformObservabilityPolicy,
+  getPlatformRetentionPolicy,
   getPlatformSecurityPolicy,
+  getPlatformSlaPolicy,
   createGovernancePolicy,
   createImportJob,
   createSurvey,
@@ -4169,6 +4388,7 @@ export const api = {
   getPlatformSettings,
   getPlatformSummary,
   getPlatformSystemHealth,
+  getPlatformTenantLifecyclePolicy,
   getProjectDetail,
   getProjectsSummary,
   getFormTemplate,
@@ -4278,12 +4498,21 @@ export const api = {
   updateAdministrationLocation,
   updateAdministrationNotificationRule,
   updateAdministrationReferenceValue,
+  updatePlatformApiGovernancePolicy,
+  updatePlatformAiGovernancePolicy,
   updatePlatformFeatureFlag,
+  updatePlatformCommunicationPolicy,
   updatePlatformIntegration,
   updatePlatformOrganizationPlan,
+  updatePlatformObservabilityPolicy,
+  updatePlatformQuotaPolicy,
   updatePlatformRelease,
+  updatePlatformRetentionPolicy,
   updatePlatformSecurityPolicy,
+  updatePlatformSlaPolicy,
   updatePlatformBackupPolicy,
+  updatePlatformCompliancePolicy,
+  updatePlatformTenantLifecyclePolicy,
   updateImportRow,
   updateForm,
   updateFormControls,

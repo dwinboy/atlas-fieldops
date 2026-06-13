@@ -1,6 +1,7 @@
 "use client";
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   ChevronDown,
@@ -12,16 +13,18 @@ import {
   Moon,
   PanelLeftClose,
   RadioTower,
+  Search,
   Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AtlasFieldOpsLogo } from "@/components/brand/AtlasFieldOpsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
+import { StatusDot } from "@/components/ui/status-dot";
 import {
   getBreadcrumbsForView,
   getNavigationItemByView,
@@ -30,9 +33,10 @@ import {
   viewGuidance,
   type ViewTone,
 } from "@/config/navigation";
+import { isPendingReviewSubmission } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
-import type { CurrentPrincipal } from "@/lib/api";
+import { getOperationsSummary, listSubmissions, type CurrentPrincipal } from "@/lib/api";
 
 export type { WorkspaceView } from "@/stores/workspace";
 
@@ -43,6 +47,7 @@ type AppShellProps = {
   organizationLogoUrl?: string | null;
   organizationSlug?: string;
   principal?: CurrentPrincipal | null;
+  token?: string | null;
 };
 
 const viewToneStyles: Record<
@@ -240,10 +245,33 @@ export function AppShell({
   organizationLogoUrl,
   organizationSlug,
   principal,
+  token,
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const liveDataEnabled = Boolean(token && token !== "preview-token");
+  const summaryQuery = useQuery({
+    queryKey: ["operations-summary", token],
+    queryFn: () => getOperationsSummary(token ?? ""),
+    enabled: liveDataEnabled,
+    staleTime: 60_000,
+  });
+  const submissionsQuery = useQuery({
+    queryKey: ["dashboard-submissions", token],
+    queryFn: () => listSubmissions(token ?? ""),
+    enabled: liveDataEnabled,
+    staleTime: 60_000,
+  });
+  const pendingReviewCount = useMemo(
+    () => (submissionsQuery.data ?? []).filter(isPendingReviewSubmission).length,
+    [submissionsQuery.data],
+  );
+  const navBadgeCounts: Partial<Record<WorkspaceView, number>> = {
+    submissions: pendingReviewCount,
+    dataQuality: summaryQuery.data?.quality_flags ?? 0,
+  };
+  const syncHealthPercent = summaryQuery.data?.sync_health_percent;
   const activeView = useWorkspaceStore((state) => state.activeView);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const collapsedSidebar = useWorkspaceStore((state) => state.collapsedSidebar);
@@ -294,52 +322,96 @@ export function AppShell({
               const Icon = item.icon;
               const active = activeView === item.id;
               const tone = viewToneStyles[item.tone];
+              const badgeCount = navBadgeCounts[item.id] ?? 0;
+              const navChildren = active
+                ? (item.children ?? []).filter((child) => !child.route.includes(":"))
+                : [];
+              const normalizedPath = (pathname ?? "").replace(/\/+$/, "");
               return (
-                <button
-                  key={item.id}
-                  className={cn(
-                    "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] font-medium transition-all duration-200 ease-product",
-                    active
-                      ? tone.navActive
-                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                    collapsedSidebar && "justify-center px-0",
-                  )}
-                  onClick={() => {
-                    setActiveView(item.id);
-                    router.push(item.route);
-                    setMobileNavOpen(false);
-                  }}
-                  type="button"
-                >
-                  {active ? (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "absolute left-0 top-2 h-5 w-1 rounded-r-full",
-                        tone.navRail,
-                        collapsedSidebar && "left-1",
-                      )}
-                    />
-                  ) : null}
-                  <span
+                <div key={item.id}>
+                  <button
                     className={cn(
-                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                      "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] font-medium transition-all duration-200 ease-product",
                       active
-                        ? tone.navIcon
-                        : "bg-muted/50 text-muted-foreground group-hover:bg-background group-hover:text-foreground",
+                        ? tone.navActive
+                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                      collapsedSidebar && "justify-center px-0",
                     )}
+                    onClick={() => {
+                      setActiveView(item.id);
+                      router.push(item.route);
+                      setMobileNavOpen(false);
+                    }}
+                    title={collapsedSidebar ? `${item.label} — ${item.hint}` : undefined}
+                    type="button"
                   >
-                    <Icon aria-hidden="true" size={15} />
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 truncate",
-                      collapsedSidebar && "sr-only",
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                </button>
+                    {active ? (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute left-0 top-2 h-5 w-1 rounded-r-full",
+                          tone.navRail,
+                          collapsedSidebar && "left-1",
+                        )}
+                      />
+                    ) : null}
+                    <span
+                      className={cn(
+                        "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                        active
+                          ? tone.navIcon
+                          : "bg-muted/50 text-muted-foreground group-hover:bg-background group-hover:text-foreground",
+                      )}
+                    >
+                      <Icon aria-hidden="true" size={15} />
+                      {collapsedSidebar && badgeCount > 0 ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-warning"
+                        />
+                      ) : null}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate",
+                        collapsedSidebar && "sr-only",
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                    {!collapsedSidebar && badgeCount > 0 ? (
+                      <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-warning">
+                        {badgeCount > 99 ? "99+" : badgeCount}
+                      </span>
+                    ) : null}
+                  </button>
+                  {!collapsedSidebar && navChildren.length ? (
+                    <div className="ml-[1.45rem] mt-0.5 space-y-0.5 border-l border-border/70 pl-2.5">
+                      {navChildren.map((child) => {
+                        const childActive = normalizedPath === child.route.replace(/\/+$/, "");
+                        return (
+                          <button
+                            className={cn(
+                              "block w-full truncate rounded-md px-2 py-1 text-left text-xs transition-colors",
+                              childActive
+                                ? "bg-muted font-medium text-foreground"
+                                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            )}
+                            key={child.route}
+                            onClick={() => {
+                              router.push(child.route);
+                              setMobileNavOpen(false);
+                            }}
+                            title={child.description}
+                            type="button"
+                          >
+                            {child.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -379,10 +451,56 @@ export function AppShell({
             </div>
           </div>
         </div>
+        <button
+          className={cn(
+            "mb-3 flex h-8 w-full shrink-0 items-center gap-2 rounded-lg border bg-background/70 px-2.5 text-[12px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground",
+            collapsedSidebar && "justify-center px-0",
+          )}
+          onClick={() => setCommandOpen(true)}
+          title="Search the workspace (⌘K)"
+          type="button"
+        >
+          <Search aria-hidden="true" size={14} />
+          <span className={cn("flex-1 text-left", collapsedSidebar && "sr-only")}>
+            Search…
+          </span>
+          <kbd
+            className={cn(
+              "rounded border bg-muted px-1 font-mono text-[10px]",
+              collapsedSidebar && "sr-only",
+            )}
+          >
+            ⌘K
+          </kbd>
+        </button>
         <div className="min-h-0 flex-1 overflow-y-auto pr-1 product-scrollbar">
           {navigation}
         </div>
-        <div className="mt-3 shrink-0 border-t pt-3">
+        <div className="mt-3 shrink-0 space-y-1 border-t pt-3">
+          {liveDataEnabled && typeof syncHealthPercent === "number" ? (
+            <div
+              className={cn(
+                "flex h-8 items-center gap-2 rounded-md px-2 text-[12px] text-muted-foreground",
+                collapsedSidebar && "justify-center px-0",
+              )}
+              title={`Mobile sync health: ${syncHealthPercent}%`}
+            >
+              <StatusDot
+                tone={
+                  syncHealthPercent >= 90
+                    ? "online"
+                    : syncHealthPercent >= 70
+                      ? "syncing"
+                      : syncHealthPercent >= 40
+                        ? "warning"
+                        : "offline"
+                }
+              />
+              <span className={cn("truncate", collapsedSidebar && "sr-only")}>
+                Sync health {syncHealthPercent}%
+              </span>
+            </div>
+          ) : null}
           <button
             className={cn(
               "flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
