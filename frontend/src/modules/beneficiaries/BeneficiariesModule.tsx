@@ -89,7 +89,7 @@ const emptyRegistrationDraft: EntityRegistrationDraft = {
   community: "",
   dateOfBirth: "",
   district: "",
-  entityType: "Farmer",
+  entityType: "Entity",
   firstName: "",
   gender: "",
   householdId: "",
@@ -103,6 +103,12 @@ const emptyRegistrationDraft: EntityRegistrationDraft = {
   region: "",
   village: "",
 };
+
+const PERSON_ENTITY_TYPES = new Set<EntityType>(["Farmer", "Health Worker", "Training Participant"]);
+
+function isPersonEntityType(entityType: EntityType | string): boolean {
+  return PERSON_ENTITY_TYPES.has(entityType as EntityType);
+}
 
 function downloadCsv(filename: string, rows: Record<string, string | number | boolean | null | undefined>[]): void {
   const csv = toCsv(rows);
@@ -439,10 +445,9 @@ export function BeneficiariesModule({
       pushToast({ title: "Project required", description: "Select a project to enroll this entity in.", tone: "warning" });
       return;
     }
-    const isInstitution = registerDraft.entityType === "Facility" || registerDraft.entityType === "School";
-    const displayName = isInstitution
-      ? registerDraft.firstName.trim()
-      : `${registerDraft.firstName} ${registerDraft.lastName}`.trim();
+    const displayName = isPersonEntityType(registerDraft.entityType)
+      ? `${registerDraft.firstName} ${registerDraft.lastName}`.trim()
+      : registerDraft.firstName.trim();
     if (!displayName) {
       pushToast({ title: "Name required", description: "Enter a name for this entity.", tone: "warning" });
       return;
@@ -529,8 +534,8 @@ export function BeneficiariesModule({
                 Import entities
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Import farmer, household, entity, facility, school, or
-                custom entity registries into a selected project with duplicate
+                Import entity, facility, school, asset, product, household, person, or
+                custom registries into a selected project with duplicate
                 review and audit tracking.
               </p>
             </div>
@@ -1481,7 +1486,7 @@ function RegisterEntityModal({
         .sort((first, second) => (first.order_index ?? 0) - (second.order_index ?? 0)),
     [selectedCategory],
   );
-  const isInstitution = draft.entityType === "Facility" || draft.entityType === "School";
+  const isPerson = isPersonEntityType(draft.entityType);
   const duplicates = useMemo(
     () =>
       draft.firstName || draft.lastName || draft.nationalId || draft.phoneNumber || draft.householdId
@@ -1501,7 +1506,7 @@ function RegisterEntityModal({
   return (
     <Modal
       contentClassName="max-w-4xl"
-      description="Register a new farmer, household, entity, facility, school, or other entity in this registry, with a live duplicate check before saving."
+      description="Register a person, household, organization, facility, asset, product, site, case, or custom record in this registry, with a live duplicate check before saving."
       onOpenChange={onOpenChange}
       open={open}
       title="Register entity"
@@ -1601,17 +1606,7 @@ function RegisterEntityModal({
             </div>
           </div>
         ) : null}
-        {isInstitution ? (
-          <label className="block text-sm font-medium">
-            Name
-            <Input
-              className="mt-2"
-              onChange={(event) => update("firstName", event.target.value)}
-              placeholder="Example: Bonaberi Health Post"
-              value={draft.firstName}
-            />
-          </label>
-        ) : (
+        {isPerson ? (
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-sm font-medium">
               First name
@@ -1622,8 +1617,18 @@ function RegisterEntityModal({
               <Input className="mt-2" onChange={(event) => update("lastName", event.target.value)} value={draft.lastName} />
             </label>
           </div>
+        ) : (
+          <label className="block text-sm font-medium">
+            Record name
+            <Input
+              className="mt-2"
+              onChange={(event) => update("firstName", event.target.value)}
+              placeholder="Example: Bonaberi Health Post, Store A, Pump 17, Case 004"
+              value={draft.firstName}
+            />
+          </label>
         )}
-        {!isInstitution ? (
+        {isPerson ? (
           <div className="grid gap-3 md:grid-cols-3">
             <label className="text-sm font-medium">
               Gender
@@ -1643,14 +1648,19 @@ function RegisterEntityModal({
               <Input className="mt-2" onChange={(event) => update("phoneNumber", event.target.value)} value={draft.phoneNumber} />
             </label>
           </div>
-        ) : null}
+        ) : (
+          <label className="block text-sm font-medium">
+            Contact phone or responsible person phone
+            <Input className="mt-2" onChange={(event) => update("phoneNumber", event.target.value)} value={draft.phoneNumber} />
+          </label>
+        )}
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium">
-            National ID
+            Identifier / registration ID
             <Input className="mt-2" onChange={(event) => update("nationalId", event.target.value)} value={draft.nationalId} />
           </label>
           <label className="text-sm font-medium">
-            Household ID
+            Household / group / parent ID
             <Input className="mt-2" onChange={(event) => update("householdId", event.target.value)} value={draft.householdId} />
           </label>
           <label className="text-sm font-medium">
@@ -1820,7 +1830,7 @@ export function ProjectBeneficiariesPanel({
           ["Total Entities", rows.length],
           ["Active Entities", rows.filter((entity) => entity.status === "Active").length],
           ["Duplicates Flagged", rows.filter((entity) => entity.duplicateStatus !== "Clear").length],
-          ["Monitoring Due", rows.filter((entity) => !entity.lastVisit).length],
+          ["Follow-up Due", rows.filter((entity) => !entity.lastVisit).length],
         ].map(([label, value]) => (
           <div className="rounded-xl border bg-panel p-3" key={label}>
             <p className="text-xl font-semibold">{value}</p>

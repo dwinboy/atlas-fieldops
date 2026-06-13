@@ -175,7 +175,7 @@ function composeFormula(operation: FormulaOperation, fieldVariable: string): str
 }
 
 function resolvedCategory(draft: IndicatorDraft): string {
-  if (draft.category === "Other") return draft.categoryOther.trim() || "Indicator";
+  if (draft.category === "Other") return draft.categoryOther.trim() || "Metric";
   return draft.category;
 }
 
@@ -239,7 +239,7 @@ function messageFromError(error: unknown): string {
       return error.message;
     }
   }
-  return "Check the required fields and your indicator management permission.";
+  return "Check the required fields and your metric management permission.";
 }
 
 function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
@@ -259,7 +259,7 @@ function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
     code: row.code,
     current: row.current_value,
     dataSource,
-    definition: row.description ?? "Imported monitoring indicator.",
+    definition: row.description ?? "Imported metric.",
     disaggregation: row.disaggregation_fields.map(prettifyFieldName),
     frequency: displayFrequency(row.reporting_frequency),
     id: row.id,
@@ -267,13 +267,13 @@ function mapApiIndicator(row: IndicatorRead): IndicatorRecord {
     linkedForm: null,
     linkedQuestion: null,
     name: row.name,
-    owner: "M&E Manager",
+    owner: "Operations Manager",
     project: row.project_id ? "Linked project" : "Organization-wide",
     responsiblePerson: "Data Manager",
     resultArea: row.sdg_code ?? "Monitoring framework",
     status,
     target: row.target_value,
-    type: row.category || "Indicator",
+    type: row.category || "Metric",
     unit: row.unit,
   };
 }
@@ -333,7 +333,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
 
   function exportIndicators(): void {
     downloadCsv(
-      "atlas-indicators.csv",
+      "atlas-metrics.csv",
       indicators.map((indicator) => ({
         baseline: indicator.baseline,
         code: indicator.code,
@@ -347,8 +347,8 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         type: indicator.type,
       })),
     );
-    setActionResult("Indicator export prepared. Production exports should write an immutable Governance audit event.");
-    pushToast({ description: "The indicator library CSV is ready.", title: "Indicators exported", tone: "success" });
+    setActionResult("Metric export prepared. Production exports should write an immutable Governance audit event.");
+    pushToast({ description: "The metric library CSV is ready.", title: "Metrics exported", tone: "success" });
   }
 
   function indicatorFromDraft(id: string): IndicatorRecord {
@@ -366,7 +366,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       code: normalizeIndicatorCode(indicatorDraft.code),
       current,
       dataSource: indicatorDraft.dataSource || null,
-      definition: indicatorDraft.definition || "Indicator definition to be completed.",
+      definition: indicatorDraft.definition || "Metric definition to be completed.",
       disaggregation: indicatorDraft.disaggregationFields.length ? indicatorDraft.disaggregationFields.map(prettifyFieldName) : ["Project", "Location"],
       frequency: indicatorDraft.frequency,
       id,
@@ -374,7 +374,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       linkedForm: null,
       linkedQuestion: null,
       name: indicatorDraft.name.trim(),
-      owner: principal?.full_name ?? "M&E Manager",
+      owner: principal?.full_name ?? "Operations Manager",
       project: indicatorDraft.project || "Organization-wide",
       responsiblePerson: indicatorDraft.responsiblePerson || "Unassigned",
       resultArea: indicatorDraft.resultArea || "Results framework",
@@ -415,12 +415,12 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       setCreationOpen(false);
       setIndicatorDraft(defaultIndicatorDraft);
       await queryClient.invalidateQueries({ queryKey: ["indicators-module"] });
-      pushToast({ title: "Indicator created", description: `${created.code} is ready for targets, baselines, and form links.`, tone: "success" });
+      pushToast({ title: "Metric created", description: `${created.code} is ready for targets, baselines, and form links.`, tone: "success" });
     },
     onError: (error) => {
       const description = messageFromError(error);
       setActionResult(description);
-      pushToast({ title: "Could not create indicator", description, tone: "danger" });
+      pushToast({ title: "Could not create metric", description, tone: "danger" });
     },
   });
 
@@ -443,12 +443,12 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       setEditingIndicatorId(null);
       setIndicatorDraft(defaultIndicatorDraft);
       await queryClient.invalidateQueries({ queryKey: ["indicators-module"] });
-      pushToast({ title: "Indicator updated", description: `${updated.code} now reflects the revised values.`, tone: "success" });
+      pushToast({ title: "Metric updated", description: `${updated.code} now reflects the revised values.`, tone: "success" });
     },
     onError: (error) => {
       const description = messageFromError(error);
       setActionResult(description);
-      pushToast({ title: "Could not update indicator", description, tone: "danger" });
+      pushToast({ title: "Could not update metric", description, tone: "danger" });
     },
   });
 
@@ -470,7 +470,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       definition: indicator.definition,
       frequency: indicator.frequency,
       name: indicator.name,
-      resultArea: indicator.resultArea === "Monitoring framework" ? "" : indicator.resultArea,
+      resultArea: indicator.resultArea === "Results framework" ? "" : indicator.resultArea,
       target: String(indicator.target ?? 0),
       unit: indicator.unit,
     });
@@ -480,7 +480,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   function submitIndicator(): void {
     const code = normalizeIndicatorCode(indicatorDraft.code);
     if (!indicatorDraft.name.trim() || code.length < 2) {
-      setActionResult("Indicator name and a valid code are required before saving.");
+      setActionResult("Metric name and a valid code are required before saving.");
       return;
     }
     if (editingIndicatorId) {
@@ -488,7 +488,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       return;
     }
     if (indicators.some((indicator) => indicator.code === code)) {
-      setActionResult("An indicator with this code already exists. Use a unique indicator code.");
+      setActionResult("A metric with this code already exists. Use a unique metric code.");
       return;
     }
     if (preview) {
@@ -499,7 +499,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       setActiveSection("library");
       setCreationOpen(false);
       setIndicatorDraft(defaultIndicatorDraft);
-      pushToast({ title: "Indicator added", description: `${created.code} was added to this preview workspace.`, tone: "success" });
+      pushToast({ title: "Metric added", description: `${created.code} was added to this preview workspace.`, tone: "success" });
       return;
     }
     createIndicatorMutation.mutate();
@@ -516,16 +516,16 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
               <Badge tone={summary.withoutDataSource ? "danger" : "accent"}>{summary.withoutDataSource} without data source</Badge>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Indicators</h1>
-              <HelpHint label="About Indicators" title="Indicators">
-                Manage the M&E measurement framework: indicator library, results frameworks, logframes, baselines, targets, calculations, form links, disaggregation, and progress tracking.
+              <h1 className="text-2xl font-semibold tracking-tight">Metrics & Results</h1>
+              <HelpHint label="About Metrics & Results" title="Metrics & Results">
+                Manage operational metrics, KPIs, optional M&E indicators, results frameworks, baselines, targets, calculations, form links, breakdowns, and progress tracking.
               </HelpHint>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={!canManageIndicators} onClick={openCreateIndicator} variant="primary">
               <BookOpenCheck aria-hidden="true" />
-              Create indicator
+              Create metric
             </Button>
             <Button onClick={exportIndicators} variant="secondary">
               <Download aria-hidden="true" />
@@ -533,7 +533,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Indicator sections">
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Metrics sections">
           {indicatorSections.map((section) => (
             <button
               className={cn(
@@ -563,7 +563,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
           <div className="flex items-start gap-3">
             <CheckCircle2 aria-hidden="true" className="mt-0.5 text-success" size={18} />
             <div>
-              <h2 className="text-sm font-semibold">Indicator action</h2>
+              <h2 className="text-sm font-semibold">Metric action</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">{actionResult}</p>
             </div>
           </div>
@@ -601,7 +601,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       ) : null}
 
       {!selectedIndicator && activeSection === "library" ? (
-        <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Indicator import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
+        <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Metric import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
       {!selectedIndicator && activeSection === "results-framework" ? (
         preview ? <ResultsFramework resultFramework={resultFramework} /> : <ComingSoonSection sectionId="results-framework" />
@@ -665,14 +665,14 @@ function IndicatorsDashboard({
   const targetSummary = summarizeTargets(targets);
   const categoryCards = summary.topCategories.map((category, index) => ({
     icon: CATEGORY_ICONS[index] ?? ListChecks,
-    label: `${category.label} Indicators`,
+    label: `${category.label} Metrics`,
     value: category.count,
   }));
   const cards: { icon: LucideIcon; label: string; tone?: BadgeProps["tone"]; value: string | number }[] = [
-    { icon: BarChart3, label: "Total Indicators", value: summary.totalIndicators },
+    { icon: BarChart3, label: "Total Metrics", value: summary.totalIndicators },
     ...categoryCards,
-    { icon: CheckCircle2, label: "Indicators On Track", tone: "success", value: summary.onTrack },
-    { icon: FileSpreadsheet, label: "Indicators Behind Target", tone: summary.behindTarget ? "warning" : "success", value: summary.behindTarget },
+    { icon: CheckCircle2, label: "Metrics On Track", tone: "success", value: summary.onTrack },
+    { icon: FileSpreadsheet, label: "Metrics Behind Target", tone: summary.behindTarget ? "warning" : "success", value: summary.behindTarget },
     { icon: Database, label: "Without Baseline", tone: summary.withoutBaseline ? "danger" : "success", value: summary.withoutBaseline },
     { icon: Link2, label: "Without Data Source", tone: summary.withoutDataSource ? "danger" : "success", value: summary.withoutDataSource },
     { icon: History, label: "Reporting Periods Due", tone: summary.reportingPeriodsDue ? "warning" : "neutral", value: summary.reportingPeriodsDue },
@@ -695,7 +695,7 @@ function IndicatorsDashboard({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Panel title="Indicator Performance Summary" action={<Button onClick={onOpenAttention} size="sm" variant="secondary">Open library</Button>}>
+        <Panel title="Metric Performance Summary" action={<Button onClick={onOpenAttention} size="sm" variant="secondary">Open library</Button>}>
           <div className="space-y-3">
             {indicators.map((indicator) => {
               const progress = progressPercent(indicator.current, indicator.baseline, indicator.target);
@@ -734,19 +734,19 @@ function IndicatorsDashboard({
             <TimelineRows rows={resultFramework.slice(0, 5).map((node) => ({ label: `${node.level}: ${node.title}`, meta: `${node.progress}% · ${node.indicators.join(", ")}`, tone: progressTone(node.progress) }))} />
           </Panel>
         ) : (
-          <Panel title="Indicator Categories">
+          <Panel title="Metric Categories">
             <TimelineRows
-              emptyLabel="Create an indicator and set its category to see a breakdown here."
-              rows={summary.topCategories.map((category) => ({ label: category.label, meta: `${category.count} indicator${category.count === 1 ? "" : "s"}`, tone: "accent" }))}
+              emptyLabel="Create a metric and set its category to see a breakdown here."
+              rows={summary.topCategories.map((category) => ({ label: category.label, meta: `${category.count} metric${category.count === 1 ? "" : "s"}`, tone: "accent" }))}
             />
           </Panel>
         )}
-        <Panel title="Indicators Requiring Attention">
+        <Panel title="Metrics Requiring Attention">
           <TimelineRows rows={attention.map((indicator) => ({ label: indicator.name, meta: `${indicator.status} · ${validateFormQuestionLink(indicator).join(", ") || "Calculation current"}`, tone: indicatorTone(indicator.status) }))} />
         </Panel>
         <Panel title="Upcoming Reporting Deadlines">
-          <Signal label="Monthly indicators" value="2 due this week" tone="warning" />
-          <Signal label="Quarterly indicators" value="2 due this month" tone="accent" />
+          <Signal label="Monthly metrics" value="2 due this week" tone="warning" />
+          <Signal label="Quarterly metrics" value="2 due this month" tone="accent" />
           <Signal label="Recent update" value={auditEvents[0]?.action ?? "No updates"} />
         </Panel>
       </div>
@@ -759,7 +759,7 @@ function IndicatorLibrary({ indicators, loading, onCreateIndicator, onImportIndi
     { key: "code", header: "Code", value: (row) => row.code, render: (row) => <span className="font-mono text-xs">{row.code}</span> },
     {
       key: "indicator",
-      header: "Indicator",
+      header: "Metric",
       value: (row) => `${row.name} ${row.project}`,
       render: (row) => (
         <button className="text-left" onClick={() => onOpenIndicator(row)} type="button">
@@ -778,19 +778,19 @@ function IndicatorLibrary({ indicators, loading, onCreateIndicator, onImportIndi
   return (
     <section className="space-y-4">
       <SectionHeader
-        action={<div className="flex flex-wrap gap-2"><Button onClick={onCreateIndicator} variant="primary"><BookOpenCheck aria-hidden="true" /> Create indicator</Button><Button onClick={onImportIndicators} variant="secondary"><Import aria-hidden="true" /> Import indicators</Button></div>}
-        description="Create, edit, archive, duplicate, import, export, and link indicators to projects, forms, questions, targets, baselines, and responsible people."
+        action={<div className="flex flex-wrap gap-2"><Button onClick={onCreateIndicator} variant="primary"><BookOpenCheck aria-hidden="true" /> Create metric</Button><Button onClick={onImportIndicators} variant="secondary"><Import aria-hidden="true" /> Import metrics</Button></div>}
+        description="Create, edit, archive, duplicate, import, export, and link metrics or KPIs to projects, forms, questions, targets, baselines, and responsible people."
         route="/indicators/library"
-        title="Indicator Library"
+        title="Metric Library"
       />
       <DataTable
         columns={columns}
-        emptyAction={{ label: "Create indicator", onClick: onCreateIndicator }}
-        emptyDescription="Indicators measure project results. Define one with a baseline and target, then link it to form questions to track progress automatically."
-        emptyLabel="No indicators yet"
+        emptyAction={{ label: "Create metric", onClick: onCreateIndicator }}
+        emptyDescription="Metrics measure project results, operational KPIs, service quality, inventory movement, sales activity, inspections, or optional M&E outcomes. Define one with a baseline and target, then link it to form questions to track progress automatically."
+        emptyLabel="No metrics yet"
         rows={indicators}
-        searchLabel="Search indicators, projects, codes, owners"
-        title={loading ? "Indicator library syncing" : "Indicator library"}
+        searchLabel="Search metrics, projects, codes, owners"
+        title={loading ? "Metric library syncing" : "Metric library"}
       />
     </section>
   );
@@ -855,11 +855,11 @@ function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onO
   }
 
   return (
-    <Modal contentClassName="max-w-3xl" description={editing ? "Revise this indicator's definition, baseline, target, and reporting setup. The indicator code stays fixed because submissions and reports reference it." : "Create a reusable M&E indicator, then attach targets, baselines, forms, and calculations from the indicator workspace."} onOpenChange={onOpenChange} open={open} title={editing ? "Edit indicator" : "Create indicator"}>
+    <Modal contentClassName="max-w-3xl" description={editing ? "Revise this metric's definition, baseline, target, and reporting setup. The metric code stays fixed because submissions and reports reference it." : "Create a reusable metric or KPI, then attach targets, baselines, forms, and calculations from the metrics workspace."} onOpenChange={onOpenChange} open={open} title={editing ? "Edit metric" : "Create metric"}>
       <div className="grid max-h-[70vh] gap-4 overflow-y-auto p-5 product-scrollbar">
         <div className="grid gap-3 md:grid-cols-2">
-          <Input placeholder="Indicator name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
-          <Input disabled={editing} placeholder="Indicator code, e.g. WASH.ACCESS" value={draft.code} onChange={(event) => onChange({ ...draft, code: normalizeIndicatorCode(event.target.value) })} />
+          <Input placeholder="Metric name" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
+          <Input disabled={editing} placeholder="Metric code, e.g. OPS.COMPLETION" value={draft.code} onChange={(event) => onChange({ ...draft, code: normalizeIndicatorCode(event.target.value) })} />
         </div>
         <Textarea placeholder="Definition" value={draft.definition} onChange={(event) => onChange({ ...draft, definition: event.target.value })} />
         <div className="grid gap-3 md:grid-cols-3">
@@ -999,7 +999,7 @@ function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onO
       </div>
       <div className="flex justify-end gap-2 border-t px-5 py-4">
         <Button onClick={() => onOpenChange(false)} variant="ghost">Cancel</Button>
-        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Saving..." : editing ? "Save changes" : "Create indicator"}</Button>
+        <Button disabled={!canSubmit} onClick={onSubmit} variant="primary">{saving ? "Saving..." : editing ? "Save changes" : "Create metric"}</Button>
       </div>
     </Modal>
   );
@@ -1011,7 +1011,7 @@ function ResultsFramework({ resultFramework }: { resultFramework: ResultsFramewo
     <section className="space-y-4">
       <SectionHeader
         action={<Button onClick={() => pushToast({ description: "Connect a results-framework editing service to add goal, impact, outcome, output, or activity levels. This control is a preview for now.", title: "Adding result levels isn't available yet", tone: "warning" })} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>}
-        description="Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Indicators without duplicating project setup."
+        description="Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Metrics without duplicating project setup."
         route="/indicators/results-framework"
         title="Results Framework"
       />
@@ -1055,7 +1055,7 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<LogframeRow>[] = [
     { key: "summary", header: "Narrative Summary", value: (row) => row.narrativeSummary, render: (row) => <span className="font-medium">{row.narrativeSummary}</span> },
-    { key: "indicators", header: "Indicators", value: (row) => row.indicators.join(" "), render: (row) => row.indicators.join(", ") },
+    { key: "indicators", header: "Metrics", value: (row) => row.indicators.join(" "), render: (row) => row.indicators.join(", ") },
     { key: "verification", header: "Means of Verification", value: (row) => row.meansOfVerification, render: (row) => row.meansOfVerification },
     { key: "baseline", header: "Baseline", value: (row) => row.baseline, render: (row) => row.baseline },
     { key: "target", header: "Target", value: (row) => row.target, render: (row) => row.target },
@@ -1064,8 +1064,8 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create donor-style logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage donor-style logical frameworks with narrative summaries, indicators, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
-      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, indicators" title="Logframe rows" />
+      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create funder or client logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
+      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, metrics" title="Logframe rows" />
     </section>
   );
 }
@@ -1073,7 +1073,7 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
 function Targets({ targets }: { targets: IndicatorTarget[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<IndicatorTarget>[] = [
-    { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
+    { key: "indicator", header: "Metric", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "period", header: "Period", value: (row) => row.period, render: (row) => row.period },
     { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
@@ -1084,14 +1084,14 @@ function Targets({ targets }: { targets: IndicatorTarget[] }) {
   return (
     <section className="space-y-4">
       <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a targets service to set annual, quarterly, monthly, lifetime, or location-specific targets. This control is a preview for now.", title: "Setting targets isn't available yet", tone: "warning" })} variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
-      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={targets} searchLabel="Search targets, locations, projects" title="Indicator targets" />
+      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={targets} searchLabel="Search targets, locations, projects" title="Metric targets" />
     </section>
   );
 }
 
 function IndicatorTargetsOverview({ indicators }: { indicators: IndicatorRecord[] }) {
   const columns: TableColumn<IndicatorRecord>[] = [
-    { key: "indicator", header: "Indicator", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
+    { key: "indicator", header: "Metric", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "baseline", header: "Baseline", align: "right", value: (row) => String(row.baseline ?? ""), render: (row) => row.baseline ?? "—" },
     { key: "current", header: "Current", align: "right", value: (row) => String(row.current), render: (row) => row.current },
@@ -1101,15 +1101,15 @@ function IndicatorTargetsOverview({ indicators }: { indicators: IndicatorRecord[
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader description="Each indicator's configured target compared against its current calculated value. Period- and location-specific target tracking is on our roadmap." route="/indicators/targets" title="Targets" />
-      <DataTable columns={columns} emptyLabel="No indicators configured yet" rows={indicators} searchLabel="Search indicators, projects" title="Indicator targets" />
+      <SectionHeader description="Each metric's configured target compared against its current calculated value. Period- and location-specific target tracking is on our roadmap." route="/indicators/targets" title="Targets" />
+      <DataTable columns={columns} emptyLabel="No metrics configured yet" rows={indicators} searchLabel="Search metrics, projects" title="Metric targets" />
     </section>
   );
 }
 
 function IndicatorBaselinesOverview({ indicators }: { indicators: IndicatorRecord[] }) {
   const columns: TableColumn<IndicatorRecord>[] = [
-    { key: "indicator", header: "Indicator", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
+    { key: "indicator", header: "Metric", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "baseline", header: "Baseline", align: "right", value: (row) => String(row.baseline ?? ""), render: (row) => row.baseline === null ? <Badge tone="warning">Missing</Badge> : `${row.baseline} ${row.unit}` },
     { key: "current", header: "Current", align: "right", value: (row) => String(row.current), render: (row) => `${row.current} ${row.unit}` },
@@ -1117,8 +1117,8 @@ function IndicatorBaselinesOverview({ indicators }: { indicators: IndicatorRecor
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader description="Baseline values configured on each indicator, compared against the current calculated value. Versioned, multi-location baseline history is on our roadmap." route="/indicators/baselines" title="Baselines" />
-      <DataTable columns={columns} emptyLabel="No indicators configured yet" rows={indicators} searchLabel="Search indicators, projects" title="Indicator baselines" />
+      <SectionHeader description="Baseline values configured on each metric, compared against the current calculated value. Versioned, multi-location baseline history is on our roadmap." route="/indicators/baselines" title="Baselines" />
+      <DataTable columns={columns} emptyLabel="No metrics configured yet" rows={indicators} searchLabel="Search metrics, projects" title="Metric baselines" />
     </section>
   );
 }
@@ -1126,7 +1126,7 @@ function IndicatorBaselinesOverview({ indicators }: { indicators: IndicatorRecor
 function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<IndicatorBaseline>[] = [
-    { key: "indicator", header: "Indicator", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
+    { key: "indicator", header: "Metric", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
     { key: "value", header: "Baseline", align: "right", value: (row) => String(row.value), render: (row) => row.value },
@@ -1153,15 +1153,15 @@ function IndicatorReports({ onOpenReports, reports }: { onOpenReports: () => voi
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={onOpenReports} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>} description="Prepare indicator-specific reports while formal outputs, scheduled reports, and exports remain owned by the Reports module." route="/indicators/reports" title="Indicator Reports" />
-      <DataTable columns={columns} emptyLabel="No indicator reports yet" rows={reports} searchLabel="Search indicator reports, project, period" title="Indicator reports" />
+      <SectionHeader action={<Button onClick={onOpenReports} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>} description="Prepare metric-specific reports while formal outputs, scheduled reports, and exports remain owned by the Reports module." route="/indicators/reports" title="Metric Reports" />
+      <DataTable columns={columns} emptyLabel="No metric reports yet" rows={reports} searchLabel="Search metric reports, project, period" title="Metric reports" />
     </section>
   );
 }
 
 function IndicatorReportsOverview({ indicators, onOpenReports }: { indicators: IndicatorRecord[]; onOpenReports: () => void }) {
   const columns: TableColumn<IndicatorRecord>[] = [
-    { key: "indicator", header: "Indicator", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
+    { key: "indicator", header: "Metric", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "frequency", header: "Frequency", value: (row) => row.frequency, render: (row) => row.frequency },
     { key: "lastCalculated", header: "Last Calculated", value: (row) => row.lastCalculatedAt, render: (row) => new Date(row.lastCalculatedAt).toLocaleString() },
@@ -1169,8 +1169,8 @@ function IndicatorReportsOverview({ indicators, onOpenReports }: { indicators: I
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={onOpenReports} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>} description="Current calculation status for each indicator. Build formal reports, exports, and donor outputs from the Reports module." route="/indicators/reports" title="Indicator Reports" />
-      <DataTable columns={columns} emptyLabel="No indicators configured yet" rows={indicators} searchLabel="Search indicators, projects" title="Indicator reporting status" />
+      <SectionHeader action={<Button onClick={onOpenReports} variant="primary"><FileSpreadsheet aria-hidden="true" /> Open Reports module</Button>} description="Current calculation status for each metric. Build formal reports, exports, and funder or client outputs from the Reports module." route="/indicators/reports" title="Metric Reports" />
+      <DataTable columns={columns} emptyLabel="No metrics configured yet" rows={indicators} searchLabel="Search metrics, projects" title="Metric reporting status" />
     </section>
   );
 }
@@ -1215,8 +1215,8 @@ function IndicatorDetailWorkspace({
           <p className="mt-1 text-sm text-muted-foreground">{indicator.code} · {indicator.project} · {indicator.resultArea}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button disabled={!canEdit} onClick={onEdit} variant="primary">Edit indicator</Button>
-          <Button onClick={onClose} variant="secondary">Back to indicators</Button>
+          <Button disabled={!canEdit} onClick={onEdit} variant="primary">Edit metric</Button>
+          <Button onClick={onClose} variant="secondary">Back to metrics</Button>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -1246,9 +1246,9 @@ function OverviewTab({ indicator }: { indicator: IndicatorRecord }) {
   const progress = progressPercent(indicator.current, indicator.baseline, indicator.target);
   return (
     <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-      <Panel title="Indicator Definition">
+      <Panel title="Metric Definition">
         <div className="grid gap-3 md:grid-cols-2">
-          <Signal label="Indicator code" value={indicator.code} />
+          <Signal label="Metric code" value={indicator.code} />
           <Signal label="Type" value={indicator.type} tone="accent" />
           <Signal label="Unit" value={indicator.unit} />
           <Signal label="Frequency" value={indicator.frequency} />
@@ -1312,14 +1312,14 @@ function DataSourcesTab({ dataSources, indicator, preview }: { dataSources: Indi
 function TargetRows({ indicator, targets }: { indicator: IndicatorRecord; targets: IndicatorTarget[] }) {
   const rows = targets.filter((target) => target.indicatorId === indicator.id);
   if (!rows.length) {
-    return <EmptyMini label={`No period targets configured for this indicator yet. Overall target: ${indicator.target} ${indicator.unit}.`} />;
+    return <EmptyMini label={`No period targets configured for this metric yet. Overall target: ${indicator.target} ${indicator.unit}.`} />;
   }
   return <TimelineRows rows={rows.map((row) => ({ label: `${row.period} · ${row.location}`, meta: `${row.actualValue} / ${row.targetValue} · ${targetAchievement(row.actualValue, row.targetValue)}%`, tone: progressTone(targetAchievement(row.actualValue, row.targetValue)) }))} />;
 }
 
 function BaselineRows({ baselines, indicator }: { baselines: IndicatorBaseline[]; indicator: IndicatorRecord }) {
   const rows = baselines.filter((baseline) => baseline.indicatorId === indicator.id);
-  return <TimelineRows rows={(rows.length ? rows : []).map((row) => ({ label: `${row.indicatorCode} · ${row.location}`, meta: `${row.value} · ${row.methodology} · ${row.locked ? "Locked" : "Draft"}`, tone: row.locked ? "success" : "warning" }))} emptyLabel="No baseline has been approved for this indicator." />;
+  return <TimelineRows rows={(rows.length ? rows : []).map((row) => ({ label: `${row.indicatorCode} · ${row.location}`, meta: `${row.value} · ${row.methodology} · ${row.locked ? "Locked" : "Draft"}`, tone: row.locked ? "success" : "warning" }))} emptyLabel="No baseline has been approved for this metric." />;
 }
 
 function DisaggregationTab({ indicator, preview, token }: { indicator: IndicatorRecord; preview: boolean; token: string | null }) {
@@ -1344,7 +1344,7 @@ function DisaggregationTab({ indicator, preview, token }: { indicator: Indicator
   }
 
   if (!indicator.disaggregation.length) {
-    return <EmptyMini label="No disaggregation fields are configured for this indicator yet. Edit the indicator to add up to 6 fields." />;
+    return <EmptyMini label="No breakdown fields are configured for this metric yet. Edit the metric to add up to 6 fields." />;
   }
 
   if (disaggregationQuery.isLoading) {
@@ -1391,7 +1391,7 @@ function LinkedSubmissionsPanel({ indicator, token }: { indicator: IndicatorReco
 
   const data = linkedSubmissionsQuery.data;
   if (!data || !data.field_name) {
-    return <Panel title="Linked Submissions"><EmptyMini label="This indicator's formula doesn't reference a form field, so no submissions can be linked." /></Panel>;
+    return <Panel title="Linked Submissions"><EmptyMini label="This metric's formula doesn't reference a form field, so no submissions can be linked." /></Panel>;
   }
 
   return (
@@ -1400,7 +1400,7 @@ function LinkedSubmissionsPanel({ indicator, token }: { indicator: IndicatorReco
       title="Linked Submissions"
     >
       <TimelineRows
-        emptyLabel="No approved submissions contribute to this indicator yet."
+        emptyLabel="No approved submissions contribute to this metric yet."
         rows={data.items.map((item) => ({
           label: item.client_submission_id ?? item.submission_id,
           meta: `Submitted ${item.submitted_at ? new Date(item.submitted_at).toLocaleString() : "unknown"}${item.approved_at ? ` · Approved ${new Date(item.approved_at).toLocaleString()}` : ""} · Value: ${String(item.field_value ?? "—")}`,
@@ -1428,7 +1428,7 @@ function FormsTab({ indicator }: { indicator: IndicatorRecord }) {
       <Signal label="Numerator question" value={indicator.linkedQuestion ?? "Missing"} tone={indicator.linkedQuestion ? "success" : "danger"} />
       <Signal label="Numerator" value={indicator.numerator ?? "Not configured"} />
       <Signal label="Denominator" value={indicator.denominator ?? "Not required"} />
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">Forms collect the responses; Indicators define how approved submissions are calculated and aggregated.</p>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">Forms collect the responses; metrics define how approved submissions are calculated and aggregated.</p>
     </Panel>
   );
 }
@@ -1458,7 +1458,7 @@ function ProgressTab({ indicator }: { indicator: IndicatorRecord }) {
 
 function AuditRows({ auditEvents, indicator }: { auditEvents: IndicatorAuditEvent[]; indicator: IndicatorRecord }) {
   const rows: IndicatorAuditEvent[] = auditEvents.filter((event) => event.indicatorId === indicator.id);
-  return <TimelineRows rows={rows.map((event) => ({ label: event.action, meta: `${event.actor} · ${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} emptyLabel="No audit events for this indicator yet." />;
+  return <TimelineRows rows={rows.map((event) => ({ label: event.action, meta: `${event.actor} · ${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} emptyLabel="No audit events for this metric yet." />;
 }
 
 function SectionHeader({ action, description, route, title }: { action?: ReactNode; description: string; route: string; title: string }) {

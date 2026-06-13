@@ -500,7 +500,7 @@ function questionDictionaryLines(question: FormGridQuestion): string[] {
     `Type: ${question.type}`,
     `Definition: ${question.definition || "No formal definition recorded yet."}`,
     `Allowed values: ${question.allowedValues || "Defined by the response type or reference list."}`,
-    `Indicator mapping: ${question.indicatorMapping || "Not mapped to an indicator yet."}`,
+    `Metric mapping: ${question.indicatorMapping || "Not mapped to a metric yet."}`,
     `Entity profile field: ${question.profileField || "Not mapped to an entity profile field."}`,
     `Sensitivity: ${question.sensitivityLevel || "standard"}`,
     `Source of truth: ${question.sourceOfTruth || "form_response"}`,
@@ -1459,8 +1459,8 @@ function FormsGovernanceDashboard({
   const notUsedRecently = forms.filter((form) => !form.total_submissions);
   const groups = [
     { forms: missingApproval, label: "Missing approval", tab: "Configuration" as FormDetailTab },
-    { forms: missingIndicatorMapping, label: "Missing indicator mapping", tab: "Configuration" as FormDetailTab },
-    { forms: missingBeneficiaryMapping, label: "Missing beneficiary mapping", tab: "Relationships" as FormDetailTab },
+    { forms: missingIndicatorMapping, label: "Missing metric mapping", tab: "Configuration" as FormDetailTab },
+    { forms: missingBeneficiaryMapping, label: "Missing entity mapping", tab: "Relationships" as FormDetailTab },
     { forms: missingWorkflow, label: "Workflow needs review", tab: "Configuration" as FormDetailTab },
     { forms: duplicateControls, label: "Quality or duplicate controls", tab: "Configuration" as FormDetailTab },
     { forms: outdated, label: "Outdated version", tab: "Comparison" as FormDetailTab },
@@ -1471,7 +1471,7 @@ function FormsGovernanceDashboard({
     <section className="space-y-4">
       <SectionHeader
         action={<Button onClick={() => onOpenSection("draft")} variant="secondary">Review drafts</Button>}
-        description="Find forms that need approval, indicator mapping, beneficiary mapping, duplicate controls, workflow setup, version review, or usage follow-up before field deployment."
+        description="Find forms that need approval, metric mapping, entity mapping, duplicate controls, workflow setup, version review, or usage follow-up before field deployment."
         title="Forms Governance Dashboard"
       />
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -1861,11 +1861,11 @@ function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; qu
             <Badge tone="governance">DATA DICTIONARY</Badge>
             <Badge tone="neutral">{questions.length} fields</Badge>
             <Badge tone={sensitiveCount ? "warning" : "success"}>{sensitiveCount} sensitive</Badge>
-            <Badge tone={mappedCount ? "success" : "neutral"}>{mappedCount} indicator mapped</Badge>
+            <Badge tone={mappedCount ? "success" : "neutral"}>{mappedCount} metric mapped</Badge>
           </div>
           <h2 className="mt-3 text-lg font-semibold">Question dictionary</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Review variable names, definitions, allowed values, indicator mapping, sensitivity, and source-of-truth rules before exporting or reporting this form data.
+            Review variable names, definitions, allowed values, metric mapping, sensitivity, and source-of-truth rules before exporting or reporting this form data.
           </p>
         </div>
         <Button onClick={onExport} type="button" variant="secondary">
@@ -1877,7 +1877,7 @@ function DataDictionaryPanel({ onExport, questions }: { onExport: () => void; qu
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr className="bg-muted/70 text-left text-xs uppercase text-muted-foreground">
-              {["Question", "Variable", "Type", "Definition", "Allowed Values", "Indicator", "Sensitivity", "Source of Truth"].map((header) => (
+              {["Question", "Variable", "Type", "Definition", "Allowed Values", "Metric", "Sensitivity", "Source of Truth"].map((header) => (
                 <th className="border-b px-3 py-2 font-semibold" key={header}>{header}</th>
               ))}
             </tr>
@@ -2249,7 +2249,7 @@ function FormDataGridWorkspace({
     } catch (error) {
       const permissionMessage =
         error instanceof ApiError && error.status === 403
-          ? "You need the Data Import permission (data.import) to upload data into forms. Ask an organization owner or admin to open Users & Teams > Permissions, select your profile, and assign a role such as Data Manager or M&E Manager with data.import."
+          ? "You need the Data Import permission (data.import) to upload data into forms. Ask an organization owner or admin to open Users & Teams > Permissions, select your profile, and assign a role such as Data Manager or Operations Manager with data.import."
           : null;
       pushToast({
         title: "Upload could not be imported",
@@ -2290,7 +2290,7 @@ function FormDataGridWorkspace({
       setSourceFilter("uploaded");
       pushToast({
         title: "Imported data confirmed",
-        description: `${response.confirmed_rows} row(s) are now approved and ready for dashboards, reports, indicators, and beneficiary/entity linkage.${response.skipped_rows ? ` ${response.skipped_rows} row(s) still need cleaning.` : ""}`,
+        description: `${response.confirmed_rows} row(s) are now approved and ready for dashboards, reports, metrics, and entity linkage.${response.skipped_rows ? ` ${response.skipped_rows} row(s) still need cleaning.` : ""}`,
         tone: response.skipped_rows ? "warning" : "success",
       });
     } catch (error) {
@@ -2403,7 +2403,7 @@ function FormDataGridWorkspace({
             <div>
               <p className="font-semibold">{stagedImportRows.length} uploaded row(s) are staged for cleaning.</p>
               <p className="text-muted-foreground">
-                Clean rows with missing required fields, then confirm cleaned rows before they feed dashboards, reports, indicators, or beneficiary/entity profiles.
+                Clean rows with missing required fields, then confirm cleaned rows before they feed dashboards, reports, metrics, or entity profiles.
               </p>
             </div>
             <Button
@@ -2704,7 +2704,7 @@ function FormConfigurationGrid({
         onAction={onOpenBuilder}
         title="Reference Data Binding"
         lines={[
-          "Bind fields to countries, regions, districts, communities, facilities, donors, beneficiaries, and custom lists.",
+          "Bind fields to countries, regions, districts, communities, facilities, funders, entities, and custom lists.",
           "Support controlled values, hierarchy, active/inactive values, effective dates, and version-aware warnings.",
           "Prevent invalid free-text values when controlled lists are required.",
         ]}
@@ -3125,7 +3125,7 @@ function FormComparisonPanel({ form }: { form: FormListItem }) {
     ["Validation changed", Math.max(1, Math.round(form.questions * 0.1))],
     ["Logic changed", form.sections > 3 ? 2 : 0],
     ["Reference data changed", form.has_quality_issues ? 2 : 0],
-    ["Entity or indicator mapping changed", form.pending_approval ? 3 : 1],
+    ["Entity or metric mapping changed", form.pending_approval ? 3 : 1],
   ] satisfies [string, string | number][];
   return (
     <section className="rounded-xl border bg-background/50 p-3.5">
@@ -3175,7 +3175,7 @@ function TemplatesSection({
             <p className="text-sm font-semibold">Sector-aware form design</p>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
               Project sector packs suggest the right entities, validation
-              rules, indicator mappings, data quality checks, and mobile
+              rules, metric mappings, data quality checks, and mobile
               guidance. Installed sector starter forms appear as editable draft
               forms before publishing.
             </p>
@@ -3252,8 +3252,8 @@ function ReferenceDataSection({
       "Active",
     ],
     [
-      "Donor and intervention codes",
-      "Donors, activities, intervention types",
+      "Funder and activity codes",
+      "Funders, clients, activities, intervention types",
       "Draft",
     ],
   ];

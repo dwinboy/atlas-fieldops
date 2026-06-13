@@ -72,7 +72,7 @@ export function assignmentDetailModel(database: LocalDatabase, assignmentLocalId
 export function entitySelectionModel(database: LocalDatabase, assignmentLocalId: string, query = ""): EntitySelectionModel {
   const assignment = database.assignments.get(assignmentLocalId);
   if (!assignment) {
-    return { title: "Select beneficiary", entities: [], emptyState: "Assignment not found on this device." };
+    return { title: "Select entity", entities: [], emptyState: "Assignment not found on this device." };
   }
   const normalized = query.trim().toLowerCase();
   const entities = database.entities
@@ -94,9 +94,9 @@ export function entitySelectionModel(database: LocalDatabase, assignmentLocalId:
       phone: entity.phone,
     }));
   return {
-    title: "Select beneficiary",
+    title: "Select entity",
     entities,
-    emptyState: entities.length === 0 ? "No assigned beneficiaries found. Sync or create a new registration if the form allows it." : null,
+    emptyState: entities.length === 0 ? "No assigned records found. Sync or create a new registration if the form allows it." : null,
   };
 }
 

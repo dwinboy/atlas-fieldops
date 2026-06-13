@@ -241,47 +241,47 @@ SECTOR_PACKS: dict[str, SectorPack] = {
     },
     "custom": {
         "id": "custom",
-        "name": "Custom Sector",
+        "name": "Custom Operations",
         "sector": "Custom",
-        "description": "For industries or programs that need their own terminology, entity types, indicators, workflows, and reporting model.",
+        "description": "For teams that need their own terminology, entity types, metrics, workflows, and reporting model.",
         "terminology": {
-            "primary_entity": "Entity",
+            "primary_entity": "Record",
             "secondary_entities": "Related entities",
             "field_visit": "Field visit",
-            "submission": "Record",
+            "submission": "Operational record",
         },
-        "entity_types": ["Beneficiary", "Household", "Facility", "Group", "Custom Entity"],
-        "form_templates": ["Registration", "Baseline", "Monitoring Visit", "Attendance", "Distribution", "Endline"],
-        "indicator_templates": ["People reached", "Services delivered", "Coverage rate", "Completion rate", "Quality score"],
+        "entity_types": ["Record", "Location", "Facility", "Asset", "Product", "Person", "Custom Entity"],
+        "form_templates": ["Record Registration", "Assessment", "Operational Checklist", "Follow-up Record", "Incident Report"],
+        "indicator_templates": ["Records created", "Activities completed", "Completion rate", "Quality score", "Issues resolved"],
         "dashboard_widgets": ["Coverage", "Submissions", "Approvals", "Data quality", "Field activity"],
-        "report_templates": ["Monthly operations report", "Project performance report", "Donor results report"],
+        "report_templates": ["Monthly operations report", "Project performance report", "Quality summary report"],
         "validation_rules": ["Required fields", "Date cannot be in the future", "Numeric values must be realistic"],
         "data_quality_rules": ["Duplicates", "Missing values", "GPS issues", "Outliers", "Inconsistent answers"],
-        "workflows": ["Registration → Baseline → Monitoring → Endline"],
+        "workflows": ["Registration → Assessment → Follow-up → Reporting"],
         "mobile_guidance": ["Allow offline collection", "Assign work before collection", "Sync when connectivity returns"],
         "governance_defaults": {
             "approvalWorkflow": "Submitted → Under Review → Approved",
             "approvedDataOnly": True,
-            "consentPolicy": "Consent required where personal data is collected",
+            "consentPolicy": "Set consent rules only where personal or sensitive data is collected",
         },
         "recommended_settings": {
             "beneficiary": {
-                "primaryEntityType": "Beneficiary",
-                "secondaryEntityTypes": ["Household", "Facility", "Group"],
-                "codeFormat": "BEN-YYYY-000001",
-                "duplicateFields": ["Phone", "National ID", "Household ID", "Name + Village", "GPS"],
-                "profileUpdateRule": "Require review for name, phone, village, and GPS changes",
+                "primaryEntityType": "Record",
+                "secondaryEntityTypes": ["Location", "Facility", "Asset", "Person"],
+                "codeFormat": "REC-YYYY-000001",
+                "duplicateFields": ["External ID", "Name + Location", "GPS"],
+                "profileUpdateRule": "Require review for identity and critical field changes",
             },
             "forms": {
                 "starterPack": "Use form templates",
-                "journey": "Registration → Baseline → Monitoring → Endline",
-                "prerequisites": "Define source-of-truth forms before field rollout.",
+                "journey": "Registration → Assessment → Follow-up → Reporting",
+                "prerequisites": "Define source-of-truth forms only when records update official profiles or reports.",
             },
             "indicators": {
                 "setupMode": "Configure later",
                 "frequency": "Monthly",
                 "dataSource": "Approved forms and reviewed submissions",
-                "disaggregation": ["Sex", "Age", "Location", "Disability status"],
+                "disaggregation": ["Location", "Category", "Status"],
             },
         },
     },
@@ -565,12 +565,253 @@ SECTOR_PACKS: dict[str, SectorPack] = {
 }
 
 
+def _operational_pack(
+    *,
+    pack_id: str,
+    name: str,
+    sector: str,
+    primary_entity: str,
+    secondary_entities: list[str],
+    code_prefix: str,
+    forms: list[str],
+    metrics: list[str],
+    widgets: list[str],
+    reports: list[str],
+    validation_rules: list[str],
+    data_quality_rules: list[str],
+    workflows: list[str],
+    mobile_guidance: list[str],
+    manager_role: str,
+    description: str,
+) -> SectorPack:
+    entity_types = [primary_entity, *secondary_entities]
+    return {
+        "id": pack_id,
+        "name": name,
+        "sector": sector,
+        "description": description,
+        "terminology": {
+            "primary_entity": primary_entity,
+            "secondary_entities": ", ".join(secondary_entities),
+            "field_visit": "Field activity",
+            "submission": f"{primary_entity} record",
+            "metric": "Metric",
+            "report_owner_role": manager_role,
+        },
+        "entity_types": entity_types,
+        "form_templates": forms,
+        "indicator_templates": metrics,
+        "dashboard_widgets": widgets,
+        "report_templates": reports,
+        "validation_rules": validation_rules,
+        "data_quality_rules": data_quality_rules,
+        "workflows": workflows,
+        "mobile_guidance": mobile_guidance,
+        "governance_defaults": {
+            "approvalWorkflow": "Submitted → Under Review → Approved",
+            "approvedDataOnly": True,
+            "consentPolicy": "Set consent rules only where personal or sensitive data is collected",
+        },
+        "recommended_settings": {
+            "beneficiary": {
+                "primaryEntityType": primary_entity,
+                "secondaryEntityTypes": secondary_entities[:4],
+                "codeFormat": f"{code_prefix}-YYYY-000001",
+                "duplicateFields": ["External ID", "Name + Location", "GPS"],
+                "profileUpdateRule": "Require review for identity and critical field changes",
+            },
+            "forms": {
+                "starterPack": "Install project starter pack",
+                "journey": workflows[0] if workflows else "Registration → Assessment → Follow-up → Reporting",
+                "prerequisites": "Configure prerequisites only for workflows that require a previous approved record.",
+            },
+            "indicators": {
+                "setupMode": "Use indicator templates",
+                "frequency": "Monthly",
+                "dataSource": "Approved forms and reviewed submissions",
+                "disaggregation": ["Location", "Category", "Status"],
+            },
+        },
+    }
+
+
+SECTOR_PACKS.update(
+    {
+        "retail": _operational_pack(
+            pack_id="retail",
+            name="Retail and Store Operations",
+            sector="Retail",
+            primary_entity="Product",
+            secondary_entities=["Store", "Brand", "Supplier", "Customer"],
+            code_prefix="PRD",
+            forms=["Product Registration", "Store Stock Count", "Price Check", "Sales Visit", "Supplier Delivery"],
+            metrics=["Products in stock", "Stock-out rate", "Sales visits completed", "Price variance", "Supplier deliveries received"],
+            widgets=["Stock levels", "Store coverage", "Price variance", "Supplier performance", "Sales activity"],
+            reports=["Store operations report", "Inventory variance report", "Supplier delivery report"],
+            validation_rules=["Stock count cannot be negative", "Sale date cannot be in the future", "Product code required for stock records"],
+            data_quality_rules=["Duplicate product by SKU or barcode", "Unexpected stock variance", "Missing store location", "Repeated identical stock counts"],
+            workflows=["Product Registration → Stock Count → Sales Visit → Reorder Review"],
+            mobile_guidance=["Prefill assigned stores", "Scan barcode or QR where available", "Allow offline stock counts"],
+            manager_role="Retail Operations Manager",
+            description="For stores, products, brands, suppliers, stock counts, price checks, and sales operations.",
+        ),
+        "inventory": _operational_pack(
+            pack_id="inventory",
+            name="Inventory and Stock Management",
+            sector="Inventory",
+            primary_entity="Stock Item",
+            secondary_entities=["Warehouse", "Store", "Supplier", "Batch"],
+            code_prefix="STK",
+            forms=["Stock Item Registration", "Stock Count", "Stock Receipt", "Stock Issue", "Variance Report"],
+            metrics=["Items counted", "Stock variance", "Receipts recorded", "Issues recorded", "Reorder alerts"],
+            widgets=["Warehouse stock", "Variance queue", "Receipts and issues", "Reorder risk", "Stock accuracy"],
+            reports=["Inventory count report", "Stock movement report", "Variance resolution report"],
+            validation_rules=["Quantity cannot be negative", "Receipt date cannot be in the future", "SKU or item code required"],
+            data_quality_rules=["Duplicate item by SKU", "Large count variance", "Missing warehouse", "Unmatched receipt or issue"],
+            workflows=["Item Registration → Stock Count → Variance Review → Reorder Action"],
+            mobile_guidance=["Support offline counts", "Scan barcode or QR where available", "Flag large variance before sync"],
+            manager_role="Inventory Manager",
+            description="For warehouses, stock items, suppliers, counts, receipts, issues, and variance resolution.",
+        ),
+        "logistics": _operational_pack(
+            pack_id="logistics",
+            name="Logistics and Delivery Operations",
+            sector="Logistics",
+            primary_entity="Shipment",
+            secondary_entities=["Vehicle", "Route", "Warehouse", "Delivery Point"],
+            code_prefix="SHP",
+            forms=["Shipment Registration", "Delivery Confirmation", "Route Check", "Vehicle Inspection", "Incident Report"],
+            metrics=["Shipments delivered", "On-time delivery rate", "Route checks completed", "Vehicle issues", "Delivery incidents"],
+            widgets=["Delivery status", "Route coverage", "Vehicle readiness", "Incidents", "Proof of delivery"],
+            reports=["Delivery operations report", "Route exception report", "Vehicle inspection report"],
+            validation_rules=["Delivery date cannot be in the future", "Proof of delivery required when configured", "Quantity delivered cannot be negative"],
+            data_quality_rules=["Duplicate shipment code", "GPS outside route", "Missing delivery evidence", "Delayed delivery without reason"],
+            workflows=["Shipment Registration → Delivery Confirmation → Exception Review → Closure"],
+            mobile_guidance=["Capture GPS and proof of delivery", "Allow offline route work", "Warn outside assigned route"],
+            manager_role="Logistics Manager",
+            description="For shipments, delivery proof, route checks, vehicle inspections, warehouses, and incidents.",
+        ),
+        "sales": _operational_pack(
+            pack_id="sales",
+            name="Sales and Customer Operations",
+            sector="Sales",
+            primary_entity="Customer",
+            secondary_entities=["Lead", "Opportunity", "Product", "Sales Territory"],
+            code_prefix="CUS",
+            forms=["Lead Capture", "Customer Visit", "Opportunity Update", "Order Capture", "Customer Feedback"],
+            metrics=["Leads captured", "Visits completed", "Conversion rate", "Orders captured", "Customer feedback score"],
+            widgets=["Pipeline activity", "Visit coverage", "Orders", "Conversion", "Customer feedback"],
+            reports=["Sales activity report", "Pipeline progress report", "Customer feedback report"],
+            validation_rules=["Order amount cannot be negative", "Visit date cannot be in the future", "Customer name or account ID required"],
+            data_quality_rules=["Duplicate customer by phone or account ID", "Repeated identical visits", "Missing territory", "Unusual order amount"],
+            workflows=["Lead Capture → Customer Visit → Opportunity Update → Order Capture"],
+            mobile_guidance=["Prefill assigned customers", "Capture visit GPS when required", "Sync orders quickly when online"],
+            manager_role="Sales Manager",
+            description="For leads, customers, sales visits, opportunities, orders, and customer feedback.",
+        ),
+        "manufacturing": _operational_pack(
+            pack_id="manufacturing",
+            name="Manufacturing and Production",
+            sector="Manufacturing",
+            primary_entity="Production Batch",
+            secondary_entities=["Machine", "Production Line", "Quality Check", "Material"],
+            code_prefix="BAT",
+            forms=["Production Batch", "Quality Check", "Machine Inspection", "Downtime Report", "Waste Record"],
+            metrics=["Batches completed", "Quality pass rate", "Downtime hours", "Waste rate", "Output quantity"],
+            widgets=["Production output", "Quality findings", "Downtime", "Waste", "Line performance"],
+            reports=["Production report", "Quality exception report", "Downtime report"],
+            validation_rules=["Output quantity cannot be negative", "Production date cannot be in the future", "Batch code required"],
+            data_quality_rules=["Duplicate batch code", "Quality outliers", "Downtime without reason", "Waste exceeding output"],
+            workflows=["Batch Start → Quality Check → Downtime/Waste Review → Batch Closure"],
+            mobile_guidance=["Work offline on production floor", "Capture machine/line context", "Flag critical quality failures"],
+            manager_role="Production Manager",
+            description="For batches, production lines, machines, quality checks, downtime, waste, and output tracking.",
+        ),
+        "hr": _operational_pack(
+            pack_id="hr",
+            name="Human Resources and Workforce",
+            sector="HR",
+            primary_entity="Employee",
+            secondary_entities=["Department", "Training", "Attendance Record", "Asset"],
+            code_prefix="EMP",
+            forms=["Employee Profile", "Attendance Check", "Training Record", "Performance Review", "Asset Assignment"],
+            metrics=["Employees active", "Attendance rate", "Trainings completed", "Reviews completed", "Assets assigned"],
+            widgets=["Workforce status", "Attendance", "Training", "Performance", "Asset custody"],
+            reports=["Workforce operations report", "Training compliance report", "Attendance report"],
+            validation_rules=["Hire date cannot be in the future", "Employee ID required", "Attendance hours must be realistic"],
+            data_quality_rules=["Duplicate employee ID", "Missing department", "Repeated attendance", "Expired training"],
+            workflows=["Employee Profile → Attendance/Training → Performance Review → Action Plan"],
+            mobile_guidance=["Restrict sensitive HR fields", "Allow offline attendance where needed", "Sync supervisor approvals"],
+            manager_role="HR Manager",
+            description="For employee records, attendance, training, performance, departments, and assigned assets.",
+        ),
+        "audits": _operational_pack(
+            pack_id="audits",
+            name="Audits and Compliance",
+            sector="Audits",
+            primary_entity="Audit Item",
+            secondary_entities=["Finding", "Risk", "Evidence", "Corrective Action"],
+            code_prefix="AUD",
+            forms=["Audit Checklist", "Compliance Review", "Finding Report", "Corrective Action Follow-up", "Risk Assessment"],
+            metrics=["Audit items reviewed", "Findings opened", "Findings closed", "Compliance rate", "High-risk issues"],
+            widgets=["Audit progress", "Findings", "Risk levels", "Corrective actions", "Evidence completeness"],
+            reports=["Audit findings report", "Compliance summary report", "Corrective action report"],
+            validation_rules=["Finding severity required", "Evidence required for critical findings", "Due date cannot precede audit date"],
+            data_quality_rules=["Duplicate finding", "Missing evidence", "Overdue corrective action", "Conflicting compliance status"],
+            workflows=["Audit Checklist → Finding Report → Corrective Action → Closure Review"],
+            mobile_guidance=["Capture photo/file evidence", "Work offline during site audits", "Flag critical findings immediately"],
+            manager_role="Compliance Manager",
+            description="For audits, compliance checks, findings, evidence, risks, and corrective actions.",
+        ),
+        "inspections": _operational_pack(
+            pack_id="inspections",
+            name="Inspections and Field Checks",
+            sector="Inspections",
+            primary_entity="Inspection Site",
+            secondary_entities=["Asset", "Finding", "Corrective Action", "Inspector"],
+            code_prefix="INS",
+            forms=["Site Inspection", "Safety Checklist", "Defect Report", "Corrective Action Follow-up", "Compliance Visit"],
+            metrics=["Inspections completed", "Pass rate", "Defects found", "Corrective actions closed", "Critical risks"],
+            widgets=["Inspection coverage", "Defects", "Pass/fail status", "Corrective actions", "GPS evidence"],
+            reports=["Inspection report", "Safety exception report", "Corrective action report"],
+            validation_rules=["Inspection date cannot be in the future", "Critical defect requires evidence", "Site or asset required"],
+            data_quality_rules=["Duplicate site inspection", "Missing GPS or evidence", "Static GPS", "Repeated identical checklist"],
+            workflows=["Inspection → Defect Report → Corrective Action → Verification"],
+            mobile_guidance=["Capture GPS and photos", "Allow offline inspections", "Warn outside assigned site"],
+            manager_role="Inspection Manager",
+            description="For sites, assets, field inspections, safety checks, defects, and corrective actions.",
+        ),
+        "assets": _operational_pack(
+            pack_id="assets",
+            name="Asset Management",
+            sector="Assets",
+            primary_entity="Asset",
+            secondary_entities=["Location", "Custodian", "Maintenance Record", "Transfer"],
+            code_prefix="AST",
+            forms=["Asset Registration", "Condition Check", "Maintenance Visit", "Asset Transfer", "Loss Report"],
+            metrics=["Assets registered", "Condition checks completed", "Maintenance completed", "Transfers recorded", "Assets at risk"],
+            widgets=["Asset registry", "Condition", "Maintenance", "Transfers", "Loss reports"],
+            reports=["Asset register report", "Maintenance report", "Asset exception report"],
+            validation_rules=["Asset code required", "Purchase date cannot be in the future", "Condition required for checks"],
+            data_quality_rules=["Duplicate asset code or serial number", "Missing location", "Unmatched transfer", "Overdue maintenance"],
+            workflows=["Asset Registration → Condition Check → Maintenance/Transfer → Review"],
+            mobile_guidance=["Scan asset QR/barcode", "Capture condition photos", "Work offline in facilities"],
+            manager_role="Asset Manager",
+            description="For assets, custodians, locations, condition checks, maintenance, transfers, and loss reports.",
+        ),
+    }
+)
+
 
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 def list_sector_packs() -> list[SectorPack]:
-    return [_enriched_sector_pack(pack) for pack in SECTOR_PACKS.values()]
+    ordered = [pack for sector_id, pack in SECTOR_PACKS.items() if sector_id != "custom"]
+    custom_pack = SECTOR_PACKS.get("custom")
+    if custom_pack:
+        ordered.append(custom_pack)
+    return [_enriched_sector_pack(pack) for pack in ordered]
 
 
 def get_sector_pack(sector_id: str | None) -> SectorPack | None:
@@ -672,12 +913,12 @@ def _enriched_sector_pack(pack: SectorPack | None) -> SectorPack:
             "Terminology",
             "Entity model",
             "Starter forms",
-            "Indicator framework",
+            "Metric framework",
             "Validation and data quality",
             "Dashboard and report outputs",
             "Mobile field guidance",
         ],
-        "expert_note": "Customize the pack before installing assets when donor wording, local terminology, entity types, or reporting rules differ from the default sector model.",
+        "expert_note": "Customize the pack before installing assets when funder/client wording, local terminology, entity types, or reporting rules differ from the default sector model.",
     }
     return next_pack
 
@@ -687,12 +928,13 @@ def _form_definition(pack: SectorPack, form_name: str) -> dict[str, Any]:
     entity_type = _primary_entity(pack)
     questions = _base_questions(pack, entity_type)
     questions.extend(_questions_for_kind(pack, entity_type, kind))
+    questions.extend(_sector_questions(pack, kind))
     return {
         "name": form_name,
         "code": _variable_name(form_name),
         "form_type": kind,
         "entity_type": entity_type,
-        "description": f"{form_name} template for {pack['sector']} programs with consent, entity linkage, GPS evidence, validation, and review controls.",
+        "description": f"{form_name} template for {pack['sector']} work with configurable consent, entity linkage, GPS evidence, validation, and review controls.",
         "submission_frequency": _frequency_for_kind(kind),
         "creates_entity": kind == "registration",
         "updates_entity": kind != "registration",
@@ -737,11 +979,11 @@ def _indicator_definition(pack: SectorPack, name: str, index: int) -> dict[str, 
     return {
         "name": name,
         "code_hint": f"{str(pack['id']).upper()}.{index:02d}",
-        "definition": f"Measures {name.lower()} for {pack['sector']} programming using approved, reviewed project data.",
+        "definition": f"Measures {name.lower()} for {pack['sector']} work using approved, reviewed project data.",
         "unit": unit,
         "frequency": _recommended_frequency(pack),
-        "baseline_required": True,
-        "target_required": True,
+        "baseline_required": False,
+        "target_required": False,
         "disaggregation": ((pack.get("recommended_settings") or {}).get("indicators") or {}).get("disaggregation", []),
         "data_source": ((pack.get("recommended_settings") or {}).get("indicators") or {}).get("dataSource", "Approved form submissions"),
         "approval_rule": "Only approved submissions count toward official results.",
@@ -751,11 +993,11 @@ def _indicator_definition(pack: SectorPack, name: str, index: int) -> dict[str, 
 def _report_definition(pack: SectorPack, name: str) -> dict[str, Any]:
     return {
         "name": name,
-        "description": f"Editable {pack['sector']} report package. Connect indicators, approved records, maps, data quality notes, and narrative before submission.",
+        "description": f"Editable {pack['sector']} report package. Connect metrics, approved records, maps, data quality notes, and narrative before submission.",
         "sections": [
             "Executive summary",
-            "Progress against indicators",
-            "Beneficiary/entity coverage",
+            "Progress against metrics",
+            "Entity coverage",
             "Geographic coverage and GPS evidence",
             "Data quality and approval status",
             "Risks, issues, and corrective actions",
@@ -767,22 +1009,24 @@ def _report_definition(pack: SectorPack, name: str) -> dict[str, Any]:
 
 
 def _base_questions(pack: SectorPack, entity_type: str) -> list[SectorQuestion]:
+    consent_required = _consent_required(pack)
+    gps_required = _gps_required(pack)
     return [
         {
             "id": "consent",
             "label": "Consent captured",
             "type": "consent",
-            "required": True,
+            "required": consent_required,
             "variableName": "consent_captured",
-            "definition": "Confirms informed consent before identifiable data is collected.",
+            "definition": "Confirms consent when personal, sensitive, or regulated data is collected.",
             "sensitivity": "high",
-            "validation": {"blockIfFalse": True, "message": "Consent is required before continuing."},
+            "validation": {"blockIfFalse": consent_required, "message": "Consent is required before continuing."},
         },
         {
             "id": "entity_name",
             "label": f"{entity_type} name",
             "type": "short_text",
-            "required": True,
+            "required": gps_required,
             "variableName": "entity_name",
             "definition": f"Official {entity_type.lower()} name or primary identifier.",
             "sensitivity": "personal",
@@ -825,11 +1069,46 @@ def _base_questions(pack: SectorPack, entity_type: str) -> list[SectorQuestion]:
 
 def _questions_for_kind(pack: SectorPack, entity_type: str, kind: str) -> list[SectorQuestion]:
     if kind == "registration":
+        if not _person_like_entity(entity_type):
+            return [
+                _short_text_question("external_code", f"{entity_type} code", "External code, SKU, serial number, or reference ID."),
+                _select_question("record_category", "Category", ["Primary", "Secondary", "Temporary", "Archived"], "Operational category for filtering and reporting."),
+                _select_question("record_status", "Status", ["Active", "Inactive", "Pending review"], "Current status of this record."),
+                _select_question("registration_source", "Registration source", ["Field visit", "Imported list", "System entry", "Partner source"], "Trace how the record entered the system."),
+            ]
         return [
             _select_question("sex", "Sex", ["Female", "Male", "Other", "Prefer not to say"], "Sex disaggregation for unique reach reporting."),
             _number_question("age", "Age", "Age in completed years.", minimum=0, maximum=120),
             _select_question("disability_status", "Disability status", ["No disability", "Has disability", "Prefer not to say"], "Washington Group-aligned disaggregation placeholder."),
             _select_question("registration_source", "Registration source", ["Field visit", "Community list", "Partner referral", "Imported record"], "Trace how the entity entered the registry."),
+        ]
+    if kind == "inventory":
+        return [
+            _date_question("count_date", "Count date", "Date stock, product, supply, or asset quantity was checked."),
+            _number_question("quantity_counted", "Quantity counted", "Quantity physically counted.", minimum=0, indicator_component="numerator"),
+            _number_question("expected_quantity", "Expected quantity", "Expected system or ledger quantity.", minimum=0),
+            _long_text_question("variance_reason", "Variance reason", "Reason for missing, excess, damaged, or unmatched stock."),
+        ]
+    if kind == "inspection":
+        return [
+            _date_question("inspection_date", "Inspection date", "Date the inspection, audit, compliance, or quality check happened."),
+            _select_question("inspection_result", "Result", ["Pass", "Partial pass", "Fail", "Requires review"], "Overall inspection or audit result."),
+            _select_question("risk_level", "Risk level", ["Low", "Medium", "High", "Critical"], "Risk level for supervisor action."),
+            _long_text_question("corrective_action", "Corrective action", "Action required to resolve the finding or defect."),
+        ]
+    if kind == "delivery":
+        return [
+            _date_question("delivery_date", "Delivery date", "Date the shipment, order, or delivery was completed."),
+            _number_question("quantity_delivered", "Quantity delivered", "Quantity delivered or received.", minimum=0, indicator_component="numerator"),
+            _select_question("delivery_status", "Delivery status", ["Delivered", "Partially delivered", "Failed", "Requires review"], "Delivery outcome."),
+            _long_text_question("delivery_notes", "Delivery notes", "Exception, recipient, or proof-of-delivery notes."),
+        ]
+    if kind == "asset":
+        return [
+            _date_question("asset_event_date", "Asset event date", "Date of asset check, transfer, maintenance, or loss event."),
+            _select_question("asset_condition", "Asset condition", ["Good", "Fair", "Poor", "Lost", "Damaged"], "Current asset condition."),
+            _short_text_question("custodian", "Custodian", "Person, team, or location responsible for the asset."),
+            _long_text_question("asset_action", "Action required", "Maintenance, transfer, investigation, or follow-up action."),
         ]
     if kind in {"baseline", "assessment"}:
         return [
@@ -873,12 +1152,67 @@ def _questions_for_kind(pack: SectorPack, entity_type: str, kind: str) -> list[S
     ]
 
 
+def _sector_questions(pack: SectorPack, kind: str) -> list[SectorQuestion]:
+    pack_id = str(pack.get("id") or "")
+    if pack_id == "retail":
+        return [
+            _short_text_question("sku_or_barcode", "SKU or barcode", "Product SKU, barcode, or shelf code used for lookup."),
+            _number_question("unit_price", "Unit price", "Current observed unit price.", minimum=0),
+            _select_question("store_channel", "Store channel", ["Retail store", "Kiosk", "Distributor", "Online", "Other"], "Sales or stock channel."),
+        ]
+    if pack_id == "logistics":
+        return [
+            _short_text_question("route_code", "Route code", "Assigned route, trip, or delivery lane."),
+            _short_text_question("vehicle_id", "Vehicle ID", "Vehicle, rider, or transport asset used."),
+            _select_question("proof_of_delivery", "Proof of delivery", ["Signature", "Photo", "QR scan", "Recipient confirmation", "Not available"], "Evidence collected at delivery point."),
+        ]
+    if pack_id == "sales":
+        return [
+            _select_question("lead_stage", "Lead or opportunity stage", ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"], "Sales pipeline stage."),
+            _number_question("order_value", "Order value", "Order, deal, or opportunity value.", minimum=0, indicator_component="numerator"),
+            _select_question("next_action", "Next action", ["Call back", "Send quote", "Schedule visit", "Close order", "No action"], "Follow-up action for the sales team."),
+        ]
+    if pack_id == "manufacturing":
+        return [
+            _short_text_question("production_line", "Production line", "Line, machine, or workstation where the record was captured."),
+            _number_question("output_quantity", "Output quantity", "Quantity produced in this batch or shift.", minimum=0, indicator_component="numerator"),
+            _select_question("quality_status", "Quality status", ["Pass", "Rework", "Rejected", "Hold"], "Quality disposition for this batch or check."),
+        ]
+    if pack_id == "hr":
+        return [
+            _short_text_question("employee_id", "Employee ID", "Internal employee number or workforce identifier."),
+            _select_question("department", "Department", ["Operations", "Field team", "Administration", "Finance", "HR", "Other"], "Employee department or unit."),
+            _select_question("supervisor_review", "Supervisor review", ["Not required", "Pending", "Approved", "Returned"], "Supervisor action for this workforce record."),
+        ]
+    if pack_id in {"audits", "inspections"}:
+        return [
+            _select_question("finding_category", "Finding category", ["Safety", "Compliance", "Quality", "Process", "Documentation", "Other"], "Category used for corrective action reporting."),
+            _select_question("evidence_status", "Evidence status", ["Complete", "Photo missing", "File missing", "Requires review"], "Evidence readiness for this finding."),
+            _date_question("corrective_action_due", "Corrective action due date", "Deadline for correcting the finding."),
+        ]
+    if pack_id == "assets":
+        return [
+            _short_text_question("serial_number", "Serial number", "Asset serial number, tag, or QR code."),
+            _select_question("maintenance_status", "Maintenance status", ["Not due", "Due soon", "Overdue", "Completed", "Not applicable"], "Maintenance status for this asset."),
+            _short_text_question("asset_location", "Asset location", "Current asset location or custody site."),
+        ]
+    return []
+
+
 def _form_kind(name: str) -> str:
     text = name.lower()
     if "registration" in text or "intake" in text:
         return "registration"
     if "baseline" in text:
         return "baseline"
+    if any(term in text for term in ["stock", "inventory", "count", "receipt", "issue", "variance"]):
+        return "inventory"
+    if any(term in text for term in ["inspection", "checklist", "audit", "compliance", "quality", "defect"]):
+        return "inspection"
+    if any(term in text for term in ["delivery", "shipment", "order"]):
+        return "delivery"
+    if any(term in text for term in ["asset", "condition", "maintenance", "transfer", "loss"]):
+        return "asset"
     if "attendance" in text or "training" in text or "campaign" in text or "session" in text:
         return "attendance"
     if "distribution" in text:
@@ -902,6 +1236,10 @@ def _frequency_for_kind(kind: str) -> str:
         "baseline": "once_per_project",
         "attendance": "once_per_event",
         "distribution": "once_per_event",
+        "inventory": "once_per_event",
+        "inspection": "once_per_event",
+        "delivery": "once_per_event",
+        "asset": "unlimited",
         "complaint": "unlimited",
         "incident": "unlimited",
         "monitoring": "monthly",
@@ -916,6 +1254,10 @@ def _section_title(kind: str) -> str:
         "monitoring": "Monitoring progress",
         "attendance": "Attendance evidence",
         "distribution": "Distribution evidence",
+        "inventory": "Stock and variance details",
+        "inspection": "Inspection findings",
+        "delivery": "Delivery evidence",
+        "asset": "Asset event details",
         "complaint": "Complaint details and follow-up",
         "incident": "Incident details and escalation",
         "follow-up": "Follow-up result",
@@ -925,7 +1267,7 @@ def _section_title(kind: str) -> str:
 def _primary_entity(pack: SectorPack) -> str:
     recommended = _as_dict(pack.get("recommended_settings"))
     beneficiary = _as_dict(recommended.get("beneficiary"))
-    return str(beneficiary.get("primaryEntityType") or "Beneficiary")
+    return str(beneficiary.get("primaryEntityType") or "Record")
 
 
 def _recommended_frequency(pack: SectorPack) -> str:
@@ -937,14 +1279,48 @@ def _recommended_frequency(pack: SectorPack) -> str:
 def _indicator_hint(pack: SectorPack, question: SectorQuestion) -> str:
     indicators = pack.get("indicator_templates", [])
     if not indicators:
-        return "Project indicator"
+        return "Project metric"
     if question.get("indicatorComponent") == "numerator":
         return str(indicators[0])
     return str(indicators[min(1, len(indicators) - 1)])
 
 
+def _person_like_entity(entity_type: str) -> bool:
+    text = entity_type.lower()
+    return any(
+        term in text
+        for term in [
+            "beneficiary",
+            "client",
+            "patient",
+            "person",
+            "participant",
+            "respondent",
+            "student",
+            "teacher",
+            "employee",
+            "citizen",
+            "farmer",
+            "household",
+            "child",
+        ]
+    )
+
+
 def _variable_name(value: str) -> str:
     return "_".join(part for part in re_split(value.lower()) if part)
+
+
+def _consent_required(pack: SectorPack) -> bool:
+    governance = _as_dict(pack.get("governance_defaults"))
+    policy = str(governance.get("consentPolicy") or "").lower()
+    return "required" in policy and "where" not in policy and "only where" not in policy
+
+
+def _gps_required(pack: SectorPack) -> bool:
+    guidance = " ".join(str(item).lower() for item in pack.get("mobile_guidance", []))
+    rules = " ".join(str(item).lower() for item in pack.get("validation_rules", []))
+    return "require gps" in guidance or "gps required" in rules
 
 
 def re_split(value: str) -> list[str]:

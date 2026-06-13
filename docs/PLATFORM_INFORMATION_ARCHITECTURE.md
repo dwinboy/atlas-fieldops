@@ -136,30 +136,30 @@ Startup feature ownership:
 
 ## Sector Pack Architecture
 
-Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, editable form instruments, question metadata, indicator definitions, dashboard widgets, report packages, validation rules, data quality rules, governance defaults, and mobile guidance.
+Atlas FieldOps supports many industries through sector packs, not through separate products or duplicated modules. A sector pack is a configuration layer installed during project setup that recommends terminology, entity types, editable form instruments, question metadata, metric/KPI definitions, dashboard widgets, report packages, validation rules, data quality rules, governance defaults, and mobile guidance.
 
 Canonical owner:
 
 - Project setup owns sector selection and stores the selected sector in project settings.
 - Forms owns the form templates and question-level controls suggested by the sector.
-- Indicators owns indicator templates, baselines, targets, formulas, and disaggregation.
-- Reports owns sector-specific report packages and donor outputs.
+- Indicators owns metric/KPI templates, baselines, targets, formulas, and breakdown/disaggregation rules when the project uses formal results tracking.
+- Reports owns sector-specific report packages and funder, client, management, donor, or compliance outputs.
 - Data Quality owns sector-specific duplicate, GPS, validation, outlier, and consistency rules.
 - Field Operations and Mobile own sector-specific field guidance, assignment behavior, offline expectations, and evidence capture.
 
-Project setup may install sector starter forms, indicator templates, and report packages. Installed assets must be editable drafts until the responsible M&E manager reviews project-specific wording, mappings, validation rules, approval workflow, and donor reporting requirements.
+Project setup may install sector starter forms, metric templates, and report packages. Installed assets must be editable drafts until the responsible manager reviews project-specific wording, mappings, validation rules, approval workflow, and reporting requirements.
 
 Sector packs include:
 
-- Form definitions with sections, question labels, variable names, definitions, sensitivity levels, validation rules, beneficiary profile mappings, indicator hints, GPS/consent controls, and mobile guidance.
-- Indicator definitions with units, reporting frequency, baseline/target expectations, disaggregation, source-of-truth rules, and approved-data requirements.
-- Report definitions with standard sections for executive summary, indicator progress, beneficiary/entity coverage, GPS evidence, data quality, risks, corrective actions, annexes, and export formats.
+- Form definitions with sections, question labels, variable names, definitions, sensitivity levels, validation rules, entity/profile mappings, metric hints, GPS/consent controls, and mobile guidance.
+- Metric definitions with units, reporting frequency, optional baseline/target expectations, breakdown/disaggregation, source-of-truth rules, and approved-data requirements.
+- Report definitions with standard sections for executive summary, metric progress, entity coverage, GPS evidence, data quality, risks, corrective actions, annexes, and export formats.
 - Manager controls that identify which pack elements can be customized inside the project workspace.
 
 Sector Pack Manager:
 
 - Lives in Project Settings, because customization is project-specific.
-- Allows authorized managers to customize terminology, entity types, form template names, indicators, validation rules, data quality checks, dashboard widgets, report templates, and mobile field guidance.
+- Allows authorized managers to customize terminology, entity types, form template names, metrics, validation rules, data quality checks, dashboard widgets, report templates, and mobile field guidance.
 - Saves changes to `project.settings_json` so project setup, form installation, mobile sync, reports, and dashboards read one shared configuration.
 - Does not create industry-specific modules or duplicate form, indicator, beneficiary, assignment, submission, report, governance, or mobile systems.
 - Installed forms and reports remain draft/editable until project governance approves them.
@@ -171,7 +171,22 @@ Initial supported packs:
 - Education and School Monitoring
 - WASH and Infrastructure Monitoring
 - Humanitarian Response and Protection
-- Custom Sector
+- Nutrition and Food Security
+- Livelihoods and Economic Empowerment
+- Protection and GBV Case Management
+- Governance and Civic Participation
+- Environment and Climate Resilience
+- Research and Surveys
+- Retail and Store Operations
+- Inventory and Stock Management
+- Logistics and Delivery Operations
+- Sales and Customer Operations
+- Manufacturing and Production
+- Human Resources and Workforce
+- Audits and Compliance
+- Inspections and Field Checks
+- Asset Management
+- Custom Operations
 
 ## Dynamic Entity Category Architecture
 
@@ -190,8 +205,8 @@ Core rules:
 Rules:
 
 - Do not create separate top-level modules for each industry.
-- Sector packs must remain editable by M&E managers because donor requirements, local terminology, project designs, locations, and reporting rules differ.
-- Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed indicators, beneficiary/entity linkage, data quality review, and audit history.
+- Sector packs must remain editable by authorized managers because funder/client requirements, local terminology, project designs, locations, and reporting rules differ.
+- Sector packs may suggest templates and controls, but official reporting still depends on approved submissions, governed metrics where used, entity linkage, data quality review, and audit history.
 - Custom sectors must use the same project, form, entity registry, assignment, submission, indicator, report, governance, and mobile sync architecture.
 
 Implementation guidance:

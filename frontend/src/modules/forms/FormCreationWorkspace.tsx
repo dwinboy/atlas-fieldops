@@ -64,6 +64,7 @@ import {
   type FormReadinessItem,
   type FormSection,
 } from "@/lib/forms";
+import { getSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import type { FormListItem } from "@/modules/forms/data";
 import { statusTone } from "@/modules/forms/utils";
@@ -306,17 +307,37 @@ type FormCreationWorkspaceProps = {
 };
 
 const formTypes = [
+  "Registration",
+  "Assessment",
+  "Inspection",
+  "Inventory Count",
+  "Sales Visit",
+  "Service Visit",
+  "Delivery Confirmation",
+  "Incident Report",
+  "Audit Checklist",
+  "Monitoring Visit",
   "Baseline Survey",
   "Endline Survey",
-  "Monitoring Visit",
-  "Beneficiary Registration",
-  "Needs Assessment",
-  "Facility Assessment",
   "Training Attendance",
   "Feedback Form",
-  "Case Management",
   "Custom",
 ];
+
+const sectorFormTypeOptions: Record<string, string[]> = {
+  agriculture: ["Farmer Registration", "Farm Assessment", "Crop Monitoring", "Yield Survey", "Training Attendance", "Input Distribution", "Custom"],
+  assets: ["Asset Registration", "Condition Check", "Maintenance Visit", "Asset Transfer", "Loss Report", "Custom"],
+  audits: ["Audit Checklist", "Compliance Review", "Finding Report", "Corrective Action Follow-up", "Risk Assessment", "Custom"],
+  education: ["School Registration", "Classroom Observation", "Attendance Check", "Learning Assessment", "Teacher Visit", "Custom"],
+  health: ["Facility Assessment", "Patient Intake", "Service Visit", "Referral Follow-up", "Quality Checklist", "Custom"],
+  hr: ["Employee Profile", "Attendance Check", "Training Record", "Performance Review", "Asset Assignment", "Custom"],
+  inspections: ["Site Inspection", "Safety Checklist", "Defect Report", "Corrective Action Follow-up", "Compliance Visit", "Custom"],
+  inventory: ["Stock Count", "Stock Receipt", "Stock Issue", "Supplier Delivery", "Variance Report", "Custom"],
+  logistics: ["Delivery Confirmation", "Route Check", "Vehicle Inspection", "Warehouse Count", "Incident Report", "Custom"],
+  manufacturing: ["Production Batch", "Quality Check", "Machine Inspection", "Downtime Report", "Waste Record", "Custom"],
+  retail: ["Product Registration", "Store Stock Count", "Price Check", "Sales Visit", "Supplier Delivery", "Custom"],
+  sales: ["Lead Capture", "Customer Visit", "Opportunity Update", "Order Capture", "Customer Feedback", "Custom"],
+};
 
 const projectOptions = [
   "Agricultural Resilience Program",
@@ -330,9 +351,9 @@ const setupDefaults: FormSetupDraft = {
   description: "",
   durationMinutes: 25,
   formName: "",
-  formType: "Baseline Survey",
+  formType: "Custom",
   language: "English",
-  owner: "M&E Manager",
+  owner: "Operations Manager",
   projectName: projectOptions[0] ?? "Project",
 };
 
@@ -541,13 +562,13 @@ function workspaceFormFromDraft(
 ): LocalWorkspaceForm {
   return {
     active_assignments: form.status === "published" ? 1 : 0,
-    created_by: "M&E Manager",
+    created_by: "Operations Manager",
     description: setup.description || form.pages?.[0]?.description || null,
     form_type: setup.formType,
     has_quality_issues: form.fields.length === 0,
     id: form.id,
     name: form.name,
-    owner: setup.owner || "M&E Manager",
+    owner: setup.owner || "Operations Manager",
     pending_approval: form.status !== "published",
     project_id: projectId ?? null,
     project_name: setup.projectName,
@@ -617,22 +638,22 @@ const controlSteps: {
 }[] = [
   {
     categories: ["Form purpose", "Form information", "Purpose"],
-    decisions: ["Why are we collecting this?", "Which decision or report will use it?", "Which result or indicator will use it?"],
-    helper: "Purpose, reporting use, indicators, and result context.",
+    decisions: ["Why are we collecting this?", "Which decision, workflow, or report will use it?", "Which metric or result will use it if needed?"],
+    helper: "Purpose, operational use, reporting, metrics, and context.",
     id: "essentials",
     label: "1. Purpose",
-    mustDo: "Explain why this form exists and confirm the core M&E context.",
+    mustDo: "Explain why this form exists and confirm the operational context.",
   },
   {
-    categories: ["Entity settings", "Beneficiary", "Beneficiary identity", "Submission rules", "Submission frequency"],
-    decisions: ["Who or what is this record about?", "Does it create or update a beneficiary?", "How often can it be submitted?"],
-    helper: "Entity rules, beneficiary search, and profile mappings.",
+    categories: ["Entity settings", "Entity identity", "Record linkage", "Submission rules", "Submission frequency"],
+    decisions: ["Who or what is this record about?", "Does it create or update an entity?", "How often can it be submitted?"],
+    helper: "Entity rules, record search, and profile mappings.",
     id: "beneficiaries",
-    label: "2. Beneficiaries",
-    mustDo: "Decide whether this form creates, updates, or requires a beneficiary.",
+    label: "2. Entities",
+    mustDo: "Decide whether this form creates, updates, or requires a linked record.",
   },
   {
-    categories: ["Structure", "Question validation", "Data dictionary", "Logic rules", "Indicator mapping"],
+    categories: ["Structure", "Question validation", "Data dictionary", "Logic rules", "Metric mapping"],
     decisions: ["Are questions clear and structured?", "Are variable names and dictionary fields usable?", "Do required and exception answers make sense?"],
     helper: "Question standards, dictionary, required policy, and logic checks.",
     id: "questions",
@@ -696,7 +717,7 @@ const startMethods: {
   },
   {
     description:
-      "Use a recommended M&E structure with consent, respondent, GPS, and quality fields.",
+      "Use a recommended operational structure with identity, date, location, evidence, and quality fields.",
     id: "template",
     label: "Use Template",
     icon: Sparkles,
@@ -709,9 +730,9 @@ const startMethods: {
     icon: GitBranch,
   },
   {
-    description: "Create a shell now and import XLSForm or CSV columns later.",
+    description: "Upload a spreadsheet — the first row becomes your questions, ready to edit in the builder.",
     id: "import",
-    label: "Import XLSForm or CSV Later",
+    label: "Upload a Spreadsheet",
     icon: FileSpreadsheet,
   },
 ];
@@ -719,26 +740,26 @@ const startMethods: {
 const starterTemplates: StarterTemplate[] = [
   {
     description:
-      "Register farmers or beneficiaries once with consent, identity, location, and contact details.",
+      "Register any tracked person, product, asset, site, facility, customer, employee, or project record once with identity, location, and contact details.",
     fields: [
       { label: "Consent confirmed", required: true, type: "radio" },
-      { label: "Farmer full name", required: true, type: "text" },
+      { label: "Record name", required: true, type: "text" },
       { label: "Phone number", type: "phone" },
       { label: "Gender", type: "radio" },
       { label: "Date of birth", type: "date" },
-      { label: "Village", required: true, type: "text" },
-      { label: "Household ID", type: "text" },
-      { label: "Registration GPS", required: true, type: "gps" },
+      { label: "Location", required: true, type: "text" },
+      { label: "External ID", type: "text" },
+      { label: "Registration GPS", type: "gps" },
     ],
-    formType: "Beneficiary Registration",
-    id: "beneficiary-registration",
-    name: "Beneficiary / Farmer Registration",
+    formType: "Registration",
+    id: "entity-registration",
+    name: "Entity / Record Registration",
   },
   {
     description:
       "Capture baseline status, household profile, services received, and initial indicator values.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Household size", type: "number" },
       { label: "Main livelihood activity", type: "select" },
       { label: "Baseline income", type: "currency" },
@@ -754,7 +775,7 @@ const starterTemplates: StarterTemplate[] = [
     description:
       "Use for repeated visits, progress checks, training follow-up, and data quality evidence.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Visit date", required: true, type: "date" },
       { label: "Activity completed", required: true, type: "radio" },
       { label: "Progress score", type: "rating" },
@@ -770,7 +791,7 @@ const starterTemplates: StarterTemplate[] = [
     description:
       "Track attendance, inputs, kits, cash, services, or materials delivered to participants.",
     fields: [
-      { label: "Beneficiary code", required: true, type: "text" },
+      { label: "Record code", required: true, type: "text" },
       { label: "Distribution date", required: true, type: "date" },
       { label: "Item or service received", required: true, type: "select" },
       { label: "Quantity received", type: "number" },
@@ -780,6 +801,38 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Training Attendance",
     id: "attendance-distribution",
     name: "Attendance / Distribution",
+  },
+  {
+    description:
+      "Count stock, products, supplies, assets, or warehouse items with variance notes and evidence.",
+    fields: [
+      { label: "Item code", required: true, type: "text" },
+      { label: "Item name", required: true, type: "text" },
+      { label: "Location or store", required: true, type: "text" },
+      { label: "Quantity counted", required: true, type: "number" },
+      { label: "Expected quantity", type: "number" },
+      { label: "Variance reason", type: "textarea" },
+      { label: "Photo evidence", type: "photo" },
+    ],
+    formType: "Inventory Count",
+    id: "inventory-count",
+    name: "Inventory Count",
+  },
+  {
+    description:
+      "Inspect a site, facility, route, machine, store, asset, or process with findings and corrective action.",
+    fields: [
+      { label: "Inspection subject", required: true, type: "text" },
+      { label: "Inspection date", required: true, type: "date" },
+      { label: "Overall status", required: true, type: "radio" },
+      { label: "Findings", type: "textarea" },
+      { label: "Corrective action needed", required: true, type: "radio" },
+      { label: "Inspector signature", type: "signature" },
+      { label: "Inspection GPS", type: "gps" },
+    ],
+    formType: "Inspection",
+    id: "inspection-checklist",
+    name: "Inspection Checklist",
   },
 ];
 
@@ -792,13 +845,13 @@ const defaultControlsDraft: FormControlsDraft = {
   assignedFieldOfficerIds: [],
   assignedTeamIds: [],
   auditTrail: true,
-  autoAssignmentRule: "Baseline completed -> schedule monitoring visit in 30 days",
+  autoAssignmentRule: "",
   backCheckRequired: false,
   backCheckSamplePercent: 10,
   beneficiarySearch: "disabled",
-  blockWithoutConsent: true,
+  blockWithoutConsent: false,
   boundaryValidation: false,
-  businessPurpose: "Support project monitoring, review, and donor-ready evidence.",
+  businessPurpose: "Support operational decisions, review, and reporting.",
   caseEscalationRule: "If safeguarding, protection, or urgent-risk answer is selected -> create supervisor alert.",
   changeSummary: "",
   consentMode: "digital",
@@ -809,23 +862,23 @@ const defaultControlsDraft: FormControlsDraft = {
   dataSourceType: "primary",
   dataRetentionPolicy: "seven_years",
   deviceClockDriftAction: "review",
-  disaggregationFields: ["sex", "age_group", "location"],
-  disaggregationRequired: true,
+  disaggregationFields: [],
+  disaggregationRequired: false,
   dontKnowPolicy: "required_for_sensitive",
   duplicateAction: "review",
-  duplicateFields: ["phone_number", "household_id", "full_name", "village"],
+  duplicateFields: [],
   duplicateGpsDetection: true,
   duplicateSeverity: "high",
   duplicateThreshold: 85,
   enumeratorTrainingRequired: false,
   entityCategoryId: "",
-  entityType: "Beneficiary",
+  entityType: "Record",
   eventMode: "none",
-  expectedUse: "Approved records feed beneficiary history, dashboards, indicators, and reports.",
+  expectedUse: "Approved records feed dashboards, workflows, exports, and reports.",
   exportApprovalMode: "manager_approval",
-  exportRestricted: true,
+  exportRestricted: false,
   fileTypes: "jpg,png,pdf",
-  fieldGuideText: "Read each question exactly as written, confirm consent, verify beneficiary identity, capture GPS when required, and sync before leaving the area when connectivity allows.",
+  fieldGuideText: "Read each question exactly as written, confirm the record context when required, capture evidence when required, and sync when connectivity allows.",
   formObjective: "Collect reliable field evidence for project decisions.",
   frequencyWindow: "none",
   geographicScope: "",
@@ -842,7 +895,7 @@ const defaultControlsDraft: FormControlsDraft = {
   maximumDurationMinutes: 90,
   maximumSubmissionsPerDay: 40,
   mediaRequirement: "none",
-  meReviewerName: "M&E Reviewer",
+  meReviewerName: "Business Reviewer",
   minimumDurationMinutes: 5,
   mobilePackageMode: "standard",
   offlineEnabled: true,
@@ -862,13 +915,13 @@ const defaultControlsDraft: FormControlsDraft = {
     phone: "",
     village: "",
   },
-  profileUpdateMode: "with_supervisor_approval",
-  referenceDataRequired: true,
+  profileUpdateMode: "never",
+  referenceDataRequired: false,
   relatedForms: "",
-  requireConsent: true,
+  requireConsent: false,
   preventFutureDates: true,
   repeatGroupPolicy: "review_large",
-  reportingPeriod: "quarterly",
+  reportingPeriod: "none",
   respondentIdentification: "anonymous_allowed",
   resultArea: "",
   reviewComments: "",
@@ -876,7 +929,7 @@ const defaultControlsDraft: FormControlsDraft = {
   reviewer: "supervisor",
   reviewReturner: "supervisor",
   requiresEntity: false,
-  requiresGps: true,
+  requiresGps: false,
   riskClassification: "medium",
   samplingMethod: "none",
   sourceOfTruthRule: "manager_approved_profile_updates",
@@ -889,7 +942,7 @@ const defaultControlsDraft: FormControlsDraft = {
   syncRequirement: "daily_required",
   technicalReviewerName: "Technical Reviewer",
   testingRequirement: "test_submission",
-  finalApproverName: "M&E Manager",
+  finalApproverName: "Operations Manager",
   approvalDate: "",
   approvalNotes: "",
   submissionFrequency: "unlimited",
@@ -1012,6 +1065,12 @@ function messageFromUnknownError(error: unknown): string {
   return "The request could not be completed.";
 }
 
+function formatClockTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(timestamp),
+  );
+}
+
 function attachStarterField(
   section: FormSection,
   type: FieldType,
@@ -1082,7 +1141,7 @@ function recommendedQuestionsForFormType(
   if (family === "registration") {
     return [
       { label: "Consent confirmed", options: ["Yes", "No"], required: true, type: "radio" },
-      { label: `${controls.entityType || "Beneficiary"} full name`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} name`, required: true, type: "text" },
       { label: "Phone number", type: "phone" },
       { label: "Gender", options: ["Female", "Male", "Other", "Prefer not to say"], required: true, type: "radio" },
       {
@@ -1098,7 +1157,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "baseline") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Consent confirmed", options: ["Yes", "No"], required: controls.requireConsent, type: "radio" },
       { label: "Baseline interview date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Enumerator notes", type: "textarea" },
@@ -1108,7 +1167,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "monitoring") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Monitoring visit date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Service or activity received", required: true, type: "select", options: ["Training", "Input distribution", "Follow-up visit", "Other"] },
       { label: "Follow-up needed", required: true, type: "radio", options: ["Yes", "No"] },
@@ -1118,7 +1177,7 @@ function recommendedQuestionsForFormType(
   }
   if (family === "attendance") {
     return [
-      { label: `${controls.entityType || "Beneficiary"} code`, required: true, type: "text" },
+      { label: `${controls.entityType || "Entity"} code`, required: true, type: "text" },
       { label: "Event or activity date", required: true, type: "date", validation: { blockFutureDates: controls.preventFutureDates } },
       { label: "Item or service received", required: true, type: "select", options: ["Training", "Input", "Cash", "Service", "Other"] },
       { label: "Quantity received", type: "number", validation: { min: 0 } },
@@ -1312,20 +1371,51 @@ function sharedStringsFromXml(xml: string): string[] {
   return Array.from(doc.getElementsByTagName("si")).map((item) => item.textContent?.trim() ?? "");
 }
 
+type WorksheetCell = { reference: string | null; value: string };
+
+/**
+ * Place a row's cells into column-indexed slots. Cells normally carry an `r`
+ * reference (e.g. "B2"), but some exporters (LibreOffice, streamed writers)
+ * omit it — in that case fall back to the next sequential position instead of
+ * collapsing every cell onto column A (which would drop all but one column).
+ */
+export function assembleWorksheetRow(cells: WorksheetCell[]): string[] {
+  const values: string[] = [];
+  let nextIndex = 0;
+  let maxIndex = -1;
+  for (const cell of cells) {
+    const index = cell.reference ? columnIndexFromCellRef(cell.reference) : nextIndex;
+    nextIndex = index + 1;
+    maxIndex = Math.max(maxIndex, index);
+    values[index] = cell.value;
+  }
+  // Build a dense array so sparse columns (gaps between cell references) become
+  // empty strings instead of holes that `.map` would skip and leave undefined.
+  return Array.from({ length: maxIndex + 1 }, (_, index) => values[index] ?? "");
+}
+
 function rowsFromWorksheetXml(xml: string, sharedStrings: string[]): string[][] {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   return Array.from(doc.getElementsByTagName("row")).map((row) => {
-    const values: string[] = [];
-    Array.from(row.getElementsByTagName("c")).forEach((cell) => {
-      const index = columnIndexFromCellRef(cell.getAttribute("r"));
+    const cells: WorksheetCell[] = Array.from(row.getElementsByTagName("c")).map((cell) => {
       const type = cell.getAttribute("t");
+      // Inline strings live in <is><t>, shared strings reference an index via <v>.
+      const inlineString = type === "inlineStr"
+        ? cell.getElementsByTagName("t")[0]?.textContent ?? ""
+        : null;
       const rawValue =
         cell.getElementsByTagName("v")[0]?.textContent ??
         cell.getElementsByTagName("t")[0]?.textContent ??
         "";
-      values[index] = type === "s" ? (sharedStrings[Number(rawValue)] ?? "") : decodeXmlText(rawValue);
+      const value =
+        type === "s"
+          ? (sharedStrings[Number(rawValue)] ?? "")
+          : inlineString !== null
+            ? decodeXmlText(inlineString)
+            : decodeXmlText(rawValue);
+      return { reference: cell.getAttribute("r"), value };
     });
-    return values.map((value) => value ?? "");
+    return assembleWorksheetRow(cells);
   });
 }
 
@@ -1364,7 +1454,7 @@ function inferFieldType(header: string, values: string[]): FieldType {
   return "text";
 }
 
-function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
+export function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
   const form = createEnterpriseDraftForm(setup, "import", []);
   const page = (form.pages ?? [])[0] ?? createPage("Page 1");
   const section = {
@@ -1662,7 +1752,7 @@ function controlsDraftToApiControls(
     permission_rules: [
       {
         subject_type: "role",
-        subject_name: "M&E Manager",
+        subject_name: "Form Owner",
         permissions: [
           "view_form",
           "edit_form",
@@ -1851,7 +1941,7 @@ function controlsDraftToApiControls(
         severity: "medium",
         blocking: false,
         fields: controls.disaggregationFields,
-        expression: "required for donor and indicator breakdowns",
+        expression: "required for reporting and metric breakdowns",
       },
     ],
     governance: {
@@ -2722,7 +2812,7 @@ export function createEditableDraftFromListItem(
   const questionCount = Math.max(1, form.questions || 1);
   const sectionTitles = [
     "Consent and respondent profile",
-    "Household and beneficiary details",
+    "Household and entity details",
     "Location and coverage",
     "Program participation",
     "Evidence and data quality",
@@ -3091,7 +3181,7 @@ export function validateFormForPublish(
   );
   const entityRuleSelected =
     controls.requiresEntity ||
-    controls.allowAnonymous ||
+    controls.respondentIdentification !== "anonymous_allowed" ||
     controls.profileUpdateMode !== "never";
   const needsEntityMapping =
     controls.requiresEntity || controls.profileUpdateMode !== "never";
@@ -3139,7 +3229,7 @@ export function validateFormForPublish(
     item({
       category: "Form information",
       complete: Boolean(setup.formType.trim()),
-      description: "Choose the M&E form type so readiness rules match the collection purpose.",
+      description: "Choose the form type so readiness rules match the selected sector and collection purpose.",
       id: "form-type",
       jumpTo: "setup",
       label: "Form type selected",
@@ -3181,7 +3271,7 @@ export function validateFormForPublish(
           controls.expectedUse.trim(),
       ),
       description:
-        "Managed M&E instruments need an objective, business purpose, and expected use before field deployment.",
+        "Managed data collection instruments need an objective, business purpose, and expected use before field deployment.",
       id: "purpose",
       jumpTo: "controls",
       label: "Form purpose and business context defined",
@@ -3195,7 +3285,7 @@ export function validateFormForPublish(
           controls.linkedOutput.trim(),
       ),
       description:
-        "Link the form to a result area, outcome, or output so it can support donor reporting and program learning.",
+        "Link the form to a result area, outcome, output, KPI, or operational objective when the project uses structured results tracking.",
       id: "results-linkage",
       jumpTo: "controls",
       label: "Result linkage reviewed",
@@ -3206,7 +3296,7 @@ export function validateFormForPublish(
       category: "Purpose",
       complete: Boolean(controls.decisionUse && controls.reportingPeriod !== "none"),
       description:
-        "Define how this form will be used for decisions, indicators, donor reporting, case management, or learning, and select its reporting period.",
+        "Define how this form will be used for decisions, metrics, reporting, case management, compliance, operations, or learning, and select its reporting period.",
       id: "decision-use",
       jumpTo: "controls",
       label: "Decision use and reporting period selected",
@@ -3235,10 +3325,10 @@ export function validateFormForPublish(
       category: "Structure",
       complete: missingStandardQuestions.length === 0,
       description:
-        "The assistant checks the form type against standard M&E starter questions such as consent, beneficiary identity, dates, GPS, service details, and visit notes.",
+        "The assistant checks the form type against sector-appropriate starter questions such as consent when needed, entity identity, dates, GPS, service details, quantities, observations, and notes.",
       id: "standard-questions",
       jumpTo: "builder",
-      label: "Standard M&E questions reviewed",
+      label: "Standard sector questions reviewed",
       required: fields.length > 0 && formOperationalFamily(setup.formType) !== "custom",
       warning: fields.length === 0 || formOperationalFamily(setup.formType) === "custom",
     }),
@@ -3330,22 +3420,23 @@ export function validateFormForPublish(
     }),
     item({
       category: "Entity settings",
-      complete: entityRuleSelected && Boolean(controls.entityType.trim()),
+      complete: !entityRuleSelected || Boolean(controls.entityType.trim()),
       description:
-        "Choose whether this form creates, updates, requires, or allows anonymous beneficiary/entity records.",
+        "Choose whether this form creates, updates, requires, or allows anonymous linked records. Leave entity tracking optional for standalone checklists, transactions, imports, or surveys.",
       id: "entity-settings",
       jumpTo: "controls",
-      label: "Beneficiary/entity settings defined",
-      required: true,
+      label: "Entity settings reviewed",
+      required: entityRuleSelected,
+      warning: !entityRuleSelected,
     }),
     item({
-      category: "Beneficiary identity",
+      category: "Entity identity",
       complete:
         controls.respondentIdentification === "anonymous_allowed"
           ? controls.allowAnonymous
           : Boolean(controls.respondentIdentification),
       description:
-        "Define whether the collector must select an existing beneficiary, create a new registration, or allow anonymous collection.",
+        "Define whether the collector must select an existing record, create a new registration, or allow anonymous collection.",
       id: "respondent-identity",
       jumpTo: "controls",
       label: "Respondent identity rule selected",
@@ -3355,10 +3446,10 @@ export function validateFormForPublish(
       category: "Entity settings",
       complete: !needsEntityMapping || entityMappings.length >= 2,
       description:
-        "Entity-linked forms should map key questions such as name, phone, village, or GPS to the beneficiary profile.",
+        "Entity-linked forms should map key questions such as name, phone, location, external ID, or GPS to the official profile.",
       id: "entity-mapping",
       jumpTo: "controls",
-      label: "Beneficiary profile mapping reviewed",
+      label: "Entity profile mapping reviewed",
       required: needsEntityMapping,
       warning: !needsEntityMapping,
     }),
@@ -3366,7 +3457,7 @@ export function validateFormForPublish(
       category: "Entity settings",
       complete: !needsEntityMapping || unmappedSuggestedProfileFields.length === 0,
       description:
-        "The platform can suggest beneficiary profile mappings from question labels such as name, phone, gender, village, DOB, and GPS.",
+        "The platform can suggest profile mappings from question labels such as name, phone, location, external ID, category, and GPS.",
       id: "mapping-suggestions",
       jumpTo: "controls",
       label: "Suggested profile mappings applied",
@@ -3403,32 +3494,32 @@ export function validateFormForPublish(
         controls.duplicateThreshold >= 50 &&
         Boolean(controls.duplicateAction),
       description:
-        "Duplicate rules protect beneficiary registration and repeated submissions before they reach reports.",
+        "Duplicate rules protect entity registration, inventory records, inspections, cases, and repeated submissions before they reach reports.",
       id: "duplicate-rules",
       jumpTo: "controls",
       label: "Duplicate prevention configured",
       required: true,
     }),
     item({
-      category: "Indicator mapping",
+      category: "Metric mapping",
       complete:
         !controls.indicatorLink.trim() ||
         controls.indicatorComponent !== "none",
       description:
-        "If a form or question is linked to an indicator, choose whether it contributes to numerator, denominator, disaggregation, or evidence.",
+        "If a form or question is linked to a metric, KPI, or indicator, choose whether it contributes to numerator, denominator, breakdown, or evidence.",
       id: "indicator-mapping",
       jumpTo: "controls",
-      label: "Indicator mapping reviewed",
+      label: "Metric mapping reviewed",
       required: false,
       warning: true,
     }),
     item({
-      category: "Indicator mapping",
+      category: "Metric mapping",
       complete:
         !controls.disaggregationRequired ||
         (controls.disaggregationFields.length > 0 && hasDisaggregationField),
       description:
-        "Forms used for indicators or donor reporting should capture disaggregation fields such as sex, age group, disability, and location.",
+        "Forms used for metrics or external reporting should capture the breakdown fields required by the project, such as location, category, status, product type, sex, age group, or disability.",
       id: "disaggregation",
       jumpTo: "controls",
       label: "Disaggregation fields reviewed",
@@ -3519,7 +3610,7 @@ export function validateFormForPublish(
           ["select", "dropdown", "multiselect", "radio"].includes(field.type),
         ),
       description:
-        "Reference data is recommended for location, facility, crop, donor, and program lists.",
+        "Reference data is recommended for location, facility, product, crop, supplier, customer, partner, funder/client, and program lists.",
       id: "reference-data",
       jumpTo: "controls",
       label: "Reference data reviewed",
@@ -3665,7 +3756,7 @@ export function validateFormForPublish(
       category: "Mobile package",
       complete: Boolean(controls.mobilePackageMode && controls.syncRequirement),
       description:
-        "Choose whether the mobile package is standard, low-bandwidth, media-heavy, or built for a large beneficiary registry.",
+        "Choose whether the mobile package is standard, low-bandwidth, media-heavy, or built for a large entity registry.",
       id: "mobile-package",
       jumpTo: "controls",
       label: "Mobile package rules reviewed",
@@ -3712,7 +3803,7 @@ export function validateFormForPublish(
       category: "Retention",
       complete: Boolean(controls.dataRetentionPolicy),
       description:
-        "Set how long approved records are retained or archived for donor and organizational compliance.",
+        "Set how long approved records are retained or archived for funder, client, legal, and organizational compliance.",
       id: "retention",
       jumpTo: "controls",
       label: "Data retention rule selected",
@@ -3782,7 +3873,7 @@ export function validateFormForPublish(
       category: "Partner rules",
       complete: Boolean(controls.partnerDataSharingRule.trim()),
       description:
-        "If partners, sub-grantees, or donors will use the data, define the sharing rule before exports and reporting start.",
+        "If partners, suppliers, clients, funders, donors, auditors, or external teams will use the data, define the sharing rule before exports and reporting start.",
       id: "partner-sharing",
       jumpTo: "controls",
       label: "Partner data-sharing rule reviewed",
@@ -3821,7 +3912,7 @@ export function validateFormForPublish(
           controls.approvalNotes.trim(),
       ),
       description:
-        "Technical reviewer, M&E reviewer, final approver, and approval notes are required for enterprise form certification.",
+        "Technical reviewer, sector reviewer, final approver, and approval notes are required for enterprise form certification.",
       id: "certification",
       jumpTo: "controls",
       label: "Form certification completed",
@@ -3863,7 +3954,7 @@ export function validateFormForPublish(
       category: "Governance",
       complete: controls.dataFreezeRequired && controls.sourceOfTruthRule !== undefined,
       description:
-        "Official reports should freeze approved data and define which form is allowed to update each beneficiary profile field.",
+        "Official reports should freeze approved data and define which form is allowed to update each entity profile field.",
       id: "source-of-truth",
       jumpTo: "controls",
       label: "Source-of-truth and data freeze rules configured",
@@ -3932,7 +4023,7 @@ function buildPublishAssistantAdvice({
       Boolean(value) &&
       !controls.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
   );
-  const entityLabel = controls.entityType.trim() || "Beneficiary";
+  const entityLabel = controls.entityType.trim() || "Entity";
   const entityLabelLower = entityLabel.toLowerCase();
   const advice: PublishAssistantAdvice[] = [];
 
@@ -3961,14 +4052,14 @@ function buildPublishAssistantAdvice({
       actionLabel: "Open governance review",
       fix:
         currentStatus === "Review"
-          ? "Review the readiness list, complete technical and M&E certification, add approval notes, then click Approve Form."
-          : "Move the form through Testing and Review first. After the technical and M&E checks are complete, approve the form before publishing.",
+          ? "Review the readiness list, complete technical and sector certification, add approval notes, then click Approve Form."
+          : "Move the form through Testing and Review first. After the technical and sector checks are complete, approve the form before publishing.",
       id: "lifecycle-not-approved",
       item: checklist.find((item) => item.id === "lifecycle-approved") ?? null,
       jumpTo: "controls",
       label: `Form is ${currentStatus}, not Approved`,
       mneTip:
-        "Expert recommendation: do not publish until a technical reviewer and M&E reviewer have checked the form purpose, beneficiary rules, consent, workflow, data quality, and mobile readiness.",
+        `Expert recommendation: do not publish until a technical reviewer and sector reviewer have checked the form purpose, ${entityLabelLower} rules, consent where needed, workflow, data quality, and mobile readiness.`,
       platformAction:
         "Manager decision needed: the platform can open Governance controls, but a responsible reviewer must approve the form.",
       severity: "Required",
@@ -3999,7 +4090,7 @@ function buildPublishAssistantAdvice({
       jumpTo: item.jumpTo,
       label: item.label,
       mneTip:
-        "Resolve this before publishing so collection, review, beneficiary updates, and reporting stay governed.",
+        `Resolve this before publishing so collection, review, ${entityLabelLower} updates, and reporting stay governed.`,
       platformAction:
         item.jumpTo === "builder"
           ? "Open the Builder to fix the question or structure issue."
@@ -4032,16 +4123,16 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Expert recommendation: choose the form type based on what the submission represents in the program lifecycle, not only by the questions it contains.",
           platformAction:
-            "Manager decision needed: the platform can open Basic Information, but the M&E manager must choose the correct instrument type.",
+            "Manager decision needed: the platform can open Basic Information, but the project owner must choose the correct instrument type for this sector.",
           why:
-            "The platform cannot apply the right M&E readiness logic until it knows what kind of instrument this is.",
+            "The platform cannot apply the right readiness logic until it knows what kind of instrument this is.",
         });
         break;
       case "owner":
         advice.push({
           ...base,
           fix:
-            "Add the responsible owner in Basic Information. This is usually the M&E Manager, Data Manager, or project lead accountable for the instrument.",
+            "Add the responsible owner in Basic Information. This is usually the Operations Manager, Data Manager, project lead, or sector specialist accountable for the instrument.",
           mneTip:
             "Expert recommendation: assign ownership to the person accountable for methodology, version changes, data quality, and approval decisions.",
           platformAction:
@@ -4058,7 +4149,7 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Expert recommendation: keep one governed instrument with translations unless the local-language questionnaire truly changes meaning or methodology.",
           platformAction:
-            "Manager decision needed: the platform can open Basic Information, but the M&E manager should confirm the working language for field teams.",
+            "Manager decision needed: the platform can open Basic Information, but the project owner should confirm the working language for field teams.",
           why:
             "Mobile display, translation completeness, and field training depend on the primary language being known.",
         });
@@ -4070,7 +4161,7 @@ function buildPublishAssistantAdvice({
             ? "The project link is detected. Refresh the readiness review and try publishing again."
             : "Select an existing project in Basic Information. If no project exists, create it in Projects first; this form cannot be safely published without a project.",
           mneTip:
-            "Expert recommendation: always attach a form to the project that owns the beneficiaries, indicators, assignments, locations, approvals, and reports.",
+            `Expert recommendation: always attach a form to the project that owns the ${entityLabelLower} records, metrics/KPIs, assignments, locations, approvals, and reports.`,
           platformAction:
             "Manager decision needed: the platform can open project selection, but the user must select the correct project context.",
           why:
@@ -4085,26 +4176,26 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Purpose fields help future reviewers understand why the data was collected and how it should be used.",
           platformAction:
-            "The platform can fill starter M&E purpose text, then you can edit it to match your project.",
+            "The platform can fill starter purpose text, then you can edit it to match your project and sector.",
           quickFixId: "mne_context_defaults",
           targetControlStep: "essentials",
           why:
-            "The form is missing its M&E business context. A governed instrument needs a reason for collection before it reaches the field.",
+            "The form is missing its business context. A governed instrument needs a reason for collection before it reaches the field.",
         });
         break;
       case "decision-use":
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set a practical decision use and reporting period. Manually choose Indicator Reporting or Donor Reporting when answers feed a results framework; choose Operational Decision for routine management forms.",
+            "Use Apply platform fix to set a practical decision use and reporting period. Choose metric/reporting when answers feed KPIs or formal reports; choose Operational Decision for routine management forms.",
           mneTip:
-            "Every field instrument should answer: what decision, report, beneficiary action, or management review will use this data?",
+            `Every field instrument should answer: what decision, report, ${entityLabelLower} action, compliance check, or management review will use this data?`,
           platformAction:
-            "The platform can apply a practical M&E decision-use and reporting-period default.",
+            "The platform can apply a practical decision-use and reporting-period default.",
           quickFixId: "mne_context_defaults",
           targetControlStep: "essentials",
           why:
-            "The form does not yet say how the data will be used or what reporting cycle it belongs to, so users cannot judge whether indicators, approvals, and reports are correctly configured.",
+            "The form does not yet say how the data will be used or what reporting cycle it belongs to, so users cannot judge whether metrics, approvals, and reports are correctly configured.",
         });
         break;
       case "sections":
@@ -4113,9 +4204,9 @@ function buildPublishAssistantAdvice({
           fix:
             "Open Builder and add at least one section, for example Respondent Information, Household Details, Farm Information, Service Received, or Enumerator Notes.",
           mneTip:
-            "Expert recommendation: group questions by field workflow, usually Consent, Respondent or Beneficiary Details, Location, Service or Measurement, and Enumerator Notes.",
+            `Expert recommendation: group questions by field workflow, usually Consent when needed, Respondent or ${entityLabel} Details, Location, Service/Measurement/Observation, and Collector Notes.`,
           platformAction:
-            "Manager decision needed: the platform can open Builder, but the M&E manager should choose section names that match the actual field interview.",
+            "Manager decision needed: the platform can open Builder, but the project owner should choose section names that match the actual field workflow.",
           why:
             "The form has no sections. Field officers would receive an unstructured instrument.",
         });
@@ -4126,7 +4217,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Open Builder and add the questions field officers must answer. If you already have an Excel questionnaire, use the spreadsheet import option to create questions faster.",
           mneTip:
-            "Expert recommendation: at minimum include consent, identity or beneficiary link, date, location where relevant, core measurements, and enumerator notes.",
+            `Expert recommendation: at minimum include consent when needed, identity or ${entityLabelLower} link, date, location where relevant, core measurements, and collector notes.`,
           platformAction:
             "Manager decision needed: the platform can open Builder or import from Excel, but the program team must confirm which data is actually needed.",
           why:
@@ -4145,10 +4236,10 @@ function buildPublishAssistantAdvice({
           mneTip:
             "Standard questions protect the basic field loop: consent, identity, date, location, service/activity, and follow-up evidence.",
           platformAction:
-            "The platform can add the missing standard M&E questions into a new builder section for you to edit.",
+            "The platform can add the missing standard sector questions into a new builder section for you to edit.",
           quickFixId: "add_standard_questions",
           why:
-            "This form appears to be missing one or more questions normally needed for its M&E purpose.",
+            "This form appears to be missing one or more questions normally needed for its selected purpose.",
         });
         break;
       case "variables":
@@ -4157,7 +4248,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Click Apply platform fix to regenerate stable unique variable names from the question labels. Then keep those variable names stable after publishing.",
           mneTip:
-            "Variable names are the bridge between form answers, Excel exports, indicators, and donor reporting.",
+            "Variable names are the bridge between form answers, Excel exports, metrics/KPIs, dashboards, and reports.",
           platformAction:
             "The platform can repair missing or duplicate variable names automatically.",
           quickFixId: "fix_question_variables",
@@ -4199,7 +4290,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to add standard disaggregation categories. Then make sure the Builder contains matching questions for sex, age group, location, disability status, or any donor-required category.",
+            "Use Apply platform fix to add standard breakdown categories. Then make sure the Builder contains matching questions for location, category, status, product type, sex, age group, disability status, or any funder/client-required category.",
           mneTip:
             "Disaggregation should be designed before field rollout so teams do not sort records manually later.",
           platformAction:
@@ -4244,7 +4335,7 @@ function buildPublishAssistantAdvice({
           fix:
             `Use Apply platform fix to set entity behavior for this form type. Then confirm the entity type (currently ${entityLabel}) and whether the form creates a new entity, updates an existing entity, requires an existing entity, or allows anonymous collection.`,
           mneTip:
-            `Registration forms usually create a new ${entityLabelLower} record. Baseline, monitoring, endline, training, and distribution forms usually require an existing ${entityLabelLower} record.`,
+            `Registration or intake forms usually create a new ${entityLabelLower} record. Follow-up, inspection, monitoring, delivery, training, distribution, audit, or service forms usually require an existing ${entityLabelLower} record.`,
           platformAction:
             `The platform can apply recommended ${entityLabelLower} record rules for this form type, then you can fine-tune the entity type and mappings.`,
           quickFixId: formTypeQuickFix,
@@ -4261,11 +4352,11 @@ function buildPublishAssistantAdvice({
           mneTip:
             `This prevents disconnected submissions and reduces duplicate ${entityLabelLower} records.`,
           platformAction:
-            "The platform can set the respondent identification rule based on whether this is registration, baseline, monitoring, or follow-up.",
+            "The platform can set the identification rule based on whether this is registration, intake, assessment, inspection, monitoring, delivery, audit, service, or follow-up.",
           quickFixId: formTypeQuickFix,
           targetControlStep: "beneficiaries",
           why:
-            "The collection flow does not yet define how field officers identify the person, household, facility, or entity being surveyed.",
+            `The collection flow does not yet define how field officers identify the ${entityLabelLower} record being surveyed, inspected, visited, delivered to, audited, or updated.`,
         });
         break;
       case "entity-mapping":
@@ -4288,7 +4379,7 @@ function buildPublishAssistantAdvice({
           fix: unmappedSuggestedMappings.length
             ? `Click Apply platform fix to map: ${unmappedSuggestedMappings
                 .map(([field]) => humanizeControlValue(field))
-                .join(", ")}. Then verify the mappings in Controls > Beneficiaries.`
+                .join(", ")}. Then verify the mappings in Controls > Entity Rules.`
             : "No unmapped profile suggestions remain. No action is required.",
           mneTip:
             `Profile mappings let approved submissions update ${entityLabelLower} records with traceable data lineage.`,
@@ -4297,22 +4388,22 @@ function buildPublishAssistantAdvice({
           quickFixId: "apply_profile_mapping",
           targetControlStep: "beneficiaries",
           why:
-            "The form contains questions that look like beneficiary profile fields but they are not mapped yet.",
+            `The form contains questions that look like ${entityLabelLower} profile fields but they are not mapped yet.`,
         });
         break;
       case "frequency":
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set the frequency rule from the form type. Registration = Once Ever, Baseline = Once Per Project, Monitoring = Once Per Month or Quarter, Attendance/Distribution = Once Per Event.",
+            "Use Apply platform fix to set the frequency rule from the form type. Registration/intake is usually Once Ever, assessment is often Once Per Project or Period, monitoring is monthly/quarterly, and attendance/delivery/inspection is usually Once Per Event.",
           mneTip:
-            "Frequency rules stop repeated baselines and accidental double-counting in reports.",
+            "Frequency rules stop accidental duplicate records, repeated assessments, and double-counting in reports.",
           platformAction:
             "The platform can set a recommended frequency rule for this form type.",
           quickFixId: formTypeQuickFix,
           targetControlStep: "beneficiaries",
           why:
-            "The form does not define how often the same beneficiary or event can be submitted.",
+            `The form does not define how often the same ${entityLabelLower} record or event can be submitted.`,
         });
         break;
       case "frequency-window":
@@ -4334,8 +4425,8 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix: selectedDuplicateFields
-            ? `Open Controls > Beneficiaries. Current duplicate fields: ${selectedDuplicateFields}. Make sure the threshold is at least 50 and the action is Warn, Block, or Require Review.`
-            : "Open Controls > Beneficiaries and select duplicate matching fields such as Phone, National ID, Household ID, Name + Village, Name + DOB, or GPS. Then choose Warn, Block, or Require Review.",
+            ? `Open Controls > Entity Rules. Current duplicate fields: ${selectedDuplicateFields}. Make sure the threshold is at least 50 and the action is Warn, Block, or Require Review.`
+            : "Open Controls > Entity Rules and select duplicate matching fields such as external ID, phone/account ID, parent ID, name + location, date, code, or GPS. Then choose Warn, Block, or Require Review.",
           mneTip:
             "For real programs, Require Review is often safer than automatic creation when phone, ID, or name + village are similar.",
           platformAction:
@@ -4343,7 +4434,7 @@ function buildPublishAssistantAdvice({
           quickFixId: "registration_defaults",
           targetControlStep: "beneficiaries",
           why:
-            "Duplicate prevention is not configured strongly enough, so approved registration data could create multiple beneficiary records for the same person or household.",
+            `Duplicate prevention is not configured strongly enough, so approved registration or intake data could create multiple ${entityLabelLower} records for the same real-world record.`,
         });
         break;
       case "duration":
@@ -4412,7 +4503,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Click Apply platform fix to add a Consent confirmed question. If consent is not required for this instrument, open Controls > Evidence and disable Require Consent.",
           mneTip:
-            "Consent should be explicit for beneficiary registration, household surveys, health, child protection, and other sensitive collection.",
+            "Consent should be explicit when collecting personal, household, health, child protection, sensitive, or regulated data.",
           platformAction:
             "The platform can add a consent question and keep consent blocking enabled.",
           quickFixId: "add_consent_question",
@@ -4425,7 +4516,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set Standard quality mode. Choose Strict manually for sensitive or donor-critical forms; choose Advisory only for pilots.",
+            "Use Apply platform fix to set Standard quality mode. Choose Strict manually for sensitive, regulated, audit-critical, or external-reporting forms; choose Advisory only for pilots.",
           mneTip:
             "Data quality settings decide whether validation issues block field submission or arrive as reviewer warnings.",
           platformAction:
@@ -4457,7 +4548,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to send invalid ages to reviewer decision. Switch to Block manually only when the form is mature and the age rules are certain.",
           mneTip:
-            "Age errors spread quickly into disaggregation, eligibility, vulnerability, and donor reports.",
+            "Age or date errors spread quickly into breakdowns, eligibility, risk scoring, and reports.",
           platformAction:
             "The platform can set invalid age handling to reviewer decision.",
           quickFixId: "evidence_defaults",
@@ -4470,7 +4561,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set supervisor review and M&E manager approval. Then change the reviewer roles only if your organization uses a different approval chain.",
+            "Use Apply platform fix to set supervisor review and manager approval. Then change the reviewer roles only if your organization uses a different approval chain.",
           mneTip:
             "The app can flag what looks wrong, but a reviewer should decide whether to approve, return, or reject the data.",
           platformAction:
@@ -4485,7 +4576,7 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set standard collection/review permissions. Switch to Restricted manually for sensitive beneficiary, health, child protection, or protection forms.",
+            `Use Apply platform fix to set standard collection/review permissions. Switch to Restricted manually for sensitive ${entityLabelLower}, health, child protection, compliance, audit, or regulated forms.`,
           mneTip:
             "Permissions protect who can edit, assign, collect, review, approve, export, and archive the form.",
           platformAction:
@@ -4520,9 +4611,9 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to require manager-approved exports and audit logging. Change to Data Manager Approval manually if your organization separates M&E and data stewardship.",
+            "Use Apply platform fix to require manager-approved exports and audit logging. Change to Data Manager Approval manually if your organization separates operational ownership and data stewardship.",
           mneTip:
-            "Export governance is important when datasets include PII, donor-sensitive figures, or unpublished results.",
+            "Export governance is important when datasets include PII, confidential figures, regulated data, or unpublished results.",
           platformAction:
             "The platform can apply manager-approved export governance and audit logging.",
           quickFixId: "governance_defaults",
@@ -4535,11 +4626,11 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to set seven-year retention. Change it manually if the donor agreement or national law requires a different period.",
+            "Use Apply platform fix to set seven-year retention. Change it manually if the client, funder, donor agreement, contract, or national law requires a different period.",
           mneTip:
             "Retention rules help organizations know when data should stay active, be archived, or be prepared for anonymization.",
           platformAction:
-            "The platform can apply a seven-year retention default suitable for many donor-funded programs.",
+            "The platform can apply a seven-year retention default suitable for many governed programs and operations.",
           quickFixId: "governance_defaults",
           targetControlStep: "governance",
           why:
@@ -4577,9 +4668,9 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Open Controls > Governance and complete Technical Reviewer, M&E Reviewer, Final Approver, and Approval Notes.",
+            "Open Controls > Governance and complete Technical Reviewer, Sector Reviewer, Final Approver, and Approval Notes.",
           mneTip:
-            "Certification records who checked the questionnaire, methodology, beneficiary rules, and approval workflow.",
+            `Certification records who checked the questionnaire, methodology, ${entityLabelLower} rules, and approval workflow.`,
           targetControlStep: "governance",
           why:
             "The form does not yet have complete review certification.",
@@ -4606,7 +4697,7 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to enable audit trail, approved-record locking, export approval, retention, and source-of-truth defaults.",
           mneTip:
-            "This supports donor auditability, data stewardship, and trustworthy reports.",
+            "This supports auditability, data stewardship, and trustworthy reports.",
           platformAction:
             "The platform can enable audit trail, approved-record locking, retention, and export approval defaults.",
           quickFixId: "governance_defaults",
@@ -4621,13 +4712,13 @@ function buildPublishAssistantAdvice({
           fix:
             "Use Apply platform fix to enable report data freeze and manager-approved profile updates. This keeps identity fields controlled by registration unless a reviewer accepts a later change.",
           mneTip:
-            "This prevents past reports and official beneficiary profiles from changing silently after approval.",
+            `This prevents past reports and official ${entityLabelLower} profiles from changing silently after approval.`,
           platformAction:
             "The platform can enable approved-data freeze and manager-approved profile updates.",
           quickFixId: "governance_defaults",
           targetControlStep: "governance",
           why:
-            "The form does not yet define how approved data contributes to official reports and beneficiary profile fields.",
+            `The form does not yet define how approved data contributes to official reports and ${entityLabelLower} profile fields.`,
         });
         break;
       case "mobile-complexity":
@@ -4701,8 +4792,8 @@ function buildPublishAssistantAdvice({
             ? "Select the exact field officers who should receive this form on mobile."
             : "Create or activate field officer accounts before restricting this form to assigned users."
           : warningQuickFix
-            ? "Expert recommendation: apply the platform fix first, then confirm the setting matches the project methodology and donor requirements."
-            : "Expert recommendation: review this item before field rollout because it depends on project design, organizational policy, or donor expectations.",
+            ? "Expert recommendation: apply the platform fix first, then confirm the setting matches the project methodology, sector practice, and external requirements."
+            : "Expert recommendation: review this item before field rollout because it depends on project design, organizational policy, sector practice, or external expectations.",
       platformAction:
         item.id === "assignment" && fieldOfficerCount > 0
           ? "The platform can select all active field officers now; you can remove users who should not receive the form."
@@ -4838,6 +4929,11 @@ export function FormCreationWorkspace({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMessage, setImportMessage] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [importPreview, setImportPreview] = useState<string[] | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const lastPersistedSignatureRef = useRef<string | null>(null);
+  const autoSaveInFlightRef = useRef(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -4857,6 +4953,19 @@ export function FormCreationWorkspace({
     [localProjects, preview, setup.projectName, tenantProjects],
   );
   const selectedProjectId = selectedProject?.id ?? null;
+  const sectorTerminology = useMemo(
+    () => getSectorTerminology(selectedProject?.sector_id ?? selectedProject?.sector_name ?? null),
+    [selectedProject?.sector_id, selectedProject?.sector_name],
+  );
+  const primaryEntityLabel = sectorTerminology.primaryEntity;
+  const primaryEntityPluralLabel = sectorTerminology.primaryEntityPlural;
+  const metricLabel = sectorTerminology.metricLabel ?? "Metric";
+  const metricPluralLabel = sectorTerminology.metricPluralLabel ?? "Metrics";
+  const formTypeOptions = useMemo(() => {
+    const sectorOptions = sectorFormTypeOptions[sectorTerminology.sectorId] ?? [];
+    const current = setup.formType.trim();
+    return Array.from(new Set([...(sectorOptions.length ? sectorOptions : formTypes), ...(current ? [current] : [])]));
+  }, [sectorTerminology.sectorId, setup.formType]);
   const entityCategoriesQuery = useQuery({
     enabled: Boolean(token && !preview && selectedProjectId),
     queryFn: () =>
@@ -4871,10 +4980,20 @@ export function FormCreationWorkspace({
       .filter((category) => category.status !== "archived")
       .sort((first, second) => first.name.localeCompare(second.name));
     const names = activeCategories.map((category) => category.name);
-    const fallback = ["Farmer", "Household", "Beneficiary", "Facility", "School", "Group", "Custom Entity"];
+    const fallback = [
+      primaryEntityLabel,
+      "Household",
+      "Facility",
+      "Site",
+      "Asset",
+      "Product",
+      "Customer",
+      "Employee",
+      "Custom Entity",
+    ];
     const current = controlsDraft.entityType.trim();
     return Array.from(new Set([...(names.length ? names : fallback), ...(current ? [current] : [])]));
-  }, [controlsDraft.entityType, entityCategoriesQuery.data]);
+  }, [controlsDraft.entityType, entityCategoriesQuery.data, primaryEntityLabel]);
   const selectedEntityCategory = useMemo<EntityCategoryRead | null>(
     () =>
       (entityCategoriesQuery.data ?? []).find(
@@ -5072,7 +5191,7 @@ export function FormCreationWorkspace({
       : stage === "start"
         ? "Next: the Builder opens so you can add and arrange questions."
         : stage === "builder"
-          ? "Next: Controls sets who can collect this form, beneficiary rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
+          ? "Next: Controls sets who can collect this form, entity rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
           : stage === "controls"
             ? nextControlStepConfig
               ? `Next control step: "${nextControlStepConfig.label}" — ${nextControlStepConfig.mustDo}`
@@ -5268,7 +5387,7 @@ export function FormCreationWorkspace({
 
     if (quickFixId === "add_standard_questions") {
       if (!draftForm) {
-        setPublishMessage("Start a draft first, then the assistant can add recommended M&E questions.");
+        setPublishMessage("Start a draft first, then the assistant can add recommended sector questions.");
         setStage("start");
         return;
       }
@@ -5280,8 +5399,8 @@ export function FormCreationWorkspace({
       }
       addQuestionsToDraft(
         missingQuestions,
-        "M&E standard readiness questions",
-        `${missingQuestions.length} recommended M&E question${missingQuestions.length === 1 ? "" : "s"} added. Review wording and validation in Builder.`,
+        "Sector-standard readiness questions",
+        `${missingQuestions.length} recommended sector question${missingQuestions.length === 1 ? "" : "s"} added. Review wording and validation in Builder.`,
       );
       return;
     }
@@ -5343,7 +5462,7 @@ export function FormCreationWorkspace({
       }));
       setActiveControlStep("beneficiaries");
       setStage("controls");
-      setPublishMessage("Suggested beneficiary profile mappings were applied. Review them before publishing.");
+      setPublishMessage("Suggested entity profile mappings were applied. Review them before publishing.");
       window.setTimeout(() => {
         window.scrollTo({ behavior: "smooth", top: 0 });
       }, 0);
@@ -5427,7 +5546,7 @@ export function FormCreationWorkspace({
     }
 
     setControlsDraft((current) => {
-      const commonBeneficiaryDefaults: Partial<FormControlsDraft> = {
+      const commonEntityDefaults: Partial<FormControlsDraft> = {
         allowAnonymous: false,
         duplicateAction: "review",
         duplicateFields: current.duplicateFields.length
@@ -5436,34 +5555,34 @@ export function FormCreationWorkspace({
         duplicateGpsDetection: true,
         duplicateSeverity: "high",
         duplicateThreshold: Math.max(current.duplicateThreshold, 85),
-        entityType: current.entityType || "Beneficiary",
+        entityType: current.entityType || "Entity",
         profileUpdateMode: "with_supervisor_approval",
         requiresEntity: true,
       };
 
       switch (quickFixId) {
         case "mne_context_defaults": {
-          const contextEntityLabel = (current.entityType.trim() || "Beneficiary").toLowerCase();
+          const contextEntityLabel = (current.entityType.trim() || "Entity").toLowerCase();
           return {
             ...current,
             businessPurpose:
               current.businessPurpose ||
-              `Support project monitoring, ${contextEntityLabel} record management, evidence review, and donor-ready reporting.`,
+              `Support project operations, ${contextEntityLabel} record management, evidence review, and reporting.`,
             decisionUse:
               /donor|report/i.test(current.expectedUse)
                 ? "donor_reporting"
                 : current.decisionUse || "operational_decision",
             disaggregationFields: current.disaggregationFields.length
               ? current.disaggregationFields
-              : ["sex", "age_group", "location", "disability_status"],
-            disaggregationRequired: true,
+              : ["location", "category", "status"],
+            disaggregationRequired: current.disaggregationRequired,
             dontKnowPolicy:
               current.dontKnowPolicy === "disabled"
                 ? "required_for_sensitive"
                 : current.dontKnowPolicy,
             expectedUse:
               current.expectedUse ||
-              `Approved submissions will feed ${contextEntityLabel} history, data quality review, dashboards, indicators, and reports.`,
+              `Approved submissions will feed ${contextEntityLabel} history, data quality review, dashboards, metrics, and reports.`,
             formObjective:
               current.formObjective ||
               `Collect reliable ${setup.formType || "field"} data for ${setup.projectName || "the selected project"}.`,
@@ -5481,7 +5600,7 @@ export function FormCreationWorkspace({
         case "registration_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "disabled",
             frequencyWindow: "none",
             respondentIdentification: "new_registration",
@@ -5490,7 +5609,7 @@ export function FormCreationWorkspace({
         case "baseline_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "required",
             frequencyWindow: "reporting_period",
             respondentIdentification: "existing_beneficiary",
@@ -5499,7 +5618,7 @@ export function FormCreationWorkspace({
         case "monitoring_defaults":
           return {
             ...current,
-            ...commonBeneficiaryDefaults,
+            ...commonEntityDefaults,
             beneficiarySearch: "required",
             frequencyWindow: "month",
             respondentIdentification: "existing_beneficiary",
@@ -5639,7 +5758,7 @@ export function FormCreationWorkspace({
               : "beneficiaries";
     setActiveControlStep(targetStep);
     setStage("controls");
-    setPublishMessage("Recommended M&E settings were applied. Review them, save controls, then run the readiness review again.");
+    setPublishMessage("Recommended sector-ready settings were applied. Review them, save controls, then run the readiness review again.");
     window.setTimeout(() => {
       window.scrollTo({ behavior: "smooth", top: 0 });
     }, 0);
@@ -5769,6 +5888,27 @@ export function FormCreationWorkspace({
     setSelectedDuplicateFormId(existingForms[0]?.id ?? "");
   }, [existingForms, selectedDuplicateFormId]);
 
+  async function handleImportFileSelected(file: File | null): Promise<void> {
+    setImportFile(file);
+    setImportMessage("");
+    setImportPreview(null);
+    if (!file) return;
+    setImportBusy(true);
+    try {
+      const rows = await readSpreadsheetRows(file);
+      const headers = (rows[0] ?? []).map((header) => header.trim()).filter(Boolean);
+      if (!headers.length) {
+        setImportMessage("The spreadsheet must have question names in the first row.");
+      } else {
+        setImportPreview(headers);
+        setImportMessage(`Detected ${headers.length} question(s) from the first row.`);
+      }
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The spreadsheet could not be read.");
+    }
+    setImportBusy(false);
+  }
+
   async function createDraftAndOpenBuilder(method = startMethod): Promise<void> {
     setImportMessage("");
     let nextDraft = createEnterpriseDraftForm(setup, method, existingForms);
@@ -5844,51 +5984,50 @@ export function FormCreationWorkspace({
     setStage("builder");
   }
 
-  async function saveDraftLocally(): Promise<void> {
-    if (!draftForm) return;
-    const localDraft = workspaceFormFromDraft(draftForm, setup, selectedProjectId);
-    upsertLocalForm(localDraft);
-    if (!token || preview || !selectedProjectId) {
-      setPublishMessage(
-        projectLinked
-          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
-          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
-      );
-      return;
+  // Persist the current draft to the organization workspace (create on first
+  // call, update afterwards). Shared by manual "Save draft" and auto-save.
+  // Caller guarantees token, non-preview, and a selected project.
+  async function persistDraftToBackend(): Promise<{ ok: boolean; error?: string }> {
+    if (!draftForm || !token || preview || !selectedProjectId) {
+      return { ok: false, error: "Sign in and select a project first." };
     }
-    setDraftSaving(true);
     try {
-      const survey =
-        selectedSurvey ??
-        (await createSurvey(token, {
-          code: `FORM-${Date.now().toString(36).toUpperCase()}`,
-          description: "Auto-created survey context for a project-linked draft form.",
-          geographic_scope: selectedProject?.region ?? null,
-          project_id: selectedProjectId,
-          status: "active",
-          survey_type: "monitoring",
-          target_population: "Project participants",
-          title: "General Data Collection",
-        }));
       const schema = toMobileSchema(draftForm) as Record<string, unknown>;
-      const saved = savedBackendFormId
-        ? await updateForm(token, savedBackendFormId, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
-            publish: false,
-            schema,
-          })
-        : await createForm(token, {
-            description:
-              setup.description || draftForm.sections[0]?.description || null,
-            name: draftForm.name,
+      let saved;
+      if (savedBackendFormId) {
+        // Update path: no survey is created, so repeated auto-saves never spawn
+        // orphan surveys.
+        saved = await updateForm(token, savedBackendFormId, {
+          description:
+            setup.description || draftForm.sections[0]?.description || null,
+          name: draftForm.name,
+          publish: false,
+          schema,
+        });
+      } else {
+        const survey =
+          selectedSurvey ??
+          (await createSurvey(token, {
+            code: `FORM-${Date.now().toString(36).toUpperCase()}`,
+            description: "Auto-created survey context for a project-linked draft form.",
+            geographic_scope: selectedProject?.region ?? null,
             project_id: selectedProjectId,
-            publish: false,
-            schema,
-            slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
-            survey_id: survey.id,
-          });
+            status: "active",
+            survey_type: "monitoring",
+            target_population: "Project participants",
+            title: "General Data Collection",
+          }));
+        saved = await createForm(token, {
+          description:
+            setup.description || draftForm.sections[0]?.description || null,
+          name: draftForm.name,
+          project_id: selectedProjectId,
+          publish: false,
+          schema,
+          slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
+          survey_id: survey.id,
+        });
+      }
       const savedDraft: DynamicForm = {
         ...draftForm,
         activeVersion: saved.status === "published" ? saved.current_version : 0,
@@ -5905,15 +6044,87 @@ export function FormCreationWorkspace({
         controlsDraftToApiControls(controlsDraft, savedDraft),
       );
       upsertLocalForm(workspaceFormFromDraft(savedDraft, setup, selectedProjectId));
-      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+      return { ok: true };
     } catch (error) {
-      setPublishMessage(
-        `Draft saved in this browser, but it was not saved to the organization workspace: ${messageFromUnknownError(error)}`,
-      );
-    } finally {
-      setDraftSaving(false);
+      return { ok: false, error: messageFromUnknownError(error) };
     }
   }
+
+  async function saveDraftLocally(): Promise<void> {
+    if (!draftForm) return;
+    upsertLocalForm(workspaceFormFromDraft(draftForm, setup, selectedProjectId));
+    if (!token || preview || !selectedProjectId) {
+      setPublishMessage(
+        projectLinked
+          ? "Draft saved in this browser. Sign in and save again to store it for the organization."
+          : "Draft saved in this browser. Select an existing project before saving it to the organization workspace.",
+      );
+      return;
+    }
+    setDraftSaving(true);
+    const result = await persistDraftToBackend();
+    if (result.ok) {
+      lastPersistedSignatureRef.current = draftSignature;
+      setAutoSaveState("saved");
+      setLastSavedAt(Date.now());
+      setPublishMessage("Draft saved to the organization workspace. You can log out and continue it from Draft Forms.");
+    } else {
+      setAutoSaveState("error");
+      setPublishMessage(
+        `Draft saved in this browser, but it was not saved to the organization workspace: ${result.error ?? "Unknown error"}`,
+      );
+    }
+    setDraftSaving(false);
+  }
+
+  // Content signature for auto-save: excludes volatile fields (id, version,
+  // updatedAt, history) so saving — which stamps those — never re-triggers.
+  const draftSignature = useMemo(
+    () =>
+      draftForm
+        ? JSON.stringify({
+            name: draftForm.name,
+            pages: draftForm.pages,
+            sections: draftForm.sections,
+            fields: draftForm.fields,
+            controls: controlsDraft,
+          })
+        : "",
+    [draftForm, controlsDraft],
+  );
+
+  const autoSaveEnabled = Boolean(
+    stage === "builder" && draftForm && token && !preview && selectedProjectId,
+  );
+
+  useEffect(() => {
+    if (!autoSaveEnabled || !draftForm) return;
+    if (draftSaving || publishing || autoSaveInFlightRef.current) return;
+    if (lastPersistedSignatureRef.current === draftSignature) return;
+    // Seed the baseline for an already-saved form opened for editing, so we
+    // don't re-save an unchanged form on open. A brand-new draft (no backend id)
+    // is auto-saved immediately so reaching the builder secures the work.
+    if (lastPersistedSignatureRef.current === null && (savedBackendFormId || initialForm)) {
+      lastPersistedSignatureRef.current = draftSignature;
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      autoSaveInFlightRef.current = true;
+      setAutoSaveState("saving");
+      const result = await persistDraftToBackend();
+      if (result.ok) {
+        lastPersistedSignatureRef.current = draftSignature;
+        setAutoSaveState("saved");
+        setLastSavedAt(Date.now());
+      } else {
+        setAutoSaveState("error");
+      }
+      autoSaveInFlightRef.current = false;
+    }, 1500);
+    return () => window.clearTimeout(timer);
+    // persistDraftToBackend is a stable closure over current state; signature drives saves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSaveEnabled, draftSignature, draftSaving, publishing, savedBackendFormId, initialForm]);
 
   async function saveControlsDraft(): Promise<void> {
     if (!draftForm) return;
@@ -6267,7 +6478,36 @@ export function FormCreationWorkspace({
               ) : null}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {autoSaveEnabled ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+                  autoSaveState === "error"
+                    ? "border-danger/30 bg-danger/10 text-danger"
+                    : autoSaveState === "saving"
+                      ? "border-border bg-muted text-muted-foreground"
+                      : "border-success/30 bg-success/10 text-success",
+                )}
+                title="Drafts auto-save to your organization workspace as you edit."
+              >
+                {autoSaveState === "saving" ? (
+                  <>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
+                    Saving…
+                  </>
+                ) : autoSaveState === "error" ? (
+                  <>Auto-save failed — use Save draft</>
+                ) : autoSaveState === "saved" || savedBackendFormId ? (
+                  <>
+                    <CheckCircle2 aria-hidden="true" size={13} />
+                    Draft saved{lastSavedAt ? ` · ${formatClockTime(lastSavedAt)}` : ""}
+                  </>
+                ) : (
+                  <>Auto-save on</>
+                )}
+              </span>
+            ) : null}
             <Button
               onClick={onBack}
               size={compactBuilderMode ? "sm" : undefined}
@@ -6396,7 +6636,7 @@ export function FormCreationWorkspace({
                     lifecycleStatus: "review",
                     reviewComments:
                       controlsDraft.reviewComments ||
-                      "Submitted for technical and M&E review.",
+                      "Submitted for technical and sector review.",
                   });
                   setStage("review");
                 }}
@@ -6556,13 +6796,33 @@ export function FormCreationWorkspace({
                   }
                   value={setup.formType}
                 >
-                  {formTypes.map((type) => (
+                  {formTypeOptions.map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>
                   ))}
                 </Select>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Options adapt to {sectorTerminology.sectorName}; choose Custom for any other workflow.
+                </span>
               </label>
+              <div className="rounded-lg border bg-background/70 p-3 text-sm md:col-span-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="support">{sectorTerminology.sectorName}</Badge>
+                  <Badge tone="neutral">{primaryEntityPluralLabel}</Badge>
+                  <Badge tone="neutral">{metricPluralLabel}</Badge>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  This form uses the selected project context. Entity tracking, {metricPluralLabel.toLowerCase()},
+                  reporting, and approval controls are configurable modules; leave them off when this is a simple
+                  checklist, transaction, inspection, inventory, sales, HR, or custom operational form.
+                </p>
+                {sectorTerminology.optionalModules?.length ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Common modules: {sectorTerminology.optionalModules.join(", ")}.
+                  </p>
+                ) : null}
+              </div>
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Primary Language</span>
                 <Input
@@ -6839,10 +7099,7 @@ export function FormCreationWorkspace({
                 <input
                   accept=".csv,.tsv,.txt,.xlsx"
                   className="hidden"
-                  onChange={(event) => {
-                    setImportFile(event.target.files?.[0] ?? null);
-                    setImportMessage("");
-                  }}
+                  onChange={(event) => void handleImportFileSelected(event.target.files?.[0] ?? null)}
                   ref={importFileRef}
                   type="file"
                 />
@@ -6852,12 +7109,37 @@ export function FormCreationWorkspace({
                   variant="secondary"
                 >
                   <UploadCloud aria-hidden="true" />
-                  Choose file
+                  {importFile ? "Choose another file" : "Choose file"}
                 </Button>
               </div>
               {importMessage ? (
                 <div className="mt-3 rounded-lg border bg-panel px-3 py-2 text-sm text-muted-foreground">
                   {importMessage}
+                </div>
+              ) : null}
+              {importPreview?.length ? (
+                <div className="mt-3 rounded-lg border bg-panel p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Questions detected from the first row
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {importPreview.slice(0, 24).map((header, index) => (
+                      <span
+                        className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium"
+                        key={`${header}-${index}`}
+                      >
+                        {header}
+                      </span>
+                    ))}
+                    {importPreview.length > 24 ? (
+                      <span className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                        +{importPreview.length - 24} more
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Continue to the builder to edit labels, types, options, and required status.
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -6870,7 +7152,8 @@ export function FormCreationWorkspace({
               disabled={
                 importBusy ||
                 (startMethod === "duplicate" && !selectedDuplicateFormId) ||
-                (startMethod === "template" && !selectedTemplateId)
+                (startMethod === "template" && !selectedTemplateId) ||
+                (startMethod === "import" && !importFile)
               }
               onClick={() => void createDraftAndOpenBuilder()}
               variant="primary"
@@ -6976,9 +7259,10 @@ export function FormCreationWorkspace({
               <p className="text-sm font-semibold">Publishing rule</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 A form can be saved at any time. Publishing requires project
-                linkage, beneficiary rules, duplicate controls, review workflow,
-                permissions, approved lifecycle status, certification notes,
-                version notes, and audit-safe governance settings.
+                linkage, the selected sector or custom context, access rules,
+                review workflow, permissions, version notes, and audit-safe
+                governance settings. Entity, metric, and reporting controls are
+                required only when this project uses those modules.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {criticalFailures.slice(0, 5).map((failure) => (
@@ -7001,14 +7285,14 @@ export function FormCreationWorkspace({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  M&E manager checks
+                  Sector-aware form checks
                 </p>
                 <h3 className="mt-1 text-base font-semibold">
                   Practical form problems the platform can help solve
                 </h3>
                 <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                  These checks look for missing standard questions, beneficiary mapping opportunities,
-                  weak wording, and mobile-readiness risks before the form reaches field officers.
+                  These checks look for missing standard questions, {primaryEntityLabel.toLowerCase()} mapping opportunities,
+                  weak wording, and mobile-readiness risks before the form reaches collectors.
                 </p>
               </div>
               <Badge tone={missingMneQuestions.length || suggestedProfileMappingCount || wordingRiskFields.length ? "warning" : "success"}>
@@ -7038,7 +7322,7 @@ export function FormCreationWorkspace({
                 <p className="text-sm font-semibold">Profile mapping</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {suggestedProfileMappingCount
-                    ? `${suggestedProfileMappingCount} beneficiary mapping suggestion(s) can be applied.`
+                    ? `${suggestedProfileMappingCount} entity mapping suggestion(s) can be applied.`
                     : "No obvious unmapped profile fields detected."}
                 </p>
                 {suggestedProfileMappingCount ? (
@@ -7200,14 +7484,15 @@ export function FormCreationWorkspace({
           <section className="rounded-xl border bg-panel p-3.5 shadow-line">
             <div className="flex items-center gap-2">
               <Sparkles aria-hidden="true" className="text-primary" size={18} />
-              <h3 className="font-semibold">M&amp;E Instrument Management</h3>
+              <h3 className="font-semibold">Operational Form Management</h3>
               <HelpHint
-                label="About M&E instrument management"
-                title="M&E Instrument Management"
+                label="About operational form management"
+                title="Operational Form Management"
               >
-                These controls turn a form into a managed monitoring and
-                evaluation instrument with purpose, indicators, data dictionary,
-                tracking series, sampling, translations, and trigger rules.
+                These controls turn a form into a managed operational data
+                collection tool with purpose, {metricPluralLabel.toLowerCase()},
+                data dictionary, tracking series, sampling, translations, and
+                trigger rules when those modules apply.
               </HelpHint>
             </div>
             <div className="mt-3 rounded-lg border bg-background/70 p-3">
@@ -7254,7 +7539,7 @@ export function FormCreationWorkspace({
                         lifecycleStatus: "review",
                         reviewComments:
                           controlsDraft.reviewComments ||
-                          "Submitted for technical and M&E review.",
+                          "Submitted for technical and sector review.",
                       })
                     }
                     size="sm"
@@ -7383,8 +7668,8 @@ export function FormCreationWorkspace({
                       value={controlsDraft.decisionUse}
                     >
                       <option value="operational_decision">Operational decision</option>
-                      <option value="indicator_reporting">Indicator reporting</option>
-                      <option value="donor_reporting">Donor reporting</option>
+                      <option value="indicator_reporting">{metricLabel} reporting</option>
+                      <option value="donor_reporting">External / funder reporting</option>
                       <option value="case_management">Case management</option>
                       <option value="research_learning">Research / learning</option>
                     </Select>
@@ -7406,7 +7691,7 @@ export function FormCreationWorkspace({
                       <option value="quarterly">Quarterly</option>
                       <option value="seasonal">Seasonal</option>
                       <option value="annual">Annual</option>
-                      <option value="donor_schedule">Donor schedule</option>
+                      <option value="donor_schedule">External reporting schedule</option>
                     </Select>
                   </label>
                 </div>
@@ -7424,18 +7709,18 @@ export function FormCreationWorkspace({
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="text-sm font-medium">
-                    Linked indicator
+                    Linked {metricLabel.toLowerCase()}
                     <Input
                       className="mt-2"
                       onChange={(event) =>
                         updateControlsDraft({ indicatorLink: event.target.value })
                       }
-                      placeholder="% farmers using improved seeds"
+                      placeholder={`Example: ${metricLabel} name, KPI, indicator, or report field`}
                       value={controlsDraft.indicatorLink}
                     />
                   </label>
                   <label className="text-sm font-medium">
-                    Indicator component
+                    {metricLabel} component
                     <Select
                       className="mt-2"
                       onChange={(event) =>
@@ -7490,10 +7775,10 @@ export function FormCreationWorkspace({
                       }
                       type="checkbox"
                     />
-                    Require disaggregation review
+                    Require breakdown / disaggregation review
                   </label>
                   <label className="text-sm font-medium">
-                    Disaggregation fields
+                    Breakdown fields
                     <Input
                       className="mt-2"
                       onChange={(event) =>
@@ -7504,7 +7789,7 @@ export function FormCreationWorkspace({
                             .filter(Boolean),
                         })
                       }
-                      placeholder="sex, age_group, location, disability_status"
+                      placeholder="location, category, status, store, product_type, sex, age_group"
                       value={controlsDraft.disaggregationFields.join(", ")}
                     />
                   </label>
@@ -7522,7 +7807,7 @@ export function FormCreationWorkspace({
                     >
                       <option value="optional">Optional per question</option>
                       <option value="required_for_sensitive">
-                        Required for sensitive or beneficiary questions
+                        Required for sensitive or entity-identifying questions
                       </option>
                       <option value="disabled">Do not add exception answers</option>
                     </Select>
@@ -7584,7 +7869,7 @@ export function FormCreationWorkspace({
                       }
                       value={controlsDraft.eventMode}
                     >
-                      <option value="none">Beneficiary form</option>
+                      <option value="none">Entity or record form</option>
                       <option value="creates_event">Creates event</option>
                       <option value="selects_event">Selects event</option>
                       <option value="attendance">Attendance tracking</option>
@@ -8222,7 +8507,7 @@ export function FormCreationWorkspace({
                   >
                     <option value="supervisor">Supervisor</option>
                     <option value="data_manager">Data Manager</option>
-                    <option value="me_manager">M&amp;E Manager</option>
+                    <option value="me_manager">{sectorTerminology.reportOwnerRole}</option>
                   </Select>
                 </label>
                 <label className="text-sm font-medium">
@@ -8236,7 +8521,7 @@ export function FormCreationWorkspace({
                     }
                     value={controlsDraft.reviewApprover}
                   >
-                    <option value="me_manager">M&amp;E Manager</option>
+                    <option value="me_manager">{sectorTerminology.reportOwnerRole}</option>
                     <option value="data_manager">Data Manager</option>
                     <option value="supervisor">Supervisor</option>
                   </Select>
@@ -8254,7 +8539,7 @@ export function FormCreationWorkspace({
                   >
                     <option value="supervisor">Supervisor</option>
                     <option value="data_manager">Data Manager</option>
-                    <option value="me_manager">M&amp;E Manager</option>
+                    <option value="me_manager">{sectorTerminology.reportOwnerRole}</option>
                   </Select>
                 </label>
                 <label className="text-sm font-medium">
@@ -8530,9 +8815,9 @@ export function FormCreationWorkspace({
                 <Fingerprint aria-hidden="true" className="text-primary" size={18} />
                 <h3 className="font-semibold">Entity & Duplicate Controls</h3>
                 <HelpHint label="About entity controls" title="Entity & Duplicate Controls">
-                  Link submissions to a beneficiary, farmer, household,
-                  facility, school, or custom entity so records are tracked
-                  over time.
+                  Link submissions to {primaryEntityPluralLabel.toLowerCase()}, products,
+                  assets, facilities, customers, employees, sites, or any custom
+                  entity so records can be tracked over time when the project needs it.
                 </HelpHint>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -8623,9 +8908,9 @@ export function FormCreationWorkspace({
                     }
                     value={controlsDraft.respondentIdentification}
                   >
-                    <option value="existing_beneficiary">Select existing beneficiary</option>
+                    <option value="existing_beneficiary">Select existing {primaryEntityLabel.toLowerCase()}</option>
                     <option value="new_registration">Create new registration</option>
-                    <option value="existing_or_new">Existing or new beneficiary</option>
+                    <option value="existing_or_new">Existing or new {primaryEntityLabel.toLowerCase()}</option>
                     <option value="anonymous_allowed">Anonymous allowed</option>
                   </Select>
                 </label>
@@ -8646,7 +8931,7 @@ export function FormCreationWorkspace({
                   </Select>
                 </label>
                 <label className="text-sm font-medium">
-                  Beneficiary search
+                  {primaryEntityLabel} search
                   <Select
                     className="mt-2"
                     onChange={(event) =>
@@ -8658,7 +8943,7 @@ export function FormCreationWorkspace({
                   >
                     <option value="required">Required before collection</option>
                     <option value="optional">Optional</option>
-                    <option value="disabled">Disabled for registration</option>
+                    <option value="disabled">Disabled for new records</option>
                   </Select>
                 </label>
                 <label className="text-sm font-medium">
@@ -8713,11 +8998,12 @@ export function FormCreationWorkspace({
             >
               <div className="flex items-center gap-2">
                 <ListChecks aria-hidden="true" className="text-primary" size={18} />
-                <h3 className="font-semibold">Beneficiary Profile Mapping</h3>
-                <HelpHint label="About profile mapping" title="Beneficiary Profile Mapping">
-                  Tell Atlas which question controls each beneficiary profile
-                  field. Approved submissions can then create update proposals
-                  without silently overwriting the registry.
+                <h3 className="font-semibold">{primaryEntityLabel} Profile Mapping</h3>
+                <HelpHint label="About profile mapping" title={`${primaryEntityLabel} Profile Mapping`}>
+                  Tell Atlas which question controls each {primaryEntityLabel.toLowerCase()} profile
+                  field. Approved submissions can create update proposals
+                  without silently overwriting the registry. Leave this unmapped
+                  when the form is only an event, checklist, transaction, or survey record.
                 </HelpHint>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -9007,7 +9293,7 @@ export function FormCreationWorkspace({
                   >
                     <option value="standard">Standard field package</option>
                     <option value="low_bandwidth">Low bandwidth package</option>
-                    <option value="large_registry">Large beneficiary registry</option>
+                    <option value="large_registry">Large entity registry</option>
                     <option value="media_heavy">Media-heavy collection</option>
                   </Select>
                 </label>
@@ -9129,7 +9415,7 @@ export function FormCreationWorkspace({
                     value={controlsDraft.dataRetentionPolicy}
                   >
                     <option value="project_life">Keep for project life</option>
-                    <option value="donor_period">Keep for donor compliance period</option>
+                    <option value="donor_period">Keep for external compliance period</option>
                     <option value="seven_years">Keep for seven years</option>
                     <option value="custom">Custom retention rule</option>
                   </Select>
@@ -9186,7 +9472,7 @@ export function FormCreationWorkspace({
                   Freeze approved data used in reports
                 </label>
                 <label className="text-sm font-medium">
-                  Beneficiary profile source of truth
+                  {primaryEntityLabel} profile source of truth
                   <Select
                     className="mt-2"
                     onChange={(event) =>
@@ -9221,7 +9507,7 @@ export function FormCreationWorkspace({
                     value={controlsDraft.exportApprovalMode}
                   >
                     <option value="not_required">No additional approval</option>
-                    <option value="manager_approval">M&E manager approval</option>
+                    <option value="manager_approval">{sectorTerminology.reportOwnerRole} approval</option>
                     <option value="data_manager_approval">Data manager approval</option>
                   </Select>
                 </label>
@@ -9322,7 +9608,7 @@ export function FormCreationWorkspace({
                     lifecycleStatus: "review",
                     reviewComments:
                       controlsDraft.reviewComments ||
-                      "Submitted for technical and M&E review.",
+                      "Submitted for technical and sector review.",
                   });
                   setStage("review");
                 }}
@@ -9549,7 +9835,7 @@ export function FormCreationWorkspace({
 
       <Modal
         contentClassName="max-w-3xl"
-        description="Smart M&E guidance that explains exact publish blockers and the next fix."
+        description="Smart guidance that explains exact publish blockers and the next fix."
         onOpenChange={setPublishHelpOpen}
         open={publishHelpOpen}
         title="Publish readiness assistant"
@@ -9561,7 +9847,7 @@ export function FormCreationWorkspace({
             </div>
             <div>
               <p className="font-semibold text-foreground">
-                I checked {(draftForm?.name ?? setup.formName) || "this form"} against the M&E publish rules.
+                I checked {(draftForm?.name ?? setup.formName) || "this form"} against the {sectorTerminology.sectorName.toLowerCase()} publish rules.
               </p>
               <p className="mt-1 text-muted-foreground">
                 {requiredPublishAdvice.length
@@ -9571,7 +9857,7 @@ export function FormCreationWorkspace({
                     : "No blockers are currently detected. If the publish button is still disabled, save the draft and refresh the review."}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                This assistant supports form readiness and M&E standard operations. It applies safe platform fixes where possible, and gives expert recommendations where the final decision depends on the project, donor, method, or organization policy.
+                This assistant supports form readiness and sector-standard operations. It applies safe platform fixes where possible, and gives expert recommendations where the final decision depends on the project, workflow, reporting method, customer requirement, external funder, or organization policy.
               </p>
             </div>
           </div>

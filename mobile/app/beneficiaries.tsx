@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge, Card, EmptyState, Input } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { displayEntityCategoryName } from "@/entities/entityCategoryUtils";
 import { DataCollectionSessionService } from "@/forms/dataCollectionSession";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileAssignment, MobileEntity } from "@/models/contracts";
@@ -48,9 +49,7 @@ function displayEntityType(entity: MobileEntity): string {
 }
 
 function displayEntityTypeValue(entityType: string): string {
-  return localDatabase.entityCategories.list().find((category) => category.slug === entityType || category.name === entityType)?.name
-    ?? entityType
-    ?? "Entity";
+  return displayEntityCategoryName(entityType, localDatabase.entityCategories.list());
 }
 
 function matchesEntityCategory(entity: MobileEntity, entityType: string | null, categoryId?: string | null): boolean {
@@ -143,7 +142,7 @@ export default function BeneficiariesScreen() {
         {beneficiaries.length === 0 ? (
           <EmptyState
             icon={Users}
-            title="No assigned beneficiaries on this device"
+            title="No assigned records on this device"
             description="Sync assigned work. If this remains empty, ask your supervisor to assign entities or use a registration form that creates new records."
           />
         ) : (
@@ -160,7 +159,7 @@ export default function BeneficiariesScreen() {
               <Card key={entity.localId} padding="lg" style={{ gap: spacing.sm }}>
                 <View style={styles.titleRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{entity.name || "Unnamed beneficiary"}</Text>
+                    <Text style={styles.name}>{entity.name || "Unnamed record"}</Text>
                     <Text style={styles.meta}>
                       {entity.entityUid} · {displayEntityType(entity)}
                     </Text>

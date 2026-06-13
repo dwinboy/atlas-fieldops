@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assembleWorksheetRow,
+  createDraftFromSpreadsheetRows,
   createEditableDraftFromListItem,
   createEnterpriseDraftForm,
   validateFormForPublish,
@@ -81,5 +83,59 @@ describe("enterprise form creation workspace", () => {
     expect(draft.fields).toHaveLength(42);
     expect(draft.fields.some((field) => field.type === "repeat_group")).toBe(true);
     expect(draft.fields.some((field) => field.type === "gps" && field.validation?.accuracyMax)).toBe(true);
+  });
+
+  it("turns spreadsheet headers into editable builder questions with inferred types", () => {
+    const headers = ["Full Name", "Age", "Email", "Phone", "Region"];
+    const sampleRows = [
+      ["Amina Bello", "34", "amina@example.org", "+237600000001", "Northwest"],
+      ["Joseph Mbarga", "29", "joseph@example.org", "+237600000002", "Littoral"],
+      ["Grace Eyong", "41", "grace@example.org", "+237600000003", "Northwest"],
+    ];
+
+    const draft = createDraftFromSpreadsheetRows(setup, headers, sampleRows);
+
+    // First row becomes the questions, in order.
+    expect(draft.fields).toHaveLength(headers.length);
+    expect(draft.fields.map((field) => field.label)).toEqual(headers);
+
+    // Types are inferred from header names and sample values.
+    const byLabel = Object.fromEntries(draft.fields.map((field) => [field.label, field]));
+    expect(byLabel["Age"].type).toBe("number");
+    expect(byLabel["Email"].type).toBe("email");
+    expect(byLabel["Phone"].type).toBe("phone");
+    // A low-cardinality column becomes a choice with options drawn from samples.
+    expect(byLabel["Region"].type).toBe("select");
+    expect(byLabel["Region"].options).toContain("Northwest");
+
+    // Every question is editable in the builder: unique variable names, one section.
+    expect(new Set(draft.fields.map((field) => field.variableName)).size).toBe(headers.length);
+    expect(draft.sections).toHaveLength(1);
+    expect(draft.fields.every((field) => field.sectionId === draft.sections[0].id)).toBe(true);
+  });
+
+  it("keeps every column when xlsx cells omit their reference attribute", () => {
+    // Some exporters (LibreOffice, streamed writers) write cells without an `r`
+    // reference. They must fall back to sequential columns, not collapse to one.
+    const withoutRefs = assembleWorksheetRow([
+      { reference: null, value: "Full Name" },
+      { reference: null, value: "Age" },
+      { reference: null, value: "Email" },
+    ]);
+    expect(withoutRefs).toEqual(["Full Name", "Age", "Email"]);
+
+    // Cells with references resolve to their column, and sparse rows keep gaps.
+    const withRefs = assembleWorksheetRow([
+      { reference: "A1", value: "Full Name" },
+      { reference: "B1", value: "Age" },
+      { reference: "C1", value: "Email" },
+    ]);
+    expect(withRefs).toEqual(["Full Name", "Age", "Email"]);
+
+    const sparse = assembleWorksheetRow([
+      { reference: "A1", value: "Full Name" },
+      { reference: "C1", value: "Email" },
+    ]);
+    expect(sparse).toEqual(["Full Name", "", "Email"]);
   });
 });

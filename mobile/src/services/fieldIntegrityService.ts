@@ -47,7 +47,7 @@ export class FieldIntegrityService {
       signals.push({
         code: "MISSING_REQUIRED_ENTITY",
         severity: "Critical",
-        message: "This form requires an existing beneficiary, but the draft is not linked to one.",
+        message: "This form requires an existing entity record, but the draft is not linked to one.",
         evidence: { requiresExistingEntity: true },
       });
     }

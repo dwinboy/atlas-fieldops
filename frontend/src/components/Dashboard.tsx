@@ -240,28 +240,28 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
 
   if (roles.has("me_manager") || roles.has("project_manager")) {
     return {
-      title: "M&E management lead",
-      badge: "M&E",
+      title: "Operations and results lead",
+      badge: "RESULTS",
       description:
-        "Connect programs, indicators, collection forms, reviewed submissions, and reports into a credible monitoring workflow.",
+        "Connect projects, metrics, collection forms, reviewed submissions, and reports into a credible operating workflow.",
       focus: [
-        "Define indicators before reporting begins.",
+        "Define metrics or indicators before formal reporting begins.",
         "Connect forms to the right project and data source.",
         "Report from approved data, not raw submissions.",
       ],
       icon: Target,
       actions: [
         {
-          label: "Manage indicators",
+          label: "Manage metrics",
           view: "indicators",
           result:
-            "Opening indicators so you can confirm baselines, targets, data sources, formulas, and reporting periods.",
+            "Opening metrics so you can confirm baselines, targets, data sources, formulas, and reporting periods.",
         },
         {
           label: "Open reports",
           view: "analytics",
           result:
-            "Opening reports so approved data can be reviewed against indicators and management questions.",
+            "Opening reports so approved data can be reviewed against metrics and management questions.",
         },
       ],
     };
@@ -448,7 +448,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           tone: "good" as const,
         },
         {
-          label: "Indicators",
+          label: "Metrics",
           value: summaryQuery.data.indicators.toLocaleString(),
           delta: "live",
           tone: "good" as const,
@@ -476,7 +476,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
           tone: "neutral" as const,
         },
         {
-          label: "Indicators",
+          label: "Metrics",
           value: "0",
           delta: summaryQuery.isLoading ? "loading" : "not started",
           tone: "neutral" as const,
@@ -517,7 +517,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     {
       title: "Create programs",
       description:
-        "Add projects, donors, regions, milestones, and reporting ownership.",
+        "Add projects, funders or clients, regions, milestones, and reporting ownership.",
       view: "programs",
       action: "Open Projects",
       complete: Boolean(
@@ -535,18 +535,18 @@ export function Dashboard({ token, principal }: DashboardProps) {
       icon: ClipboardList,
     },
     {
-      title: "Add indicators",
+      title: "Add metrics",
       description:
-        "Define baselines, targets, survey data sources, and reporting periods for M&E tracking.",
+        "Define metrics, KPIs, targets, data sources, and reporting periods when formal tracking is needed.",
       view: "indicators",
-      action: "Open Indicators",
+      action: "Open Metrics",
       complete: Boolean(summaryQuery.data?.indicators),
       icon: Target,
     },
     {
       title: "Import existing data",
       description:
-        "Bring entities, regions, officers, indicators, or historical records into the system.",
+        "Bring entities, regions, officers, metrics, or historical records into the system.",
       view: "data",
       action: "Open Data tools",
       complete: Boolean(summaryQuery.data?.beneficiaries),
@@ -619,14 +619,14 @@ export function Dashboard({ token, principal }: DashboardProps) {
         : "No open quality flags from live summary.",
     },
     {
-      label: "M&E reporting",
+      label: "Metrics and reporting",
       value: summaryQuery.data?.indicators?.toLocaleString() ?? "0",
-      status: summaryQuery.data?.indicators ? "Trackable" : "Needs indicators",
+      status: summaryQuery.data?.indicators ? "Trackable" : "Needs metrics",
       tone: summaryQuery.data?.indicators
         ? ("success" as const)
         : ("neutral" as const),
       detail:
-        "Indicators connect field data to targets, progress, and donor reporting.",
+        "Metrics connect field data to targets, progress, management, and external reporting.",
     },
     {
       label: "Sync readiness",
@@ -653,13 +653,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
     {
       question: "What will we measure?",
       answer:
-        "Create indicators with targets, baselines, survey data sources, and reporting periods.",
+        "Create metrics with targets, baselines where needed, form data sources, and reporting periods.",
       view: "indicators" as WorkspaceView,
     },
     {
       question: "Which survey is this work for?",
       answer:
-        "Use Survey Management to connect each form, enumerator, submission, indicator, and report to the right M&E activity.",
+        "Use collection planning to connect each form, field officer, submission, metric, and report to the right project activity.",
       view: "surveys" as WorkspaceView,
     },
     {
@@ -703,7 +703,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     {
       title: "Report only approved data",
       description:
-        "Use reports after submissions, imports, and indicators have passed the agreed review path.",
+        "Use reports after submissions, imports, and metrics have passed the agreed review path.",
       view: "analytics",
       action: "Open reports",
       icon: BarChart3,
@@ -717,10 +717,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
     icon: typeof Plus;
   }[] = [
     {
-      label: "Create survey",
-      hint: "Set the M&E activity before forms",
+      label: "Create collection plan",
+      hint: "Set the activity before forms",
       result:
-        "Opening Survey Management. Select the project, create the survey, then build forms and assign enumerators inside that survey.",
+        "Opening Survey Management. Select the project, create the collection activity, then build forms and assign field teams inside that activity.",
       view: "surveys",
       icon: Plus,
     },
@@ -777,11 +777,11 @@ export function Dashboard({ token, principal }: DashboardProps) {
         ],
         [
           "Reporting baseline",
-          `${summaryQuery.data?.indicators ?? 0} indicators`,
-          "Track indicators",
+          `${summaryQuery.data?.indicators ?? 0} metrics`,
+          "Track metrics",
           "neutral",
           "indicators",
-          "Opening indicators so the team can confirm targets, baselines, and current progress.",
+          "Opening metrics so the team can confirm targets, baselines where needed, and current progress.",
         ],
       ]
     : [
@@ -1197,7 +1197,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
               >
                 The first screen follows the platform architecture: projects,
                 forms, submissions, reviews, data quality, field activity,
-                indicators, alerts, approvals, and map readiness.
+                metrics, alerts, approvals, and map readiness.
               </HelpHint>
             </div>
           </div>
@@ -2212,7 +2212,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
                   title="Organization readiness plan"
                 >
                   Follow these steps so managers, reviewers, and field officers
-                  can start with clean structure, useful indicators, and safe
+                  can start with clean structure, useful metrics, and safe
                   data.
                 </HelpHint>
               </div>
