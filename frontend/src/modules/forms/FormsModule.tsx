@@ -200,9 +200,24 @@ function submissionSourceLabel(submission: SubmissionRead | SubmissionRecord): s
 
 function submissionActorLabel(submission: SubmissionRead | SubmissionRecord): string {
   if (isImportedSubmission(submission)) {
-    return submission.imported_by_user_id ?? "Uploaded user";
+    return submission.imported_by_name || submission.imported_by_user_id || "Uploaded by unknown user";
   }
-  return submission.field_officer_id ?? "Unassigned collector";
+  return submission.submitted_by_name || submission.field_officer_id || "Unassigned collector";
+}
+
+// Full attribution for the actor cell tooltip: who, from which file, and why.
+function submissionActorDetail(submission: SubmissionRead | SubmissionRecord): string {
+  if (!isImportedSubmission(submission)) {
+    return `Submitted by ${submissionActorLabel(submission)}`;
+  }
+  const parts = [`Uploaded by ${submissionActorLabel(submission)}`];
+  const attribution = submission.payload_json?._source_attribution;
+  if (attribution && typeof attribution === "object" && !Array.isArray(attribution)) {
+    const record = attribution as Record<string, unknown>;
+    if (record.sourceName) parts.push(`from ${String(record.sourceName)}`);
+    if (record.importReason) parts.push(`reason: ${String(record.importReason)}`);
+  }
+  return parts.join(" · ");
 }
 
 function beneficiaryCodeMap(
@@ -2527,7 +2542,7 @@ function FormDataGridWorkspace({
                       {!rowQualityWarnings(submission).length ? <Badge tone="success">Clean</Badge> : null}
                     </div>
                   </td>
-                  <td className="whitespace-nowrap border-b px-2.5 py-2">{submissionActorLabel(submission)}</td>
+                  <td className="whitespace-nowrap border-b px-2.5 py-2" title={submissionActorDetail(submission)}>{submissionActorLabel(submission)}</td>
                   <td className="whitespace-nowrap border-b px-2.5 py-2">{formatDateTime(submission.imported_at ?? submission.submitted_at)}</td>
                   <td className="border-b px-2.5 py-2">
                     <Badge tone={statusTone(submission.status)}>{submission.status}</Badge>

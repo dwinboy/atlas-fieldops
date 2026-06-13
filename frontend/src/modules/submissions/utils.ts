@@ -209,7 +209,12 @@ export function normalizeSubmission(submission: SubmissionRead): SubmissionRecor
     });
   }
 
-  const actor = submission.field_officer_id ?? submission.imported_by_user_id ?? "Uploaded file";
+  const actor =
+    submission.submitted_by_name ??
+    submission.imported_by_name ??
+    submission.field_officer_id ??
+    submission.imported_by_user_id ??
+    "Uploaded file";
 
   return {
     ...submission,

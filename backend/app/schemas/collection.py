@@ -1032,6 +1032,8 @@ class SubmissionRead(BaseModel):
     beneficiary_code: str | None = None
     submitted_by_name: str | None = None
     approved_by_name: str | None = None
+    imported_by_name: str | None = None
+    reviewed_by_name: str | None = None
     linked_beneficiaries: list[SubmissionBeneficiaryLinkRead] = Field(default_factory=list)
     review_quality: int | None = None
     redacted_fields: list[str] = Field(default_factory=list)

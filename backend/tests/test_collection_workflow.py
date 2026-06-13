@@ -496,6 +496,14 @@ async def test_confirmed_imported_form_row_creates_linked_beneficiary() -> None:
         assert beneficiary.project_id == project_id
         assert beneficiary.profile_json["sourceSubmissionId"] == str(submission_id)
 
+        # Attribution must surface human names, not raw UUIDs: who uploaded the
+        # row and who cleaned/approved it.
+        listed = await service.list_submissions(organization_id=organization_id)
+        imported_row = next(row for row in listed if row.id == submission_id)
+        assert imported_row.imported_by_name == "Manager"
+        assert imported_row.reviewed_by_name == "Manager"
+        assert imported_row.approved_by_name == "Manager"
+
 
 @pytest.mark.asyncio
 async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after_approval() -> None:

@@ -1455,6 +1455,8 @@ export type SubmissionRead = {
   beneficiary_code?: string | null;
   submitted_by_name?: string | null;
   approved_by_name?: string | null;
+  imported_by_name?: string | null;
+  reviewed_by_name?: string | null;
   linked_beneficiaries?: {
     id: string;
     beneficiary_id: string;
