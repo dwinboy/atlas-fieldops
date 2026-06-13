@@ -2116,6 +2116,42 @@ function ProjectOverview({
         (item): item is string => typeof item === "string",
       )
     : [];
+  const sectorEntityTypes = Array.isArray(sectorSettings.entityTypes)
+    ? sectorSettings.entityTypes.filter((item): item is string => typeof item === "string")
+    : [];
+  const sectorValidationRules = Array.isArray(sectorSettings.validationRules)
+    ? sectorSettings.validationRules.filter((item): item is string => typeof item === "string")
+    : [];
+  const sectorReportTemplates = Array.isArray(sectorSettings.reportTemplates)
+    ? sectorSettings.reportTemplates.filter((item): item is string => typeof item === "string")
+    : [];
+  const sectorMobileGuidance = Array.isArray(sectorSettings.mobileGuidance)
+    ? sectorSettings.mobileGuidance.filter((item): item is string => typeof item === "string")
+    : [];
+  const sectorPreviewPack: ProjectSectorPackRead | null = detail.sector_id
+    ? {
+        dashboard_widgets: [],
+        data_quality_rules: [],
+        description: "",
+        entity_types: sectorEntityTypes,
+        form_definitions: [],
+        form_templates: sectorFormTemplates,
+        governance_defaults: {},
+        id: detail.sector_id,
+        indicator_definitions: [],
+        indicator_templates: sectorIndicatorTemplates,
+        manager_controls: {},
+        mobile_guidance: sectorMobileGuidance,
+        name: sectorName,
+        recommended_settings: {},
+        report_definitions: [],
+        report_templates: sectorReportTemplates,
+        sector: sectorName,
+        terminology: {},
+        validation_rules: sectorValidationRules,
+        workflows: [],
+      }
+    : null;
   const sectorInstalled =
     typeof sectorSettings.installed === "object" &&
     sectorSettings.installed !== null &&
@@ -2268,6 +2304,9 @@ function ProjectOverview({
             </button>
           ))}
         </div>
+        {sectorPreviewPack ? (
+          <SectorPackPreview className="mt-4" compact pack={sectorPreviewPack} />
+        ) : null}
       </div>
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border bg-background/50 p-5">
@@ -3514,32 +3553,7 @@ function ProjectWizardStepContent({
             </Select>
           </div>
           {activeSectorPack ? (
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <div className="rounded-xl border bg-panel p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Entities
-                </p>
-                <p className="mt-2 text-sm leading-5">
-                  {activeSectorPack.entity_types.slice(0, 5).join(", ")}
-                </p>
-              </div>
-              <div className="rounded-xl border bg-panel p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Starter forms
-                </p>
-                <p className="mt-2 text-sm leading-5">
-                  {activeSectorPack.form_templates.slice(0, 4).join(", ")}
-                </p>
-              </div>
-              <div className="rounded-xl border bg-panel p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Sector controls
-                </p>
-                <p className="mt-2 text-sm leading-5">
-                  {activeSectorPack.validation_rules.slice(0, 3).join(", ")}
-                </p>
-              </div>
-            </div>
+            <SectorPackPreview className="mt-4" pack={activeSectorPack} />
           ) : (
             <div className="mt-3 rounded-xl border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
               A sector pack is recommended. You can still create a custom
@@ -4504,6 +4518,49 @@ function Signal({
         )}
       >
         {value}
+      </p>
+    </div>
+  );
+}
+
+function SectorPackPreview({
+  className,
+  compact = false,
+  pack,
+}: {
+  className?: string;
+  compact?: boolean;
+  pack: ProjectSectorPackRead;
+}) {
+  const rows = [
+    ["Entities", pack.entity_types],
+    ["Starter forms", pack.form_templates],
+    ["Metrics/KPIs", pack.indicator_templates],
+    ["Reports", pack.report_templates],
+    ["Validation", pack.validation_rules],
+    ["Mobile guidance", pack.mobile_guidance],
+  ] as const;
+  return (
+    <div className={cn("rounded-xl border bg-panel p-3", className)}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="support">Pack preview</Badge>
+        <span className="text-sm font-semibold">{pack.name}</span>
+      </div>
+      <div className={cn("mt-3 grid gap-2", compact ? "md:grid-cols-2" : "lg:grid-cols-3")}>
+        {rows.map(([label, values]) => (
+          <div className="rounded-lg border bg-background/60 p-2.5" key={label}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {label}
+            </p>
+            <p className="mt-1 line-clamp-3 text-xs leading-5">
+              {values.slice(0, compact ? 4 : 5).join(", ") || "Configure after project creation"}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">
+        These are editable starter assets. Installing them creates project-specific
+        drafts and templates; it does not lock the project to this sector.
       </p>
     </div>
   );
