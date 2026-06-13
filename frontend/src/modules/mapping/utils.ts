@@ -5,6 +5,7 @@ import type {
   MapFeatureRecord,
   MappingSection,
   MappingSummary,
+  ProjectDataCoverage,
   ProjectExtent,
   SpatialQualityIssue,
   SpatialSeverity,
@@ -34,6 +35,49 @@ export function coverageTone(value: number): BadgeProps["tone"] {
   if (value >= 80) return "success";
   if (value >= 50) return "warning";
   return "danger";
+}
+
+/**
+ * Derive real geographic-data coverage per project from live map features and
+ * the full project list. Reports actual GPS-tagged record counts (no fabricated
+ * targets) and flags projects producing zero geographic evidence — a real M&E
+ * gap that needs no boundary geometry or coverage targets to surface.
+ */
+export function deriveProjectDataCoverage(
+  features: MapFeatureRecord[],
+  projectNames: string[],
+): ProjectDataCoverage[] {
+  const counts = new Map<string, { submissions: number; beneficiaries: number }>();
+  for (const name of projectNames) {
+    counts.set(name, { submissions: 0, beneficiaries: 0 });
+  }
+  for (const feature of features) {
+    if (feature.category !== "Submission" && feature.category !== "Beneficiary") continue;
+    const entry = counts.get(feature.project) ?? { submissions: 0, beneficiaries: 0 };
+    if (feature.category === "Submission") entry.submissions += 1;
+    else entry.beneficiaries += 1;
+    counts.set(feature.project, entry);
+  }
+  const maxRecords = Math.max(
+    1,
+    ...Array.from(counts.values()).map((entry) => entry.submissions + entry.beneficiaries),
+  );
+  return Array.from(counts.entries())
+    .map(([project, entry]) => {
+      const recordCount = entry.submissions + entry.beneficiaries;
+      const share = recordCount / maxRecords;
+      const status: SpatialStatus =
+        recordCount === 0 ? "Critical" : share >= 0.5 ? "Healthy" : "Warning";
+      return {
+        project,
+        recordCount,
+        submissions: entry.submissions,
+        beneficiaries: entry.beneficiaries,
+        hasData: recordCount > 0,
+        status,
+      };
+    })
+    .sort((left, right) => right.recordCount - left.recordCount);
 }
 
 export function computeMappingSummary({

@@ -93,6 +93,15 @@ export type CoverageRecord = {
   gapType: "Covered" | "Under-covered" | "No-data" | "Over-sampled";
 };
 
+export type ProjectDataCoverage = {
+  project: string;
+  recordCount: number;
+  submissions: number;
+  beneficiaries: number;
+  hasData: boolean;
+  status: SpatialStatus;
+};
+
 export type SpatialQualityIssue = {
   id: string;
   issueType: string;
