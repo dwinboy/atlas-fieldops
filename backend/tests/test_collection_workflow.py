@@ -20,6 +20,7 @@ from app.schemas.collection import (
     EntityFrequencyValidationRequest,
     FormDataImportConfirmRequest,
     FormDataImportRequest,
+    FormDataImportReturnRequest,
     FormControlsSettings,
     LocationCapture,
     SubmissionCreate,
@@ -1618,4 +1619,155 @@ async def test_import_form_rows_rejected_for_draft_form() -> None:
                     import_reason="Should be rejected",
                 ),
             )
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_return_imported_form_rows_sends_staged_rows_back_to_source() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Return Org", slug="return-org"),
+                User(id=actor_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    created_by_user_id=actor_user_id,
+                    name="Survey",
+                    slug="survey",
+                    status="published",
+                    current_version=1,
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "s",
+                                "title": "S",
+                                "fields": [
+                                    {"id": "full_name", "variable_name": "full_name", "type": "text", "label": "Full Name", "required": True},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportRequest(
+                rows=[{"full_name": "Needs Fixing"}],
+                source_name="x.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="t",
+            ),
+        )
+        await session.commit()
+        submission_id = imported.submissions[0].id
+
+        result = await service.return_imported_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportReturnRequest(submission_ids=[submission_id], comment="Fix the name field"),
+        )
+        await session.commit()
+
+        assert result.returned_rows == 1
+        assert result.skipped_rows == 0
+        listed = await service.list_submissions(organization_id=organization_id)
+        row = next(item for item in listed if item.id == submission_id)
+        assert row.status == "correction_requested"
+        assert row.payload_json["_quality_status"] == "returned_to_source"
+        assert row.payload_json["_returned_to_source_comment"] == "Fix the name field"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_import_form_rows_flags_possible_duplicates() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Dup Org", slug="dup-org"),
+                User(id=actor_user_id, email="m@example.org", full_name="Manager", password_hash="x"),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    created_by_user_id=actor_user_id,
+                    name="Registry",
+                    slug="registry",
+                    status="published",
+                    current_version=1,
+                    controls_json={"governance": {"duplicate_detection_fields": ["full_name"]}},
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "s",
+                                "title": "S",
+                                "fields": [
+                                    {"id": "full_name", "variable_name": "full_name", "type": "text", "label": "Full Name", "required": True},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportRequest(
+                rows=[{"full_name": "Amina Bello"}, {"full_name": "Amina Bello"}],
+                source_name="dups.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="t",
+            ),
+        )
+        await session.commit()
+
+        # The second identical row is flagged as a possible duplicate of the first.
+        assert any(issue.issue_type == "possible_duplicate" for issue in imported.issues)
+        listed = await service.list_submissions(organization_id=organization_id)
+        flagged = [row for row in listed if row.payload_json.get("_duplicate_submission_signal")]
+        assert len(flagged) == 1
+        assert flagged[0].payload_json["_quality_status"] == "needs_review"
     await engine.dispose()

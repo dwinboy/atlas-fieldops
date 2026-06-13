@@ -1151,6 +1151,18 @@ class FormDataImportConfirmResponse(BaseModel):
     submissions: list[SubmissionRead] = Field(default_factory=list)
 
 
+class FormDataImportReturnRequest(BaseModel):
+    submission_ids: list[UUID] = Field(min_length=1, max_length=500)
+    comment: str = Field(default="Returned to source for correction and re-upload.", min_length=4, max_length=1000)
+
+
+class FormDataImportReturnResponse(BaseModel):
+    returned_rows: int
+    skipped_rows: int
+    issues: list[FormDataImportIssue] = Field(default_factory=list)
+    submissions: list[SubmissionRead] = Field(default_factory=list)
+
+
 class EntityFrequencyValidationRequest(BaseModel):
     form_id: UUID
     entity_id: UUID | None = None

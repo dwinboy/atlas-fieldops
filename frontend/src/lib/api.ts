@@ -2598,6 +2598,13 @@ export type FormDataImportConfirmResponse = {
   submissions: SubmissionRead[];
 };
 
+export type FormDataImportReturnResponse = {
+  returned_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
+};
+
 export type TemplateFieldSummary = {
   field_count: number;
   repeat_group_count: number;
@@ -4309,6 +4316,18 @@ export async function confirmImportedFormDataRows(
   });
 }
 
+export async function returnImportedFormDataRows(
+  token: string,
+  formId: string,
+  payload: { submission_ids: string[]; comment: string },
+): Promise<FormDataImportReturnResponse> {
+  return request<FormDataImportReturnResponse>(`/forms/${formId}/data-import/return`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
@@ -4377,6 +4396,7 @@ export const api = {
   bulkUpdateImportCleaningRows,
   confirmImportJob,
   confirmImportedFormDataRows,
+  returnImportedFormDataRows,
   createAdministrationApiKey,
   createAdministrationBackup,
   createAdministrationIntegration,
