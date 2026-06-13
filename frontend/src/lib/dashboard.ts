@@ -74,7 +74,7 @@ function isCorrectionSubmission(submission: SubmissionRead): boolean {
   ].includes(submission.status.toLowerCase());
 }
 
-function isPendingReviewSubmission(submission: SubmissionRead): boolean {
+export function isPendingReviewSubmission(submission: SubmissionRead): boolean {
   return [
     "submitted",
     "pending",

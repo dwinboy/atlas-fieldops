@@ -393,6 +393,7 @@ export function WorkspaceApp() {
       organizationLogoUrl={organizationQuery.data?.logo_url}
       organizationSlug={organizationSlug}
       principal={principalQuery.data}
+      token={token}
     >
       <CommandPalette principal={principalQuery.data} />
       <NotificationCenter />
