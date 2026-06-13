@@ -52,6 +52,9 @@ from app.services.collection import (
 )
 from app.schemas.operations import (
     BeneficiaryUpdate,
+    FieldVisitCheckIn,
+    FieldVisitRequestCreate,
+    FieldVisitRequestReview,
     FieldWorkPlanCreate,
     FieldWorkPlanUpdate,
     IndicatorUpdate,
@@ -1536,6 +1539,98 @@ async def test_work_plans_and_targets_persist_with_audit() -> None:
             "operational_target.created",
             "operational_target.created",
             "operational_target.updated",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_field_officer_visit_request_syncs_for_supervisor_approval_and_check_in() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        supervisor_user_id = uuid4()
+        project_id = uuid4()
+        officer_id = uuid4()
+        start_at = datetime(2026, 6, 20, 8, 0, tzinfo=UTC)
+        end_at = datetime(2026, 6, 20, 12, 0, tzinfo=UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Visit Org", slug="visit-org"),
+                User(id=field_user_id, email="visit-field@example.org", full_name="Visit Field", password_hash="x"),
+                User(id=supervisor_user_id, email="visit-supervisor@example.org", full_name="Visit Supervisor", password_hash="x"),
+                FieldOfficerProfile(
+                    id=officer_id,
+                    organization_id=organization_id,
+                    user_id=field_user_id,
+                    supervisor_user_id=supervisor_user_id,
+                    is_active=True,
+                ),
+                Project(id=project_id, organization_id=organization_id, name="Visit Project", slug="visit-project", status="active"),
+            ]
+        )
+        await session.flush()
+
+        service = OperationsService(session)
+        requested = await service.create_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=field_user_id,
+            payload=FieldVisitRequestCreate(
+                project_id=project_id,
+                title="Visit Store A",
+                activity_scope="project",
+                purpose="Verify inventory count and speak with store manager.",
+                location_name="Store A",
+                latitude=5.9,
+                longitude=10.1,
+                requested_start_at=start_at,
+                requested_end_at=end_at,
+            ),
+        )
+        assert requested.status == "pending"
+        assert requested.supervisor_user_id == supervisor_user_id
+
+        supervisor_queue = await service.list_field_visit_requests(
+            organization_id=organization_id,
+            actor_user_id=supervisor_user_id,
+            actor_roles=["district_supervisor"],
+        )
+        assert [visit.id for visit in supervisor_queue] == [requested.id]
+
+        approved = await service.review_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=supervisor_user_id,
+            visit_request_id=requested.id,
+            payload=FieldVisitRequestReview(action="approve", comment="Approved for morning visit."),
+            actor_roles=["district_supervisor"],
+        )
+        assert approved.status == "approved"
+        assert approved.reviewed_by_user_id == supervisor_user_id
+
+        checked_in = await service.check_in_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=field_user_id,
+            visit_request_id=requested.id,
+            payload=FieldVisitCheckIn(latitude=5.9002, longitude=10.1002, accuracy=12, timestamp=start_at),
+        )
+        assert checked_in.status == "checked_in"
+        assert checked_in.verification_status == "verified"
+        assert checked_in.check_in_latitude == 5.9002
+        assert checked_in.distance_from_planned_meters is not None
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "field_visit_request",
+            )
+        )
+        assert [log.action for log in audit_result.scalars()] == [
+            "field_visit.request_submitted",
+            "field_visit.request_approved",
+            "field_visit.checked_in",
         ]
 
 

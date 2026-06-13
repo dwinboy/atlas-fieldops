@@ -1443,6 +1443,16 @@ export function FieldOperationsModule({
   const selectedActivity = visitRequests.find((activity) => activity.id === selectedActivityId) ?? null;
   const selectedActivityEvidence = activityMediaQuery.data ?? [];
   const activityReport = activityReportQuery.data;
+  const supervisorActionVisits = useMemo(
+    () =>
+      visitRequests
+        .filter((activity) =>
+          ["pending", "change_requested", "flagged"].includes(activity.status) ||
+          ["outside_planned_area", "poor_gps_accuracy", "warning_distance"].includes(activity.verification_status),
+        )
+        .slice(0, 5),
+    [visitRequests],
+  );
   const activityAnalytics = useMemo(() => {
     const total = visitRequests.length;
     const pending = visitRequests.filter((activity) => activity.status === "pending").length;
@@ -2161,7 +2171,7 @@ export function FieldOperationsModule({
       value: (visit) => `${visit.verification_status} ${visit.distance_from_planned_meters ?? ""}`,
       render: (visit) => (
         <div>
-          <Badge tone={visit.verification_status === "verified" ? "success" : visit.verification_status === "not_checked_in" ? "neutral" : "warning"}>
+          <Badge tone={visit.verification_status === "verified" ? "success" : visit.verification_status === "not_checked_in" ? "neutral" : visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? "danger" : "warning"}>
             {visit.verification_status.replaceAll("_", " ")}
           </Badge>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -2169,6 +2179,9 @@ export function FieldOperationsModule({
               ? "No check-in distance yet"
               : `${Math.round(visit.distance_from_planned_meters)}m from planned point`}
           </p>
+          {visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? (
+            <p className="mt-1 text-xs font-medium text-danger">Supervisor review needed</p>
+          ) : null}
         </div>
       ),
     },
@@ -3212,6 +3225,58 @@ Password:          ${lastInviteCredentials.password}`}
               reviewPending={reviewVisitMutation.isPending}
             />
           ) : null}
+          <div className="rounded-xl border bg-panel p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Needs supervisor action</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Pending requests, change requests, and GPS exceptions appear here first so supervisors know what to approve or investigate.
+                </p>
+              </div>
+              <Badge tone={supervisorActionVisits.length ? "warning" : "success"}>
+                {supervisorActionVisits.length ? `${supervisorActionVisits.length} item(s)` : "Clear"}
+              </Badge>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {supervisorActionVisits.length ? (
+                supervisorActionVisits.map((visit) => (
+                  <div className="flex flex-col gap-3 rounded-lg border bg-background px-3 py-2 md:flex-row md:items-center md:justify-between" key={visit.id}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold">{visit.title}</p>
+                        <Badge tone={visit.status === "flagged" ? "danger" : "warning"}>{visit.status.replaceAll("_", " ")}</Badge>
+                        <Badge tone={visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? "danger" : "neutral"}>
+                          {visit.verification_status.replaceAll("_", " ")}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {visit.location_name} · {formatTime(visit.requested_start_at)} · {visit.distance_from_planned_meters === null ? "No check-in distance" : `${Math.round(visit.distance_from_planned_meters)}m from planned point`}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => setSelectedActivityId(visit.id)} size="sm" variant="secondary">
+                        Review evidence
+                      </Button>
+                      {["pending", "change_requested"].includes(visit.status) ? (
+                        <Button
+                          disabled={!canApproveOperationalActivities || reviewVisitMutation.isPending}
+                          onClick={() => reviewVisitMutation.mutate({ action: "approve", visitRequestId: visit.id })}
+                          size="sm"
+                          variant="primary"
+                        >
+                          Approve
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
+                  No pending movement approvals or GPS exceptions right now.
+                </p>
+              )}
+            </div>
+          </div>
           <DataTable
             columns={visitRequestColumns}
             emptyLabel="No operational activities yet. Field officers can request organization or project activities from the mobile app."
