@@ -46,6 +46,7 @@ import {
   listFormRepeatRows,
   listForms,
   listSubmissionCorrections,
+  listSubmissionHistory,
   listSubmissionRepeatRows,
   listSubmissions,
   listUsers,
@@ -1654,13 +1655,7 @@ function SubmissionDetailWorkspace({
       {tab === "Location" ? <LocationTab submission={submission} /> : null}
       {tab === "History" ? (
         <div className="space-y-4">
-          <TimelineRows
-            rows={submission.history.map((item) => ({
-              label: item.action,
-              meta: `${item.actor}${item.comment ? ` · ${item.comment}` : ""}`,
-              time: item.created_at,
-            }))}
-          />
+          <StatusHistoryPanel preview={preview} submission={submission} token={token} />
           <CorrectionsPanel preview={preview} submission={submission} token={token} />
         </div>
       ) : null}
@@ -3231,6 +3226,58 @@ function Signal({
         </Badge>
       ) : null}
     </div>
+  );
+}
+
+function StatusHistoryPanel({
+  preview,
+  submission,
+  token,
+}: {
+  preview: boolean;
+  submission: SubmissionRecord;
+  token: string | null;
+}) {
+  const historyQuery = useQuery({
+    queryKey: ["submissions-module", "history", submission.id, token],
+    queryFn: () => listSubmissionHistory(token ?? "", submission.id),
+    enabled: Boolean(token && !preview),
+  });
+  const history = historyQuery.data ?? [];
+
+  return (
+    <Panel title="Status Timeline">
+      {preview ? (
+        <p className="rounded-xl border bg-background/60 p-3 text-sm text-muted-foreground">
+          Connect to the API to view the recorded status history for this submission.
+        </p>
+      ) : historyQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading status history…</p>
+      ) : history.length ? (
+        <div className="space-y-3">
+          {history.map((entry) => (
+            <div className="flex gap-3" key={entry.id}>
+              <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-primary/10 text-primary">
+                <ArrowRight aria-hidden="true" size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-medium">
+                  {entry.from_status ? `${formatSubmissionStatus(entry.from_status)} → ` : ""}
+                  {formatSubmissionStatus(entry.to_status)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {entry.actor_name ?? entry.actor_user_id}
+                  {entry.comment ? ` · ${entry.comment}` : ""}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyMini label="No status changes recorded for this submission yet." />
+      )}
+    </Panel>
   );
 }
 

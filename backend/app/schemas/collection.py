@@ -1182,6 +1182,7 @@ class SubmissionHistoryRead(BaseModel):
     from_status: str | None
     to_status: str
     actor_user_id: UUID
+    actor_name: str | None = None
     comment: str | None
     created_at: datetime
 

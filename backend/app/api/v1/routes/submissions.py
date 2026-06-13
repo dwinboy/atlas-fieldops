@@ -212,7 +212,7 @@ async def submission_history(
     submission_id: UUID,
     principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> list[object]:
+) -> list[SubmissionHistoryRead]:
     return await SubmissionService(session).history(
         organization_id=UUID(principal.organization_id),
         submission_id=submission_id,
