@@ -327,8 +327,8 @@ export function PublicCollectionForm({ slug }: PublicCollectionFormProps) {
       <header className="border-b bg-panel/90 px-4 py-4 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-background">
-              <AtlasFieldOpsLogo size={34} />
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl border bg-background">
+              <AtlasFieldOpsLogo size={42} />
             </span>
             <div>
               <p className="text-sm font-semibold">Atlas FieldOps</p>

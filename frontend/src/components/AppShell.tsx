@@ -150,15 +150,15 @@ function OrganizationMark({
     return (
       <div
         aria-label={`${name} logo`}
-        className="h-10 w-10 shrink-0 rounded-xl border bg-background bg-cover bg-center shadow-sm"
+        className="h-12 w-12 shrink-0 rounded-xl border bg-background bg-cover bg-center shadow-sm"
         role="img"
         style={{ backgroundImage: `url("${logoUrl}")` }}
       />
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
-      <AtlasFieldOpsLogo alt={`${name} logo`} size={34} />
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
+      <AtlasFieldOpsLogo alt={`${name} logo`} size={42} />
     </div>
   );
 }

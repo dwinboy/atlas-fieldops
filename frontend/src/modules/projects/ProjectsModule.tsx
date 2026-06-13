@@ -350,6 +350,36 @@ const previewSectorPacks: ProjectSectorPackRead[] = (() => {
   return [...richPreviewSectorPacks, ...generated, ...customPack];
 })();
 
+const sectorPackPriority = [
+  "custom",
+  "retail",
+  "inventory",
+  "sales",
+  "logistics",
+  "manufacturing",
+  "assets",
+  "audits",
+  "inspections",
+];
+
+function sortedSectorPacks(packs: ProjectSectorPackRead[]): ProjectSectorPackRead[] {
+  return [...packs].sort((first, second) => {
+    const firstRank = sectorPackPriority.indexOf(first.id);
+    const secondRank = sectorPackPriority.indexOf(second.id);
+    if (firstRank !== -1 || secondRank !== -1) {
+      return (firstRank === -1 ? 999 : firstRank) - (secondRank === -1 ? 999 : secondRank);
+    }
+    return first.name.localeCompare(second.name);
+  });
+}
+
+function completeSectorPacks(apiPacks: ProjectSectorPackRead[] | undefined): ProjectSectorPackRead[] {
+  const byId = new Map<string, ProjectSectorPackRead>();
+  for (const pack of previewSectorPacks) byId.set(pack.id, pack);
+  for (const pack of apiPacks ?? []) byId.set(pack.id, pack);
+  return sortedSectorPacks(Array.from(byId.values()));
+}
+
 const countryOptions = [
   "Cameroon",
   "Ghana",
@@ -1048,8 +1078,8 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     preview ? (summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary) : (summaryQuery.data ?? computeProjectSummary(projects));
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const sectorPacks = preview
-    ? previewSectorPacks
-    : (sectorPacksQuery.data ?? previewSectorPacks);
+    ? sortedSectorPacks(previewSectorPacks)
+    : completeSectorPacks(sectorPacksQuery.data);
   const selectedProject = selectedProjectId
     ? (projects.find((project) => project.id === selectedProjectId) ?? null)
     : null;
@@ -3508,7 +3538,7 @@ function ProjectWizardStepContent({
               <option value="">Select sector pack</option>
               {sectorPacks.map((pack) => (
                 <option key={pack.id} value={pack.id}>
-                  {pack.name}
+                  {pack.sector} · {pack.name}
                 </option>
               ))}
             </Select>

@@ -485,7 +485,7 @@ function MobileFormPreview({
     >
       <div className="flex items-center justify-between border-b bg-foreground px-4 py-2 text-[11px] font-semibold text-background">
         <span className="flex items-center gap-1.5">
-          <AtlasFieldOpsLogo size={16} />
+          <AtlasFieldOpsLogo size={24} />
           Atlas FieldOps
         </span>
         <span>Preview</span>

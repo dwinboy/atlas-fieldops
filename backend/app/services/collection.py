@@ -25,7 +25,16 @@ from app.models.collection import (
 )
 from app.models.governance import DataVersion, LineageEvent
 from app.models.identity import Organization, User
-from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, EntityCategory, SessionLog, VisitRecord
+from app.models.operations import (
+    Beneficiary,
+    DataQualitySignal,
+    DeviceRegistry,
+    EntityAttribute,
+    EntityAttributeValue,
+    EntityCategory,
+    SessionLog,
+    VisitRecord,
+)
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.governance import GovernanceRepository
@@ -3354,6 +3363,13 @@ class SubmissionService:
                 transformation="approved_submission_created_beneficiary",
                 field_values=values,
             )
+            await self._persist_entity_attribute_values(
+                organization_id=organization_id,
+                submission=submission,
+                beneficiary=beneficiary,
+                controls=controls,
+                values=values,
+            )
             self._record_beneficiary_visit(
                 organization_id=organization_id,
                 submission=submission,
@@ -3476,6 +3492,13 @@ class SubmissionService:
             beneficiary=existing,
             transformation="approved_submission_linked_beneficiary",
             field_values=values,
+        )
+        await self._persist_entity_attribute_values(
+            organization_id=organization_id,
+            submission=submission,
+            beneficiary=existing,
+            controls=controls,
+            values=values,
         )
         self._record_beneficiary_visit(
             organization_id=organization_id,
@@ -3799,6 +3822,68 @@ class SubmissionService:
                 },
             )
         )
+
+    async def _persist_entity_attribute_values(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        beneficiary: Beneficiary,
+        controls: dict[str, object],
+        values: dict[str, object],
+    ) -> None:
+        category_id = controls.get("entity_category_id") or controls.get("entityCategoryId")
+        if category_id is None:
+            return
+        try:
+            entity_category_id = UUID(str(category_id))
+        except ValueError:
+            return
+        result = await self.session.execute(
+            select(EntityAttribute).where(
+                EntityAttribute.organization_id == organization_id,
+                EntityAttribute.category_id == entity_category_id,
+                EntityAttribute.deleted_at.is_(None),
+                EntityAttribute.status != "archived",
+            )
+        )
+        attributes = list(result.scalars())
+        if not attributes:
+            return
+        existing_result = await self.session.execute(
+            select(EntityAttributeValue).where(
+                EntityAttributeValue.organization_id == organization_id,
+                EntityAttributeValue.entity_id == beneficiary.id,
+                EntityAttributeValue.attribute_id.in_({attribute.id for attribute in attributes}),
+            )
+        )
+        existing_by_attribute = {item.attribute_id: item for item in existing_result.scalars()}
+        recorded_at = datetime.now(UTC).isoformat()
+        for attribute in attributes:
+            value = values.get(attribute.field_key.lower())
+            if value is None or value == "":
+                continue
+            value_json = {
+                "value": value,
+                "sourceFormId": str(submission.form_id),
+                "sourceSubmissionId": str(submission.id),
+                "sourceClientSubmissionId": submission.client_submission_id,
+                "approvedAt": recorded_at,
+            }
+            existing = existing_by_attribute.get(attribute.id)
+            if existing is not None:
+                existing.value_json = value_json
+                existing.source_submission_id = submission.id
+            else:
+                self.session.add(
+                    EntityAttributeValue(
+                        organization_id=organization_id,
+                        entity_id=beneficiary.id,
+                        attribute_id=attribute.id,
+                        value_json=value_json,
+                        source_submission_id=submission.id,
+                    )
+                )
 
     def _entity_controls(self, controls_json: dict[str, Any]) -> dict[str, Any]:
         return _as_dict(controls_json.get("entity_controls"))

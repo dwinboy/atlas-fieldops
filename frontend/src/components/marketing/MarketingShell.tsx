@@ -30,9 +30,9 @@ export function MarketingShell({ children }: { children: ReactNode }) {
           scrolled ? "border-border shadow-sm" : "border-transparent",
         )}
       >
-        <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="relative mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link className="flex items-center gap-3" href="/">
-            <AtlasFieldOpsLogo size={38} />
+            <AtlasFieldOpsLogo size={56} />
             <span className="font-semibold tracking-tight text-foreground">Atlas FieldOps</span>
           </Link>
           <MarketingNav />
@@ -43,7 +43,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.3fr_2fr] lg:px-8">
           <div>
             <div className="flex items-center gap-3">
-              <AtlasFieldOpsLogo size={38} />
+              <AtlasFieldOpsLogo size={56} />
               <span className="font-semibold">Atlas FieldOps</span>
             </div>
             <p className="mt-4 max-w-md text-sm leading-6 text-white/68">
