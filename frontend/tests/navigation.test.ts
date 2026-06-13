@@ -49,7 +49,7 @@ describe("platform navigation architecture", () => {
       "Field Operations",
       "Submissions",
       "Mapping",
-      "Indicators",
+      "Metrics & Results",
       "Reports",
       "Data Quality",
       "Users & Teams",
