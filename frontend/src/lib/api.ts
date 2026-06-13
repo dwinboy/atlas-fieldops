@@ -1879,6 +1879,8 @@ export type ProjectSectorInstallRead = {
   skipped_forms: number;
   skipped_indicators: number;
   skipped_reports: number;
+  installed_names: string[];
+  skipped_names: string[];
   message: string;
 };
 

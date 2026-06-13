@@ -306,6 +306,8 @@ class ProjectsService:
         survey = await self._sector_survey(organization_id, actor_user_id, project, pack)
         installed = 0
         skipped = 0
+        installed_names: list[str] = []
+        skipped_names: list[str] = []
         form_definitions = self._sector_form_definitions(pack)
         for form_definition in form_definitions:
             name = str(form_definition.get("name") or form_definition.get("title") or "Sector Starter Form")
@@ -319,6 +321,7 @@ class ProjectsService:
             )
             if existing.scalar_one_or_none() is not None:
                 skipped += 1
+                skipped_names.append(name)
                 continue
             form = DataForm(
                 organization_id=organization_id,
@@ -346,6 +349,7 @@ class ProjectsService:
                 )
             )
             installed += 1
+            installed_names.append(name)
         project.settings_json = self._mark_sector_install(project.settings_json, "forms")
         await self.audit.append(
             organization_id=organization_id,
@@ -361,6 +365,8 @@ class ProjectsService:
             sector_id=str(pack["id"]),
             installed_forms=installed,
             skipped_forms=skipped,
+            installed_names=installed_names,
+            skipped_names=skipped_names,
             message=f"{installed} starter form(s) installed for {pack['name']}. {skipped} already existed.",
         )
 
@@ -417,6 +423,8 @@ class ProjectsService:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing indicator templates.")
         installed = 0
         skipped = 0
+        installed_names: list[str] = []
+        skipped_names: list[str] = []
         for index, indicator_definition in enumerate(self._sector_indicator_definitions(pack), start=1):
             name = str(indicator_definition.get("name") or f"Sector indicator {index}")
             code = self._indicator_code(pack["id"], project.slug, name, index)
@@ -429,6 +437,7 @@ class ProjectsService:
             )
             if existing.scalar_one_or_none() is not None:
                 skipped += 1
+                skipped_names.append(name)
                 continue
             self.session.add(
                 MonitoringIndicator(
@@ -455,6 +464,7 @@ class ProjectsService:
                 )
             )
             installed += 1
+            installed_names.append(name)
         project.settings_json = self._mark_sector_install(project.settings_json, "indicators")
         await self.audit.append(
             organization_id=organization_id,
@@ -470,6 +480,8 @@ class ProjectsService:
             sector_id=str(pack["id"]),
             installed_indicators=installed,
             skipped_indicators=skipped,
+            installed_names=installed_names,
+            skipped_names=skipped_names,
             message=f"{installed} indicator template(s) installed for {pack['name']}. {skipped} already existed.",
         )
 
@@ -480,6 +492,8 @@ class ProjectsService:
             return ProjectSectorInstallRead(project_id=project_id, message="Select a sector pack before installing report templates.")
         installed = 0
         skipped = 0
+        installed_names: list[str] = []
+        skipped_names: list[str] = []
         for report_definition in self._sector_report_definitions(pack):
             name = str(report_definition.get("name") or "Sector report")
             existing = await self.session.execute(
@@ -492,6 +506,7 @@ class ProjectsService:
             )
             if existing.scalar_one_or_none() is not None:
                 skipped += 1
+                skipped_names.append(name)
                 continue
             self.session.add(
                 DonorReport(
@@ -507,6 +522,7 @@ class ProjectsService:
                 )
             )
             installed += 1
+            installed_names.append(name)
         project.settings_json = self._mark_sector_install(project.settings_json, "reports")
         await self.audit.append(
             organization_id=organization_id,
@@ -522,6 +538,8 @@ class ProjectsService:
             sector_id=str(pack["id"]),
             installed_reports=installed,
             skipped_reports=skipped,
+            installed_names=installed_names,
+            skipped_names=skipped_names,
             message=f"{installed} report template(s) installed for {pack['name']}. {skipped} already existed.",
         )
 

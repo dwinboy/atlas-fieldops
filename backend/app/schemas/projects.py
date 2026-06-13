@@ -273,4 +273,6 @@ class ProjectSectorInstallRead(BaseModel):
     skipped_forms: int = 0
     skipped_indicators: int = 0
     skipped_reports: int = 0
+    installed_names: list[str] = Field(default_factory=list)
+    skipped_names: list[str] = Field(default_factory=list)
     message: str

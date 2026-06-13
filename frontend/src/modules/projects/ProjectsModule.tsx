@@ -491,6 +491,21 @@ function messageFromError(error: unknown): string {
   return "Check the project code, required fields, and your project permissions.";
 }
 
+function installResultDescription(
+  result: { installed_names?: string[]; message: string; skipped_names?: string[] },
+  label: string,
+): string {
+  const installed = result.installed_names ?? [];
+  const skipped = result.skipped_names ?? [];
+  const installedText = installed.length
+    ? `Installed ${label}: ${installed.slice(0, 5).join(", ")}${installed.length > 5 ? `, +${installed.length - 5} more` : ""}.`
+    : "";
+  const skippedText = skipped.length
+    ? `Already existed: ${skipped.slice(0, 4).join(", ")}${skipped.length > 4 ? `, +${skipped.length - 4} more` : ""}.`
+    : "";
+  return [result.message, installedText, skippedText].filter(Boolean).join(" ");
+}
+
 function optionalText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) {
@@ -1224,9 +1239,10 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       installProjectSectorForms(token ?? "", projectId),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setActiveTab("Forms & Metrics");
       pushToast({
         title: "Starter forms installed",
-        description: result.message,
+        description: installResultDescription(result, "forms"),
         tone: "success",
       });
     },
@@ -1246,7 +1262,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       pushToast({
         title: "Metric templates installed",
-        description: result.message,
+        description: installResultDescription(result, "metrics"),
         tone: "success",
       });
     },
@@ -1266,7 +1282,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       pushToast({
         title: "Report templates installed",
-        description: result.message,
+        description: installResultDescription(result, "reports"),
         tone: "success",
       });
     },
