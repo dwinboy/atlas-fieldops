@@ -1219,6 +1219,23 @@ export function FieldOperationsModule({
     : undefined;
   const previewOfficerProfile = useMemo<FieldOfficerProfileDetailRead | undefined>(() => {
     if (!selectedPreviewOfficer) return undefined;
+    const officerAssignments = assignments.filter((assignment) =>
+      assignment.fieldOfficers.includes(selectedPreviewOfficer.full_name),
+    );
+    const assignedEntityCodes = new Set(
+      officerAssignments.flatMap((assignment) => assignment.assignedEntityIds ?? []),
+    );
+    const assignedEntities = previewEntities.filter((entity) =>
+      assignedEntityCodes.has(entity.entityId),
+    );
+    const completedSubmissions = officerAssignments.reduce(
+      (sum, assignment) => sum + assignment.completedCount,
+      0,
+    );
+    const assignedProjects = new Set(officerAssignments.map((assignment) => assignment.project).filter(Boolean));
+    const assignedForms = new Set(officerAssignments.map((assignment) => assignment.form).filter(Boolean));
+    const qualityFlags = assignedEntities.reduce((sum, entity) => sum + entity.qualityFlags, 0);
+    const dataQualityScore = Math.max(0, 100 - qualityFlags * 8);
     return {
       activity: [],
       assignments: [],
@@ -1240,17 +1257,17 @@ export function FieldOperationsModule({
       forms: [],
       locations: selectedPreviewOfficer.home_region ? [selectedPreviewOfficer.home_region] : [],
       metrics: [
-        { label: "Projects", value: "0", tone: "neutral" },
-        { label: "Assignments", value: "0", tone: "neutral" },
-        { label: "Entities", value: "0", tone: "neutral" },
-        { label: "Submissions", value: "0", tone: "neutral" },
-        { label: "Approval Rate", value: "0%", tone: "neutral" },
-        { label: "Data Quality", value: "100%", tone: "success" },
+        { label: "Projects", value: String(assignedProjects.size), tone: assignedProjects.size ? "success" : "neutral" },
+        { label: "Assignments", value: String(officerAssignments.length), tone: officerAssignments.length ? "success" : "neutral" },
+        { label: "Entities", value: String(assignedEntityCodes.size), tone: assignedEntityCodes.size ? "success" : "neutral" },
+        { label: "Submissions", value: String(completedSubmissions), tone: completedSubmissions ? "success" : "neutral" },
+        { label: "Approval Rate", value: completedSubmissions ? "91%" : "0%", tone: completedSubmissions ? "success" : "neutral" },
+        { label: "Data Quality", value: `${dataQualityScore}%`, tone: dataQualityScore >= 85 ? "success" : "warning" },
         { label: "Last Sync", value: selectedPreviewOfficer.last_sync_at ?? "Never", tone: "neutral" },
       ],
       officer: selectedPreviewOfficer,
       organization_name: principal?.organization_name ?? "Preview organization",
-      performance: { total_submissions: 0, approval_rate: 0, data_quality_score: 100 },
+      performance: { total_submissions: completedSubmissions, approval_rate: completedSubmissions ? 91 : 0, data_quality_score: dataQualityScore },
       permissions: [
         { enabled: true, key: "collect_data", label: "Can collect assigned data", source: "Preview role" },
         { enabled: false, key: "export_data", label: "Can export own data", source: "Restricted by governance" },
@@ -1277,7 +1294,7 @@ export function FieldOperationsModule({
       supervisor: null,
       team: selectedPreviewOfficer.home_region ?? "Preview field team",
     };
-  }, [principal?.organization_name, selectedPreviewOfficer]);
+  }, [assignments, principal?.organization_name, selectedPreviewOfficer]);
   const selectedOfficerProfile = preview ? previewOfficerProfile : officerProfileQuery.data;
 
   const openOfficerProfile = (officerId: string) => {
@@ -1419,7 +1436,13 @@ export function FieldOperationsModule({
     [caseEntities],
   );
   const operationsSummary: OperationsSummary =
-    preview ? (summaryQuery.data ?? previewOperationsSummary) : (summaryQuery.data ?? {
+    preview ? {
+      ...previewOperationsSummary,
+      active_programs: new Set(assignments.map((assignment) => assignment.project).filter(Boolean)).size,
+      beneficiaries: caseEntities.length,
+      indicators: targets.length,
+      quality_flags: caseEntities.filter((entity) => entity.qualityFlags > 0 || entity.duplicateStatus !== "Clear").length,
+    } : (summaryQuery.data ?? {
       active_programs: 0,
       beneficiaries: 0,
       indicators: 0,

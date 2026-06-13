@@ -1039,7 +1039,23 @@ export function SubmissionsModule({
             <Eye aria-hidden="true" />
             View
           </Button>
-          {canReview && isBulkReviewable(submission) ? (
+          {canReview && submission.status === "approved" ? (
+            <>
+              <Badge tone="success">Already approved</Badge>
+              <Button
+                disabled={reviewMutation.isPending}
+                onClick={() => {
+                  setQuickRejectSubmission(submission);
+                  setQuickRejectComment("");
+                }}
+                size="sm"
+                variant="ghost"
+              >
+                <XCircle aria-hidden="true" />
+                Reject
+              </Button>
+            </>
+          ) : canReview && isBulkReviewable(submission) ? (
             <>
               <Button
                 disabled={reviewMutation.isPending}
@@ -2797,36 +2813,55 @@ function WorkflowTab({
 }) {
   const actions: {
     action: ReviewAction;
+    disabled?: boolean;
     icon: LucideIcon;
     label: string;
     variant: "primary" | "secondary" | "danger";
-  }[] = [
-    {
-      action: "start_review",
-      icon: ShieldAlert,
-      label: "Start Review",
-      variant: "secondary",
-    },
-    {
-      action: "approve",
-      icon: CheckCircle2,
-      label: "Approve",
-      variant: "primary",
-    },
-    {
-      action: "request_correction",
-      icon: MessageSquareWarning,
-      label: "Return",
-      variant: "secondary",
-    },
-    { action: "reject", icon: XCircle, label: "Reject", variant: "danger" },
-    {
-      action: "archive",
-      icon: Archive,
-      label: "Archive",
-      variant: "secondary",
-    },
-  ];
+  }[] =
+    submission.status === "approved"
+      ? [
+          {
+            action: "approve",
+            disabled: true,
+            icon: CheckCircle2,
+            label: "Already Approved",
+            variant: "secondary",
+          },
+          { action: "reject", icon: XCircle, label: "Reject Approval", variant: "danger" },
+          {
+            action: "archive",
+            icon: Archive,
+            label: "Archive",
+            variant: "secondary",
+          },
+        ]
+      : [
+          {
+            action: "start_review",
+            icon: ShieldAlert,
+            label: "Start Review",
+            variant: "secondary",
+          },
+          {
+            action: "approve",
+            icon: CheckCircle2,
+            label: "Approve",
+            variant: "primary",
+          },
+          {
+            action: "request_correction",
+            icon: MessageSquareWarning,
+            label: "Return",
+            variant: "secondary",
+          },
+          { action: "reject", icon: XCircle, label: "Reject", variant: "danger" },
+          {
+            action: "archive",
+            icon: Archive,
+            label: "Archive",
+            variant: "secondary",
+          },
+        ];
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
       <Panel title="Workflow Timeline">
@@ -2867,9 +2902,9 @@ function WorkflowTab({
           />
         </label>
         <div className="mt-4 grid grid-cols-2 gap-2">
-          {actions.map(({ action, icon: Icon, label, variant }) => (
+          {actions.map(({ action, disabled, icon: Icon, label, variant }) => (
             <Button
-              disabled={!canReview}
+              disabled={!canReview || disabled}
               key={action}
               onClick={() => onApplyReviewAction(action)}
               variant={variant}

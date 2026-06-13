@@ -3,6 +3,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowRight,
   ChevronDown,
   ChevronRight,
@@ -252,6 +253,7 @@ export function AppShell({
   const router = useRouter();
   const pathname = usePathname();
   const liveDataEnabled = Boolean(token && token !== "preview-token");
+  const previewMode = token === "preview-token";
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
@@ -604,6 +606,39 @@ export function AppShell({
             />
           </div>
         </header>
+
+        {previewMode ? (
+          <section className="border-b border-warning/30 bg-warning/10 px-3 py-4 shadow-line sm:px-4 lg:px-5">
+            <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 rounded-2xl border border-warning/30 bg-panel/85 p-4 shadow-line backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
+                  <AlertTriangle aria-hidden="true" size={22} />
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">Preview workspace</h2>
+                    <Badge tone="warning">Sample data only</Badge>
+                  </div>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    You are exploring Atlas FieldOps with demonstration data. Some live actions are disabled in preview mode, including saving permanent records, publishing to real field officers, syncing mobile data, uploads, approvals, and production exports.
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <a
+                  className="rounded-lg border bg-background/80 px-3 py-2 text-sm font-semibold text-foreground shadow-line transition hover:border-primary/30 hover:text-primary"
+                  href="mailto:contact@atlasfieldops.com"
+                >
+                  contact@atlasfieldops.com
+                </a>
+                <Button onClick={onSignOut} type="button" variant="primary">
+                  Sign in for live workspace
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {mobileNavOpen ? (
           <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>
