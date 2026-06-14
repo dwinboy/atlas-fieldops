@@ -5,8 +5,10 @@ import {
   previewMapFeatures,
   previewMapLayers,
 } from "@/modules/mapping/data";
+import type { IndicatorRead } from "@/lib/api";
 import {
   computeMappingSummary,
+  deriveIndicatorGeography,
   filterFeaturesBySection,
   maskCoordinate,
   toGeoJson,
@@ -66,5 +68,32 @@ describe("Mapping module helpers", () => {
       expect(lat).toBe(Math.round(sensitive.latitude * 100) / 100);
       expect(lng).toBe(Math.round(sensitive.longitude * 100) / 100);
     }
+  });
+
+  it("derives project-level indicator geography from live metrics", () => {
+    const base = {
+      survey_id: null,
+      description: null,
+      sdg_code: null,
+      formula: null,
+      category: null,
+      disaggregation_fields: [],
+      calculated_at: null,
+    };
+    const indicators: IndicatorRead[] = [
+      { ...base, id: "i1", project_id: "p1", code: "A", name: "Reach", unit: "", reporting_frequency: "Monthly", baseline_value: 0, target_value: 100, current_value: 80, is_active: true, progress_percent: 80 },
+      { ...base, id: "i2", project_id: null, code: "B", name: "Coverage", unit: "%", reporting_frequency: "Quarterly", baseline_value: 0, target_value: 0, current_value: 5, is_active: true, progress_percent: 0 },
+      { ...base, id: "i3", project_id: "p1", code: "C", name: "Archived", unit: "", reporting_frequency: "Monthly", baseline_value: 0, target_value: 10, current_value: 5, is_active: false, progress_percent: 50 },
+    ];
+    const geography = deriveIndicatorGeography(indicators, { p1: "Resilience Program" });
+
+    expect(geography).toHaveLength(2); // inactive metric excluded
+    expect(geography[0].achievementPercent).toBeGreaterThanOrEqual(geography[1].achievementPercent); // sorted desc
+    const reach = geography.find((item) => item.id === "i1");
+    expect(reach?.project).toBe("Resilience Program");
+    expect(reach?.achievementPercent).toBe(80);
+    const coverage = geography.find((item) => item.id === "i2");
+    expect(coverage?.project).toBe("Organization-wide"); // no project_id
+    expect(coverage?.achievementPercent).toBe(0); // zero target → 0
   });
 });

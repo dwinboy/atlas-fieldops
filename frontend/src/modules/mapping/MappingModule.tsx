@@ -35,6 +35,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   listBeneficiaries,
+  listIndicators,
   listProjects,
   listSubmissions,
   type CurrentPrincipal,
@@ -66,6 +67,7 @@ import {
   computeMappingSummary,
   computeProjectExtents,
   coverageTone,
+  deriveIndicatorGeography,
   deriveProjectDataCoverage,
   deriveQualityIssues,
   filterFeaturesBySection,
@@ -109,7 +111,7 @@ type MapViewerProps = {
 
 const basemaps: MapBasemap[] = ["Light", "Streets", "Terrain", "Satellite"];
 
-const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "coverage-maps", "data-quality-maps"];
+const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "coverage-maps", "data-quality-maps", "indicator-maps"];
 
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
   loading: () => (
@@ -180,11 +182,18 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     queryFn: () => listProjects(token ?? ""),
     queryKey: ["mapping", "projects", token],
   });
+  const indicatorsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listIndicators(token ?? ""),
+    queryKey: ["mapping", "indicators", token],
+  });
+
+  const projectNameById = useMemo<Record<string, string>>(
+    () => Object.fromEntries((projectsQuery.data ?? []).map((project) => [project.id, project.name])),
+    [projectsQuery.data],
+  );
 
   const realMapFeatures = useMemo<MapFeatureRecord[]>(() => {
-    const projectNameById: Record<string, string> = Object.fromEntries(
-      (projectsQuery.data ?? []).map((project) => [project.id, project.name]),
-    );
     const geotaggedSubmissions = (submissionsQuery.data ?? [])
       .filter((submission) => submission.latitude && submission.longitude)
       .sort((left, right) => new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime());
@@ -246,7 +255,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     });
 
     return [...submissionFeatures, ...beneficiaryFeatures];
-  }, [beneficiariesQuery.data, projectsQuery.data, submissionsQuery.data, terminology]);
+  }, [beneficiariesQuery.data, projectNameById, submissionsQuery.data, terminology]);
 
   const latestSubmissionFeature = useMemo(
     () => realMapFeatures.find((feature) => feature.category === "Submission") ?? null,
@@ -257,7 +266,10 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const mapLayers = useMemo(() => (preview ? previewMapLayers : []), [preview]);
   const boundaries = useMemo(() => (preview ? previewBoundaries : []), [preview]);
   const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
-  const indicatorGeography = useMemo(() => (preview ? previewIndicatorGeography : []), [preview]);
+  const indicatorGeography = useMemo(
+    () => (preview ? previewIndicatorGeography : deriveIndicatorGeography(indicatorsQuery.data ?? [], projectNameById)),
+    [indicatorsQuery.data, preview, projectNameById],
+  );
   const spatialIssues = useMemo(
     () => (preview ? previewSpatialIssues : deriveQualityIssues(realMapFeatures)),
     [preview, realMapFeatures],
@@ -1214,6 +1226,11 @@ function CoverageWorkspace({
 }
 
 function IndicatorWorkspace({ indicatorGeography }: { indicatorGeography: IndicatorGeography[] }) {
+  if (indicatorGeography.length === 0) {
+    return (
+      <EmptyMini label="No active metrics yet. Configure metrics with baselines and targets and they will appear here as project-level indicator results." />
+    );
+  }
   return (
     <section className="grid gap-4 xl:grid-cols-3">
       {indicatorGeography.map((item) => (
