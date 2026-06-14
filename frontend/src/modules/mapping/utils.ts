@@ -1,6 +1,8 @@
 import type { BadgeProps } from "@/components/ui/badge";
+import type { IndicatorRead } from "@/lib/api";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type {
+  IndicatorGeography,
   LayerVisibility,
   MapFeatureRecord,
   MappingSection,
@@ -242,6 +244,39 @@ export function toGeoJson(features: MapFeatureRecord[], visibility: LayerVisibil
     null,
     2,
   );
+}
+
+/**
+ * Build the indicator-geography cards from live metrics, attributing each metric
+ * to its project and showing real baseline/current/target and achievement. This
+ * makes the Indicator Maps view real (project-level) instead of a placeholder;
+ * finer sub-project geography depends on location-tagged metric data (roadmap).
+ */
+export function deriveIndicatorGeography(
+  indicators: IndicatorRead[],
+  projectNameById: Record<string, string>,
+): IndicatorGeography[] {
+  return indicators
+    .filter((indicator) => indicator.is_active)
+    .map((indicator) => {
+      const project = (indicator.project_id && projectNameById[indicator.project_id]) || "Organization-wide";
+      const achievementPercent =
+        indicator.target_value > 0
+          ? Math.max(0, Math.min(999, Math.round((indicator.current_value / indicator.target_value) * 100)))
+          : 0;
+      return {
+        id: indicator.id,
+        indicator: indicator.name,
+        project,
+        location: project,
+        baseline: indicator.baseline_value,
+        current: indicator.current_value,
+        target: indicator.target_value,
+        achievementPercent,
+        period: indicator.reporting_frequency || "Current",
+      };
+    })
+    .sort((left, right) => right.achievementPercent - left.achievementPercent);
 }
 
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {
