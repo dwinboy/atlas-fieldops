@@ -133,6 +133,11 @@ export function Select({
       setMenuStyle({
         left: rect.left,
         maxHeight,
+        // The menu is portaled to document.body, which sits outside a Radix
+        // modal dialog's content. Modal dialogs set pointer-events: none on
+        // everything outside their content, so re-enable it here or the
+        // options become unclickable inside any Modal.
+        pointerEvents: "auto",
         position: "fixed",
         top: openUp
           ? Math.max(viewportGap, rect.top - maxHeight - 8)
@@ -241,6 +246,10 @@ export function Select({
             <div
               className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
               id={menuId}
+              // Keep the pointerdown inside the portaled menu: a Radix modal
+              // dialog treats this body-level node as "outside" and would close
+              // on select otherwise. choose() handles closing the menu itself.
+              onPointerDown={(event) => event.stopPropagation()}
               role="listbox"
               style={menuStyle}
             >
