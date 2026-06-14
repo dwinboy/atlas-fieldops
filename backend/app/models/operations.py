@@ -586,6 +586,24 @@ class DonorReport(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ReportSchedule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "report_schedules"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    report_id: Mapped[UUID] = mapped_column(ForeignKey("donor_reports.id"), index=True)
+    frequency: Mapped[str] = mapped_column(String(20), default="weekly")
+    hour: Mapped[int] = mapped_column(Integer, default=8)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    recipients: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    export_format: Mapped[str] = mapped_column(String(20), default="pdf")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    failure_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
 class OrganizationBranding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "organization_branding"
     __table_args__ = (UniqueConstraint("organization_id"),)
