@@ -37,14 +37,20 @@ import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
   createReport,
+  createReportSchedule,
+  deleteReportSchedule,
   exportReportCsv,
   generateReport,
   listProjects,
   listReports,
+  listReportSchedules,
+  runReportSchedule,
+  updateReportScheduleStatus,
   type CurrentPrincipal,
   type DonorReportIndicatorMetric,
   type DonorReportMetrics,
   type DonorReportRead,
+  type ReportScheduleRead,
 } from "@/lib/api";
 import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
@@ -62,9 +68,11 @@ import {
   type ExportJobRecord,
   type KpiRecord,
   type ReportAuditEvent,
+  type ReportFormat,
   type ReportRecord,
   type ReportsSection,
   type ScheduledReportRecord,
+  type ScheduleFrequency,
   type VisualizationType,
 } from "@/modules/reports/data";
 import {
@@ -128,6 +136,15 @@ const emptyReportDraft = {
   summary: "",
 };
 
+const emptyScheduleDraft = {
+  reportId: "",
+  frequency: "weekly",
+  hour: "8",
+  timezone: "UTC",
+  recipients: "",
+  exportFormat: "pdf",
+};
+
 function titleCase(value: string): string {
   return value
     .replaceAll("_", " ")
@@ -180,6 +197,28 @@ function mapApiReport(row: DonorReportRead, ownerRole: string): ReportRecord {
   };
 }
 
+const SCHEDULE_FREQUENCY_LABELS: Record<string, ScheduleFrequency> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+const SCHEDULE_FORMAT_LABELS: Record<string, ReportFormat> = { pdf: "PDF", excel: "Excel", csv: "CSV", json: "JSON" };
+
+function mapApiSchedule(row: ReportScheduleRead): ScheduledReportRecord {
+  const status: ScheduledReportRecord["status"] =
+    row.last_status === "failed" ? "Failed" : row.status === "paused" ? "Paused" : "Active";
+  return {
+    id: row.id,
+    reportId: row.report_id,
+    reportTitle: row.report_name ?? "Report",
+    recipients: row.recipients,
+    frequency: SCHEDULE_FREQUENCY_LABELS[row.frequency] ?? "Custom",
+    time: `${String(row.hour).padStart(2, "0")}:00`,
+    timezone: row.timezone,
+    format: SCHEDULE_FORMAT_LABELS[row.export_format] ?? "PDF",
+    status,
+    lastRun: row.last_run_at ? new Date(row.last_run_at).toLocaleString() : "Never run",
+    nextRun: new Date(row.next_run_at).toLocaleString(),
+    failureLog: row.failure_log ?? undefined,
+  };
+}
+
 function messageFromError(error: unknown): string {
   if (error instanceof ApiError) {
     try {
@@ -226,6 +265,8 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const [actionResult, setActionResult] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyReportDraft);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState(emptyScheduleDraft);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
@@ -240,6 +281,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const projectsQuery = useQuery({
     queryKey: ["reports-module", "projects", token],
     queryFn: () => listProjects(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const schedulesQuery = useQuery({
+    queryKey: ["reports-module", "schedules", token],
+    queryFn: () => listReportSchedules(token ?? ""),
     enabled: Boolean(token && !preview),
   });
 
@@ -303,9 +349,74 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       pushToast({ title: "Could not export report data", description: messageFromError(error), tone: "danger" });
     }
   }
+
+  const invalidateSchedules = () => queryClient.invalidateQueries({ queryKey: ["reports-module", "schedules", token] });
+
+  const createScheduleMutation = useMutation({
+    mutationFn: () =>
+      createReportSchedule(token ?? "", {
+        report_id: scheduleDraft.reportId,
+        frequency: scheduleDraft.frequency,
+        hour: Number(scheduleDraft.hour) || 0,
+        timezone: scheduleDraft.timezone.trim() || "UTC",
+        export_format: scheduleDraft.exportFormat,
+        recipients: scheduleDraft.recipients
+          .split(/[,\n;]/)
+          .map((value) => value.trim())
+          .filter(Boolean),
+      }),
+    onSuccess: async (schedule) => {
+      await invalidateSchedules();
+      setScheduleOpen(false);
+      setScheduleDraft(emptyScheduleDraft);
+      pushToast({ title: "Delivery scheduled", description: `${schedule.report_name ?? "Report"} will be delivered ${schedule.frequency}.`, tone: "success" });
+    },
+    onError: (error) => pushToast({ title: "Could not schedule delivery", description: messageFromError(error), tone: "danger" }),
+  });
+
+  const runScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => runReportSchedule(token ?? "", scheduleId),
+    onSuccess: async (schedule) => {
+      await invalidateSchedules();
+      await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
+      pushToast({
+        title: schedule.last_status === "failed" ? "Delivery run failed" : "Delivery run complete",
+        description: schedule.last_status === "failed" ? schedule.failure_log ?? "Run failed." : `${schedule.report_name ?? "Report"} was regenerated and delivered to ${schedule.recipients.length} recipient(s).`,
+        tone: schedule.last_status === "failed" ? "danger" : "success",
+      });
+    },
+    onError: (error) => pushToast({ title: "Could not run delivery", description: messageFromError(error), tone: "danger" }),
+  });
+
+  const scheduleStatusMutation = useMutation({
+    mutationFn: (variables: { scheduleId: string; status: "active" | "paused" }) =>
+      updateReportScheduleStatus(token ?? "", variables.scheduleId, variables.status),
+    onSuccess: async (schedule) => {
+      await invalidateSchedules();
+      pushToast({ title: schedule.status === "paused" ? "Schedule paused" : "Schedule resumed", description: `${schedule.report_name ?? "Report"} delivery is ${schedule.status}.`, tone: "success" });
+    },
+    onError: (error) => pushToast({ title: "Could not update schedule", description: messageFromError(error), tone: "danger" }),
+  });
+
+  const deleteScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => deleteReportSchedule(token ?? "", scheduleId),
+    onSuccess: async () => {
+      await invalidateSchedules();
+      pushToast({ title: "Schedule removed", description: "The scheduled delivery was deleted.", tone: "success" });
+    },
+    onError: (error) => pushToast({ title: "Could not delete schedule", description: messageFromError(error), tone: "danger" }),
+  });
+
+  function openScheduleDelivery(reportId?: string): void {
+    setScheduleDraft({ ...emptyScheduleDraft, reportId: reportId ?? "" });
+    setScheduleOpen(true);
+  }
   const dashboards = useMemo(() => (preview ? previewDashboards : []), [preview]);
   const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
-  const scheduledReports = useMemo(() => (preview ? previewScheduledReports : []), [preview]);
+  const scheduledReports = useMemo(
+    () => (preview ? previewScheduledReports : (schedulesQuery.data ?? []).map(mapApiSchedule)),
+    [preview, schedulesQuery.data],
+  );
   const reportAuditEvents = useMemo(() => (preview ? previewAuditEvents : []), [preview]);
   const kpis = useMemo(() => (preview ? previewKpis : deriveReportKpis(reports)), [preview, reports]);
   const builderSteps = useMemo(() => (preview ? previewBuilderSteps : []), [preview]);
@@ -483,14 +594,15 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         )
       ) : null}
       {!selectedReport && activeSection === "scheduled" ? (
-        preview ? (
-          <ScheduledReportsSection schedules={scheduledReports} />
-        ) : (
-          <ComingSoonSection
-            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
-            sectionId="scheduled"
-          />
-        )
+        <ScheduledReportsSection
+          onCreate={() => openScheduleDelivery()}
+          onDelete={(scheduleId) => deleteScheduleMutation.mutate(scheduleId)}
+          onRun={(scheduleId) => runScheduleMutation.mutate(scheduleId)}
+          onToggleStatus={(schedule) => scheduleStatusMutation.mutate({ scheduleId: schedule.id, status: schedule.status === "Paused" ? "active" : "paused" })}
+          preview={preview}
+          runningId={runScheduleMutation.isPending ? (runScheduleMutation.variables ?? null) : null}
+          schedules={scheduledReports}
+        />
       ) : null}
       {!selectedReport && activeSection === "exports" ? (
         preview ? (
@@ -625,6 +737,61 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             variant="primary"
           >
             {createReportMutation.isPending ? "Creating…" : "Create & generate"}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        contentClassName="max-w-xl"
+        description="Schedule recurring generation and delivery of a report from approved evidence. Running a schedule regenerates the report and records delivery to its recipients."
+        onOpenChange={setScheduleOpen}
+        open={scheduleOpen}
+        title="Schedule report delivery"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-medium md:col-span-2">
+            Report
+            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, reportId: event.target.value }))} value={scheduleDraft.reportId}>
+              <option value="">Select a report</option>
+              {reports.map((report) => (
+                <option key={report.id} value={report.id}>{report.title}</option>
+              ))}
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Frequency
+            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, frequency: event.target.value }))} value={scheduleDraft.frequency}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </Select>
+          </label>
+          <label className="text-sm font-medium">
+            Hour of day (0–23)
+            <Input className="mt-2" max={23} min={0} onChange={(event) => setScheduleDraft((current) => ({ ...current, hour: event.target.value }))} type="number" value={scheduleDraft.hour} />
+          </label>
+          <label className="text-sm font-medium">
+            Timezone
+            <Input className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, timezone: event.target.value }))} placeholder="UTC" value={scheduleDraft.timezone} />
+          </label>
+          <label className="text-sm font-medium">
+            Format
+            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, exportFormat: event.target.value }))} value={scheduleDraft.exportFormat}>
+              <option value="pdf">PDF</option>
+              <option value="excel">Excel</option>
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+            </Select>
+          </label>
+          <label className="text-sm font-medium md:col-span-2">
+            Recipients (comma or newline separated)
+            <Textarea className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, recipients: event.target.value }))} placeholder="donor@example.org, lead@my-org.org" rows={2} value={scheduleDraft.recipients} />
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setScheduleOpen(false)} type="button" variant="secondary">Cancel</Button>
+          <Button disabled={createScheduleMutation.isPending || !scheduleDraft.reportId} onClick={() => createScheduleMutation.mutate()} type="button" variant="primary">
+            {createScheduleMutation.isPending ? "Scheduling…" : "Schedule delivery"}
           </Button>
         </div>
       </Modal>
@@ -974,27 +1141,71 @@ function DashboardsSection({ dashboards, onOpenReports }: { dashboards: Dashboar
   );
 }
 
-function ScheduledReportsSection({ schedules }: { schedules: ScheduledReportRecord[] }) {
+function ScheduledReportsSection({
+  onCreate,
+  onDelete,
+  onRun,
+  onToggleStatus,
+  preview,
+  runningId,
+  schedules,
+}: {
+  onCreate: () => void;
+  onDelete: (scheduleId: string) => void;
+  onRun: (scheduleId: string) => void;
+  onToggleStatus: (schedule: ScheduledReportRecord) => void;
+  preview: boolean;
+  runningId: string | null;
+  schedules: ScheduledReportRecord[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<ScheduledReportRecord>[] = [
-    { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.id}</p></div>, value: (schedule) => schedule.reportTitle },
+    { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.lastRun}</p></div>, value: (schedule) => schedule.reportTitle },
     { header: "Frequency", key: "frequency", render: (schedule) => `${schedule.frequency} · ${schedule.time} ${schedule.timezone}`, value: (schedule) => schedule.frequency },
-    { header: "Recipients", key: "recipients", render: (schedule) => schedule.recipients.join(", "), value: (schedule) => schedule.recipients.join(" ") },
-    { header: "Next Run", key: "nextRun", render: (schedule) => new Date(schedule.nextRun).toLocaleString(), value: (schedule) => schedule.nextRun },
+    { header: "Recipients", key: "recipients", render: (schedule) => schedule.recipients.join(", ") || "—", value: (schedule) => schedule.recipients.join(" ") },
+    { header: "Next Run", key: "nextRun", render: (schedule) => schedule.nextRun, value: (schedule) => schedule.nextRun },
     { header: "Status", key: "status", render: (schedule) => <Badge tone={scheduleTone(schedule.status)}>{schedule.status}</Badge>, value: (schedule) => schedule.status },
   ];
+  if (!preview) {
+    columns.push({
+      header: "Actions",
+      key: "actions",
+      align: "right",
+      render: (schedule) => (
+        <div className="flex justify-end gap-1.5">
+          <Button disabled={runningId === schedule.id} onClick={() => onRun(schedule.id)} size="sm" variant="secondary">
+            <Play aria-hidden="true" /> {runningId === schedule.id ? "Running…" : "Run now"}
+          </Button>
+          <Button onClick={() => onToggleStatus(schedule)} size="sm" variant="secondary">
+            {schedule.status === "Paused" ? "Resume" : "Pause"}
+          </Button>
+          <Button onClick={() => onDelete(schedule.id)} size="sm" variant="ghost">Delete</Button>
+        </div>
+      ),
+    });
+  }
 
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect a report-scheduling service to automate report generation and delivery. This control is a preview for now.", title: "Creating schedules isn't available yet", tone: "warning" })} type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
-        description="Automate report generation and delivery by daily, weekly, monthly, quarterly, or custom schedules with delivery tracking and failure logs."
+        action={
+          preview ? (
+            <Button onClick={() => pushToast({ description: "Sign in to schedule recurring report deliveries.", title: "Preview mode", tone: "warning" })} type="button"><CalendarClock aria-hidden="true" /> Schedule delivery</Button>
+          ) : (
+            <Button onClick={onCreate} type="button"><CalendarClock aria-hidden="true" /> Schedule delivery</Button>
+          )
+        }
+        description="Automate report generation and delivery on a daily, weekly, or monthly schedule with delivery tracking and failure logs. Running a delivery regenerates the report from approved evidence."
         route="/reports/scheduled"
         title="Scheduled Reports"
       />
-      <DataTable columns={columns} emptyLabel="No scheduled reports yet" rows={schedules} searchLabel="Search schedules, recipients, frequency" title="Scheduled report delivery" />
+      <DataTable columns={columns} emptyLabel="No scheduled deliveries yet — schedule one to automate this report." rows={schedules} searchLabel="Search schedules, recipients, frequency" title="Scheduled report delivery" />
       <Panel title="Failure logs and delivery control">
-        <Timeline records={schedules.filter((schedule) => schedule.failureLog).map((schedule) => ({ badge: schedule.status, label: schedule.reportTitle, meta: schedule.failureLog ?? "", tone: scheduleTone(schedule.status) }))} />
+        {schedules.some((schedule) => schedule.failureLog) ? (
+          <Timeline records={schedules.filter((schedule) => schedule.failureLog).map((schedule) => ({ badge: schedule.status, label: schedule.reportTitle, meta: schedule.failureLog ?? "", tone: scheduleTone(schedule.status) }))} />
+        ) : (
+          <p className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">No failed deliveries. Failure details appear here if a scheduled run cannot generate its report.</p>
+        )}
       </Panel>
     </div>
   );
