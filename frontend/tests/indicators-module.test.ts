@@ -4,6 +4,7 @@ import { previewIndicators, previewTargets } from "@/modules/indicators/data";
 import {
   calculateIndicatorResult,
   computeIndicatorSummary,
+  deriveLogframeRows,
   deriveResultsMatrix,
   progressPercent,
   summarizeTargets,
@@ -55,6 +56,20 @@ describe("Indicators module helpers", () => {
     for (let index = 1; index < matrix.length; index += 1) {
       expect(matrix[index - 1].indicators.length).toBeGreaterThanOrEqual(matrix[index].indicators.length);
     }
+  });
+
+  it("builds live logframe rows from configured metrics with real values", () => {
+    const rows = deriveLogframeRows(previewIndicators);
+    const active = previewIndicators.filter((indicator) => indicator.status !== "Archived");
+    expect(rows).toHaveLength(active.length);
+    const first = rows[0];
+    const source = active[0];
+    expect(first.id).toBe(source.id);
+    expect(first.indicators).toEqual([source.code]);
+    expect(first.target).toBe(String(source.target));
+    expect(first.currentValue).toBe(String(source.current));
+    expect(first.baseline).toBe(source.baseline === null ? "—" : String(source.baseline));
+    expect(first.narrativeSummary).toBe(source.resultArea?.trim() || source.name);
   });
 
   it("supports calculation and target achievement engines", () => {

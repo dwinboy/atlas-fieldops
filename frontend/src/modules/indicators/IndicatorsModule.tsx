@@ -72,6 +72,7 @@ import {
 import {
   calculateIndicatorResult,
   computeIndicatorSummary,
+  deriveLogframeRows,
   deriveResultsMatrix,
   filterIndicatorsBySection,
   indicatorTone,
@@ -322,7 +323,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const resultFramework = preview ? sampleResultFramework : deriveResultsMatrix(indicators);
   const indicatorAuditEvents = preview ? sampleIndicatorAuditEvents : [];
   const indicatorDataSources = preview ? sampleIndicatorDataSources : [];
-  const logframeRows = preview ? previewLogframeRows : [];
+  const logframeRows = preview ? previewLogframeRows : deriveLogframeRows(indicators);
   const summary = useMemo(() => computeIndicatorSummary(indicators), [indicators]);
   const visibleIndicators = useMemo(() => filterIndicatorsBySection(indicators, activeSection), [activeSection, indicators]);
   const selectedIndicator = indicators.find((indicator) => indicator.id === selectedIndicatorId) ?? null;
@@ -608,7 +609,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         <ResultsFramework derived={!preview} resultFramework={resultFramework} />
       ) : null}
       {!selectedIndicator && activeSection === "logframes" ? (
-        preview ? <Logframes rows={logframeRows} /> : <ComingSoonSection sectionId="logframes" />
+        <Logframes derived={!preview} rows={logframeRows} />
       ) : null}
       {!selectedIndicator && activeSection === "targets" ? (
         preview ? <Targets targets={indicatorTargets} /> : <IndicatorTargetsOverview indicators={indicators} />
@@ -1072,7 +1073,7 @@ function ResultsFramework({ derived = false, resultFramework }: { derived?: bool
   );
 }
 
-function Logframes({ rows }: { rows: LogframeRow[] }) {
+function Logframes({ derived = false, rows }: { derived?: boolean; rows: LogframeRow[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const columns: TableColumn<LogframeRow>[] = [
     { key: "summary", header: "Narrative Summary", value: (row) => row.narrativeSummary, render: (row) => <span className="font-medium">{row.narrativeSummary}</span> },
@@ -1085,8 +1086,21 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create funder or client logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
-      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, metrics" title="Logframe rows" />
+      <SectionHeader
+        action={
+          derived ? undefined : (
+            <Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create funder or client logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>
+          )
+        }
+        description={
+          derived
+            ? "A live logframe built from your configured metrics — narrative summary (result area), metrics, verification source, and real baseline/target/current values."
+            : "Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, targets, current values, exports, and versions."
+        }
+        route="/indicators/logframes"
+        title="Logframes"
+      />
+      <DataTable columns={columns} emptyLabel={derived ? "No metrics configured yet. Add metrics with result areas to build a live logframe." : "No logframe rows yet"} rows={rows} searchLabel="Search logframe rows, projects, metrics" title="Logframe rows" />
     </section>
   );
 }
