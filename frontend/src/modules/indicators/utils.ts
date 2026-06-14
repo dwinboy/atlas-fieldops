@@ -5,6 +5,7 @@ import type {
   IndicatorStatus,
   IndicatorSummary,
   IndicatorTarget,
+  LogframeRow,
   ResultsFrameworkNode,
 } from "@/modules/indicators/data";
 
@@ -130,6 +131,28 @@ export function deriveResultsMatrix(indicators: IndicatorRecord[]): ResultsFrame
       };
     })
     .sort((left, right) => right.indicators.length - left.indicators.length);
+}
+
+/**
+ * Build live logframe rows from configured metrics: one row per metric, with
+ * its result area as the narrative summary and its real baseline/target/current
+ * values and verification source. Adapts to whatever metrics a project defines.
+ */
+export function deriveLogframeRows(indicators: IndicatorRecord[]): LogframeRow[] {
+  return indicators
+    .filter((indicator) => indicator.status !== "Archived")
+    .map((indicator) => ({
+      id: indicator.id,
+      project: indicator.project,
+      narrativeSummary: indicator.resultArea?.trim() || indicator.name,
+      indicators: [indicator.code],
+      meansOfVerification: indicator.dataSource || "Approved submissions",
+      assumptions: indicator.definition || "—",
+      baseline: indicator.baseline === null ? "—" : String(indicator.baseline),
+      target: String(indicator.target),
+      currentValue: String(indicator.current),
+      version: "Live",
+    }));
 }
 
 export function summarizeTargets(targets: IndicatorTarget[]): { averageAchievement: number; behind: number; onTrack: number } {
