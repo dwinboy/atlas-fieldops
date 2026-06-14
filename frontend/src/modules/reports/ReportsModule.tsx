@@ -71,6 +71,7 @@ import {
   buildReportMetricsExport,
   canExportReport,
   computeReportsSummary,
+  deriveReportKpis,
   exportStatusTone,
   filterReportsBySection,
   formatTone,
@@ -306,7 +307,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
   const scheduledReports = useMemo(() => (preview ? previewScheduledReports : []), [preview]);
   const reportAuditEvents = useMemo(() => (preview ? previewAuditEvents : []), [preview]);
-  const kpis = useMemo(() => (preview ? previewKpis : []), [preview]);
+  const kpis = useMemo(() => (preview ? previewKpis : deriveReportKpis(reports)), [preview, reports]);
   const builderSteps = useMemo(() => (preview ? previewBuilderSteps : []), [preview]);
   const summary = useMemo(
     () =>
@@ -699,7 +700,9 @@ function ReportsDashboard({
               ))}
             </div>
           ) : (
-            <Timeline records={[]} />
+            <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+              Generate a report to populate executive KPIs from your approved indicator metrics.
+            </div>
           )}
         </Panel>
       </div>

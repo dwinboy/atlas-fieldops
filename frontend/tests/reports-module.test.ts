@@ -5,6 +5,7 @@ import {
   buildReportMetricsExport,
   canExportReport,
   computeReportsSummary,
+  deriveReportKpis,
   filterReportsBySection,
   kpiAchievement,
   summarizeReportQuery,
@@ -57,6 +58,41 @@ describe("Reports module helpers", () => {
     expect(payload).not.toBeNull();
     expect(payload?.id).toBe(previewReports[0].id);
     expect(payload?.metrics).toEqual(metrics);
+  });
+
+  it("derives executive KPIs from generated report metrics, keeping the highest value per indicator", () => {
+    const baseMetrics = {
+      projects: 1,
+      submissions_total: 10,
+      submissions_approved: 8,
+      beneficiaries: 5,
+      period_start: null,
+      period_end: null,
+      generated_at: "2026-06-01T00:00:00Z",
+    };
+    const reportA = {
+      ...previewReports[0],
+      metrics: {
+        ...baseMetrics,
+        indicators: [
+          { code: "IND.A", name: "Reach", unit: "", baseline_value: 0, target_value: 100, current_value: 40, progress_percent: 40 },
+          { code: "IND.B", name: "Coverage", unit: "%", baseline_value: 0, target_value: 100, current_value: 90, progress_percent: 90 },
+        ],
+      },
+    };
+    const reportB = {
+      ...previewReports[1],
+      metrics: {
+        ...baseMetrics,
+        // Same indicator IND.A appears with a higher computed value.
+        indicators: [{ code: "IND.A", name: "Reach", unit: "", baseline_value: 0, target_value: 100, current_value: 70, progress_percent: 70 }],
+      },
+    };
+
+    const kpis = deriveReportKpis([reportA, reportB]);
+    expect(kpis.map((kpi) => kpi.drillDown)).toEqual(["IND.B", "IND.A"]); // sorted by value desc
+    expect(kpis.find((kpi) => kpi.drillDown === "IND.A")?.value).toBe(70); // highest value kept
+    expect(deriveReportKpis([{ ...previewReports[0], metrics: undefined }])).toEqual([]);
   });
 
   it("filters and summarizes report builder query context", () => {
