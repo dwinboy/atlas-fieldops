@@ -138,6 +138,7 @@ export function Select({
       setMenuStyle({
         left: rect.left,
         maxHeight,
+        pointerEvents: "auto",
         position: "fixed",
         top: openUp
           ? Math.max(viewportGap, rect.top - maxHeight - 8)
@@ -246,6 +247,7 @@ export function Select({
             <div
               className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
               id={menuId}
+              onPointerDown={(event) => event.stopPropagation()}
               ref={menuRef}
               role="listbox"
               style={menuStyle}
