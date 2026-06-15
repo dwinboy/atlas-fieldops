@@ -56,10 +56,14 @@ import {
   type CurrentPrincipal,
   type CustomDashboardCreate,
   type CustomDashboardRead,
+  type DataFormRead,
+  type DataQualitySignalRead,
   type DonorReportIndicatorMetric,
   type DonorReportMetrics,
   type DonorReportRead,
+  type IndicatorRead,
   type ProjectListItemRead,
+  type SubmissionRead,
 } from "@/lib/api";
 import {
   getActiveFormPerformance,
@@ -85,6 +89,9 @@ import {
 import { DashboardWidgetBody, type DashboardWidgetData } from "@/modules/reports/DashboardWidgets";
 import { widgetTypeIcons, type WidgetType } from "@/modules/reports/data";
 import { progressTone } from "@/modules/indicators/utils";
+import { previewForms } from "@/modules/forms/data";
+import { previewIndicators } from "@/modules/indicators/data";
+import { previewSubmissions } from "@/modules/submissions/data";
 import {
   previewAuditEvents,
   previewBuilderSteps,
@@ -146,6 +153,68 @@ function isPreview(token: string | null): boolean {
 }
 
 const EMPTY_ARRAY: never[] = [];
+
+const previewDashboardForms: DataFormRead[] = previewForms.map((form) => ({
+  id: form.id,
+  project_id: form.project_id ?? null,
+  survey_id: null,
+  name: form.name,
+  slug: form.slug,
+  description: form.description ?? null,
+  form_type: null,
+  status: form.status,
+  current_version: form.version,
+  controls_json: form.controls_json,
+  is_active: form.status !== "archived",
+}));
+
+const previewDashboardIndicators: IndicatorRead[] = previewIndicators.map((indicator) => ({
+  id: indicator.id,
+  project_id: indicator.project === "Agricultural Resilience Program" ? "preview-agriculture" : null,
+  survey_id: null,
+  code: indicator.code,
+  name: indicator.name,
+  description: indicator.definition,
+  unit: indicator.unit,
+  reporting_frequency: indicator.frequency,
+  baseline_value: indicator.baseline ?? 0,
+  target_value: indicator.target ?? 0,
+  current_value: indicator.current ?? 0,
+  sdg_code: null,
+  formula: indicator.calculationMethod,
+  category: indicator.type,
+  disaggregation_fields: indicator.disaggregation,
+  is_active: true,
+  progress_percent: indicator.target ? Math.round(((indicator.current ?? 0) / indicator.target) * 100) : 0,
+  calculated_at: indicator.lastCalculatedAt,
+}));
+
+const previewDashboardQualitySignals: DataQualitySignalRead[] = [
+  {
+    id: "preview-quality-duplicate",
+    submission_id: previewSubmissions[1]?.id ?? null,
+    beneficiary_id: null,
+    signal_type: "duplicate",
+    severity: "critical",
+    confidence: 0.91,
+    summary: "Possible duplicate entity found in review data",
+    status: "open",
+    evidence_json: { project_name: "Agricultural Resilience Program", recommended_action: "Review duplicate candidate" },
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: "preview-quality-gps",
+    submission_id: previewSubmissions[0]?.id ?? null,
+    beneficiary_id: null,
+    signal_type: "gps_issue",
+    severity: "high",
+    confidence: 0.84,
+    summary: "Submission GPS accuracy needs review",
+    status: "open",
+    evidence_json: { project_name: "Agricultural Resilience Program", recommended_action: "Check location evidence" },
+    created_at: new Date().toISOString(),
+  },
+];
 
 function reportSectionFromPath(pathname: string | null): ReportsSection {
   const match = reportsSections.find((section) => section.route === pathname);
@@ -1226,10 +1295,10 @@ function DashboardsSection({
   });
 
   const customDashboards = customDashboardsQuery.data ?? EMPTY_ARRAY;
-  const indicators = indicatorsQuery.data ?? EMPTY_ARRAY;
-  const forms = formsQuery.data ?? EMPTY_ARRAY;
-  const submissions = submissionsQuery.data ?? EMPTY_ARRAY;
-  const qualitySignals = qualitySignalsQuery.data ?? EMPTY_ARRAY;
+  const indicators = preview ? previewDashboardIndicators : indicatorsQuery.data ?? EMPTY_ARRAY;
+  const forms = preview ? previewDashboardForms : formsQuery.data ?? EMPTY_ARRAY;
+  const submissions: SubmissionRead[] = preview ? previewSubmissions : submissionsQuery.data ?? EMPTY_ARRAY;
+  const qualitySignals = preview ? previewDashboardQualitySignals : qualitySignalsQuery.data ?? EMPTY_ARRAY;
 
   const allDonorReports = useMemo(() => reports.filter((report) => report.metrics), [reports]);
 
@@ -1355,6 +1424,15 @@ function DashboardsSection({
   }
 
   function handleSave(payload: CustomDashboardCreate): void {
+    if (preview) {
+      setBuilderOpen(false);
+      pushToast({
+        description: `"${payload.name}" was built with review data. Sign in to save dashboards permanently.`,
+        title: "Preview dashboard tested",
+        tone: "success",
+      });
+      return;
+    }
     if (editingDashboard) {
       updateMutation.mutate({ id: editingDashboard.id, payload });
     } else {
@@ -1450,16 +1528,14 @@ function DashboardsSection({
           title="Reports powering dashboards"
         />
       </Panel>
-      {!preview ? (
-        <DashboardBuilder
-          dashboard={editingDashboard}
-          data={widgetData}
-          onOpenChange={setBuilderOpen}
-          onSave={handleSave}
-          open={builderOpen}
-          saving={createMutation.isPending || updateMutation.isPending}
-        />
-      ) : null}
+      <DashboardBuilder
+        dashboard={editingDashboard}
+        data={widgetData}
+        onOpenChange={setBuilderOpen}
+        onSave={handleSave}
+        open={builderOpen}
+        saving={!preview && (createMutation.isPending || updateMutation.isPending)}
+      />
       {viewingDashboard ? (
         <Modal contentClassName="max-w-6xl" onOpenChange={() => setViewingDashboard(null)} open={Boolean(viewingDashboard)} title={viewingDashboard.name}>
           <div className="max-h-[75vh] overflow-y-auto p-5 product-scrollbar">
