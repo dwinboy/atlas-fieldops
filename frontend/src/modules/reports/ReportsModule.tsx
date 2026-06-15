@@ -1032,17 +1032,19 @@ function CustomReportBuilder({
         route="/reports/custom"
         title="Custom Reports"
       />
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <Panel title="Report Builder Steps">
           {builderSteps.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-1.5">
               {builderSteps.map((step, index) => (
-                <div className="rounded-xl border bg-background p-3" key={step.id}>
-                  <div className="flex items-center gap-2">
+                <div className="rounded-lg border bg-background/80 px-2.5 py-2" key={step.id}>
+                  <div className="flex items-start gap-2">
                     <Badge tone={step.status === "Complete" ? "success" : step.status === "Current" ? "accent" : "neutral"}>{index + 1}</Badge>
-                    <p className="text-sm font-semibold">{step.label}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold leading-5">{step.label}</p>
+                      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
+                    </div>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
                 </div>
               ))}
             </div>
