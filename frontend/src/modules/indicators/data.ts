@@ -149,15 +149,14 @@ export const indicatorSections: {
   label: string;
   route: string;
   description: string;
-  status?: "planned";
 }[] = [
   { id: "dashboard", label: "Overview", route: "/indicators", description: "Performance overview, category breakdown, target achievement, deadlines, and metrics requiring attention." },
   { id: "library", label: "Metric Library", route: "/indicators/library", description: "Create, edit, archive, import, export, and link reusable metrics or KPIs to projects and form questions." },
   { id: "targets", label: "Targets", route: "/indicators/targets", description: "Set annual, quarterly, monthly, lifetime, location-specific, and disaggregated metric targets." },
   { id: "baselines", label: "Baselines", route: "/indicators/baselines", description: "Add, import, version, compare, and lock approved baseline values." },
   { id: "reports", label: "Metric Reports", route: "/indicators/reports", description: "Prepare metric-specific reporting and link formal outputs to the Reports module." },
-  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "Manage Goal -> Impact -> Outcomes -> Outputs -> Activities -> Metrics with progress by result level.", status: "planned" },
-  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, and targets.", status: "planned" },
+  { id: "results-framework", label: "Results Framework", route: "/indicators/results-framework", description: "View the live results structure derived from project metrics, result areas, and progress by level." },
+  { id: "logframes", label: "Logframes", route: "/indicators/logframes", description: "Review logframe-style rows generated from metrics, baselines, targets, verification sources, and assumptions." },
 ];
 
 const nowIso = new Date().toISOString();

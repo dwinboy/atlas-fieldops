@@ -21,8 +21,9 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -179,6 +180,59 @@ function resolvedCategory(draft: IndicatorDraft): string {
   return draft.category;
 }
 
+function deriveResultsFramework(indicators: IndicatorRecord[]): ResultsFrameworkNode[] {
+  const projects = Array.from(new Set(indicators.map((indicator) => indicator.project || "Organization-wide")));
+  return projects.flatMap((project, projectIndex) => {
+    const projectIndicators = indicators.filter((indicator) => (indicator.project || "Organization-wide") === project);
+    const projectProgress = projectIndicators.length
+      ? Math.round(projectIndicators.reduce((sum, indicator) => sum + progressPercent(indicator.current, indicator.baseline, indicator.target), 0) / projectIndicators.length)
+      : 0;
+    const resultAreas = Array.from(new Set(projectIndicators.map((indicator) => indicator.resultArea || "Operational results")));
+    const projectNode: ResultsFrameworkNode = {
+      id: `framework-project-${projectIndex}`,
+      indicators: projectIndicators.map((indicator) => indicator.code),
+      level: "Goal",
+      parentId: null,
+      progress: projectProgress,
+      project,
+      status: projectProgress >= 80 ? "On Track" : "Behind Target",
+      title: `${project} results goal`,
+    };
+    const areaNodes: ResultsFrameworkNode[] = resultAreas.map((area, areaIndex) => {
+      const areaIndicators = projectIndicators.filter((indicator) => (indicator.resultArea || "Operational results") === area);
+      const progress = areaIndicators.length
+        ? Math.round(areaIndicators.reduce((sum, indicator) => sum + progressPercent(indicator.current, indicator.baseline, indicator.target), 0) / areaIndicators.length)
+        : 0;
+      return {
+        id: `framework-project-${projectIndex}-area-${areaIndex}`,
+        indicators: areaIndicators.map((indicator) => indicator.code),
+        level: areaIndex === 0 ? "Outcome" : "Output",
+        parentId: projectNode.id,
+        progress,
+        project,
+        status: progress >= 80 ? "On Track" : "Behind Target",
+        title: area,
+      };
+    });
+    return [projectNode, ...areaNodes];
+  });
+}
+
+function deriveLogframeRows(indicators: IndicatorRecord[]): LogframeRow[] {
+  return indicators.map((indicator) => ({
+    assumptions: "Project teams continue collecting approved source data on schedule.",
+    baseline: indicator.baseline === null ? "Baseline missing" : `${indicator.baseline} ${indicator.unit}`,
+    currentValue: `${indicator.current} ${indicator.unit}`,
+    id: `logframe-${indicator.id}`,
+    indicators: [indicator.code],
+    meansOfVerification: indicator.dataSource ?? "Approved submissions and metric calculation evidence",
+    narrativeSummary: `${indicator.type}: ${indicator.resultArea || indicator.name}`,
+    project: indicator.project,
+    target: `${indicator.target} ${indicator.unit}`,
+    version: "live",
+  }));
+}
+
 type FormFieldOption = { key: string; label: string; type: string };
 
 function flattenFormFields(schema: DataFormSchemaRead | null | undefined): FormFieldOption[] {
@@ -196,6 +250,11 @@ function flattenFormFields(schema: DataFormSchemaRead | null | undefined): FormF
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
+}
+
+function indicatorSectionFromPath(pathname: string | null): IndicatorSection {
+  const match = indicatorSections.find((section) => section.route === pathname);
+  return match?.id ?? "dashboard";
 }
 
 function hasAnyPermission(principal: CurrentPrincipal | null | undefined, permissions: string[]): boolean {
@@ -291,7 +350,9 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 }
 
 export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
-  const [activeSection, setActiveSection] = useState<IndicatorSection>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<IndicatorSection>(() => indicatorSectionFromPath(pathname));
   const [selectedIndicatorId, setSelectedIndicatorId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<IndicatorDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
@@ -322,9 +383,26 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const indicatorAuditEvents = preview ? sampleIndicatorAuditEvents : [];
   const indicatorDataSources = preview ? sampleIndicatorDataSources : [];
   const logframeRows = preview ? previewLogframeRows : [];
+  const liveResultFramework = useMemo(() => deriveResultsFramework(indicators), [indicators]);
+  const liveLogframeRows = useMemo(() => deriveLogframeRows(indicators), [indicators]);
   const summary = useMemo(() => computeIndicatorSummary(indicators), [indicators]);
   const visibleIndicators = useMemo(() => filterIndicatorsBySection(indicators, activeSection), [activeSection, indicators]);
   const selectedIndicator = indicators.find((indicator) => indicator.id === selectedIndicatorId) ?? null;
+
+  useEffect(() => {
+    const routeSection = indicatorSectionFromPath(pathname);
+    if (routeSection !== activeSection) {
+      setActiveSection(routeSection);
+      setSelectedIndicatorId(null);
+    }
+  }, [activeSection, pathname]);
+
+  function selectIndicatorSection(section: IndicatorSection): void {
+    setActiveSection(section);
+    setSelectedIndicatorId(null);
+    const route = indicatorSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
 
   function openIndicator(indicator: IndicatorRecord, tab: IndicatorDetailTab = "Overview"): void {
     setSelectedIndicatorId(indicator.id);
@@ -411,7 +489,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       setLocalIndicators((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setSelectedIndicatorId(created.id);
       setActiveDetailTab("Overview");
-      setActiveSection("library");
+      selectIndicatorSection("library");
       setCreationOpen(false);
       setIndicatorDraft(defaultIndicatorDraft);
       await queryClient.invalidateQueries({ queryKey: ["indicators-module"] });
@@ -428,8 +506,14 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
     mutationFn: () =>
       updateIndicator(token ?? "", editingIndicatorId ?? "", {
         baseline_value: numberOrZero(indicatorDraft.baseline),
+        category: resolvedCategory(indicatorDraft),
         current_value: numberOrZero(indicatorDraft.current),
         description: indicatorDraft.definition || null,
+        disaggregation_fields: indicatorDraft.disaggregationFields,
+        formula:
+          (indicatorDraft.manualFormula
+            ? indicatorDraft.calculationMethod.trim()
+            : composeFormula(indicatorDraft.operation, indicatorDraft.fieldVariable) || indicatorDraft.calculationMethod.trim()) || null,
         name: indicatorDraft.name.trim(),
         reporting_frequency: apiFrequency(indicatorDraft.frequency),
         sdg_code: indicatorDraft.resultArea || null,
@@ -465,11 +549,15 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
     setIndicatorDraft({
       ...defaultIndicatorDraft,
       baseline: String(indicator.baseline ?? 0),
+      calculationMethod: indicator.calculationMethod,
+      category: indicator.type,
       code: indicator.code,
       current: String(indicator.current ?? 0),
+      dataSource: indicator.dataSource ?? "",
       definition: indicator.definition,
       frequency: indicator.frequency,
       name: indicator.name,
+      responsiblePerson: indicator.responsiblePerson,
       resultArea: indicator.resultArea === "Results framework" ? "" : indicator.resultArea,
       target: String(indicator.target ?? 0),
       unit: indicator.unit,
@@ -496,7 +584,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       setLocalIndicators((current) => [created, ...current]);
       setSelectedIndicatorId(created.id);
       setActiveDetailTab("Overview");
-      setActiveSection("library");
+      selectIndicatorSection("library");
       setCreationOpen(false);
       setIndicatorDraft(defaultIndicatorDraft);
       pushToast({ title: "Metric added", description: `${created.code} was added to this preview workspace.`, tone: "success" });
@@ -543,16 +631,10 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
                   : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => {
-                setActiveSection(section.id);
-                setSelectedIndicatorId(null);
-              }}
+              onClick={() => selectIndicatorSection(section.id)}
               type="button"
             >
               {section.label}
-              {section.status === "planned" ? (
-                <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge>
-              ) : null}
             </button>
           ))}
         </div>
@@ -591,7 +673,8 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         <IndicatorsDashboard
           auditEvents={indicatorAuditEvents}
           indicators={indicators}
-          onOpenAttention={() => setActiveSection("library")}
+          onOpenAttention={() => selectIndicatorSection("library")}
+          onOpenSection={selectIndicatorSection}
           onOpenReports={() => setActiveView("analytics")}
           preview={preview}
           resultFramework={resultFramework}
@@ -604,16 +687,40 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
         <IndicatorLibrary indicators={visibleIndicators} loading={indicatorsQuery.isFetching} onCreateIndicator={openCreateIndicator} onImportIndicators={() => setActionResult("Metric import will use the governed import center and audit every applied row.")} onOpenIndicator={openIndicator} />
       ) : null}
       {!selectedIndicator && activeSection === "results-framework" ? (
-        preview ? <ResultsFramework resultFramework={resultFramework} /> : <ComingSoonSection sectionId="results-framework" />
+        <ResultsFramework
+          onCreateMetric={openCreateIndicator}
+          preview={preview}
+          resultFramework={preview ? resultFramework : liveResultFramework}
+        />
       ) : null}
       {!selectedIndicator && activeSection === "logframes" ? (
-        preview ? <Logframes rows={logframeRows} /> : <ComingSoonSection sectionId="logframes" />
+        <Logframes
+          onCreateMetric={openCreateIndicator}
+          preview={preview}
+          rows={preview ? logframeRows : liveLogframeRows}
+        />
       ) : null}
       {!selectedIndicator && activeSection === "targets" ? (
-        preview ? <Targets targets={indicatorTargets} /> : <IndicatorTargetsOverview indicators={indicators} />
+        preview ? (
+          <Targets targets={indicatorTargets} />
+        ) : (
+          <IndicatorTargetsOverview
+            canEdit={canManageIndicators}
+            indicators={indicators}
+            onEditIndicator={openEditIndicator}
+          />
+        )
       ) : null}
       {!selectedIndicator && activeSection === "baselines" ? (
-        preview ? <Baselines baselines={indicatorBaselines} /> : <IndicatorBaselinesOverview indicators={indicators} />
+        preview ? (
+          <Baselines baselines={indicatorBaselines} />
+        ) : (
+          <IndicatorBaselinesOverview
+            canEdit={canManageIndicators}
+            indicators={indicators}
+            onEditIndicator={openEditIndicator}
+          />
+        )
       ) : null}
       {!selectedIndicator && activeSection === "reports" ? (
         preview ? (
@@ -647,6 +754,7 @@ function IndicatorsDashboard({
   auditEvents,
   indicators,
   onOpenAttention,
+  onOpenSection,
   onOpenReports,
   preview,
   resultFramework,
@@ -656,6 +764,7 @@ function IndicatorsDashboard({
   auditEvents: IndicatorAuditEvent[];
   indicators: IndicatorRecord[];
   onOpenAttention: () => void;
+  onOpenSection: (section: IndicatorSection) => void;
   onOpenReports: () => void;
   preview: boolean;
   resultFramework: ResultsFrameworkNode[];
@@ -666,16 +775,17 @@ function IndicatorsDashboard({
   const categoryCards = summary.topCategories.map((category, index) => ({
     icon: CATEGORY_ICONS[index] ?? ListChecks,
     label: `${category.label} Metrics`,
+    section: "library" as IndicatorSection,
     value: category.count,
   }));
-  const cards: { icon: LucideIcon; label: string; tone?: BadgeProps["tone"]; value: string | number }[] = [
-    { icon: BarChart3, label: "Total Metrics", value: summary.totalIndicators },
+  const cards: { icon: LucideIcon; label: string; section: IndicatorSection; tone?: BadgeProps["tone"]; value: string | number }[] = [
+    { icon: BarChart3, label: "Total Metrics", section: "library", value: summary.totalIndicators },
     ...categoryCards,
-    { icon: CheckCircle2, label: "Metrics On Track", tone: "success", value: summary.onTrack },
-    { icon: FileSpreadsheet, label: "Metrics Behind Target", tone: summary.behindTarget ? "warning" : "success", value: summary.behindTarget },
-    { icon: Database, label: "Without Baseline", tone: summary.withoutBaseline ? "danger" : "success", value: summary.withoutBaseline },
-    { icon: Link2, label: "Without Data Source", tone: summary.withoutDataSource ? "danger" : "success", value: summary.withoutDataSource },
-    { icon: History, label: "Reporting Periods Due", tone: summary.reportingPeriodsDue ? "warning" : "neutral", value: summary.reportingPeriodsDue },
+    { icon: CheckCircle2, label: "Metrics On Track", section: "library", tone: "success", value: summary.onTrack },
+    { icon: FileSpreadsheet, label: "Metrics Behind Target", section: "targets", tone: summary.behindTarget ? "warning" : "success", value: summary.behindTarget },
+    { icon: Database, label: "Without Baseline", section: "baselines", tone: summary.withoutBaseline ? "danger" : "success", value: summary.withoutBaseline },
+    { icon: Link2, label: "Without Data Source", section: "library", tone: summary.withoutDataSource ? "danger" : "success", value: summary.withoutDataSource },
+    { icon: History, label: "Reporting Periods Due", section: "reports", tone: summary.reportingPeriodsDue ? "warning" : "neutral", value: summary.reportingPeriodsDue },
   ];
   const attention = indicators.filter((indicator) => indicator.status !== "On Track").slice(0, 4);
 
@@ -683,7 +793,7 @@ function IndicatorsDashboard({
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-primary/5" key={card.label} onClick={onOpenAttention} type="button">
+          <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/35 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30" key={card.label} onClick={() => onOpenSection(card.section)} type="button">
             <div className="flex items-center justify-between gap-3">
               <card.icon aria-hidden="true" className="text-primary" size={18} />
               {card.tone ? <Badge tone={card.tone}>RBM</Badge> : null}
@@ -1005,20 +1115,50 @@ function CreateIndicatorModal({ canSubmit, draft, editing = false, onChange, onO
   );
 }
 
-function ResultsFramework({ resultFramework }: { resultFramework: ResultsFrameworkNode[] }) {
+function ResultsFramework({
+  onCreateMetric,
+  preview,
+  resultFramework,
+}: {
+  onCreateMetric: () => void;
+  preview: boolean;
+  resultFramework: ResultsFrameworkNode[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [nodes, setNodes] = useState<ResultsFrameworkNode[]>(resultFramework);
+  function addResultLevel(): void {
+    const parent = nodes.find((node) => node.level === "Outcome") ?? nodes[0];
+    const node: ResultsFrameworkNode = {
+      id: `result-draft-${Date.now()}`,
+      indicators: ["Draft metric"],
+      level: "Output",
+      parentId: parent?.id ?? null,
+      progress: 0,
+      project: parent?.project ?? "Current project",
+      status: "Needs Baseline",
+      title: "Draft result level",
+    };
+    setNodes((current) => [...current, node]);
+    pushToast({ description: "Draft result level added. Link it to a metric and review the project results language before approval.", title: "Result level added", tone: "success" });
+  }
   return (
     <section className="space-y-4">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect a results-framework editing service to add goal, impact, outcome, output, or activity levels. This control is a preview for now.", title: "Adding result levels isn't available yet", tone: "warning" })} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>}
-        description="Manage the logical structure from Goal to Impact, Outcomes, Outputs, Activities, and Metrics without duplicating project setup."
+        action={
+          preview ? (
+            <Button onClick={addResultLevel} variant="primary"><GitBranch aria-hidden="true" /> Add result level</Button>
+          ) : (
+            <Button onClick={onCreateMetric} variant="primary"><BookOpenCheck aria-hidden="true" /> Add metric</Button>
+          )
+        }
+        description="View the live results structure derived from projects, result areas, and metrics. Add or edit metrics to improve the framework."
         route="/indicators/results-framework"
         title="Results Framework"
       />
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel title="Tree View">
           <div className="space-y-3">
-            {resultFramework.map((node) => (
+            {nodes.map((node) => (
               <div className={cn("rounded-xl border bg-background/70 p-3", node.level !== "Goal" && "ml-4")} key={node.id}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1034,7 +1174,7 @@ function ResultsFramework({ resultFramework }: { resultFramework: ResultsFramewo
         </Panel>
         <Panel title="Matrix / Card View">
           <div className="grid gap-3 md:grid-cols-2">
-            {resultFramework.map((node) => (
+            {nodes.map((node) => (
               <article className="rounded-xl border bg-background/70 p-3" key={node.id}>
                 <div className="flex items-center justify-between">
                   <Badge tone="neutral">{node.level}</Badge>
@@ -1051,8 +1191,34 @@ function ResultsFramework({ resultFramework }: { resultFramework: ResultsFramewo
   );
 }
 
-function Logframes({ rows }: { rows: LogframeRow[] }) {
+function Logframes({
+  onCreateMetric,
+  preview,
+  rows,
+}: {
+  onCreateMetric: () => void;
+  preview: boolean;
+  rows: LogframeRow[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [logframeRows, setLogframeRows] = useState<LogframeRow[]>(rows);
+  function createLogframe(): void {
+    const template = logframeRows[0];
+    const row: LogframeRow = {
+      assumptions: "Confirm project assumptions and risks before using this row in a formal report.",
+      baseline: "To be defined",
+      currentValue: "Not calculated",
+      id: `logframe-draft-${Date.now()}`,
+      indicators: ["Draft metric"],
+      meansOfVerification: "Approved submissions, source records, and manager verification.",
+      narrativeSummary: "Draft output: define the result statement",
+      project: template?.project ?? "Current project",
+      target: "To be defined",
+      version: "draft",
+    };
+    setLogframeRows((current) => [row, ...current]);
+    pushToast({ description: "Draft logframe row added. Complete the metric, verification source, target, and assumptions before approval.", title: "Logframe row created", tone: "success" });
+  }
   const columns: TableColumn<LogframeRow>[] = [
     { key: "summary", header: "Narrative Summary", value: (row) => row.narrativeSummary, render: (row) => <span className="font-medium">{row.narrativeSummary}</span> },
     { key: "indicators", header: "Metrics", value: (row) => row.indicators.join(" "), render: (row) => row.indicators.join(", ") },
@@ -1064,14 +1230,44 @@ function Logframes({ rows }: { rows: LogframeRow[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a logframe-authoring service to create funder or client logical frameworks. This control is a preview for now.", title: "Creating logframes isn't available yet", tone: "warning" })} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>} description="Manage funder or client logical frameworks with narrative summaries, metrics, verification, assumptions, baselines, targets, current values, exports, and versions." route="/indicators/logframes" title="Logframes" />
-      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={rows} searchLabel="Search logframe rows, projects, metrics" title="Logframe rows" />
+      <SectionHeader
+        action={
+          preview ? (
+            <Button onClick={createLogframe} variant="primary"><FileSpreadsheet aria-hidden="true" /> Create logframe</Button>
+          ) : (
+            <Button onClick={onCreateMetric} variant="primary"><BookOpenCheck aria-hidden="true" /> Add metric</Button>
+          )
+        }
+        description="Review a live logframe-style table generated from metric definitions, baselines, targets, current values, verification sources, and assumptions."
+        route="/indicators/logframes"
+        title="Logframes"
+      />
+      <DataTable columns={columns} emptyLabel="No logframe rows yet" rows={logframeRows} searchLabel="Search logframe rows, projects, metrics" title="Logframe rows" />
     </section>
   );
 }
 
 function Targets({ targets }: { targets: IndicatorTarget[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [rows, setRows] = useState<IndicatorTarget[]>(targets);
+  function addTarget(): void {
+    const template = rows[0];
+    const row: IndicatorTarget = {
+      actualValue: 0,
+      id: `target-draft-${Date.now()}`,
+      indicatorCode: template?.indicatorCode ?? "NEW.METRIC",
+      indicatorId: template?.indicatorId ?? "draft-indicator",
+      location: template?.location ?? "All locations",
+      period: "Next reporting period",
+      project: template?.project ?? "Current project",
+      responsibleTeam: template?.responsibleTeam ?? "Data team",
+      status: "Needs Baseline",
+      targetValue: template?.targetValue ?? 100,
+      type: "Quarterly",
+    };
+    setRows((current) => [row, ...current]);
+    pushToast({ description: "Draft target added to the preview table. In live workspaces, use the metric edit flow to save governed target values.", title: "Target added", tone: "success" });
+  }
   const columns: TableColumn<IndicatorTarget>[] = [
     { key: "indicator", header: "Metric", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -1083,13 +1279,21 @@ function Targets({ targets }: { targets: IndicatorTarget[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a targets service to set annual, quarterly, monthly, lifetime, or location-specific targets. This control is a preview for now.", title: "Setting targets isn't available yet", tone: "warning" })} variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
-      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={targets} searchLabel="Search targets, locations, projects" title="Metric targets" />
+      <SectionHeader action={<Button onClick={addTarget} variant="primary"><Target aria-hidden="true" /> Set target</Button>} description="Manage annual, quarterly, monthly, lifetime, location-specific, and disaggregated targets with actual-vs-target comparison." route="/indicators/targets" title="Targets" />
+      <DataTable columns={columns} emptyLabel="No targets configured yet" rows={rows} searchLabel="Search targets, locations, projects" title="Metric targets" />
     </section>
   );
 }
 
-function IndicatorTargetsOverview({ indicators }: { indicators: IndicatorRecord[] }) {
+function IndicatorTargetsOverview({
+  canEdit,
+  indicators,
+  onEditIndicator,
+}: {
+  canEdit: boolean;
+  indicators: IndicatorRecord[];
+  onEditIndicator: (indicator: IndicatorRecord) => void;
+}) {
   const columns: TableColumn<IndicatorRecord>[] = [
     { key: "indicator", header: "Metric", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -1097,27 +1301,67 @@ function IndicatorTargetsOverview({ indicators }: { indicators: IndicatorRecord[
     { key: "current", header: "Current", align: "right", value: (row) => String(row.current), render: (row) => row.current },
     { key: "target", header: "Target", align: "right", value: (row) => String(row.target), render: (row) => row.target },
     { key: "achievement", header: "Achievement", align: "right", value: (row) => String(progressPercent(row.current, row.baseline, row.target)), render: (row) => <Badge tone={progressTone(progressPercent(row.current, row.baseline, row.target))}>{progressPercent(row.current, row.baseline, row.target)}%</Badge> },
+    { key: "readiness", header: "Readiness", value: (row) => row.target > 0 ? "Target set" : "Missing target", render: (row) => <Badge tone={row.target > 0 ? "success" : "warning"}>{row.target > 0 ? "Target set" : "Missing target"}</Badge> },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={indicatorTone(row.status)}>{row.status}</Badge> },
+    {
+      key: "actions",
+      header: "Action",
+      value: (row) => row.id,
+      render: (row) => (
+        <Button disabled={!canEdit} onClick={() => onEditIndicator(row)} size="sm" variant="secondary">
+          <Target aria-hidden="true" />
+          Set target
+        </Button>
+      ),
+    },
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader description="Each metric's configured target compared against its current calculated value. Period- and location-specific target tracking is on our roadmap." route="/indicators/targets" title="Targets" />
+      <SectionHeader
+        description="Set target values on live metrics, compare actual progress, and identify metrics that cannot report results yet."
+        route="/indicators/targets"
+        title="Targets"
+      />
       <DataTable columns={columns} emptyLabel="No metrics configured yet" rows={indicators} searchLabel="Search metrics, projects" title="Metric targets" />
     </section>
   );
 }
 
-function IndicatorBaselinesOverview({ indicators }: { indicators: IndicatorRecord[] }) {
+function IndicatorBaselinesOverview({
+  canEdit,
+  indicators,
+  onEditIndicator,
+}: {
+  canEdit: boolean;
+  indicators: IndicatorRecord[];
+  onEditIndicator: (indicator: IndicatorRecord) => void;
+}) {
   const columns: TableColumn<IndicatorRecord>[] = [
     { key: "indicator", header: "Metric", value: (row) => row.name, render: (row) => <div><p className="font-medium">{row.name}</p><p className="font-mono text-xs text-muted-foreground">{row.code}</p></div> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
     { key: "baseline", header: "Baseline", align: "right", value: (row) => String(row.baseline ?? ""), render: (row) => row.baseline === null ? <Badge tone="warning">Missing</Badge> : `${row.baseline} ${row.unit}` },
     { key: "current", header: "Current", align: "right", value: (row) => String(row.current), render: (row) => `${row.current} ${row.unit}` },
+    { key: "source", header: "Source", value: (row) => row.dataSource ?? "", render: (row) => row.dataSource ?? <Badge tone="warning">Needs source</Badge> },
     { key: "status", header: "Status", value: (row) => (row.baseline === null ? "Needs baseline" : "Baseline set"), render: (row) => <Badge tone={row.baseline === null ? "warning" : "success"}>{row.baseline === null ? "Needs baseline" : "Baseline set"}</Badge> },
+    {
+      key: "actions",
+      header: "Action",
+      value: (row) => row.id,
+      render: (row) => (
+        <Button disabled={!canEdit} onClick={() => onEditIndicator(row)} size="sm" variant="secondary">
+          <Database aria-hidden="true" />
+          Set baseline
+        </Button>
+      ),
+    },
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader description="Baseline values configured on each metric, compared against the current calculated value. Versioned, multi-location baseline history is on our roadmap." route="/indicators/baselines" title="Baselines" />
+      <SectionHeader
+        description="Set baseline values and verify whether each metric has a linked approved-data source before it is used in reports."
+        route="/indicators/baselines"
+        title="Baselines"
+      />
       <DataTable columns={columns} emptyLabel="No metrics configured yet" rows={indicators} searchLabel="Search metrics, projects" title="Metric baselines" />
     </section>
   );
@@ -1125,6 +1369,27 @@ function IndicatorBaselinesOverview({ indicators }: { indicators: IndicatorRecor
 
 function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [rows, setRows] = useState<IndicatorBaseline[]>(baselines);
+  function addBaseline(): void {
+    const template = rows[0];
+    const row: IndicatorBaseline = {
+      confidenceLevel: "Medium",
+      date: new Date().toISOString().slice(0, 10),
+      id: `baseline-draft-${Date.now()}`,
+      indicatorCode: template?.indicatorCode ?? "NEW.METRIC",
+      indicatorId: template?.indicatorId ?? "draft-indicator",
+      location: template?.location ?? "All locations",
+      locked: false,
+      methodology: "Document the source, sample, and calculation method before approval.",
+      notes: "Draft baseline pending review.",
+      project: template?.project ?? "Current project",
+      source: "Manual baseline entry",
+      value: 0,
+      version: "draft",
+    };
+    setRows((current) => [row, ...current]);
+    pushToast({ description: "Draft baseline added to the preview table. In live workspaces, use the metric edit flow to save governed baseline values.", title: "Baseline added", tone: "success" });
+  }
   const columns: TableColumn<IndicatorBaseline>[] = [
     { key: "indicator", header: "Metric", value: (row) => row.indicatorCode, render: (row) => <span className="font-mono text-xs">{row.indicatorCode}</span> },
     { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
@@ -1136,8 +1401,8 @@ function Baselines({ baselines }: { baselines: IndicatorBaseline[] }) {
   ];
   return (
     <section className="space-y-4">
-      <SectionHeader action={<Button onClick={() => pushToast({ description: "Connect a baselines service to add, import, or version approved baseline values. This control is a preview for now.", title: "Adding baselines isn't available yet", tone: "warning" })} variant="primary"><Database aria-hidden="true" /> Add baseline</Button>} description="Add, import, version, compare, and lock approved baseline values with methodology, source, confidence level, and notes." route="/indicators/baselines" title="Baselines" />
-      <DataTable columns={columns} emptyLabel="No baselines configured yet" rows={baselines} searchLabel="Search baselines, projects, locations" title="Baseline values" />
+      <SectionHeader action={<Button onClick={addBaseline} variant="primary"><Database aria-hidden="true" /> Add baseline</Button>} description="Add, import, version, compare, and lock approved baseline values with methodology, source, confidence level, and notes." route="/indicators/baselines" title="Baselines" />
+      <DataTable columns={columns} emptyLabel="No baselines configured yet" rows={rows} searchLabel="Search baselines, projects, locations" title="Baseline values" />
     </section>
   );
 }
@@ -1529,18 +1794,4 @@ function ProgressBar({ value }: { value: number }) {
 
 function EmptyMini({ label }: { label: string }) {
   return <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{label}</div>;
-}
-
-function ComingSoonSection({ action, sectionId }: { action?: ReactNode; sectionId: IndicatorSection }) {
-  const meta = indicatorSections.find((section) => section.id === sectionId);
-  if (!meta) return null;
-  return (
-    <section className="space-y-4">
-      <SectionHeader action={action} description={meta.description} route={meta.route} title={meta.label} />
-      <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">On our roadmap</p>
-        <p className="mt-2 leading-6">{meta.label} is planned for a future release and isn&apos;t available in this workspace yet. {meta.description}</p>
-      </div>
-    </section>
-  );
 }

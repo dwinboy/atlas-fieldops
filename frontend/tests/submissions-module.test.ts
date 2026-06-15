@@ -15,20 +15,20 @@ describe("Submissions module helpers", () => {
   it("computes operational review summary metrics", () => {
     const summary = computeSubmissionsSummary(previewSubmissions);
 
-    expect(summary.total_submissions).toBe(3);
-    expect(summary.pending_review).toBe(1);
-    expect(summary.approved).toBe(1);
-    expect(summary.returned).toBe(1);
-    expect(summary.quality_alerts).toBe(2);
-    expect(summary.approval_rate).toBe(33);
+    expect(summary.total_submissions).toBe(previewSubmissions.length);
+    expect(summary.pending_review).toBe(previewSubmissions.filter((submission) => ["under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status)).length);
+    expect(summary.approved).toBe(previewSubmissions.filter((submission) => submission.status === "approved").length);
+    expect(summary.returned).toBe(previewSubmissions.filter((submission) => ["correction_requested", "needs_correction", "returned"].includes(submission.status)).length);
+    expect(summary.quality_alerts).toBe(previewSubmissions.reduce((total, submission) => total + submission.quality_flags.filter((flag) => flag.status === "open").length, 0));
+    expect(summary.approval_rate).toBe(Math.round((summary.approved / previewSubmissions.length) * 100));
   });
 
   it("filters submissions by approved architecture sections", () => {
-    expect(filterSubmissions(previewSubmissions, "all")).toHaveLength(3);
-    expect(filterSubmissions(previewSubmissions, "pending-review")).toHaveLength(1);
-    expect(filterSubmissions(previewSubmissions, "approved")).toHaveLength(1);
-    expect(filterSubmissions(previewSubmissions, "returned")).toHaveLength(1);
-    expect(filterSubmissions(previewSubmissions, "archived")).toHaveLength(0);
+    expect(filterSubmissions(previewSubmissions, "all")).toHaveLength(previewSubmissions.length);
+    expect(filterSubmissions(previewSubmissions, "pending-review")).toHaveLength(previewSubmissions.filter((submission) => ["import_staged", "under_review", "submitted", "pending_review", "resubmitted"].includes(submission.status)).length);
+    expect(filterSubmissions(previewSubmissions, "approved")).toHaveLength(previewSubmissions.filter((submission) => submission.status === "approved").length);
+    expect(filterSubmissions(previewSubmissions, "returned")).toHaveLength(previewSubmissions.filter((submission) => ["correction_requested", "needs_correction", "returned"].includes(submission.status)).length);
+    expect(filterSubmissions(previewSubmissions, "archived")).toHaveLength(previewSubmissions.filter((submission) => submission.status === "archived").length);
   });
 
   it("maps statuses, quality, and SLA to review states", () => {

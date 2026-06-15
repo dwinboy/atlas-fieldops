@@ -11,6 +11,7 @@ import {
   Layers,
   LocateFixed,
   Map,
+  MapPin,
   MapPinned,
   Maximize2,
   Navigation,
@@ -23,7 +24,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import type { Map as LeafletMapInstance } from "leaflet";
 import dynamic from "next/dynamic";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import type { ChangeEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
@@ -34,9 +36,12 @@ import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   listBeneficiaries,
+  listIndicators,
   listProjects,
   listSubmissions,
   type CurrentPrincipal,
+  type IndicatorRead,
+  type ProjectListItemRead,
 } from "@/lib/api";
 import { useSectorTerminology, type SectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
@@ -96,6 +101,7 @@ type MapViewerProps = {
   onBasemapChange: (basemap: MapBasemap) => void;
   onDrawModeChange: (active: boolean) => void;
   onFeatureSelect: (feature: MapFeatureRecord) => void;
+  onOpenFeatureSource: (feature: MapFeatureRecord) => void;
   onMapQueryChange: (query: string) => void;
   privacyVisibility: LayerVisibility;
   sectionInfo: { label: string; description: string };
@@ -104,7 +110,12 @@ type MapViewerProps = {
 
 const basemaps: MapBasemap[] = ["Light", "Streets", "Terrain", "Satellite"];
 
-const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "coverage-maps", "data-quality-maps"];
+const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "facility-maps", "coverage-maps", "indicator-maps", "data-quality-maps", "layers", "boundaries"];
+
+function sectionFromPath(pathname: string | null): MappingSection {
+  const match = mappingSections.find((section) => section.route === pathname);
+  return match?.id ?? "dashboard";
+}
 
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
   loading: () => (
@@ -133,8 +144,134 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   URL.revokeObjectURL(url);
 }
 
+function deriveLiveMapLayers(features: MapFeatureRecord[]): MapLayerRecord[] {
+  const categories = Array.from(new Set(features.map((feature) => feature.category)));
+  return categories.map((category) => {
+    const rows = features.filter((feature) => feature.category === category);
+    const hasCritical = rows.some((feature) => feature.status === "Critical");
+    const hasWarning = rows.some((feature) => feature.status === "Warning");
+    return {
+      createdAt: new Date().toISOString(),
+      description: `Auto-derived ${category.toLowerCase()} point layer from live GPS-tagged records.`,
+      featureCount: rows.length,
+      geometryType: "Point",
+      id: `live-layer-${category.toLowerCase()}`,
+      name: `${category} points`,
+      owner: "Atlas FieldOps",
+      source: "Live submissions and entity records",
+      status: hasCritical ? "Critical" : hasWarning ? "Warning" : "Healthy",
+      type: `${category} evidence`,
+      version: "live",
+      visibility: category === "Beneficiary" ? "Restricted" : "Internal",
+    };
+  });
+}
+
+function extensionFromFileName(fileName: string): string {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  return extension ? extension.toUpperCase() : "FILE";
+}
+
+function geometryFromFileName(fileName: string): MapLayerRecord["geometryType"] {
+  const normalized = fileName.toLowerCase();
+  if (normalized.endsWith(".csv")) return "Point";
+  if (normalized.endsWith(".kml")) return "LineString";
+  if (normalized.includes("boundary") || normalized.includes("polygon")) return "Polygon";
+  return "MultiPolygon";
+}
+
+function uploadedLayerFromFile(file: File): MapLayerRecord {
+  return {
+    createdAt: new Date().toISOString(),
+    description: `${file.name} has been selected in this workspace and is ready for GIS processing when the backend file service is connected.`,
+    featureCount: 0,
+    geometryType: geometryFromFileName(file.name),
+    id: `uploaded-layer-${file.name}-${file.lastModified}`,
+    name: file.name.replace(/\.[^.]+$/u, ""),
+    owner: "Current user",
+    source: `${extensionFromFileName(file.name)} upload`,
+    status: "Warning",
+    type: "Uploaded spatial layer",
+    version: "pending",
+    visibility: "Internal",
+  };
+}
+
+function uploadedBoundaryFromFile(file: File): BoundaryRecord {
+  const name = file.name.replace(/\.[^.]+$/u, "");
+  return {
+    code: `UPL-${String(file.lastModified).slice(-6)}`,
+    coveragePercent: 0,
+    geometryStatus: "Needs review",
+    id: `uploaded-boundary-${file.name}-${file.lastModified}`,
+    name,
+    parent: "Uploaded boundary file",
+    status: "Warning",
+    type: "Project Area",
+    updatedAt: new Date().toISOString(),
+    validationIssues: [`${extensionFromFileName(file.name)} file selected. Process geometry, validate overlap, and approve before formal reporting.`],
+    version: "pending",
+  };
+}
+
+function deriveLiveBoundaries(extents: ProjectExtent[]): BoundaryRecord[] {
+  return extents.map((extent, index) => ({
+    code: `EXT-${index + 1}`,
+    coveragePercent: Math.min(100, Math.max(1, extent.pointCount * 10)),
+    geometryStatus: "Needs review",
+    id: `live-boundary-${index}`,
+    name: `${extent.project} observed extent`,
+    parent: "Project GPS evidence",
+    status: extent.pointCount >= 10 ? "Healthy" : extent.pointCount >= 3 ? "Warning" : "Critical",
+    type: "Project Area",
+    updatedAt: new Date().toISOString(),
+    validationIssues: ["Derived from point extent; upload official boundary geometry for formal reporting."],
+    version: "derived",
+  }));
+}
+
+function deriveLiveIndicatorGeography({
+  indicators,
+  projectExtents,
+  projects,
+}: {
+  indicators: IndicatorRead[];
+  projectExtents: ProjectExtent[];
+  projects: ProjectListItemRead[];
+}): IndicatorGeography[] {
+  const projectNameById = new globalThis.Map(projects.map((project) => [project.id, project.name]));
+  const extentByProject = new globalThis.Map(projectExtents.map((extent) => [extent.project, extent]));
+  return indicators
+    .filter((indicator) => indicator.is_active)
+    .map((indicator) => {
+      const project = indicator.project_id ? projectNameById.get(indicator.project_id) ?? "Linked project" : "Organization-wide";
+      const extent = extentByProject.get(project);
+      return {
+        achievementPercent: indicator.progress_percent,
+        baseline: indicator.baseline_value,
+        current: indicator.current_value,
+        id: `live-indicator-${indicator.id}`,
+        indicator: indicator.name,
+        location: extent
+          ? `${extent.centroidLat.toFixed(4)}, ${extent.centroidLng.toFixed(4)} (${extent.pointCount} located record${extent.pointCount === 1 ? "" : "s"})`
+          : "No project GPS extent yet",
+        period: indicator.calculated_at ? new Date(indicator.calculated_at).toLocaleDateString() : indicator.reporting_frequency,
+        project,
+        target: indicator.target_value,
+      };
+    });
+}
+
+function categoryFromEntityType(entityType: string | null | undefined): MapFeatureRecord["category"] {
+  const normalized = (entityType ?? "").toLowerCase();
+  if (/(facility|clinic|hospital|school|water point|borehole|store|warehouse|site|asset)/.test(normalized)) return "Facility";
+  return "Beneficiary";
+}
+
 export function MappingModule({ principal, token }: MappingModuleProps) {
-  const [activeSection, setActiveSection] = useState<MappingSection>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<MappingSection>(() => sectionFromPath(pathname));
   const [basemap, setBasemap] = useState<MapBasemap>("Light");
   const [selectedFeature, setSelectedFeature] = useState<MapFeatureRecord | null>(null);
   const [mapResult, setMapResult] = useState("");
@@ -162,6 +299,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     enabled: Boolean(token && !preview),
     queryFn: () => listProjects(token ?? ""),
     queryKey: ["mapping", "projects", token],
+  });
+  const indicatorsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listIndicators(token ?? ""),
+    queryKey: ["mapping", "indicators", token],
   });
 
   const realMapFeatures = useMemo<MapFeatureRecord[]>(() => {
@@ -204,12 +346,13 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
       const latitude = beneficiary.latitude as number;
       const longitude = beneficiary.longitude as number;
       const duplicateRisk = beneficiary.duplicate_risk_score ?? 0;
+      const category = categoryFromEntityType(beneficiary.beneficiary_type);
       return {
-        category: "Beneficiary",
+        category,
         count: 1,
         district: beneficiary.district ?? "",
         gpsAccuracy: 0,
-        id: `beneficiary-${beneficiary.id}`,
+        id: `${category.toLowerCase()}-${beneficiary.id}`,
         label: beneficiary.display_name,
         latitude,
         location: [beneficiary.community, beneficiary.district, beneficiary.region].filter(Boolean).join(", ") || "Location not recorded",
@@ -237,15 +380,25 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   );
 
   const mapFeatures = useMemo(() => (preview ? previewMapFeatures : realMapFeatures), [preview, realMapFeatures]);
-  const mapLayers = useMemo(() => (preview ? previewMapLayers : []), [preview]);
-  const boundaries = useMemo(() => (preview ? previewBoundaries : []), [preview]);
+  const projectExtents = useMemo(() => computeProjectExtents(realMapFeatures), [realMapFeatures]);
+  const mapLayers = useMemo(() => (preview ? previewMapLayers : deriveLiveMapLayers(realMapFeatures)), [preview, realMapFeatures]);
+  const boundaries = useMemo(() => (preview ? previewBoundaries : deriveLiveBoundaries(projectExtents)), [preview, projectExtents]);
   const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
-  const indicatorGeography = useMemo(() => (preview ? previewIndicatorGeography : []), [preview]);
+  const indicatorGeography = useMemo(
+    () =>
+      preview
+        ? previewIndicatorGeography
+        : deriveLiveIndicatorGeography({
+            indicators: indicatorsQuery.data ?? [],
+            projectExtents,
+            projects: projectsQuery.data ?? [],
+          }),
+    [indicatorsQuery.data, preview, projectExtents, projectsQuery.data],
+  );
   const spatialIssues = useMemo(
     () => (preview ? previewSpatialIssues : deriveQualityIssues(realMapFeatures)),
     [preview, realMapFeatures],
   );
-  const projectExtents = useMemo(() => computeProjectExtents(realMapFeatures), [realMapFeatures]);
   const projectDataCoverage = useMemo<ProjectDataCoverage[]>(
     () =>
       preview
@@ -268,6 +421,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     [terminology],
   );
   const activeInfo = sections.find((section) => section.id === activeSection) ?? sections[0];
+
+  useEffect(() => {
+    const routeSection = sectionFromPath(pathname);
+    if (routeSection !== activeSection) setActiveSection(routeSection);
+  }, [activeSection, pathname]);
 
   const visibleFeatures = useMemo(
     () => filterFeaturesBySection(mapFeatures, activeSection),
@@ -322,6 +480,8 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     if (!pendingMapFeatureId) return;
     const section: MappingSection = pendingMapFeatureId.startsWith("beneficiary-")
       ? "beneficiary-maps"
+      : pendingMapFeatureId.startsWith("facility-")
+        ? "facility-maps"
       : pendingMapFeatureId.startsWith("submission-")
         ? "submission-maps"
         : activeSection;
@@ -343,6 +503,8 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     setSelectedFeature(filterFeaturesBySection(mapFeatures, section)[0] ?? null);
     setAreaBounds(null);
     setDrawMode(false);
+    const route = mappingSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
   }
 
   function viewProjectExtentOnMap(extent: ProjectExtent): void {
@@ -361,19 +523,32 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   function exportCurrentView(): void {
     downloadCsv(
       "atlas-mapping-view.csv",
-      visibleFeatures.map((feature) => ({
+      spatiallyFilteredFeatures.map((feature) => ({
         category: feature.category,
+        count: feature.count,
+        district: feature.district,
         gpsAccuracy: feature.gpsAccuracy,
         label: feature.label,
         latitude: maskCoordinate(feature.latitude, privacyVisibility),
         location: feature.location,
         longitude: maskCoordinate(feature.longitude, privacyVisibility),
+        popupDetails: JSON.stringify(feature.popup),
         project: feature.project,
         qualityScore: feature.qualityScore,
+        region: feature.region,
+        sensitive: Boolean(feature.sensitive),
         status: feature.status,
       })),
     );
-    setMapResult("Map export prepared. Export access should be audited by Governance for production deployments.");
+    setMapResult(`Map export prepared with ${spatiallyFilteredFeatures.length} record(s) from the current filtered view. Export access should be audited by Governance for production deployments.`);
+  }
+
+  function openFeatureSource(feature: MapFeatureRecord): void {
+    if (feature.category === "Submission") setActiveView("submissions");
+    else if (feature.category === "Beneficiary" || feature.category === "Facility") setActiveView("beneficiaries");
+    else if (feature.category === "Quality") setActiveView("dataQuality");
+    else if (feature.category === "Indicator") setActiveView("indicators");
+    else setActiveView("map");
   }
 
   return (
@@ -422,9 +597,6 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
               type="button"
             >
               {section.label}
-              {section.status === "planned" ? (
-                <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge>
-              ) : null}
             </button>
           ))}
         </div>
@@ -446,6 +618,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         <MappingDashboard
           latestSubmissionFeature={latestSubmissionFeature}
           onOpenQuality={() => setActiveSection("data-quality-maps")}
+          onOpenSection={selectSection}
           onOpenSubmissions={() => setActiveView("submissions")}
           preview={preview}
           summary={summary}
@@ -467,6 +640,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onBasemapChange={setBasemap}
             onDrawModeChange={setDrawMode}
             onFeatureSelect={setSelectedFeature}
+            onOpenFeatureSource={openFeatureSource}
             onMapQueryChange={setMapQuery}
             privacyVisibility={privacyVisibility}
             sectionInfo={activeInfo}
@@ -480,6 +654,8 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             indicatorGeography={indicatorGeography}
             mapFeatures={spatiallyFilteredFeatures}
             mapLayers={mapLayers}
+            onFeatureSelect={setSelectedFeature}
+            onOpenIndicators={() => setActiveView("indicators")}
             projectDataCoverage={projectDataCoverage}
             onOpenDataQuality={() => setActiveView("dataQuality")}
             onViewProjectExtent={viewProjectExtentOnMap}
@@ -502,6 +678,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
 function MappingDashboard({
   latestSubmissionFeature,
   onOpenQuality,
+  onOpenSection,
   onOpenSubmissions,
   preview,
   summary,
@@ -509,32 +686,33 @@ function MappingDashboard({
 }: {
   latestSubmissionFeature: MapFeatureRecord | null;
   onOpenQuality: () => void;
+  onOpenSection: (section: MappingSection) => void;
   onOpenSubmissions: () => void;
   preview: boolean;
   summary: MappingSummary;
   terminology: SectorTerminology;
 }) {
-  const cards: { icon: LucideIcon; label: string; tone?: BadgeProps["tone"]; value: string | number }[] = [
-    { icon: Layers, label: "Active Map Layers", value: summary.activeMapLayers },
-    { icon: MapPinned, label: "Project Locations", value: summary.projectLocations },
-    { icon: LocateFixed, label: "Submission Points", value: summary.submissionPoints.toLocaleString() },
-    { icon: Shield, label: `${terminology.primaryEntityPlural} Points`, value: summary.beneficiaryPoints.toLocaleString() },
-    { icon: CircleDot, label: "Facility Points", value: summary.facilityPoints },
-    { icon: Map, label: "Uploaded Boundaries", value: summary.uploadedBoundaries },
-    { icon: FileWarning, label: "GPS Issues", tone: summary.gpsIssues ? "warning" : "success", value: summary.gpsIssues },
-    { icon: Navigation, label: "Coverage Gaps", tone: summary.coverageGaps ? "danger" : "success", value: summary.coverageGaps },
+  const cards: { icon: LucideIcon; label: string; section: MappingSection; tone?: BadgeProps["tone"]; value: string | number }[] = [
+    { icon: Layers, label: "Active Map Layers", section: "layers", value: summary.activeMapLayers },
+    { icon: MapPinned, label: "Project Locations", section: "project-maps", value: summary.projectLocations },
+    { icon: LocateFixed, label: "Submission Points", section: "submission-maps", value: summary.submissionPoints.toLocaleString() },
+    { icon: Shield, label: `${terminology.primaryEntityPlural} Points`, section: "beneficiary-maps", value: summary.beneficiaryPoints.toLocaleString() },
+    { icon: CircleDot, label: "Facility Points", section: "facility-maps", value: summary.facilityPoints },
+    { icon: Map, label: "Boundaries", section: "boundaries", value: summary.uploadedBoundaries },
+    { icon: FileWarning, label: "GPS Issues", section: "data-quality-maps", tone: summary.gpsIssues ? "warning" : "success", value: summary.gpsIssues },
+    { icon: Navigation, label: "Coverage Gaps", section: "coverage-maps", tone: summary.coverageGaps ? "danger" : "success", value: summary.coverageGaps },
   ];
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
-        <article className="rounded-xl border bg-panel p-3 shadow-line" key={card.label}>
+        <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30" key={card.label} onClick={() => onOpenSection(card.section)} type="button">
           <div className="flex items-center justify-between gap-3">
             <card.icon aria-hidden="true" className="text-primary" size={18} />
             {card.tone ? <Badge tone={card.tone}>Spatial</Badge> : null}
           </div>
           <p className="mt-4 text-2xl font-semibold">{card.value}</p>
           <p className="text-xs text-muted-foreground">{card.label}</p>
-        </article>
+        </button>
       ))}
       <Panel title="Recent GPS Activity">
         {preview ? (
@@ -602,6 +780,7 @@ function EnterpriseMapViewer({
   onBasemapChange,
   onDrawModeChange,
   onFeatureSelect,
+  onOpenFeatureSource,
   onMapQueryChange,
   privacyVisibility,
   sectionInfo,
@@ -758,6 +937,9 @@ function EnterpriseMapViewer({
             <Signal label="Coordinates" value={`${maskCoordinate(selectedFeature.latitude, privacyVisibility)}, ${maskCoordinate(selectedFeature.longitude, privacyVisibility)}`} tone={privacyVisibility === "Aggregated" ? "warning" : "accent"} />
             <Signal label="GPS accuracy" value={`${selectedFeature.gpsAccuracy}m`} tone={selectedFeature.gpsAccuracy <= 30 ? "success" : "warning"} />
             <Signal label="Quality score" value={`${selectedFeature.qualityScore}%`} tone={coverageTone(selectedFeature.qualityScore)} />
+            <Button className="w-full" onClick={() => onOpenFeatureSource(selectedFeature)} size="sm" variant="secondary">
+              Open source module
+            </Button>
             <div className="rounded-xl border bg-background/70 p-3">
               <p className="text-xs font-semibold">Popup details</p>
               <div className="mt-2 space-y-2">
@@ -791,6 +973,8 @@ function SectionContent({
   indicatorGeography,
   mapFeatures,
   mapLayers,
+  onFeatureSelect,
+  onOpenIndicators,
   projectDataCoverage,
   onOpenDataQuality,
   onViewProjectExtent,
@@ -808,6 +992,8 @@ function SectionContent({
   indicatorGeography: IndicatorGeography[];
   mapFeatures: MapFeatureRecord[];
   mapLayers: MapLayerRecord[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
+  onOpenIndicators: () => void;
   projectDataCoverage: ProjectDataCoverage[];
   onOpenDataQuality: () => void;
   onViewProjectExtent: (extent: ProjectExtent) => void;
@@ -819,15 +1005,15 @@ function SectionContent({
   setActiveSection: (section: MappingSection) => void;
   spatialIssues: SpatialQualityIssue[];
 }) {
-  if (activeSection === "layers") return <LayersTable layers={mapLayers} />;
-  if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} />;
-  if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} preview={preview} projectDataCoverage={projectDataCoverage} />;
-  if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} />;
+  if (activeSection === "layers") return <LayersTable features={mapFeatures} layers={mapLayers} onFeatureSelect={onFeatureSelect} privacyVisibility={privacyVisibility} />;
+  if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} features={mapFeatures} privacyVisibility={privacyVisibility} />;
+  if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} features={mapFeatures} preview={preview} privacyVisibility={privacyVisibility} projectDataCoverage={projectDataCoverage} />;
+  if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} onOpenIndicators={onOpenIndicators} />;
   if (activeSection === "data-quality-maps") {
-    return <SpatialQualityWorkspace issues={spatialIssues} onOpenDataQuality={onOpenDataQuality} />;
+    return <SpatialQualityWorkspace features={mapFeatures} issues={spatialIssues} onFeatureSelect={onFeatureSelect} onOpenDataQuality={onOpenDataQuality} />;
   }
   if (activeSection === "project-maps" && !preview) {
-    return <ProjectOverviewWorkspace extents={projectExtents} onViewOnMap={onViewProjectExtent} />;
+    return <ProjectOverviewWorkspace extents={projectExtents} features={mapFeatures} onFeatureSelect={onFeatureSelect} onViewOnMap={onViewProjectExtent} privacyVisibility={privacyVisibility} />;
   }
 
   const features = filterFeaturesBySection(mapFeatures, activeSection);
@@ -866,11 +1052,29 @@ function SectionContent({
 
 function ProjectOverviewWorkspace({
   extents,
+  features,
+  onFeatureSelect,
   onViewOnMap,
+  privacyVisibility,
 }: {
   extents: ProjectExtent[];
+  features: MapFeatureRecord[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
   onViewOnMap: (extent: ProjectExtent) => void;
+  privacyVisibility: LayerVisibility;
 }) {
+  const [selectedProject, setSelectedProject] = useState("");
+  const sourceFeatures = selectedProject ? features.filter((feature) => feature.project === selectedProject) : [];
+  const columns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "GPS record", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "category", header: "Type", value: (row) => row.category, render: (row) => row.category },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "quality", header: "Quality", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
+    { key: "action", header: "Action", align: "right", render: (row) => <Button onClick={() => onFeatureSelect(row)} size="sm" variant="secondary">Inspect</Button> },
+  ];
+
   return (
     <section className="space-y-4">
       <SectionHeader
@@ -892,19 +1096,69 @@ function ProjectOverviewWorkspace({
               <Button className="mt-3" onClick={() => onViewOnMap(extent)} size="sm" variant="secondary">
                 View on map
               </Button>
+              <Button className="mt-2" onClick={() => setSelectedProject(extent.project)} size="sm" variant="secondary">
+                View source records
+              </Button>
             </article>
           ))}
         </div>
       ) : (
         <EmptyMini label="No GPS-tagged submissions or records yet. Project extent will appear here once field data includes GPS coordinates." />
       )}
+      <DataTable
+        columns={columns}
+        emptyDescription="Click View source records on a project extent to inspect the GPS points behind it."
+        emptyLabel="No project selected"
+        rows={sourceFeatures}
+        searchLabel="Search project GPS records"
+        title={selectedProject ? `${selectedProject} source records` : "Project extent source records"}
+      />
     </section>
   );
 }
 
-function LayersTable({ layers }: { layers: MapLayerRecord[] }) {
+function layerCategory(layer: MapLayerRecord): MapFeatureRecord["category"] | null {
+  const match = layer.id.match(/^live-layer-(.+)$/);
+  if (!match) return null;
+  const category = match[1];
+  const normalized = category.charAt(0).toUpperCase() + category.slice(1);
+  if (["Project", "Submission", "Beneficiary", "Facility", "Coverage", "Indicator", "Quality"].includes(normalized)) {
+    return normalized as MapFeatureRecord["category"];
+  }
+  return null;
+}
+
+function LayersTable({
+  features,
+  layers,
+  onFeatureSelect,
+  privacyVisibility,
+}: {
+  features: MapFeatureRecord[];
+  layers: MapLayerRecord[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
+  privacyVisibility: LayerVisibility;
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [metadataLayer, setMetadataLayer] = useState<MapLayerRecord | null>(null);
+  const [sourceLayer, setSourceLayer] = useState<MapLayerRecord | null>(null);
+  const [uploadedLayers, setUploadedLayers] = useState<MapLayerRecord[]>([]);
+  const tableLayers = useMemo(() => [...uploadedLayers, ...layers], [layers, uploadedLayers]);
+  const sourceCategory = sourceLayer ? layerCategory(sourceLayer) : null;
+  const sourceFeatures = sourceCategory ? features.filter((feature) => feature.category === sourceCategory) : [];
+  function registerLayerUpload(event: ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const uploads = files.map(uploadedLayerFromFile);
+    setUploadedLayers((current) => [...uploads, ...current]);
+    pushToast({
+      title: "Layer file registered",
+      description: `${uploads.length} file${uploads.length === 1 ? "" : "s"} added to the layer registry for GIS processing.`,
+      tone: "success",
+    });
+    event.target.value = "";
+  }
   const columns: TableColumn<MapLayerRecord>[] = [
     { key: "name", header: "Layer", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -912,30 +1166,58 @@ function LayersTable({ layers }: { layers: MapLayerRecord[] }) {
     { key: "geometry", header: "Geometry", value: (row) => row.geometryType, render: (row) => row.geometryType },
     { key: "features", header: "Features", align: "right", value: (row) => String(row.featureCount), render: (row) => row.featureCount.toLocaleString() },
     { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
-    { key: "actions", header: "Actions", align: "right", render: (row) => <Button onClick={() => setMetadataLayer(row)} size="sm" variant="secondary"><Eye aria-hidden="true" /> Metadata</Button> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (row) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button onClick={() => setSourceLayer(row)} size="sm" variant="secondary"><MapPin aria-hidden="true" /> Sources</Button>
+          <Button onClick={() => setMetadataLayer(row)} size="sm" variant="secondary"><Eye aria-hidden="true" /> Metadata</Button>
+        </div>
+      ),
+    },
+  ];
+  const sourceColumns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "Source record", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "accuracy", header: "GPS", align: "right", value: (row) => String(row.gpsAccuracy), render: (row) => `${row.gpsAccuracy}m` },
+    { key: "quality", header: "Quality", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
+    { key: "action", header: "Action", align: "right", render: (row) => <Button onClick={() => onFeatureSelect(row)} size="sm" variant="secondary">Inspect</Button> },
   ];
   return (
     <section className="space-y-4">
       <SectionHeader
         action={
-          <Button
-            onClick={() =>
-              pushToast({
-                title: "Upload isn't available yet",
-                description: "Connect a GIS file-processing service to upload spatial layers. This control is a preview for now.",
-                tone: "warning",
-              })
-            }
-            variant="primary"
-          >
-            <Upload aria-hidden="true" /> Upload GeoJSON, KML, Shapefile, or CSV
-          </Button>
+          <>
+            <input
+              accept=".geojson,.json,.kml,.csv,.zip"
+              className="hidden"
+              multiple
+              onChange={registerLayerUpload}
+              ref={uploadInputRef}
+              type="file"
+            />
+            <Button onClick={() => uploadInputRef.current?.click()} variant="primary">
+              <Upload aria-hidden="true" /> Upload GeoJSON, KML, Shapefile, or CSV
+            </Button>
+          </>
         }
-        description="Manage reusable spatial layers, versions, metadata, visibility, permissions, activation, downloads, and archive status."
+        description="Review live point layers derived from submissions and entity records. Uploaded GIS files are registered here for processing and governance review."
         route="/mapping/layers"
         title="Map Layers"
       />
-      <DataTable columns={columns} emptyLabel="No spatial layers yet" rows={layers} searchLabel="Search layers, owners, sources" title="Spatial layer registry" />
+      <DataTable columns={columns} emptyLabel="No live GPS records yet. Layers appear after submissions, entities, or selected GIS files include coordinates." rows={tableLayers} searchLabel="Search layers, owners, sources" title="Spatial layer registry" />
+      <DataTable
+        columns={sourceColumns}
+        emptyDescription="Click Sources on a layer to inspect the live GPS records that created it."
+        emptyLabel="No layer selected"
+        rows={sourceFeatures}
+        searchLabel="Search layer source records"
+        title={sourceLayer ? `${sourceLayer.name} source records` : "Layer source records"}
+      />
       <LayerDetailsModal
         layer={metadataLayer}
         onOpenChange={(open) => {
@@ -946,9 +1228,39 @@ function LayersTable({ layers }: { layers: MapLayerRecord[] }) {
   );
 }
 
-function BoundariesTable({ boundaries }: { boundaries: BoundaryRecord[] }) {
+function boundaryProjectName(boundary: BoundaryRecord): string {
+  return boundary.name.replace(/ observed extent$/u, "");
+}
+
+function BoundariesTable({
+  boundaries,
+  features,
+  privacyVisibility,
+}: {
+  boundaries: BoundaryRecord[];
+  features: MapFeatureRecord[];
+  privacyVisibility: LayerVisibility;
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [historyBoundary, setHistoryBoundary] = useState<BoundaryRecord | null>(null);
+  const [sourceBoundary, setSourceBoundary] = useState<BoundaryRecord | null>(null);
+  const [uploadedBoundaries, setUploadedBoundaries] = useState<BoundaryRecord[]>([]);
+  const tableBoundaries = useMemo(() => [...uploadedBoundaries, ...boundaries], [boundaries, uploadedBoundaries]);
+  const sourceProject = sourceBoundary ? boundaryProjectName(sourceBoundary) : "";
+  const sourceFeatures = sourceProject ? features.filter((feature) => feature.project === sourceProject) : [];
+  function registerBoundaryUpload(event: ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const uploads = files.map(uploadedBoundaryFromFile);
+    setUploadedBoundaries((current) => [...uploads, ...current]);
+    pushToast({
+      title: "Boundary file registered",
+      description: `${uploads.length} boundary file${uploads.length === 1 ? "" : "s"} added for geometry validation and approval.`,
+      tone: "success",
+    });
+    event.target.value = "";
+  }
   const columns: TableColumn<BoundaryRecord>[] = [
     { key: "name", header: "Boundary", value: (row) => row.name, render: (row) => <span className="font-medium">{row.name}</span> },
     { key: "type", header: "Type", value: (row) => row.type, render: (row) => row.type },
@@ -956,30 +1268,56 @@ function BoundariesTable({ boundaries }: { boundaries: BoundaryRecord[] }) {
     { key: "coverage", header: "Coverage", align: "right", value: (row) => String(row.coveragePercent), render: (row) => <Badge tone={coverageTone(row.coveragePercent)}>{row.coveragePercent}%</Badge> },
     { key: "geometry", header: "Geometry", value: (row) => row.geometryStatus, render: (row) => <Badge tone={statusTone(row.geometryStatus)}>{row.geometryStatus}</Badge> },
     { key: "version", header: "Version", value: (row) => row.version, render: (row) => row.version },
-    { key: "actions", header: "Actions", align: "right", render: (row) => <Button onClick={() => setHistoryBoundary(row)} size="sm" variant="secondary"><Archive aria-hidden="true" /> History</Button> },
+    {
+      key: "actions",
+      header: "Actions",
+      align: "right",
+      render: (row) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button onClick={() => setSourceBoundary(row)} size="sm" variant="secondary"><MapPin aria-hidden="true" /> Sources</Button>
+          <Button onClick={() => setHistoryBoundary(row)} size="sm" variant="secondary"><Archive aria-hidden="true" /> History</Button>
+        </div>
+      ),
+    },
+  ];
+  const sourceColumns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "Boundary source", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "category", header: "Type", value: (row) => row.category, render: (row) => row.category },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "quality", header: "Quality", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
   ];
   return (
     <section className="space-y-4">
       <SectionHeader
         action={
-          <Button
-            onClick={() =>
-              pushToast({
-                title: "Upload isn't available yet",
-                description: "Connect a GIS file-processing service to upload boundary geometry. This control is a preview for now.",
-                tone: "warning",
-              })
-            }
-            variant="primary"
-          >
-            <Upload aria-hidden="true" /> Upload boundary
-          </Button>
+          <>
+            <input
+              accept=".geojson,.json,.kml,.zip"
+              className="hidden"
+              multiple
+              onChange={registerBoundaryUpload}
+              ref={uploadInputRef}
+              type="file"
+            />
+            <Button onClick={() => uploadInputRef.current?.click()} variant="primary">
+              <Upload aria-hidden="true" /> Upload boundary
+            </Button>
+          </>
         }
-        description="Validate geometry, simplify polygons, assign boundaries to locations, version changes, and archive old boundaries."
+        description="Review project extents derived from GPS evidence and register official boundary files for validation and governance approval."
         route="/mapping/boundaries"
         title="Boundaries"
       />
-      <DataTable columns={columns} emptyLabel="No boundaries configured yet" rows={boundaries} searchLabel="Search boundaries, codes, hierarchy" title="Boundary registry" />
+      <DataTable columns={columns} emptyLabel="No GPS-derived project extents yet. Boundaries appear after projects have located records or selected boundary files." rows={tableBoundaries} searchLabel="Search boundaries, codes, hierarchy" title="Boundary registry" />
+      <DataTable
+        columns={sourceColumns}
+        emptyDescription="Click Sources on a boundary to inspect the GPS records used to derive its observed project extent."
+        emptyLabel="No boundary selected"
+        rows={sourceFeatures}
+        searchLabel="Search boundary source records"
+        title={sourceBoundary ? `${sourceBoundary.name} source records` : "Boundary source records"}
+      />
       <BoundaryDetailsModal
         boundary={historyBoundary}
         onOpenChange={(open) => {
@@ -1046,13 +1384,28 @@ function BoundaryDetailsModal({ boundary, onOpenChange }: { boundary: BoundaryRe
 
 function CoverageWorkspace({
   coverage,
+  features,
   preview,
+  privacyVisibility,
   projectDataCoverage,
 }: {
   coverage: CoverageRecord[];
+  features: MapFeatureRecord[];
   preview: boolean;
+  privacyVisibility: LayerVisibility;
   projectDataCoverage: ProjectDataCoverage[];
 }) {
+  const [selectedProject, setSelectedProject] = useState("");
+  const sourceFeatures = selectedProject ? features.filter((feature) => feature.project === selectedProject) : [];
+  const columns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "Coverage record", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "category", header: "Type", value: (row) => row.category, render: (row) => row.category },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "status", header: "Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "quality", header: "Quality", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
+  ];
+
   if (!preview) {
     const projectsWithData = projectDataCoverage.filter((item) => item.hasData);
     const noDataProjects = projectDataCoverage.filter((item) => !item.hasData);
@@ -1086,6 +1439,11 @@ function CoverageWorkspace({
                     <p className="mt-2 text-xs text-muted-foreground">
                       {item.submissions} submission(s) · {item.beneficiaries} entity record(s){item.hasData ? ` · ${share}% of org records` : " · needs field GPS evidence"}
                     </p>
+                    {item.hasData ? (
+                      <Button className="mt-3" onClick={() => setSelectedProject(item.project)} size="sm" variant="secondary">
+                        View coverage records
+                      </Button>
+                    ) : null}
                   </div>
                 );
               })}
@@ -1098,6 +1456,16 @@ function CoverageWorkspace({
           <Signal label="Total located records" value={`${totalRecords.toLocaleString()} record(s)`} tone="accent" />
           <Signal label="Target-based gap analysis" value="Requires coverage targets (roadmap)" tone="neutral" />
         </Panel>
+        <div className="xl:col-span-2">
+          <DataTable
+            columns={columns}
+            emptyDescription="Click View coverage records on a project to inspect the located records behind the coverage count."
+            emptyLabel="No project selected"
+            rows={sourceFeatures}
+            searchLabel="Search coverage source records"
+            title={selectedProject ? `${selectedProject} coverage records` : "Coverage source records"}
+          />
+        </div>
       </section>
     );
   }
@@ -1129,40 +1497,94 @@ function CoverageWorkspace({
   );
 }
 
-function IndicatorWorkspace({ indicatorGeography }: { indicatorGeography: IndicatorGeography[] }) {
+function IndicatorWorkspace({
+  indicatorGeography,
+  onOpenIndicators,
+}: {
+  indicatorGeography: IndicatorGeography[];
+  onOpenIndicators: () => void;
+}) {
+  if (!indicatorGeography.length) {
+    return (
+      <section className="space-y-3 rounded-xl border bg-panel p-4 shadow-line">
+        <EmptyMini label="No indicator geography yet. Create active indicators and collect GPS-tagged project data to map indicator progress." />
+        <Button onClick={onOpenIndicators} size="sm" variant="secondary">Open Indicators</Button>
+      </section>
+    );
+  }
+
   return (
-    <section className="grid gap-4 xl:grid-cols-3">
-      {indicatorGeography.map((item) => (
-        <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
-          <Badge tone={coverageTone(item.achievementPercent)}>Achievement {item.achievementPercent}%</Badge>
-          <h2 className="mt-3 text-sm font-semibold">{item.indicator}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{item.project} · {item.location}</p>
-          <div className="mt-4 grid gap-2">
-            <Signal label="Baseline" value={item.baseline} />
-            <Signal label="Current" value={item.current} />
-            <Signal label="Target" value={item.target} />
-            <Signal label="Period" value={item.period} />
-          </div>
-        </article>
-      ))}
+    <section className="space-y-4">
+      <SectionHeader
+        action={<Button onClick={onOpenIndicators} size="sm" variant="secondary">Open Indicators</Button>}
+        description="Indicator progress by project geography, using active indicators and GPS-derived project extents."
+        route="/mapping/indicator-maps"
+        title="Indicator Maps"
+      />
+      <div className="grid gap-4 xl:grid-cols-3">
+        {indicatorGeography.map((item) => (
+          <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
+            <Badge tone={coverageTone(item.achievementPercent)}>Achievement {item.achievementPercent}%</Badge>
+            <h2 className="mt-3 text-sm font-semibold">{item.indicator}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{item.project} · {item.location}</p>
+            <div className="mt-4 grid gap-2">
+              <Signal label="Baseline" value={item.baseline} />
+              <Signal label="Current" value={item.current} />
+              <Signal label="Target" value={item.target} />
+              <Signal label="Period" value={item.period} />
+            </div>
+            <Button className="mt-3" onClick={onOpenIndicators} size="sm" variant="secondary">
+              Review indicator
+            </Button>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
 
 function SpatialQualityWorkspace({
+  features,
   issues,
+  onFeatureSelect,
   onOpenDataQuality,
 }: {
+  features: MapFeatureRecord[];
   issues: SpatialQualityIssue[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
   onOpenDataQuality: () => void;
 }) {
+  const criticalIssues = issues.filter((issue) => issue.severity === "Critical").length;
+  const highIssues = issues.filter((issue) => issue.severity === "High").length;
+  const mediumIssues = issues.filter((issue) => issue.severity === "Medium").length;
+  const featureById = useMemo(() => new globalThis.Map(features.map((feature) => [feature.id, feature])), [features]);
   const columns: TableColumn<SpatialQualityIssue>[] = [
-    { key: "issue", header: "Issue", value: (row) => row.issueType, render: (row) => <span className="font-medium">{row.issueType}</span> },
+    {
+      key: "issue",
+      header: "Issue",
+      value: (row) => row.issueType,
+      render: (row) => (
+        <div>
+          <p className="font-medium">{row.issueType}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{row.project}</p>
+        </div>
+      ),
+    },
     { key: "submission", header: "Submission", value: (row) => row.submissionId, render: (row) => row.submissionId },
     { key: "enumerator", header: "Enumerator", value: (row) => row.enumerator, render: (row) => row.enumerator },
     { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "action", header: "Recommended Action", value: (row) => row.recommendedAction, render: (row) => <span className="text-sm leading-5">{row.recommendedAction}</span> },
     { key: "severity", header: "Severity", value: (row) => row.severity, render: (row) => <Badge tone={severityTone(row.severity)}>{row.severity}</Badge> },
     { key: "state", header: "Validation", value: (row) => row.validationState, render: (row) => <Badge tone={statusTone(row.validationState)}>{row.validationState}</Badge> },
+    {
+      key: "inspect",
+      header: "Inspect",
+      align: "right",
+      render: (row) => {
+        const feature = row.sourceFeatureId ? featureById.get(row.sourceFeatureId) : undefined;
+        return <Button disabled={!feature} onClick={() => feature ? onFeatureSelect(feature) : undefined} size="sm" variant="secondary">Inspect</Button>;
+      },
+    },
   ];
   return (
     <section className="space-y-4">
@@ -1172,6 +1594,12 @@ function SpatialQualityWorkspace({
         route="/mapping/data-quality-maps"
         title="Data Quality Maps"
       />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Signal label="Spatial issues" value={issues.length.toLocaleString()} tone={issues.length ? "warning" : "success"} />
+        <Signal label="Critical" value={criticalIssues.toLocaleString()} tone={criticalIssues ? "danger" : "success"} />
+        <Signal label="High" value={highIssues.toLocaleString()} tone={highIssues ? "warning" : "success"} />
+        <Signal label="Medium" value={mediumIssues.toLocaleString()} tone={mediumIssues ? "accent" : "success"} />
+      </div>
       <DataTable columns={columns} emptyLabel="No spatial quality issues detected" rows={issues} searchLabel="Search issue, submission, enumerator, location" title="Spatial quality issue table" />
     </section>
   );
@@ -1234,11 +1662,8 @@ function EmptyMini({ label }: { label: string }) {
 }
 
 const NOT_AVAILABLE_REASONS: Partial<Record<MappingSection, string>> = {
-  "facility-maps": "On our roadmap — Facility Maps require a facility registry (schools, clinics, water points, offices, warehouses) that hasn't been built yet.",
-  "coverage-maps": "On our roadmap — Coverage Maps require coverage targets and boundary geometry that aren't connected yet.",
-  "indicator-maps": "On our roadmap — Indicator Maps require linking indicator values and targets to specific locations, which isn't connected yet.",
-  layers: "On our roadmap — Map Layers require a GIS file-processing service for uploading, versioning, and managing spatial layers.",
-  boundaries: "On our roadmap — Boundaries require administrative and project boundary geometry uploads, which aren't connected yet.",
+  layers: "Map Layers are available from live GPS records and selected GIS files. Backend geometry processing can add formal versioning and validation.",
+  boundaries: "Boundaries are available from GPS-derived project extents and selected boundary files. Backend geometry processing can add formal approval workflows.",
 };
 
 function MappingNotAvailable({
@@ -1255,7 +1680,7 @@ function MappingNotAvailable({
         <Map aria-hidden="true" className="mx-auto text-muted-foreground" size={28} />
         <h2 className="mt-3 text-sm font-semibold">{section.label} isn&apos;t available yet</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-          {NOT_AVAILABLE_REASONS[section.id] ?? "This view is on our roadmap and isn't connected to live data yet for this organization."}
+          {NOT_AVAILABLE_REASONS[section.id] ?? "This view needs live organization data before it can display useful records."}
           {" "}Project Maps, Submission Maps, Beneficiary Maps, and Data Quality Maps are available now using your real data.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
