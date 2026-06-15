@@ -1,3 +1,5 @@
+import { BarChart3, Gauge, LineChart, MapPin, PieChart, Table2, TrendingUp, type LucideIcon } from "lucide-react";
+
 import type { DonorReportMetrics } from "@/lib/api";
 
 export type ReportsSection = "dashboard" | "standard" | "custom" | "dashboards" | "scheduled" | "exports";
@@ -68,6 +70,58 @@ export type DashboardRecord = {
   visibility: "Managers" | "Donors" | "Supervisors" | "Data team";
   lastViewed: string;
 };
+
+export type WidgetType = "kpi" | "bar_chart" | "pie_chart" | "line_chart" | "table" | "progress" | "map_link";
+export type WidgetDataSource = "indicators" | "form_performance" | "submissions" | "data_quality" | "donor_report";
+
+export const widgetTypeLabels: Record<WidgetType, string> = {
+  kpi: "KPI card",
+  bar_chart: "Bar chart",
+  pie_chart: "Pie / donut chart",
+  line_chart: "Line chart",
+  table: "Table",
+  progress: "Progress bar",
+  map_link: "Map link",
+};
+
+export const widgetTypeIcons: Record<WidgetType, LucideIcon> = {
+  kpi: Gauge,
+  bar_chart: BarChart3,
+  pie_chart: PieChart,
+  line_chart: LineChart,
+  table: Table2,
+  progress: TrendingUp,
+  map_link: MapPin,
+};
+
+export const dataSourceLabels: Record<WidgetDataSource, string> = {
+  indicators: "Indicators",
+  form_performance: "Form performance",
+  submissions: "Submissions & approvals",
+  data_quality: "Data quality",
+  donor_report: "Donor reports",
+};
+
+export const widgetTypeDataSources: Record<WidgetType, WidgetDataSource[]> = {
+  kpi: ["indicators", "submissions", "data_quality", "donor_report", "form_performance"],
+  bar_chart: ["indicators", "form_performance", "data_quality"],
+  pie_chart: ["submissions", "data_quality"],
+  line_chart: ["submissions"],
+  table: ["indicators", "form_performance", "data_quality"],
+  progress: ["indicators", "form_performance"],
+  map_link: ["submissions"],
+};
+
+export const dashboardTypeOptions: DashboardRecord["type"][] = [
+  "Executive Dashboard",
+  "Project Dashboard",
+  "Donor Dashboard",
+  "Field Operations Dashboard",
+  "Indicator Dashboard",
+  "Data Quality Dashboard",
+];
+
+export const dashboardVisibilityOptions: DashboardRecord["visibility"][] = ["Managers", "Donors", "Supervisors", "Data team"];
 
 export type ScheduledReportRecord = {
   id: string;

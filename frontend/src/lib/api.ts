@@ -4226,6 +4226,66 @@ export async function deleteReportSchedule(token: string, scheduleId: string): P
   }
 }
 
+export type DashboardWidget = {
+  id: string;
+  type: "kpi" | "bar_chart" | "pie_chart" | "line_chart" | "table" | "progress" | "map_link";
+  title: string;
+  data_source: "indicators" | "form_performance" | "submissions" | "data_quality" | "donor_report";
+  reference_id?: string | null;
+  metric?: string | null;
+  width: 1 | 2 | 3;
+};
+
+export type CustomDashboardRead = {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  created_by_user_id: string | null;
+  name: string;
+  description: string | null;
+  dashboard_type: string;
+  visibility: string;
+  status: "draft" | "active" | "archived";
+  widgets: DashboardWidget[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomDashboardCreate = {
+  name: string;
+  description?: string | null;
+  dashboard_type?: string;
+  project_id?: string | null;
+  visibility?: string;
+  status?: "draft" | "active" | "archived";
+  widgets?: DashboardWidget[];
+};
+
+export type CustomDashboardUpdate = Partial<CustomDashboardCreate>;
+
+export async function listCustomDashboards(token: string): Promise<CustomDashboardRead[]> {
+  return request<CustomDashboardRead[]>("/operations/dashboards", { token });
+}
+
+export async function createCustomDashboard(token: string, payload: CustomDashboardCreate): Promise<CustomDashboardRead> {
+  return request<CustomDashboardRead>("/operations/dashboards", { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateCustomDashboard(token: string, dashboardId: string, payload: CustomDashboardUpdate): Promise<CustomDashboardRead> {
+  return request<CustomDashboardRead>(`/operations/dashboards/${dashboardId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function deleteCustomDashboard(token: string, dashboardId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/operations/dashboards/${dashboardId}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+}
+
 export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
   return request<ImportPreviewResponse>("/operations/data/imports/preview", { method: "POST", token, bodyJson: payload });
 }

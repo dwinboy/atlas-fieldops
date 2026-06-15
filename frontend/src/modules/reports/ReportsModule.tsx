@@ -9,11 +9,13 @@ import {
   Download,
   Eye,
   FileBarChart,
+  FileImage,
   FileSpreadsheet,
   FileText,
   LayoutDashboard,
   LineChart,
   Mail,
+  Pencil,
   PieChart,
   Play,
   Plus,
@@ -23,11 +25,12 @@ import {
   Share2,
   ShieldCheck,
   Table2,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -37,18 +40,50 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
+  createCustomDashboard,
   createReport,
+  deleteCustomDashboard,
   exportReportCsv,
   generateReport,
+  listCustomDashboards,
+  listDataQualitySignals,
+  listForms,
+  listIndicators,
   listProjects,
   listReports,
+  listSubmissions,
+  updateCustomDashboard,
   type CurrentPrincipal,
+  type CustomDashboardCreate,
+  type CustomDashboardRead,
   type DonorReportIndicatorMetric,
   type DonorReportMetrics,
   type DonorReportRead,
+  type ProjectListItemRead,
 } from "@/lib/api";
+import {
+  getActiveFormPerformance,
+  getDashboardApprovalOverview,
+  getDashboardCoverageOverview,
+  getFormPerformanceTotals,
+} from "@/lib/dashboard";
 import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardBuilder, colSpanClasses } from "@/modules/reports/DashboardBuilder";
+import {
+  DashboardFilterBar,
+  defaultDashboardFilters,
+  dashboardRangeDays,
+  filterDonorReportsByFilters,
+  filterFormsByFilters,
+  filterIndicatorsByFilters,
+  filterQualitySignalsByFilters,
+  filterSubmissionsByFilters,
+  type DashboardFilters,
+} from "@/modules/reports/dashboardFilters";
+import { DashboardWidgetBody, type DashboardWidgetData } from "@/modules/reports/DashboardWidgets";
+import { widgetTypeIcons, type WidgetType } from "@/modules/reports/data";
 import { progressTone } from "@/modules/indicators/utils";
 import {
   previewAuditEvents,
@@ -109,6 +144,8 @@ const visualizationIcons: Record<VisualizationType, LucideIcon> = {
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
+
+const EMPTY_ARRAY: never[] = [];
 
 function reportSectionFromPath(pathname: string | null): ReportsSection {
   const match = reportsSections.find((section) => section.route === pathname);
@@ -579,7 +616,15 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         <CustomReportBuilder builderSteps={builderSteps} onOpenReport={openReport} onOpenReports={() => selectReportSection("standard")} reports={reports} />
       ) : null}
       {!selectedReport && activeSection === "dashboards" ? (
-        <DashboardsSection dashboards={dashboards} onOpenReport={openReport} onOpenReports={() => selectReportSection("standard")} reports={reports} />
+        <DashboardsSection
+          dashboards={dashboards}
+          onOpenReport={openReport}
+          onOpenReports={() => selectReportSection("standard")}
+          preview={preview}
+          projects={projectsQuery.data ?? EMPTY_ARRAY}
+          reports={reports}
+          token={token}
+        />
       ) : null}
       {!selectedReport && activeSection === "scheduled" ? (
         <ScheduledReportsSection onOpenReport={openReport} reports={reports} schedules={scheduledReports} />
@@ -1132,30 +1177,196 @@ function DashboardsSection({
   dashboards,
   onOpenReport,
   onOpenReports,
+  preview,
+  projects,
   reports,
+  token,
 }: {
   dashboards: DashboardRecord[];
   onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
   onOpenReports: () => void;
+  preview: boolean;
+  projects: ProjectListItemRead[];
   reports: ReportRecord[];
+  token: string | null;
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const [dashboardRows, setDashboardRows] = useState<DashboardRecord[]>(dashboards);
-  function createDashboard(): void {
-    const sourceReport = reports[0];
-    const dashboard: DashboardRecord = {
-      id: `dash-draft-${Date.now()}`,
-      lastViewed: new Date().toISOString(),
-      owner: "Current user",
-      status: "Draft",
-      title: sourceReport ? `${sourceReport.project} Dashboard` : "New operations dashboard",
-      type: sourceReport ? dashboardTypeForCategory(sourceReport.category) : "Project Dashboard",
-      visibility: "Managers",
-      widgets: sourceReport?.kpis.slice(0, 4) ?? ["Summary cards", "Trend chart", "Map link"],
-    };
-    setDashboardRows((current) => [dashboard, ...current]);
-    pushToast({ description: "Draft dashboard added. In live workspaces, connect it to governed reports before publishing.", title: "Dashboard created", tone: "success" });
+  const queryClient = useQueryClient();
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [editingDashboard, setEditingDashboard] = useState<CustomDashboardRead | null>(null);
+  const [viewingDashboard, setViewingDashboard] = useState<CustomDashboardRead | null>(null);
+  const [filters, setFilters] = useState<DashboardFilters>(defaultDashboardFilters);
+  const [exporting, setExporting] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const customDashboardsQuery = useQuery({
+    queryKey: ["custom-dashboards", token],
+    queryFn: () => listCustomDashboards(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const indicatorsQuery = useQuery({
+    queryKey: ["custom-dashboards", "indicators", token],
+    queryFn: () => listIndicators(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const formsQuery = useQuery({
+    queryKey: ["custom-dashboards", "forms", token],
+    queryFn: () => listForms(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const submissionsQuery = useQuery({
+    queryKey: ["custom-dashboards", "submissions", token],
+    queryFn: () => listSubmissions(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+  const qualitySignalsQuery = useQuery({
+    queryKey: ["custom-dashboards", "quality-signals", token],
+    queryFn: () => listDataQualitySignals(token ?? ""),
+    enabled: Boolean(token && !preview),
+  });
+
+  const customDashboards = customDashboardsQuery.data ?? EMPTY_ARRAY;
+  const indicators = indicatorsQuery.data ?? EMPTY_ARRAY;
+  const forms = formsQuery.data ?? EMPTY_ARRAY;
+  const submissions = submissionsQuery.data ?? EMPTY_ARRAY;
+  const qualitySignals = qualitySignalsQuery.data ?? EMPTY_ARRAY;
+
+  const allDonorReports = useMemo(() => reports.filter((report) => report.metrics), [reports]);
+
+  const filteredSubmissions = useMemo(() => filterSubmissionsByFilters(submissions, filters), [submissions, filters]);
+  const filteredForms = useMemo(() => filterFormsByFilters(forms, filters), [forms, filters]);
+  const filteredIndicators = useMemo(() => filterIndicatorsByFilters(indicators, filters), [indicators, filters]);
+  const filteredDonorReports = useMemo(
+    () => filterDonorReportsByFilters(allDonorReports, filters, projects),
+    [allDonorReports, filters, projects],
+  );
+  const allowedSubmissionIds = useMemo(
+    () => (filters.projectId === "all" ? null : new Set(submissions.filter((submission) => submission.project_id === filters.projectId).map((submission) => submission.id))),
+    [submissions, filters.projectId],
+  );
+  const filteredQualitySignals = useMemo(
+    () => filterQualitySignalsByFilters(qualitySignals, filters, allowedSubmissionIds),
+    [qualitySignals, filters, allowedSubmissionIds],
+  );
+
+  const formPerformance = useMemo(() => getActiveFormPerformance(filteredForms, filteredSubmissions), [filteredForms, filteredSubmissions]);
+  const formTotals = useMemo(() => getFormPerformanceTotals(formPerformance), [formPerformance]);
+  const approvalOverview = useMemo(() => getDashboardApprovalOverview(filteredSubmissions, formTotals), [filteredSubmissions, formTotals]);
+  const coverage = useMemo(() => getDashboardCoverageOverview(filteredSubmissions), [filteredSubmissions]);
+
+  const widgetData: DashboardWidgetData = useMemo(
+    () => ({
+      approvalOverview,
+      coverage,
+      donorReports: filteredDonorReports,
+      formPerformance,
+      indicators: filteredIndicators,
+      qualitySignals: filteredQualitySignals,
+      submissions: filteredSubmissions,
+      trendDays: dashboardRangeDays(filters.range) ?? 14,
+    }),
+    [approvalOverview, coverage, filteredDonorReports, formPerformance, filteredIndicators, filteredQualitySignals, filteredSubmissions, filters.range],
+  );
+
+  const isLoadingWidgetData =
+    !preview &&
+    Boolean(token) &&
+    (customDashboardsQuery.isLoading ||
+      indicatorsQuery.isLoading ||
+      formsQuery.isLoading ||
+      submissionsQuery.isLoading ||
+      qualitySignalsQuery.isLoading);
+
+  async function handleExportImage(dashboard: CustomDashboardRead): Promise<void> {
+    if (!gridRef.current) return;
+    setExporting(true);
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(gridRef.current, { backgroundColor: "#ffffff" });
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `${dashboard.name}.png`;
+      link.click();
+    } catch (error) {
+      pushToast({ description: messageFromError(error), title: "Could not export dashboard image", tone: "danger" });
+    } finally {
+      setExporting(false);
+    }
   }
+
+  async function handleExportPdf(dashboard: CustomDashboardRead): Promise<void> {
+    if (!gridRef.current) return;
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
+      const canvas = await html2canvas(gridRef.current, { backgroundColor: "#ffffff" });
+      const pdf = new jsPDF({
+        orientation: canvas.width >= canvas.height ? "landscape" : "portrait",
+        unit: "px",
+        format: [canvas.width, canvas.height],
+      });
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
+      pdf.save(`${dashboard.name}.pdf`);
+    } catch (error) {
+      pushToast({ description: messageFromError(error), title: "Could not export dashboard PDF", tone: "danger" });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const createMutation = useMutation({
+    mutationFn: (payload: CustomDashboardCreate) => createCustomDashboard(token ?? "", payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-dashboards", token] });
+      setBuilderOpen(false);
+      pushToast({ description: "Your dashboard has been saved.", title: "Dashboard created", tone: "success" });
+    },
+    onError: (error) => pushToast({ description: messageFromError(error), title: "Could not create dashboard", tone: "danger" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: CustomDashboardCreate }) => updateCustomDashboard(token ?? "", id, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-dashboards", token] });
+      setBuilderOpen(false);
+      setEditingDashboard(null);
+      pushToast({ description: "Your changes have been saved.", title: "Dashboard updated", tone: "success" });
+    },
+    onError: (error) => pushToast({ description: messageFromError(error), title: "Could not update dashboard", tone: "danger" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteCustomDashboard(token ?? "", id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-dashboards", token] });
+      pushToast({ description: "The dashboard was removed.", title: "Dashboard deleted", tone: "success" });
+    },
+    onError: (error) => pushToast({ description: messageFromError(error), title: "Could not delete dashboard", tone: "danger" }),
+  });
+
+  function openCreateBuilder(): void {
+    setEditingDashboard(null);
+    setBuilderOpen(true);
+  }
+
+  function openEditBuilder(dashboard: CustomDashboardRead): void {
+    setEditingDashboard(dashboard);
+    setBuilderOpen(true);
+  }
+
+  function handleSave(payload: CustomDashboardCreate): void {
+    if (editingDashboard) {
+      updateMutation.mutate({ id: editingDashboard.id, payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  }
+
+  function handleDelete(dashboard: CustomDashboardRead): void {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${dashboard.name}"? This cannot be undone.`)) return;
+    deleteMutation.mutate(dashboard.id);
+  }
+
   const columns: TableColumn<ReportRecord>[] = [
     {
       header: "Source Report",
@@ -1182,14 +1393,46 @@ function DashboardsSection({
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={createDashboard} type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
+        action={<Button onClick={openCreateBuilder} type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
         description="Interactive analytics dashboards with KPI cards, tables, charts, maps, activity feeds, progress widgets, responsive layouts, and role-based visibility."
         route="/reports/dashboards"
         title="Dashboards"
       />
-      <div className="grid gap-4 lg:grid-cols-3">
-        {dashboardRows.map((dashboard) => <DashboardCard dashboard={dashboard} key={dashboard.id} />)}
-      </div>
+      {preview ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {dashboards.map((dashboard) => <DashboardCard dashboard={dashboard} key={dashboard.id} />)}
+        </div>
+      ) : customDashboardsQuery.isLoading ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {[0, 1, 2].map((index) => (
+            <div className="space-y-3 rounded-2xl border bg-background p-4 shadow-line" key={index}>
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          ))}
+        </div>
+      ) : customDashboards.length ? (
+        <div className="grid gap-4 lg:grid-cols-3">
+          {customDashboards.map((dashboard) => (
+            <CustomDashboardCard
+              dashboard={dashboard}
+              key={dashboard.id}
+              onDelete={() => handleDelete(dashboard)}
+              onEdit={() => openEditBuilder(dashboard)}
+              onView={() => {
+                setFilters(defaultDashboardFilters);
+                setViewingDashboard(dashboard);
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed bg-background p-6 text-center text-sm text-muted-foreground">
+          No dashboards yet. Create one to combine indicators, submissions, donor metrics, and data quality signals into a single view.
+        </div>
+      )}
       <Panel action={<Button onClick={onOpenReports} size="sm" variant="secondary">Open reports</Button>} title="Dashboard builder capabilities">
         <div className="grid gap-3 md:grid-cols-4">
           {["Drag and drop layout", "Role-based visibility", "Cross-filtering", "Reusable widgets", "Fullscreen visualizations", "Export image", "Map links", "Responsive dashboards"].map((item) => (
@@ -1207,7 +1450,117 @@ function DashboardsSection({
           title="Reports powering dashboards"
         />
       </Panel>
+      {!preview ? (
+        <DashboardBuilder
+          dashboard={editingDashboard}
+          data={widgetData}
+          onOpenChange={setBuilderOpen}
+          onSave={handleSave}
+          open={builderOpen}
+          saving={createMutation.isPending || updateMutation.isPending}
+        />
+      ) : null}
+      {viewingDashboard ? (
+        <Modal contentClassName="max-w-6xl" onOpenChange={() => setViewingDashboard(null)} open={Boolean(viewingDashboard)} title={viewingDashboard.name}>
+          <div className="max-h-[75vh] overflow-y-auto p-5 product-scrollbar">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <DashboardFilterBar filters={filters} onChange={setFilters} projects={projects} />
+              <div className="flex gap-2">
+                <Button disabled={exporting} onClick={() => handleExportImage(viewingDashboard)} size="sm" variant="secondary">
+                  <FileImage aria-hidden="true" /> Export PNG
+                </Button>
+                <Button disabled={exporting} onClick={() => handleExportPdf(viewingDashboard)} size="sm" variant="secondary">
+                  <FileText aria-hidden="true" /> Export PDF
+                </Button>
+              </div>
+            </div>
+            {isLoadingWidgetData ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[0, 1, 2].map((index) => (
+                  <Skeleton className="h-32 rounded-xl" key={index} />
+                ))}
+              </div>
+            ) : viewingDashboard.widgets.length ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" ref={gridRef}>
+                {viewingDashboard.widgets.map((widget) => {
+                  const TypeIcon = widgetTypeIcons[widget.type as WidgetType];
+                  return (
+                    <div className={cn("rounded-xl border bg-background p-3", colSpanClasses[widget.width])} key={widget.id}>
+                      <div className="mb-2 flex items-center gap-1.5">
+                        {TypeIcon ? <TypeIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
+                        <p className="text-sm font-semibold">{widget.title}</p>
+                      </div>
+                      <DashboardWidgetBody data={widgetData} widget={widget} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">This dashboard has no widgets yet. Edit it to add some.</p>
+            )}
+          </div>
+        </Modal>
+      ) : null}
     </div>
+  );
+}
+
+function CustomDashboardCard({
+  dashboard,
+  onDelete,
+  onEdit,
+  onView,
+}: {
+  dashboard: CustomDashboardRead;
+  onDelete: () => void;
+  onEdit: () => void;
+  onView: () => void;
+}) {
+  const accentClass = dashboard.status === "active" ? "border-l-success" : dashboard.status === "draft" ? "border-l-warning" : "border-l-border";
+
+  return (
+    <article className={cn("rounded-2xl border border-l-4 bg-background p-4 shadow-line", accentClass)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <button className="text-left text-sm font-semibold text-primary hover:underline" onClick={onView} type="button">
+            {dashboard.name}
+          </button>
+          <p className="mt-1 text-xs text-muted-foreground">{dashboard.dashboard_type} · {dashboard.visibility}</p>
+        </div>
+        <Badge tone={dashboard.status === "active" ? "success" : dashboard.status === "draft" ? "warning" : "neutral"}>{dashboard.status}</Badge>
+      </div>
+      {dashboard.description ? <p className="mt-2 text-xs text-muted-foreground">{dashboard.description}</p> : null}
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {dashboard.widgets.length ? (
+          <>
+            {dashboard.widgets.slice(0, 4).map((widget) => {
+              const TypeIcon = widgetTypeIcons[widget.type as WidgetType];
+              return (
+                <Badge className="gap-1" key={widget.id} tone="neutral">
+                  {TypeIcon ? <TypeIcon aria-hidden="true" className="h-3 w-3" /> : null}
+                  {widget.title}
+                </Badge>
+              );
+            })}
+            {dashboard.widgets.length > 4 ? <Badge tone="neutral">+{dashboard.widgets.length - 4} more</Badge> : null}
+          </>
+        ) : (
+          <Badge tone="neutral">No widgets yet</Badge>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">Updated {new Date(dashboard.updated_at).toLocaleDateString()}</p>
+      <div className="mt-3 flex gap-2">
+        <Button onClick={onView} size="sm" variant="secondary">
+          <Eye aria-hidden="true" /> View
+        </Button>
+        <Button onClick={onEdit} size="sm" variant="secondary">
+          <Pencil aria-hidden="true" /> Edit
+        </Button>
+        <Button onClick={onDelete} size="sm" variant="ghost">
+          <Trash2 aria-hidden="true" /> Delete
+        </Button>
+      </div>
+    </article>
   );
 }
 
