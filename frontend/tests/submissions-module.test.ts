@@ -48,6 +48,10 @@ describe("Submissions module helpers", () => {
 
     expect(updated?.status).toBe("approved");
     expect(updated?.review_stage).toBe("Approved");
+    expect(updated?.approved_by_name).toBe("Reviewer");
+    expect(updated?.approved_by_user_id).toBe("preview-reviewer");
+    expect(updated?.approved_at).toBeTruthy();
+    expect(updated?.review_quality).toBe(first.quality_score);
     expect(updated?.history.at(-1)?.comment).toBe("Clean record.");
     expect(updated?.audit_events.at(-1)?.old_value).toBe("under_review");
   });
