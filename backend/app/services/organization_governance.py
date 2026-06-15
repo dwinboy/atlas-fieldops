@@ -236,25 +236,32 @@ class OrganizationGovernanceService:
         return [SessionLogRead.model_validate(row) for row in await self.repository.list_session_logs(organization_id)]
 
     async def simulate_access(self, organization_id: UUID, payload: AccessSimulationRequest) -> AccessSimulationRead:
-        roles, grant = await self.repository.get_user_access_context(organization_id, payload.user_id)
-        if not roles:
+        contexts = await self.repository.get_user_access_context(organization_id, payload.user_id)
+        if not contexts:
             return AccessSimulationRead(allowed=False, decision="deny", matched_roles=[], matched_scope=None, reasons=["User is not a member of this organization."])
-        permission_allowed = has_permission(roles, payload.permission)
+        roles = sorted({context.role_name for context in contexts})
+        permission_allowed = any(has_permission([context.role_name], payload.permission) for context in contexts)
+        matched_context = None
         scope_allowed = False
         scope_label: str | None = None
-        if grant is not None:
-            scope_label = grant.scope_type
-            scope_allowed = is_scope_authorized(
+        for context in contexts:
+            if not has_permission([context.role_name], payload.permission):
+                continue
+            if is_scope_authorized(
                 scope=AccessScope(
-                    scope_type=ScopeType(grant.scope_type),
-                    geography_ids=frozenset([grant.geography_id] if grant.geography_id else []),
-                    project_ids=frozenset([grant.project_id] if grant.project_id else []),
-                    organization_unit_ids=frozenset([str(grant.organization_unit_id)] if grant.organization_unit_id else []),
+                    scope_type=ScopeType(context.scope_type),
+                    geography_ids=frozenset([context.geography_id] if context.geography_id else []),
+                    project_ids=frozenset([context.project_id] if context.project_id else []),
+                    organization_unit_ids=frozenset([str(context.organization_unit_id)] if context.organization_unit_id else []),
                 ),
                 target_geography_id=payload.geography_id,
                 target_project_id=payload.project_id,
                 target_organization_unit_id=str(payload.organization_unit_id) if payload.organization_unit_id else None,
-            )
+            ):
+                matched_context = context
+                scope_allowed = True
+                scope_label = context.scope_type
+                break
         reasons: list[str] = []
         if permission_allowed:
             reasons.append("Role grants the requested permission.")
@@ -264,7 +271,7 @@ class OrganizationGovernanceService:
             reasons.append("Current assignment scope covers the requested context.")
         else:
             reasons.append("Current assignment scope does not cover the requested context.")
-        allowed = permission_allowed and scope_allowed
+        allowed = matched_context is not None
         return AccessSimulationRead(
             allowed=allowed,
             decision="allow" if allowed else "deny",

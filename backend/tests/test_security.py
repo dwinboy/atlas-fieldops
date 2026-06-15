@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.schemas.auth import CurrentPrincipal
 from app.schemas.identity import UserCreate
 from app.schemas.organization_governance import AccessSimulationRequest
+from app.repositories.organization_governance import UserAccessContext
 from app.services.auth import AuthService, AuthenticationError, MultipleOrganizationsError
 from app.services.identity import UserManagementService
 from app.services.organization_governance import OrganizationGovernanceService
@@ -234,6 +235,16 @@ async def test_require_permission_rejects_missing_permission() -> None:
     assert exc_info.value.status_code == 403
 
 
+async def test_field_officer_cannot_open_global_data_quality_queue() -> None:
+    principal = CurrentPrincipal(user_id="field-1", organization_id="org-1", roles=["field_officer"])
+
+    assert has_permission(principal.roles, Permission.BENEFICIARY_READ)
+    with pytest.raises(HTTPException) as exc_info:
+        await require_permission(Permission.SUBMISSION_READ)(principal)
+
+    assert exc_info.value.status_code == 403
+
+
 def test_scope_authorization_limits_project_and_geography() -> None:
     regional_scope = AccessScope(scope_type=ScopeType.REGION, geography_ids=frozenset({"northwest"}))
     project_scope = AccessScope(scope_type=ScopeType.PROJECT, project_ids=frozenset({"project-1"}))
@@ -245,14 +256,16 @@ def test_scope_authorization_limits_project_and_geography() -> None:
 
 
 class FakeOrganizationGovernanceRepository:
-    async def get_user_access_context(self, organization_id: object, user_id: object) -> tuple[list[str], object]:
-        grant = SimpleNamespace(
-            scope_type="district",
-            geography_id="district-default",
-            project_id=None,
-            organization_unit_id=None,
-        )
-        return ["district_supervisor"], grant
+    async def get_user_access_context(self, organization_id: object, user_id: object) -> list[UserAccessContext]:
+        return [
+            UserAccessContext(
+                role_name="district_supervisor",
+                scope_type="district",
+                geography_id="district-default",
+                project_id=None,
+                organization_unit_id=None,
+            )
+        ]
 
 
 async def test_organization_governance_simulates_permission_and_scope() -> None:
@@ -280,6 +293,84 @@ async def test_organization_governance_simulates_permission_and_scope() -> None:
     assert allowed.decision == "allow"
     assert denied.decision == "deny"
     assert "does not cover" in denied.reasons[-1]
+
+
+class FakeStackedRoleGovernanceRepository:
+    async def get_user_access_context(self, organization_id: object, user_id: object) -> list[UserAccessContext]:
+        return [
+            UserAccessContext(
+                role_name="field_officer",
+                scope_type="own",
+                geography_id=None,
+                project_id=None,
+                organization_unit_id=None,
+            ),
+            UserAccessContext(
+                role_name="data_manager",
+                scope_type="project",
+                geography_id=None,
+                project_id="project-a",
+                organization_unit_id=None,
+            ),
+        ]
+
+
+async def test_organization_governance_simulates_stacked_role_scope() -> None:
+    service = object.__new__(OrganizationGovernanceService)
+    service.repository = cast(Any, FakeStackedRoleGovernanceRepository())
+
+    allowed = await service.simulate_access(
+        uuid4(),
+        AccessSimulationRequest(user_id=uuid4(), permission="data.export", project_id="project-a"),
+    )
+    denied = await service.simulate_access(
+        uuid4(),
+        AccessSimulationRequest(user_id=uuid4(), permission="data.export", project_id="project-b"),
+    )
+
+    assert allowed.allowed
+    assert allowed.matched_scope == "project"
+    assert denied.decision == "deny"
+
+
+class FakeSecurityResult:
+    def __init__(self, rows: list[tuple[object, object]] | None = None, scalar_value: object | None = None) -> None:
+        self._rows = rows or []
+        self._scalar_value = scalar_value
+
+    def all(self) -> list[tuple[object, object]]:
+        return self._rows
+
+    def scalar_one_or_none(self) -> object | None:
+        return self._scalar_value
+
+
+class FakeSecuritySession:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def scalar(self, _statement: object) -> object:
+        return SimpleNamespace(id=uuid4(), is_active=True)
+
+    async def execute(self, _statement: object) -> FakeSecurityResult:
+        self.calls += 1
+        if self.calls == 1:
+            return FakeSecurityResult(rows=[("project_manager", "")])
+        return FakeSecurityResult(rows=[])
+
+
+async def test_require_permission_rechecks_active_database_roles_for_stale_tokens() -> None:
+    principal = CurrentPrincipal(
+        user_id=str(uuid4()),
+        organization_id=str(uuid4()),
+        roles=["project_manager", "data_manager"],
+        permissions=["data.export"],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_permission(Permission.DATA_EXPORT)(principal, cast(Any, FakeSecuritySession()))
+
+    assert exc_info.value.status_code == 403
 
 
 class FakeUserRepository:

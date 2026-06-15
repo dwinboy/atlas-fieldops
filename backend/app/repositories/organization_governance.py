@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypeVar
 from uuid import UUID
@@ -5,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.identity import Membership, Role, UserAccessGrant
+from app.models.identity import Membership, Role, UserAccessGrant, UserRoleAssignment
 from app.models.operations import (
     AccessDelegation,
     AccessRequest,
@@ -20,6 +21,15 @@ from app.models.operations import (
 )
 
 ModelT = TypeVar("ModelT")
+
+
+@dataclass(frozen=True)
+class UserAccessContext:
+    role_name: str
+    scope_type: str
+    geography_id: str | None
+    project_id: str | None
+    organization_unit_id: UUID | None
 
 
 class OrganizationGovernanceRepository:
@@ -208,9 +218,9 @@ class OrganizationGovernanceRepository:
         )
         return list(result.scalars())
 
-    async def get_user_access_context(self, organization_id: UUID, user_id: UUID) -> tuple[list[str], UserAccessGrant | None]:
-        result = await self.session.execute(
-            select(Role.name, UserAccessGrant)
+    async def get_user_access_context(self, organization_id: UUID, user_id: UUID) -> list[UserAccessContext]:
+        membership_result = await self.session.execute(
+            select(Role.name, Role.scope_type, UserAccessGrant)
             .join(Membership, Membership.role_id == Role.id)
             .outerjoin(
                 UserAccessGrant,
@@ -226,9 +236,39 @@ class OrganizationGovernanceRepository:
             )
             .order_by(UserAccessGrant.updated_at.desc().nullslast())
         )
-        rows = result.all()
-        if not rows:
-            return [], None
-        roles = sorted({role_name for role_name, _grant in rows})
-        grant = next((grant for _role_name, grant in rows if grant is not None), None)
-        return roles, grant
+        contexts = [
+            UserAccessContext(
+                role_name=role_name,
+                scope_type=grant.scope_type if grant is not None else role_scope_type,
+                geography_id=grant.geography_id if grant is not None else None,
+                project_id=grant.project_id if grant is not None else None,
+                organization_unit_id=grant.organization_unit_id if grant is not None else None,
+            )
+            for role_name, role_scope_type, grant in membership_result.all()
+        ]
+        now = datetime.now(UTC)
+        assignment_result = await self.session.execute(
+            select(Role.name, UserRoleAssignment)
+            .join(UserRoleAssignment, UserRoleAssignment.role_id == Role.id)
+            .where(
+                UserRoleAssignment.organization_id == organization_id,
+                UserRoleAssignment.user_id == user_id,
+                UserRoleAssignment.is_active.is_(True),
+                UserRoleAssignment.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+                (UserRoleAssignment.starts_at.is_(None)) | (UserRoleAssignment.starts_at <= now),
+                (UserRoleAssignment.expires_at.is_(None)) | (UserRoleAssignment.expires_at > now),
+            )
+            .order_by(UserRoleAssignment.updated_at.desc())
+        )
+        contexts.extend(
+            UserAccessContext(
+                role_name=role_name,
+                scope_type=assignment.scope_type,
+                geography_id=assignment.geography_id,
+                project_id=assignment.project_id,
+                organization_unit_id=assignment.organization_unit_id,
+            )
+            for role_name, assignment in assignment_result.all()
+        )
+        return contexts

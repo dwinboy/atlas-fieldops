@@ -1,9 +1,14 @@
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.app_db import get_session
 from app.core.security import decode_access_token
 from app.core.permissions import (
     AccessScope,
@@ -16,9 +21,78 @@ from app.core.permissions import (
     normalize_permission,
     workflow_actions_for_roles,
 )
+from app.models.identity import Membership, Organization, Role, User, UserRoleAssignment
 from app.schemas.auth import CurrentPrincipal
 
 bearer = HTTPBearer(auto_error=True)
+
+
+async def _active_access_from_database(
+    principal: CurrentPrincipal,
+    session: AsyncSession | None,
+) -> tuple[list[str], set[str]] | None:
+    if session is None or (principal.support_mode and "super_admin" in principal.roles):
+        return None
+    try:
+        organization_id = UUID(principal.organization_id)
+        user_id = UUID(principal.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+    organization = await session.scalar(
+        select(Organization).where(
+            Organization.id == organization_id,
+            Organization.is_active.is_(True),
+            Organization.deleted_at.is_(None),
+        )
+    )
+    user = await session.scalar(
+        select(User).where(
+            User.id == user_id,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+    )
+    if organization is None or user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive account")
+    membership_rows = (
+        await session.execute(
+            select(Role.name, Role.permissions)
+            .join(Membership, Membership.role_id == Role.id)
+            .where(
+                Membership.organization_id == organization_id,
+                Membership.user_id == user_id,
+                Membership.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    now = datetime.now(UTC)
+    assignment_rows = (
+        await session.execute(
+            select(Role.name, Role.permissions)
+            .join(UserRoleAssignment, UserRoleAssignment.role_id == Role.id)
+            .where(
+                UserRoleAssignment.organization_id == organization_id,
+                UserRoleAssignment.user_id == user_id,
+                UserRoleAssignment.is_active.is_(True),
+                UserRoleAssignment.deleted_at.is_(None),
+                Role.deleted_at.is_(None),
+                (UserRoleAssignment.starts_at.is_(None)) | (UserRoleAssignment.starts_at <= now),
+                (UserRoleAssignment.expires_at.is_(None)) | (UserRoleAssignment.expires_at > now),
+            )
+        )
+    ).all()
+    roles = sorted({str(role_name) for role_name, _permissions in [*membership_rows, *assignment_rows]})
+    if not roles:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive account")
+    stored_permissions = {
+        normalized.value
+        for _role_name, permissions in [*membership_rows, *assignment_rows]
+        for permission in str(permissions or "").split(",")
+        if (normalized := normalize_permission(permission.strip())) is not None
+    }
+    return roles, stored_permissions
 
 
 async def get_current_principal(
@@ -62,8 +136,11 @@ async def get_current_principal(
 def require_role(required_role: str) -> Callable[[CurrentPrincipal], Awaitable[CurrentPrincipal]]:
     async def dependency(
         principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
+        session: Annotated[AsyncSession | None, Depends(get_session)] = None,
     ) -> CurrentPrincipal:
-        if required_role not in principal.roles:
+        active_access = await _active_access_from_database(principal, session)
+        roles = active_access[0] if active_access is not None else principal.roles
+        if required_role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
         return principal
 
@@ -75,8 +152,16 @@ def require_permission(
 ) -> Callable[[CurrentPrincipal], Awaitable[CurrentPrincipal]]:
     async def dependency(
         principal: Annotated[CurrentPrincipal, Depends(get_current_principal)],
+        session: Annotated[AsyncSession | None, Depends(get_session)] = None,
     ) -> CurrentPrincipal:
-        if not has_permission(principal.roles, required_permission) and required_permission.value not in set(principal.permissions):
+        active_access = await _active_access_from_database(principal, session)
+        if active_access is not None:
+            roles, stored_permissions = active_access
+            permissions = {permission.value for permission in permissions_for_roles(roles)} | stored_permissions
+        else:
+            roles = principal.roles
+            permissions = set(principal.permissions)
+        if not has_permission(roles, required_permission) and required_permission.value not in permissions:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
         return principal
 
