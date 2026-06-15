@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     kafka_submission_events_topic: str = "collection.events.v1"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    enable_prometheus_metrics: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ENABLE_PROMETHEUS_METRICS", "ENABLE_METRICS", "enable_prometheus_metrics"),
+    )
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default=REQUIRED_CORS_ORIGINS + LOCAL_CORS_ORIGINS,
         validation_alias=AliasChoices("BACKEND_CORS_ORIGINS", "cors_origins"),

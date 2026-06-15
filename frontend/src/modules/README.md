@@ -17,3 +17,8 @@ Feature-specific frontend work belongs in these business modules:
 
 Before adding or moving a page, read `docs/PLATFORM_INFORMATION_ARCHITECTURE.md` and update `frontend/src/config/navigation.ts` when route or sidebar behavior changes.
 
+Module-specific implementation notes:
+
+- `indicators/README.md` - metric routes, live results framework, logframes, baselines, and targets.
+- `mapping/README.md` - live GIS sections, source-record inspection, facility classification, and spatial exports.
+- `reports/README.md` - live reports, custom previews, dashboard sources, scheduling readiness, and export governance.

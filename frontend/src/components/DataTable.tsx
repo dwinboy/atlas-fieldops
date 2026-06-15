@@ -56,6 +56,7 @@ export function DataTable<T>({
   );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const matchingRows = normalizedQuery
@@ -95,12 +96,17 @@ export function DataTable<T>({
     setPage(0);
   }, [query, sortKey, sortDirection]);
 
+  useEffect(() => {
+    setActiveRowIndex(null);
+  }, [query, safePage, sortDirection, sortKey]);
+
   const selectablePagedRows = selection
     ? pagedRows.filter((row) => selection.isSelectable?.(row) ?? true)
     : [];
   const allPagedSelected =
     selectablePagedRows.length > 0 &&
     selectablePagedRows.every((row) => selection?.isSelected(row));
+  const tableMinWidth = Math.max(920, columns.length * 180 + (selection ? 44 : 0));
 
   const emptyContent = (
     <div className="mx-auto max-w-sm rounded-2xl border border-dashed bg-muted/20 p-5">
@@ -165,8 +171,26 @@ export function DataTable<T>({
       </div>
 
       <div className="divide-y md:hidden">
-        {pagedRows.map((row, index) => (
-          <article className="space-y-3 px-4 py-4" key={index}>
+        {pagedRows.map((row, index) => {
+          const rowIndex = safePage * PAGE_SIZE + index;
+          const active = activeRowIndex === rowIndex;
+          return (
+          <article
+            data-selected={active ? "true" : undefined}
+            className={cn(
+              "space-y-3 px-4 py-4 transition-colors",
+              active && "bg-primary/10 ring-1 ring-inset ring-primary/25",
+            )}
+            key={index}
+            onClick={() => setActiveRowIndex(rowIndex)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setActiveRowIndex(rowIndex);
+              }
+            }}
+            tabIndex={0}
+          >
             {selection && (selection.isSelectable?.(row) ?? true) ? (
               <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <input
@@ -188,7 +212,8 @@ export function DataTable<T>({
               </div>
             ))}
           </article>
-        ))}
+          );
+        })}
         {filteredRows.length === 0 ? (
           <div className="px-4 py-10 text-center text-muted-foreground">
             {emptyContent}
@@ -196,8 +221,8 @@ export function DataTable<T>({
         ) : null}
       </div>
 
-      <div className="hidden max-h-[68vh] overflow-auto product-scrollbar md:block">
-        <table className="w-full min-w-[920px] text-left text-xs">
+      <div className="hidden max-h-[68vh] overflow-x-auto overflow-y-auto overscroll-contain product-scrollbar md:block">
+        <table className="w-full text-left text-xs" style={{ minWidth: tableMinWidth }}>
           <thead className="sticky top-0 z-20 bg-muted/45 text-muted-foreground shadow-line backdrop-blur">
             <tr>
               {selection ? (
@@ -261,8 +286,26 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {pagedRows.map((row, index) => (
-              <tr key={index} className="group transition-colors hover:bg-muted/35">
+            {pagedRows.map((row, index) => {
+              const rowIndex = safePage * PAGE_SIZE + index;
+              const active = activeRowIndex === rowIndex;
+              return (
+              <tr
+                aria-selected={active}
+                className={cn(
+                  "group cursor-pointer transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                  active && "bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]",
+                )}
+                key={index}
+                onClick={() => setActiveRowIndex(rowIndex)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setActiveRowIndex(rowIndex);
+                  }
+                }}
+                tabIndex={0}
+              >
                 {selection ? (
                   <td className="w-10 px-2.5 py-2 align-top">
                     {(selection.isSelectable?.(row) ?? true) ? (
@@ -283,7 +326,10 @@ export function DataTable<T>({
                       column.align === "right" && "text-right tabular-nums",
                       columnIndex === 0 &&
                         !selection &&
-                        "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                        cn(
+                          "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                          active && "bg-primary/10",
+                        ),
                     )}
                   >
                     <div className="min-w-0 truncate" title={column.value?.(row)}>
@@ -292,7 +338,8 @@ export function DataTable<T>({
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
             {filteredRows.length === 0 ? (
               <tr>
                 <td

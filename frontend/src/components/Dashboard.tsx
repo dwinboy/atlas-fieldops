@@ -45,6 +45,7 @@ import {
   listForms,
   listSubmissions,
   type CurrentPrincipal,
+  type DataFormRead,
 } from "@/lib/api";
 import {
   getActiveFormPerformance,
@@ -55,6 +56,10 @@ import {
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
+import { previewEntities } from "@/modules/beneficiaries/data";
+import { previewForms } from "@/modules/forms/data";
+import { previewProjects } from "@/modules/projects/data";
+import { getPreviewSubmissions } from "@/modules/submissions/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 const icons = [Activity, Clock, CheckCircle2, AlertTriangle];
@@ -112,6 +117,18 @@ type DashboardAlert = {
   value: string;
   view: WorkspaceView;
 };
+
+function openPreviewQualityFlagCount(submission: unknown): number {
+  const flags =
+    typeof submission === "object" && submission !== null && "quality_flags" in submission
+      ? (submission as { quality_flags?: unknown }).quality_flags
+      : null;
+  if (!Array.isArray(flags)) return 0;
+  return flags.filter(
+    (flag): flag is { status?: string } =>
+      typeof flag === "object" && flag !== null && "status" in flag && (flag as { status?: unknown }).status === "open",
+  ).length;
+}
 
 function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
   const roles = new Set(
@@ -397,12 +414,45 @@ export function Dashboard({ token, principal }: DashboardProps) {
     queryFn: () => listDataQualitySignals(token ?? "", { status: "open" }),
     enabled: Boolean(token && !preview),
   });
-  const dashboardForms = formsQuery.data ?? [];
-  const dashboardSubmissions = submissionsQuery.data ?? [];
+  const dashboardForms = preview
+    ? ([
+        ...localForms,
+        ...previewForms.map((form) => ({
+          current_version: form.version,
+          description: form.description ?? null,
+          id: form.id,
+          is_active: form.status === "published",
+          name: form.name,
+          project_id: form.project_id ?? null,
+          slug: form.slug,
+          status: form.status,
+        })),
+      ] as DataFormRead[])
+    : formsQuery.data ?? [];
+  const dashboardSubmissions = preview ? getPreviewSubmissions() : submissionsQuery.data ?? [];
   const dashboardUsers = usersQuery.data ?? [];
   const dashboardFieldOfficers = fieldOfficersQuery.data ?? [];
   const dashboardVisitRequests = visitRequestsQuery.data ?? [];
   const dashboardQualitySignals = qualitySignalsQuery.data ?? [];
+  const previewQualityFlags = preview
+    ? previewEntities.filter((entity) => entity.qualityFlags > 0 || entity.duplicateStatus !== "Clear").length +
+      dashboardSubmissions.reduce(
+        (total, submission) =>
+          total + openPreviewQualityFlagCount(submission),
+        0,
+      )
+    : 0;
+  const effectiveSummary = summaryQuery.data ?? (preview
+    ? {
+        active_programs: previewProjects.filter((project) => project.status === "active").length,
+        beneficiaries: previewEntities.length,
+        indicators: previewProjects.reduce((sum, project) => sum + project.indicator_count, 0),
+        offline_ready: true,
+        open_cases: previewEntities.filter((entity) => entity.duplicateStatus !== "Clear").length,
+        quality_flags: previewQualityFlags,
+        sync_health_percent: 93,
+      }
+    : null);
   const draftForms = dashboardForms.filter(
     (form) => form.is_active && form.status.toLowerCase() !== "published",
   );
@@ -433,31 +483,31 @@ export function Dashboard({ token, principal }: DashboardProps) {
     fieldOfficersQuery.isLoading ||
     visitRequestsQuery.isLoading ||
     qualitySignalsQuery.isLoading;
-  const summaryMetrics = summaryQuery.data
+  const summaryMetrics = effectiveSummary
     ? [
         {
           label: "Entities",
-          value: summaryQuery.data.beneficiaries.toLocaleString(),
-          delta: "live",
+          value: effectiveSummary.beneficiaries.toLocaleString(),
+          delta: preview ? "preview" : "live",
           tone: "good" as const,
         },
         {
           label: "Active programs",
-          value: summaryQuery.data.active_programs.toLocaleString(),
-          delta: "live",
+          value: effectiveSummary.active_programs.toLocaleString(),
+          delta: preview ? "preview" : "live",
           tone: "good" as const,
         },
         {
           label: "Metrics",
-          value: summaryQuery.data.indicators.toLocaleString(),
-          delta: "live",
+          value: effectiveSummary.indicators.toLocaleString(),
+          delta: preview ? "preview" : "live",
           tone: "good" as const,
         },
         {
           label: "Open cases",
-          value: summaryQuery.data.open_cases.toLocaleString(),
+          value: effectiveSummary.open_cases.toLocaleString(),
           delta: "needs review",
-          tone: summaryQuery.data.open_cases
+          tone: effectiveSummary.open_cases
             ? ("warn" as const)
             : ("good" as const),
         },
@@ -496,12 +546,12 @@ export function Dashboard({ token, principal }: DashboardProps) {
   const hasOperationalData = Boolean(
     hasFormActivity ||
     (preview && localProjects.length) ||
-    (summaryQuery.data &&
-      (summaryQuery.data.beneficiaries ||
-        summaryQuery.data.active_programs ||
-        summaryQuery.data.indicators ||
-        summaryQuery.data.open_cases ||
-        summaryQuery.data.quality_flags)),
+    (effectiveSummary &&
+      (effectiveSummary.beneficiaries ||
+        effectiveSummary.active_programs ||
+        effectiveSummary.indicators ||
+        effectiveSummary.open_cases ||
+        effectiveSummary.quality_flags)),
   );
   const learnExpanded = learnOpenOverride ?? !hasOperationalData;
   const setupSteps: ManagementStep[] = [
@@ -521,7 +571,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       view: "programs",
       action: "Open Projects",
       complete: Boolean(
-        summaryQuery.data?.active_programs || localProjects.length,
+        effectiveSummary?.active_programs || localProjects.length,
       ),
       icon: Network,
     },
@@ -540,7 +590,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         "Define metrics, KPIs, targets, data sources, and reporting periods when formal tracking is needed.",
       view: "indicators",
       action: "Open Metrics",
-      complete: Boolean(summaryQuery.data?.indicators),
+      complete: Boolean(effectiveSummary?.indicators),
       icon: Target,
     },
     {
@@ -549,7 +599,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         "Bring entities, regions, officers, metrics, or historical records into the system.",
       view: "data",
       action: "Open Data tools",
-      complete: Boolean(summaryQuery.data?.beneficiaries),
+      complete: Boolean(effectiveSummary?.beneficiaries),
       icon: DatabaseZap,
     },
     {
@@ -582,7 +632,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       : principal?.platform_admin
         ? "Platform access"
         : "Organization access";
-  const dataQualityStatus = summaryQuery.data?.quality_flags
+  const dataQualityStatus = effectiveSummary?.quality_flags
     ? "Needs review"
     : hasOperationalData
       ? "Clean"
@@ -607,22 +657,22 @@ export function Dashboard({ token, principal }: DashboardProps) {
     },
     {
       label: "Data quality",
-      value: summaryQuery.data?.quality_flags?.toLocaleString() ?? "0",
+      value: effectiveSummary?.quality_flags?.toLocaleString() ?? "0",
       status: dataQualityStatus,
-      tone: summaryQuery.data?.quality_flags
+      tone: effectiveSummary?.quality_flags
         ? ("warning" as const)
         : hasOperationalData
           ? ("success" as const)
           : ("neutral" as const),
-      detail: summaryQuery.data?.quality_flags
+      detail: effectiveSummary?.quality_flags
         ? "Resolve validation issues before reporting."
         : "No open quality flags from live summary.",
     },
     {
       label: "Metrics and reporting",
-      value: summaryQuery.data?.indicators?.toLocaleString() ?? "0",
-      status: summaryQuery.data?.indicators ? "Trackable" : "Needs metrics",
-      tone: summaryQuery.data?.indicators
+      value: effectiveSummary?.indicators?.toLocaleString() ?? "0",
+      status: effectiveSummary?.indicators ? "Trackable" : "Needs metrics",
+      tone: effectiveSummary?.indicators
         ? ("success" as const)
         : ("neutral" as const),
       detail:
@@ -630,13 +680,13 @@ export function Dashboard({ token, principal }: DashboardProps) {
     },
     {
       label: "Sync readiness",
-      value: summaryQuery.data
-        ? `${summaryQuery.data.sync_health_percent}%`
+      value: effectiveSummary
+        ? `${effectiveSummary.sync_health_percent}%`
         : "0%",
-      status: summaryQuery.data?.offline_ready
+      status: effectiveSummary?.offline_ready
         ? "Offline ready"
         : "Prepare devices",
-      tone: summaryQuery.data?.offline_ready
+      tone: effectiveSummary?.offline_ready
         ? ("success" as const)
         : ("warning" as const),
       detail:
@@ -761,23 +811,23 @@ export function Dashboard({ token, principal }: DashboardProps) {
     ? [
         [
           "Open cases need follow-up",
-          `${summaryQuery.data?.open_cases ?? 0} cases`,
+          `${effectiveSummary?.open_cases ?? 0} cases`,
           "Open cases",
-          (summaryQuery.data?.open_cases ?? 0) ? "warning" : "success",
+          (effectiveSummary?.open_cases ?? 0) ? "warning" : "success",
           "cases",
           "Opening cases so managers can review follow-ups and close resolved work.",
         ],
         [
           "Data quality flags",
-          `${summaryQuery.data?.quality_flags ?? 0} flags`,
+          `${effectiveSummary?.quality_flags ?? 0} flags`,
           "Check data",
-          (summaryQuery.data?.quality_flags ?? 0) ? "danger" : "success",
+          (effectiveSummary?.quality_flags ?? 0) ? "danger" : "success",
           "data",
           "Opening data tools so validation flags can be checked and resolved.",
         ],
         [
           "Reporting baseline",
-          `${summaryQuery.data?.indicators ?? 0} metrics`,
+          `${effectiveSummary?.indicators ?? 0} metrics`,
           "Track metrics",
           "neutral",
           "indicators",
@@ -811,7 +861,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
         ],
       ];
   const activeProjectCount =
-    (summaryQuery.data?.active_programs ??
+    (effectiveSummary?.active_programs ??
       new Set(
         dashboardForms
           .map((form) => form.project_id)
@@ -858,7 +908,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       )
     : 0;
   const dashboardQualityScore = getDashboardQualityScore(
-    summaryQuery.data,
+    effectiveSummary ?? undefined,
     formPerformanceTotals,
   );
   const commandMetrics = getDashboardCommandMetrics({
@@ -872,7 +922,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     activeProjects: activeProjectCount,
     coveragePercent: coverageOverview.coveragePercent,
     fieldOfficers: fieldOfficerActivity,
-    indicators: summaryQuery.data?.indicators ?? 0,
+    indicators: effectiveSummary?.indicators ?? 0,
     pendingReviews: formPerformanceTotals.pendingReview,
     qualityScore: dashboardQualityScore,
     totalSubmissions:
@@ -926,7 +976,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     ["approved", "scheduled", "checked_in"].includes(request.status.toLowerCase()),
   ).length;
   const openQualitySignalCount =
-    dashboardQualitySignals.length || summaryQuery.data?.quality_flags || 0;
+    dashboardQualitySignals.length || effectiveSummary?.quality_flags || 0;
   const pendingManagerActions =
     approvalOverview.pending +
     pendingVisitRequests +
@@ -969,7 +1019,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       label: "Sync health",
       result: "Opening sync and connectivity tools so managers can inspect pending uploads, failed syncs, and device readiness.",
       tone: staleSyncCount ? "warning" : "success",
-      value: staleSyncCount ? `${staleSyncCount} stale` : `${summaryQuery.data?.sync_health_percent ?? syncProgressPercent}%`,
+      value: staleSyncCount ? `${staleSyncCount} stale` : `${effectiveSummary?.sync_health_percent ?? syncProgressPercent}%`,
       view: "connectivity",
     },
     {
@@ -1023,21 +1073,21 @@ export function Dashboard({ token, principal }: DashboardProps) {
           view: "submissions" as const,
         }
       : null,
-    summaryQuery.data?.quality_flags
+    effectiveSummary?.quality_flags
       ? {
           detail: "Resolve quality flags before reports use this data.",
           label: "Quality flags",
           tone: "danger" as const,
-          value: summaryQuery.data.quality_flags.toLocaleString(),
+          value: effectiveSummary.quality_flags.toLocaleString(),
           view: "dataQuality" as const,
         }
       : null,
-    summaryQuery.data?.open_cases
+    effectiveSummary?.open_cases
       ? {
           detail: "Cases need assignment, follow-up, or closure.",
           label: "Open cases",
           tone: "warning" as const,
-          value: summaryQuery.data.open_cases.toLocaleString(),
+          value: effectiveSummary.open_cases.toLocaleString(),
           view: "submissions" as const,
         }
       : null,
@@ -1103,7 +1153,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       view: "connectivity",
     },
     {
-      count: summaryQuery.data?.open_cases ?? 0,
+      count: effectiveSummary?.open_cases ?? 0,
       label: "open cases need follow-up",
       result:
         "Opening cases so follow-ups can be assigned, progressed, or closed.",
@@ -2423,10 +2473,10 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </div>
           </div>
           <Badge
-            tone={summaryQuery.data?.quality_flags ? "warning" : "success"}
+            tone={effectiveSummary?.quality_flags ? "warning" : "success"}
           >
-            {summaryQuery.data?.quality_flags
-              ? `${summaryQuery.data.quality_flags} flags`
+            {effectiveSummary?.quality_flags
+              ? `${effectiveSummary.quality_flags} flags`
               : "No open flags"}
           </Badge>
         </div>

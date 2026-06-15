@@ -281,7 +281,7 @@ export function MarketingNav() {
         >
           <div className="flex items-center justify-between border-b border-border p-4">
             <span className="flex items-center gap-2 font-semibold text-foreground">
-              <AtlasFieldOpsLogo size={30} />
+              <AtlasFieldOpsLogo size={44} />
               Atlas FieldOps
             </span>
             <button

@@ -105,6 +105,7 @@ export type ProjectDataCoverage = {
 export type SpatialQualityIssue = {
   id: string;
   issueType: string;
+  sourceFeatureId?: string;
   submissionId: string;
   enumerator: string;
   project: string;
@@ -142,18 +143,17 @@ export const mappingSections: {
   label: string;
   route: string;
   description: string;
-  status?: "planned";
 }[] = [
   { id: "dashboard", label: "Overview", route: "/mapping", description: "Spatial activity, GPS evidence, layers, boundaries, coverage gaps, and high-priority geographic alerts." },
   { id: "project-maps", label: "Project Maps", route: "/mapping/project-maps", description: "Project extent computed from GPS-tagged submissions and records, with point counts and coverage centroid." },
   { id: "submission-maps", label: "Submission Maps", route: "/mapping/submission-maps", description: "Submission GPS points, density, review status, approval state, and quality scores." },
   { id: "beneficiary-maps", label: "Beneficiary Maps", route: "/mapping/beneficiary-maps", description: "Beneficiary and household geography with privacy masking and aggregated role-based views." },
   { id: "data-quality-maps", label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS accuracy issues and duplicate-risk records flagged from your real submission and beneficiary data." },
-  { id: "facility-maps", label: "Facility Maps", route: "/mapping/facility-maps", description: "Schools, clinics, water points, offices, warehouses, catchments, and service availability.", status: "planned" },
-  { id: "coverage-maps", label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Covered, under-covered, no-data, and over-sampled areas by assignment, form, target, and location.", status: "planned" },
-  { id: "indicator-maps", label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Indicator values, baselines, targets, achievement, and hotspots by location.", status: "planned" },
-  { id: "layers", label: "Map Layers", route: "/mapping/layers", description: "Upload, version, permission, activate, deactivate, and archive reusable spatial layers.", status: "planned" },
-  { id: "boundaries", label: "Boundaries", route: "/mapping/boundaries", description: "Validate and manage country, region, district, community, village, and project boundary geometry.", status: "planned" },
+  { id: "facility-maps", label: "Facility Maps", route: "/mapping/facility-maps", description: "Schools, clinics, water points, offices, warehouses, catchments, and service availability." },
+  { id: "coverage-maps", label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Covered, under-covered, no-data, and over-sampled areas by assignment, form, target, and location." },
+  { id: "indicator-maps", label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Indicator values, baselines, targets, achievement, and hotspots by location." },
+  { id: "layers", label: "Map Layers", route: "/mapping/layers", description: "Review live point layers derived from submissions and entity records, plus uploaded GIS layers when connected." },
+  { id: "boundaries", label: "Boundaries", route: "/mapping/boundaries", description: "Review project extents derived from GPS evidence and manage official boundaries when geometry uploads are connected." },
 ];
 
 export const previewMapLayers: MapLayerRecord[] = [

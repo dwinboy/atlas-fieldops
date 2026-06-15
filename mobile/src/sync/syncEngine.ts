@@ -193,6 +193,7 @@ export class SyncEngine {
       if (!notification) {
         throw new Error("Notification was not found on this device.");
       }
+      await this.apis.notifications.markRead(token, notification.serverId ?? notification.id);
     }
     if (item.operation === "CREATE_VISIT_REQUEST") {
       const visitLocalId = String(item.payload.visitLocalId ?? "");

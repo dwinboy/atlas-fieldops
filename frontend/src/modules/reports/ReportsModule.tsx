@@ -25,8 +25,9 @@ import {
   Table2,
   type LucideIcon,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -37,20 +38,14 @@ import { Modal } from "@/components/ui/modal";
 import {
   ApiError,
   createReport,
-  createReportSchedule,
-  deleteReportSchedule,
   exportReportCsv,
   generateReport,
   listProjects,
   listReports,
-  listReportSchedules,
-  runReportSchedule,
-  updateReportScheduleStatus,
   type CurrentPrincipal,
   type DonorReportIndicatorMetric,
   type DonorReportMetrics,
   type DonorReportRead,
-  type ReportScheduleRead,
 } from "@/lib/api";
 import { useSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
@@ -67,19 +62,16 @@ import {
   type DashboardRecord,
   type ExportJobRecord,
   type KpiRecord,
+  type ReportBuilderStep,
   type ReportAuditEvent,
-  type ReportFormat,
   type ReportRecord,
   type ReportsSection,
   type ScheduledReportRecord,
-  type ScheduleFrequency,
   type VisualizationType,
 } from "@/modules/reports/data";
 import {
-  buildReportMetricsExport,
   canExportReport,
   computeReportsSummary,
-  deriveReportKpis,
   exportStatusTone,
   filterReportsBySection,
   formatTone,
@@ -118,6 +110,11 @@ function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
 }
 
+function reportSectionFromPath(pathname: string | null): ReportsSection {
+  const match = reportsSections.find((section) => section.route === pathname);
+  return match?.id ?? "dashboard";
+}
+
 const REPORT_TYPE_OPTIONS = [
   { value: "indicator", label: "Indicator progress" },
   { value: "donor", label: "Donor package" },
@@ -134,15 +131,6 @@ const emptyReportDraft = {
   periodStart: "",
   periodEnd: "",
   summary: "",
-};
-
-const emptyScheduleDraft = {
-  reportId: "",
-  frequency: "weekly",
-  hour: "8",
-  timezone: "UTC",
-  recipients: "",
-  exportFormat: "pdf",
 };
 
 function titleCase(value: string): string {
@@ -197,28 +185,6 @@ function mapApiReport(row: DonorReportRead, ownerRole: string): ReportRecord {
   };
 }
 
-const SCHEDULE_FREQUENCY_LABELS: Record<string, ScheduleFrequency> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
-const SCHEDULE_FORMAT_LABELS: Record<string, ReportFormat> = { pdf: "PDF", excel: "Excel", csv: "CSV", json: "JSON" };
-
-function mapApiSchedule(row: ReportScheduleRead): ScheduledReportRecord {
-  const status: ScheduledReportRecord["status"] =
-    row.last_status === "failed" ? "Failed" : row.status === "paused" ? "Paused" : "Active";
-  return {
-    id: row.id,
-    reportId: row.report_id,
-    reportTitle: row.report_name ?? "Report",
-    recipients: row.recipients,
-    frequency: SCHEDULE_FREQUENCY_LABELS[row.frequency] ?? "Custom",
-    time: `${String(row.hour).padStart(2, "0")}:00`,
-    timezone: row.timezone,
-    format: SCHEDULE_FORMAT_LABELS[row.export_format] ?? "PDF",
-    status,
-    lastRun: row.last_run_at ? new Date(row.last_run_at).toLocaleString() : "Never run",
-    nextRun: new Date(row.next_run_at).toLocaleString(),
-    failureLog: row.failure_log ?? undefined,
-  };
-}
-
 function messageFromError(error: unknown): string {
   if (error instanceof ApiError) {
     try {
@@ -248,25 +214,120 @@ function downloadCsvText(filename: string, csv: string): void {
   URL.revokeObjectURL(url);
 }
 
-function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+function dashboardTypeForCategory(category: ReportRecord["category"]): DashboardRecord["type"] {
+  if (category === "Donor Reports") return "Donor Dashboard";
+  if (category === "Indicator Reports") return "Indicator Dashboard";
+  if (category === "Data Quality Reports") return "Data Quality Dashboard";
+  if (category === "Field Operations Reports") return "Field Operations Dashboard";
+  return "Project Dashboard";
+}
+
+function deriveLiveDashboards(reports: ReportRecord[]): DashboardRecord[] {
+  const grouped = new Map<ReportRecord["category"], ReportRecord[]>();
+  for (const report of reports) {
+    grouped.set(report.category, [...(grouped.get(report.category) ?? []), report]);
+  }
+  return Array.from(grouped.entries()).map(([category, categoryReports]) => {
+    const readyReports = categoryReports.filter((report) => report.status === "Ready").length;
+    return {
+      id: `dash-${category.toLowerCase().replaceAll(" ", "-")}`,
+      lastViewed: categoryReports[0]?.lastGenerated ?? new Date().toISOString(),
+      owner: categoryReports[0]?.owner ?? "Report owner",
+      status: readyReports > 0 ? "Active" : "Draft",
+      title: `${category.replace(" Reports", "")} dashboard`,
+      type: dashboardTypeForCategory(category),
+      visibility: category === "Donor Reports" ? "Donors" : category === "Data Quality Reports" ? "Data team" : "Managers",
+      widgets: Array.from(new Set(categoryReports.flatMap((report) => report.kpis.concat(report.visualizations)))).slice(0, 5),
+    };
+  });
+}
+
+function estimateReportRows(report: ReportRecord): number {
+  if (report.metrics) return Math.max(report.metrics.submissions_approved, report.metrics.submissions_total, report.metrics.indicators.length);
+  return Math.max(report.views, report.kpis.length, 1);
+}
+
+function preferredExportFormat(formats: ReportRecord["formats"]): ExportJobRecord["format"] {
+  if (formats.includes("CSV")) return "CSV";
+  if (formats.includes("Excel")) return "Excel";
+  if (formats.includes("PDF")) return "PDF";
+  if (formats.includes("JSON")) return "JSON";
+  return "CSV";
+}
+
+function deriveLiveExportJobs(reports: ReportRecord[]): ExportJobRecord[] {
+  return reports.map((report) => ({
+    format: preferredExportFormat(report.formats),
+    governance: canExportReport(report) ? "Approved" : report.governance === "Restricted export" ? "Restricted" : "Needs approval",
+    id: `EXP-${report.id.slice(0, 8).toUpperCase()}`,
+    name: `${report.title} export`,
+    reportId: report.id,
+    requestedAt: report.lastGenerated ?? new Date().toISOString(),
+    requestedBy: report.owner,
+    rows: estimateReportRows(report),
+    source: "Reports",
+    status: canExportReport(report) ? "Ready" : report.status === "Failed" ? "Failed" : "Queued",
+  }));
+}
+
+function deriveLiveScheduledReports(reports: ReportRecord[]): ScheduledReportRecord[] {
+  return reports
+    .filter((report) => report.status === "Scheduled")
+    .map((report) => ({
+      format: preferredExportFormat(report.formats),
+      frequency: "Monthly",
+      id: `SCH-${report.id.slice(0, 8).toUpperCase()}`,
+      lastRun: report.lastGenerated ?? new Date().toISOString(),
+      nextRun: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      recipients: [report.donor === "Internal" ? "management-team" : report.donor],
+      reportId: report.id,
+      reportTitle: report.title,
+      status: "Active",
+      time: "08:00",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }));
+}
+
+function deriveLiveKpis(reports: ReportRecord[]): KpiRecord[] {
+  const ready = reports.filter((report) => report.status === "Ready").length;
+  const exportReady = reports.filter(canExportReport).length;
+  const generated = reports.filter((report) => report.lastGenerated).length;
+  const indicatorProgress = reports.flatMap((report) => report.metrics?.indicators.map((indicator) => indicator.progress_percent) ?? []);
+  const averageProgress = indicatorProgress.length
+    ? Math.round(indicatorProgress.reduce((total, value) => total + value, 0) / indicatorProgress.length)
+    : 0;
+  return [
+    { drillDown: "Standard Reports", id: "live-total-reports", label: "Total Reports", periodComparison: "Live workspace", target: Math.max(reports.length, 1), trend: "Flat", unit: "", value: reports.length },
+    { drillDown: "Ready Reports", id: "live-ready-reports", label: "Ready Reports", periodComparison: "Approved for use", target: Math.max(reports.length, 1), trend: "Flat", unit: "", value: ready },
+    { drillDown: "Exports", id: "live-export-ready", label: "Export Ready", periodComparison: "Governance passed", target: Math.max(reports.length, 1), trend: "Flat", unit: "", value: exportReady },
+    { drillDown: "Generated Reports", id: "live-generated", label: "Generated Reports", periodComparison: "Metrics computed", target: Math.max(reports.length, 1), trend: "Flat", unit: "", value: generated },
+    { drillDown: "Indicator Reports", id: "live-progress", label: "Indicator Progress", periodComparison: indicatorProgress.length ? "Computed from report metrics" : "Generate reports to compute", target: 100, trend: "Flat", unit: "%", value: averageProgress },
+  ];
+}
+
+function deriveLiveBuilderSteps(reports: ReportRecord[]): ReportBuilderStep[] {
+  const hasReports = reports.length > 0;
+  const hasGeneratedMetrics = reports.some((report) => report.metrics);
+  const hasExports = reports.some((report) => report.formats.length > 0);
+  return [
+    { id: "source", label: "Select Data Source", description: hasReports ? "Use the existing report library as the live source catalog." : "Create a standard report first so the builder has approved data sources.", status: hasReports ? "Complete" : "Current" },
+    { id: "fields", label: "Choose Fields", description: "Choose report columns, KPI values, governance status, projects, periods, owners, and computed metrics.", status: hasReports ? "Current" : "Pending" },
+    { id: "filters", label: "Add Filters", description: "Filter by project, donor, period, status, governance approval, data source, or visualization type.", status: "Pending" },
+    { id: "visuals", label: "Configure Visualizations", description: hasGeneratedMetrics ? "Generated report metrics are available for KPI cards and progress tables." : "Generate reports to unlock live KPI and indicator metric previews.", status: hasGeneratedMetrics ? "Complete" : "Pending" },
+    { id: "preview", label: "Preview", description: "Validate row counts, governance rules, export readiness, and missing-data warnings before sharing.", status: "Pending" },
+    { id: "save", label: "Save or Export", description: hasExports ? "Export-ready formats are configured on at least one report." : "Add export formats to reports before delivery.", status: hasExports ? "Complete" : "Pending" },
+  ];
 }
 
 export function ReportsModule({ token }: ReportsModuleProps) {
-  const [activeSection, setActiveSection] = useState<ReportsSection>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<ReportsSection>(() => reportSectionFromPath(pathname));
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<ReportDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyReportDraft);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleDraft, setScheduleDraft] = useState(emptyScheduleDraft);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
@@ -281,11 +342,6 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const projectsQuery = useQuery({
     queryKey: ["reports-module", "projects", token],
     queryFn: () => listProjects(token ?? ""),
-    enabled: Boolean(token && !preview),
-  });
-  const schedulesQuery = useQuery({
-    queryKey: ["reports-module", "schedules", token],
-    queryFn: () => listReportSchedules(token ?? ""),
     enabled: Boolean(token && !preview),
   });
 
@@ -322,7 +378,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
       setCreateOpen(false);
       setCreateDraft(emptyReportDraft);
-      setActiveSection("standard");
+      selectReportSection("standard");
       pushToast({
         title: "Report created",
         description: `${report.name} is ready. Generate it to compute KPIs from approved submissions.`,
@@ -349,77 +405,12 @@ export function ReportsModule({ token }: ReportsModuleProps) {
       pushToast({ title: "Could not export report data", description: messageFromError(error), tone: "danger" });
     }
   }
-
-  const invalidateSchedules = () => queryClient.invalidateQueries({ queryKey: ["reports-module", "schedules", token] });
-
-  const createScheduleMutation = useMutation({
-    mutationFn: () =>
-      createReportSchedule(token ?? "", {
-        report_id: scheduleDraft.reportId,
-        frequency: scheduleDraft.frequency,
-        hour: Number(scheduleDraft.hour) || 0,
-        timezone: scheduleDraft.timezone.trim() || "UTC",
-        export_format: scheduleDraft.exportFormat,
-        recipients: scheduleDraft.recipients
-          .split(/[,\n;]/)
-          .map((value) => value.trim())
-          .filter(Boolean),
-      }),
-    onSuccess: async (schedule) => {
-      await invalidateSchedules();
-      setScheduleOpen(false);
-      setScheduleDraft(emptyScheduleDraft);
-      pushToast({ title: "Delivery scheduled", description: `${schedule.report_name ?? "Report"} will be delivered ${schedule.frequency}.`, tone: "success" });
-    },
-    onError: (error) => pushToast({ title: "Could not schedule delivery", description: messageFromError(error), tone: "danger" }),
-  });
-
-  const runScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => runReportSchedule(token ?? "", scheduleId),
-    onSuccess: async (schedule) => {
-      await invalidateSchedules();
-      await queryClient.invalidateQueries({ queryKey: ["reports-module", token] });
-      pushToast({
-        title: schedule.last_status === "failed" ? "Delivery run failed" : "Delivery run complete",
-        description: schedule.last_status === "failed" ? schedule.failure_log ?? "Run failed." : `${schedule.report_name ?? "Report"} was regenerated and delivered to ${schedule.recipients.length} recipient(s).`,
-        tone: schedule.last_status === "failed" ? "danger" : "success",
-      });
-    },
-    onError: (error) => pushToast({ title: "Could not run delivery", description: messageFromError(error), tone: "danger" }),
-  });
-
-  const scheduleStatusMutation = useMutation({
-    mutationFn: (variables: { scheduleId: string; status: "active" | "paused" }) =>
-      updateReportScheduleStatus(token ?? "", variables.scheduleId, variables.status),
-    onSuccess: async (schedule) => {
-      await invalidateSchedules();
-      pushToast({ title: schedule.status === "paused" ? "Schedule paused" : "Schedule resumed", description: `${schedule.report_name ?? "Report"} delivery is ${schedule.status}.`, tone: "success" });
-    },
-    onError: (error) => pushToast({ title: "Could not update schedule", description: messageFromError(error), tone: "danger" }),
-  });
-
-  const deleteScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => deleteReportSchedule(token ?? "", scheduleId),
-    onSuccess: async () => {
-      await invalidateSchedules();
-      pushToast({ title: "Schedule removed", description: "The scheduled delivery was deleted.", tone: "success" });
-    },
-    onError: (error) => pushToast({ title: "Could not delete schedule", description: messageFromError(error), tone: "danger" }),
-  });
-
-  function openScheduleDelivery(reportId?: string): void {
-    setScheduleDraft({ ...emptyScheduleDraft, reportId: reportId ?? "" });
-    setScheduleOpen(true);
-  }
-  const dashboards = useMemo(() => (preview ? previewDashboards : []), [preview]);
-  const exportJobs = useMemo(() => (preview ? previewExportJobs : []), [preview]);
-  const scheduledReports = useMemo(
-    () => (preview ? previewScheduledReports : (schedulesQuery.data ?? []).map(mapApiSchedule)),
-    [preview, schedulesQuery.data],
-  );
+  const dashboards = useMemo(() => (preview ? previewDashboards : deriveLiveDashboards(reports)), [preview, reports]);
+  const exportJobs = useMemo(() => (preview ? previewExportJobs : deriveLiveExportJobs(reports)), [preview, reports]);
+  const scheduledReports = useMemo(() => (preview ? previewScheduledReports : deriveLiveScheduledReports(reports)), [preview, reports]);
   const reportAuditEvents = useMemo(() => (preview ? previewAuditEvents : []), [preview]);
-  const kpis = useMemo(() => (preview ? previewKpis : deriveReportKpis(reports)), [preview, reports]);
-  const builderSteps = useMemo(() => (preview ? previewBuilderSteps : []), [preview]);
+  const kpis = useMemo(() => (preview ? previewKpis : deriveLiveKpis(reports)), [preview, reports]);
+  const builderSteps = useMemo(() => (preview ? previewBuilderSteps : deriveLiveBuilderSteps(reports)), [preview, reports]);
   const summary = useMemo(
     () =>
       computeReportsSummary({
@@ -432,6 +423,21 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   );
   const visibleReports = useMemo(() => filterReportsBySection(reports, activeSection), [activeSection, reports]);
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+
+  useEffect(() => {
+    const routeSection = reportSectionFromPath(pathname);
+    if (routeSection !== activeSection) {
+      setActiveSection(routeSection);
+      setSelectedReportId(null);
+    }
+  }, [activeSection, pathname]);
+
+  function selectReportSection(section: ReportsSection): void {
+    setActiveSection(section);
+    setSelectedReportId(null);
+    const route = reportsSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
 
   function openReport(report: ReportRecord, tab: ReportDetailTab = "Overview"): void {
     setSelectedReportId(report.id);
@@ -488,7 +494,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             <Button disabled={preview} onClick={openCreateReport} type="button" variant="primary">
               <FileText aria-hidden="true" /> Create report
             </Button>
-            <Button onClick={() => setActiveSection("custom")} type="button" variant="secondary">
+            <Button onClick={() => selectReportSection("custom")} type="button" variant="secondary">
               <Settings2 aria-hidden="true" /> Build custom report
             </Button>
             <Button onClick={exportReports} type="button" variant="secondary">
@@ -504,15 +510,11 @@ export function ReportsModule({ token }: ReportsModuleProps) {
                 activeSection === section.id ? "border-primary/50 bg-primary/10 shadow-line" : "bg-background",
               )}
               key={section.id}
-              onClick={() => {
-                setActiveSection(section.id);
-                setSelectedReportId(null);
-              }}
+              onClick={() => selectReportSection(section.id)}
               type="button"
             >
               <span className="flex items-center gap-1.5 text-xs font-semibold">
                 {section.label}
-                {section.status === "planned" ? <Badge tone={activeSection === section.id ? "neutral" : "accent"}>Planned</Badge> : null}
               </span>
               <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{section.route}</span>
             </button>
@@ -554,7 +556,7 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           exports={exportJobs}
           kpis={kpis}
           onOpenReport={openReport}
-          onOpenSection={setActiveSection}
+          onOpenSection={selectReportSection}
           reports={reports}
           schedules={scheduledReports}
           summary={summary}
@@ -574,45 +576,16 @@ export function ReportsModule({ token }: ReportsModuleProps) {
         />
       ) : null}
       {!selectedReport && activeSection === "custom" ? (
-        preview ? (
-          <CustomReportBuilder builderSteps={builderSteps} onOpenReports={() => setActiveSection("standard")} />
-        ) : (
-          <ComingSoonSection
-            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
-            sectionId="custom"
-          />
-        )
+        <CustomReportBuilder builderSteps={builderSteps} onOpenReport={openReport} onOpenReports={() => selectReportSection("standard")} reports={reports} />
       ) : null}
       {!selectedReport && activeSection === "dashboards" ? (
-        preview ? (
-          <DashboardsSection dashboards={dashboards} onOpenReports={() => setActiveSection("standard")} />
-        ) : (
-          <ComingSoonSection
-            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><FileText aria-hidden="true" /> Open Standard Reports</Button>}
-            sectionId="dashboards"
-          />
-        )
+        <DashboardsSection dashboards={dashboards} onOpenReport={openReport} onOpenReports={() => selectReportSection("standard")} reports={reports} />
       ) : null}
       {!selectedReport && activeSection === "scheduled" ? (
-        <ScheduledReportsSection
-          onCreate={() => openScheduleDelivery()}
-          onDelete={(scheduleId) => deleteScheduleMutation.mutate(scheduleId)}
-          onRun={(scheduleId) => runScheduleMutation.mutate(scheduleId)}
-          onToggleStatus={(schedule) => scheduleStatusMutation.mutate({ scheduleId: schedule.id, status: schedule.status === "Paused" ? "active" : "paused" })}
-          preview={preview}
-          runningId={runScheduleMutation.isPending ? (runScheduleMutation.variables ?? null) : null}
-          schedules={scheduledReports}
-        />
+        <ScheduledReportsSection onOpenReport={openReport} reports={reports} schedules={scheduledReports} />
       ) : null}
       {!selectedReport && activeSection === "exports" ? (
-        preview ? (
-          <ExportsSection exports={exportJobs} />
-        ) : (
-          <ComingSoonSection
-            action={<Button onClick={() => setActiveSection("standard")} type="button" variant="secondary"><RefreshCw aria-hidden="true" /> Generate &amp; export reports</Button>}
-            sectionId="exports"
-          />
-        )
+        <ExportsSection exports={exportJobs} onExportData={exportReportData} onOpenReport={openReport} reports={reports} />
       ) : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -740,61 +713,6 @@ export function ReportsModule({ token }: ReportsModuleProps) {
           </Button>
         </div>
       </Modal>
-
-      <Modal
-        contentClassName="max-w-xl"
-        description="Schedule recurring generation and delivery of a report from approved evidence. Running a schedule regenerates the report and records delivery to its recipients."
-        onOpenChange={setScheduleOpen}
-        open={scheduleOpen}
-        title="Schedule report delivery"
-      >
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm font-medium md:col-span-2">
-            Report
-            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, reportId: event.target.value }))} value={scheduleDraft.reportId}>
-              <option value="">Select a report</option>
-              {reports.map((report) => (
-                <option key={report.id} value={report.id}>{report.title}</option>
-              ))}
-            </Select>
-          </label>
-          <label className="text-sm font-medium">
-            Frequency
-            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, frequency: event.target.value }))} value={scheduleDraft.frequency}>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </Select>
-          </label>
-          <label className="text-sm font-medium">
-            Hour of day (0–23)
-            <Input className="mt-2" max={23} min={0} onChange={(event) => setScheduleDraft((current) => ({ ...current, hour: event.target.value }))} type="number" value={scheduleDraft.hour} />
-          </label>
-          <label className="text-sm font-medium">
-            Timezone
-            <Input className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, timezone: event.target.value }))} placeholder="UTC" value={scheduleDraft.timezone} />
-          </label>
-          <label className="text-sm font-medium">
-            Format
-            <Select className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, exportFormat: event.target.value }))} value={scheduleDraft.exportFormat}>
-              <option value="pdf">PDF</option>
-              <option value="excel">Excel</option>
-              <option value="csv">CSV</option>
-              <option value="json">JSON</option>
-            </Select>
-          </label>
-          <label className="text-sm font-medium md:col-span-2">
-            Recipients (comma or newline separated)
-            <Textarea className="mt-2" onChange={(event) => setScheduleDraft((current) => ({ ...current, recipients: event.target.value }))} placeholder="donor@example.org, lead@my-org.org" rows={2} value={scheduleDraft.recipients} />
-          </label>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={() => setScheduleOpen(false)} type="button" variant="secondary">Cancel</Button>
-          <Button disabled={createScheduleMutation.isPending || !scheduleDraft.reportId} onClick={() => createScheduleMutation.mutate()} type="button" variant="primary">
-            {createScheduleMutation.isPending ? "Scheduling…" : "Schedule delivery"}
-          </Button>
-        </div>
-      </Modal>
     </section>
   );
 }
@@ -818,22 +736,22 @@ function ReportsDashboard({
   schedules: ScheduledReportRecord[];
   summary: ReturnType<typeof computeReportsSummary>;
 }) {
-  const cards = [
-    { icon: FileText, label: "Total Reports", value: summary.totalReports, tone: "accent" as BadgeProps["tone"] },
-    { icon: CalendarClock, label: "Scheduled Reports", value: summary.scheduledReports, tone: "success" as BadgeProps["tone"] },
-    { icon: CheckCircle2, label: "Reports Ready", value: summary.reportsReady, tone: summary.reportsReady ? "success" as BadgeProps["tone"] : "neutral" as BadgeProps["tone"] },
-    { icon: Download, label: "Export Jobs", value: summary.exportJobs, tone: "accent" as BadgeProps["tone"] },
-    { icon: LayoutDashboard, label: "Active Dashboards", value: summary.activeDashboards, tone: "monitor" as BadgeProps["tone"] },
-    { icon: Eye, label: "Most Viewed Reports", value: summary.mostViewedReports, tone: "neutral" as BadgeProps["tone"] },
-    { icon: Mail, label: "Reports Pending Delivery", value: summary.reportsPendingDelivery, tone: summary.reportsPendingDelivery ? "warning" as BadgeProps["tone"] : "success" as BadgeProps["tone"] },
-    { icon: Archive, label: "Failed Report Jobs", value: summary.failedReportJobs, tone: summary.failedReportJobs ? "danger" as BadgeProps["tone"] : "success" as BadgeProps["tone"] },
+  const cards: { icon: LucideIcon; label: string; section: ReportsSection; value: number; tone: BadgeProps["tone"] }[] = [
+    { icon: FileText, label: "Total Reports", section: "standard", value: summary.totalReports, tone: "accent" },
+    { icon: CalendarClock, label: "Scheduled Reports", section: "scheduled", value: summary.scheduledReports, tone: "success" },
+    { icon: CheckCircle2, label: "Reports Ready", section: "standard", value: summary.reportsReady, tone: summary.reportsReady ? "success" : "neutral" },
+    { icon: Download, label: "Export Jobs", section: "exports", value: summary.exportJobs, tone: "accent" },
+    { icon: LayoutDashboard, label: "Active Dashboards", section: "dashboards", value: summary.activeDashboards, tone: "monitor" },
+    { icon: Eye, label: "Most Viewed Reports", section: "standard", value: summary.mostViewedReports, tone: "neutral" },
+    { icon: Mail, label: "Reports Pending Delivery", section: "scheduled", value: summary.reportsPendingDelivery, tone: summary.reportsPendingDelivery ? "warning" : "success" },
+    { icon: Archive, label: "Failed Report Jobs", section: "exports", value: summary.failedReportJobs, tone: summary.failedReportJobs ? "danger" : "success" },
   ];
 
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <MetricCard icon={card.icon} key={card.label} label={card.label} tone={card.tone} value={card.value} />
+          <MetricCard icon={card.icon} key={card.label} label={card.label} onClick={() => onOpenSection(card.section)} tone={card.tone} value={card.value} />
         ))}
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -867,9 +785,7 @@ function ReportsDashboard({
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-              Generate a report to populate executive KPIs from your approved indicator metrics.
-            </div>
+            <Timeline records={[]} />
           )}
         </Panel>
       </div>
@@ -997,7 +913,17 @@ function StandardReports({
   );
 }
 
-function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: typeof previewBuilderSteps; onOpenReports: () => void }) {
+function CustomReportBuilder({
+  builderSteps,
+  onOpenReport,
+  onOpenReports,
+  reports,
+}: {
+  builderSteps: ReportBuilderStep[];
+  onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
+  onOpenReports: () => void;
+  reports: ReportRecord[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const [dataSource, setDataSource] = useState("Submissions");
   const [visualization, setVisualization] = useState("KPI Card");
@@ -1009,6 +935,56 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
   const dataSources = ["Projects", "Forms", "Submissions", "Indicators", "Beneficiaries", "Field Operations", "Data Quality"];
   const fields = ["Project", "Form", "Submission date", "Status", "Location", "Indicator", "Quality score", "Field officer", "Supervisor", "Approved value"];
   const filters = ["Project", "Country", "Region", "District", "Location", "Form", "Indicator", "Period", "Team", "Status"];
+  const sourceKey = dataSource.toLowerCase().replace(/s$/, "");
+  const matchingReports = useMemo(
+    () =>
+      reports.filter((report) => {
+        const searchable = [
+          report.category,
+          report.description,
+          report.project,
+          ...report.dataSources,
+          ...report.filters,
+          ...report.kpis,
+        ].join(" ").toLowerCase();
+        if (dataSource === "Field Operations") return report.category === "Field Operations Reports" || searchable.includes("field");
+        if (dataSource === "Data Quality") return report.category === "Data Quality Reports" || searchable.includes("quality");
+        if (dataSource === "Beneficiaries") return report.category === "Beneficiary Reports" || searchable.includes("beneficiar");
+        return searchable.includes(sourceKey);
+      }),
+    [dataSource, reports, sourceKey],
+  );
+  const previewRows = matchingReports.map((report) => ({
+    exportReady: canExportReport(report) ? "Yes" : "Needs review",
+    governance: report.governance,
+    metrics: report.metrics ? "Computed" : "Not generated",
+    period: report.period,
+    project: report.project,
+    status: report.status,
+    title: report.title,
+  }));
+  const previewColumns: TableColumn<ReportRecord>[] = [
+    {
+      header: "Report",
+      key: "title",
+      render: (report) => (
+        <button className="text-left font-medium text-primary hover:underline" onClick={() => onOpenReport(report)} type="button">
+          {report.title}
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">{report.project} · {report.period}</span>
+        </button>
+      ),
+      value: (report) => `${report.title} ${report.project} ${report.period}`,
+    },
+    { header: "Status", key: "status", render: (report) => <Badge tone={reportStatusTone(report.status)}>{report.status}</Badge>, value: (report) => report.status },
+    { header: "Governance", key: "governance", render: (report) => <Badge tone={governanceTone(report.governance)}>{report.governance}</Badge>, value: (report) => report.governance },
+    { header: "Metrics", key: "metrics", render: (report) => (report.metrics ? "Computed" : "Not generated"), value: (report) => (report.metrics ? "Computed" : "Not generated") },
+    {
+      header: "Action",
+      key: "action",
+      render: (report) => <Button onClick={() => onOpenReport(report, "Overview")} size="sm" variant="secondary">Open</Button>,
+      align: "right",
+    },
+  ];
 
   function toggleItem(setter: (updater: (current: string[]) => string[]) => void, item: string): void {
     setter((current) => (current.includes(item) ? current.filter((entry) => entry !== item) : [...current, item]));
@@ -1025,6 +1001,27 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
       },
     ]);
     pushToast({ description: "The custom report configuration CSV is ready.", title: "Report configuration exported", tone: "success" });
+  }
+
+  function exportBuilderPreview(): void {
+    downloadCsv("atlas-custom-report-preview.csv", previewRows);
+    pushToast({ description: `${previewRows.length} matching report rows were exported.`, title: "Report preview exported", tone: "success" });
+  }
+
+  function shareBuilderPackage(): void {
+    downloadCsv("atlas-custom-report-share-package.csv", [
+      {
+        dataSource,
+        exportReadyReports: matchingReports.filter(canExportReport).length,
+        fields: selectedFields.join("; "),
+        filters: selectedFilters.join("; "),
+        matchingReports: matchingReports.length,
+        savedFilterSet: savedFilterName || "Unsaved",
+        shareStatus: "Prepared for manager review",
+        visualization,
+      },
+    ]);
+    pushToast({ description: "A share package was prepared with the current report setup, readiness, and selected controls.", title: "Share package ready", tone: "success" });
   }
 
   return (
@@ -1091,22 +1088,34 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
                     <p className="mt-2 text-xl font-semibold">{dataSource}</p>
                   </div>
                   <div className="rounded-lg border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Fields selected</p>
-                    <p className="mt-2 text-xl font-semibold">{selectedFields.length}</p>
+                    <p className="text-xs text-muted-foreground">Matching reports</p>
+                    <p className="mt-2 text-xl font-semibold">{matchingReports.length}</p>
                   </div>
                   <div className="rounded-lg border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Filters applied</p>
-                    <p className="mt-2 text-xl font-semibold">{selectedFilters.length}</p>
+                    <p className="text-xs text-muted-foreground">Export ready</p>
+                    <p className="mt-2 text-xl font-semibold">{matchingReports.filter(canExportReport).length}</p>
                   </div>
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">Live row counts and calculated values will appear here once this builder is connected to a reporting data source.</p>
+                <div className="mt-4">
+                  <DataTable
+                    columns={previewColumns}
+                    emptyDescription="Create or generate a standard report that uses this data source, then return here to build a custom view from it."
+                    emptyLabel="No matching reports for this source"
+                    rows={matchingReports}
+                    searchLabel="Search matching reports"
+                    title="Live report preview"
+                  />
+                </div>
               </div>
               <div className="rounded-xl border bg-background p-4">
                 <h3 className="text-sm font-semibold">Save or Export</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">Save as a template, share with a role, schedule delivery, or send restricted exports to Governance for approval.</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Selected fields: {selectedFields.length}. Filters: {selectedFilters.length}. Save the setup, share with a role, schedule delivery, or send restricted exports to Governance for approval.
+                </p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button onClick={() => pushToast({ description: "Connect a sharing service to share this report with a role or workspace. This control is a preview for now.", title: "Sharing isn't available yet", tone: "warning" })} size="sm" variant="secondary"><Share2 aria-hidden="true" /> Share</Button>
-                  <Button onClick={exportBuilderConfig} size="sm"><Download aria-hidden="true" /> Export</Button>
+                  <Button onClick={shareBuilderPackage} size="sm" variant="secondary"><Share2 aria-hidden="true" /> Share</Button>
+                  <Button onClick={exportBuilderConfig} size="sm" variant="secondary"><Download aria-hidden="true" /> Export setup</Button>
+                  <Button disabled={previewRows.length === 0} onClick={exportBuilderPreview} size="sm"><Download aria-hidden="true" /> Export preview</Button>
                 </div>
               </div>
             </div>
@@ -1117,18 +1126,67 @@ function CustomReportBuilder({ builderSteps, onOpenReports }: { builderSteps: ty
   );
 }
 
-function DashboardsSection({ dashboards, onOpenReports }: { dashboards: DashboardRecord[]; onOpenReports: () => void }) {
+function DashboardsSection({
+  dashboards,
+  onOpenReport,
+  onOpenReports,
+  reports,
+}: {
+  dashboards: DashboardRecord[];
+  onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
+  onOpenReports: () => void;
+  reports: ReportRecord[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [dashboardRows, setDashboardRows] = useState<DashboardRecord[]>(dashboards);
+  function createDashboard(): void {
+    const sourceReport = reports[0];
+    const dashboard: DashboardRecord = {
+      id: `dash-draft-${Date.now()}`,
+      lastViewed: new Date().toISOString(),
+      owner: "Current user",
+      status: "Draft",
+      title: sourceReport ? `${sourceReport.project} Dashboard` : "New operations dashboard",
+      type: sourceReport ? dashboardTypeForCategory(sourceReport.category) : "Project Dashboard",
+      visibility: "Managers",
+      widgets: sourceReport?.kpis.slice(0, 4) ?? ["Summary cards", "Trend chart", "Map link"],
+    };
+    setDashboardRows((current) => [dashboard, ...current]);
+    pushToast({ description: "Draft dashboard added. In live workspaces, connect it to governed reports before publishing.", title: "Dashboard created", tone: "success" });
+  }
+  const columns: TableColumn<ReportRecord>[] = [
+    {
+      header: "Source Report",
+      key: "report",
+      render: (report) => (
+        <button className="text-left font-medium text-primary hover:underline" onClick={() => onOpenReport(report)} type="button">
+          {report.title}
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">{report.category} · {report.project}</span>
+        </button>
+      ),
+      value: (report) => `${report.title} ${report.category} ${report.project}`,
+    },
+    { header: "Dashboard Type", key: "type", render: (report) => dashboardTypeForCategory(report.category), value: (report) => dashboardTypeForCategory(report.category) },
+    { header: "Status", key: "status", render: (report) => <Badge tone={reportStatusTone(report.status)}>{report.status}</Badge>, value: (report) => report.status },
+    { header: "Widgets", key: "widgets", render: (report) => report.kpis.slice(0, 3).join(", ") || "Report summary", value: (report) => report.kpis.join(" ") },
+    {
+      header: "Action",
+      key: "action",
+      render: (report) => <Button onClick={() => onOpenReport(report, "Visualizations")} size="sm" variant="secondary">Open visuals</Button>,
+      align: "right",
+    },
+  ];
+
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect a dashboard-authoring service to create custom dashboards. This control is a preview for now.", title: "Creating dashboards isn't available yet", tone: "warning" })} type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
+        action={<Button onClick={createDashboard} type="button"><Plus aria-hidden="true" /> Create Dashboard</Button>}
         description="Interactive analytics dashboards with KPI cards, tables, charts, maps, activity feeds, progress widgets, responsive layouts, and role-based visibility."
         route="/reports/dashboards"
         title="Dashboards"
       />
       <div className="grid gap-4 lg:grid-cols-3">
-        {dashboards.map((dashboard) => <DashboardCard dashboard={dashboard} key={dashboard.id} />)}
+        {dashboardRows.map((dashboard) => <DashboardCard dashboard={dashboard} key={dashboard.id} />)}
       </div>
       <Panel action={<Button onClick={onOpenReports} size="sm" variant="secondary">Open reports</Button>} title="Dashboard builder capabilities">
         <div className="grid gap-3 md:grid-cols-4">
@@ -1137,82 +1195,143 @@ function DashboardsSection({ dashboards, onOpenReports }: { dashboards: Dashboar
           ))}
         </div>
       </Panel>
-    </div>
-  );
-}
-
-function ScheduledReportsSection({
-  onCreate,
-  onDelete,
-  onRun,
-  onToggleStatus,
-  preview,
-  runningId,
-  schedules,
-}: {
-  onCreate: () => void;
-  onDelete: (scheduleId: string) => void;
-  onRun: (scheduleId: string) => void;
-  onToggleStatus: (schedule: ScheduledReportRecord) => void;
-  preview: boolean;
-  runningId: string | null;
-  schedules: ScheduledReportRecord[];
-}) {
-  const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const columns: TableColumn<ScheduledReportRecord>[] = [
-    { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.lastRun}</p></div>, value: (schedule) => schedule.reportTitle },
-    { header: "Frequency", key: "frequency", render: (schedule) => `${schedule.frequency} · ${schedule.time} ${schedule.timezone}`, value: (schedule) => schedule.frequency },
-    { header: "Recipients", key: "recipients", render: (schedule) => schedule.recipients.join(", ") || "—", value: (schedule) => schedule.recipients.join(" ") },
-    { header: "Next Run", key: "nextRun", render: (schedule) => schedule.nextRun, value: (schedule) => schedule.nextRun },
-    { header: "Status", key: "status", render: (schedule) => <Badge tone={scheduleTone(schedule.status)}>{schedule.status}</Badge>, value: (schedule) => schedule.status },
-  ];
-  if (!preview) {
-    columns.push({
-      header: "Actions",
-      key: "actions",
-      align: "right",
-      render: (schedule) => (
-        <div className="flex justify-end gap-1.5">
-          <Button disabled={runningId === schedule.id} onClick={() => onRun(schedule.id)} size="sm" variant="secondary">
-            <Play aria-hidden="true" /> {runningId === schedule.id ? "Running…" : "Run now"}
-          </Button>
-          <Button onClick={() => onToggleStatus(schedule)} size="sm" variant="secondary">
-            {schedule.status === "Paused" ? "Resume" : "Pause"}
-          </Button>
-          <Button onClick={() => onDelete(schedule.id)} size="sm" variant="ghost">Delete</Button>
-        </div>
-      ),
-    });
-  }
-
-  return (
-    <div className="space-y-3">
-      <SectionHeader
-        action={
-          preview ? (
-            <Button onClick={() => pushToast({ description: "Sign in to schedule recurring report deliveries.", title: "Preview mode", tone: "warning" })} type="button"><CalendarClock aria-hidden="true" /> Schedule delivery</Button>
-          ) : (
-            <Button onClick={onCreate} type="button"><CalendarClock aria-hidden="true" /> Schedule delivery</Button>
-          )
-        }
-        description="Automate report generation and delivery on a daily, weekly, or monthly schedule with delivery tracking and failure logs. Running a delivery regenerates the report from approved evidence."
-        route="/reports/scheduled"
-        title="Scheduled Reports"
-      />
-      <DataTable columns={columns} emptyLabel="No scheduled deliveries yet — schedule one to automate this report." rows={schedules} searchLabel="Search schedules, recipients, frequency" title="Scheduled report delivery" />
-      <Panel title="Failure logs and delivery control">
-        {schedules.some((schedule) => schedule.failureLog) ? (
-          <Timeline records={schedules.filter((schedule) => schedule.failureLog).map((schedule) => ({ badge: schedule.status, label: schedule.reportTitle, meta: schedule.failureLog ?? "", tone: scheduleTone(schedule.status) }))} />
-        ) : (
-          <p className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">No failed deliveries. Failure details appear here if a scheduled run cannot generate its report.</p>
-        )}
+      <Panel title="Dashboard source reports">
+        <DataTable
+          columns={columns}
+          emptyDescription="Create or generate reports with KPI cards, charts, or map links to make them available as dashboard sources."
+          emptyLabel="No dashboard source reports yet"
+          rows={reports.filter((report) => report.visualizations.some((visual) => visual.includes("Chart") || visual === "KPI Card" || visual === "Map Link"))}
+          searchLabel="Search dashboard source reports"
+          title="Reports powering dashboards"
+        />
       </Panel>
     </div>
   );
 }
 
-function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
+function ScheduledReportsSection({
+  onOpenReport,
+  reports,
+  schedules,
+}: {
+  onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
+  reports: ReportRecord[];
+  schedules: ScheduledReportRecord[];
+}) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [scheduleRows, setScheduleRows] = useState<ScheduledReportRecord[]>(schedules);
+  function createSchedule(): void {
+    const report = reports.find(canExportReport) ?? reports[0];
+    const nextRun = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const schedule: ScheduledReportRecord = {
+      format: report?.formats[0] ?? "PDF",
+      frequency: "Weekly",
+      id: `schedule-draft-${Date.now()}`,
+      lastRun: new Date().toISOString(),
+      nextRun: nextRun.toISOString(),
+      recipients: ["managers@example.org"],
+      reportId: report?.id ?? "draft-report",
+      reportTitle: report?.title ?? "Draft report schedule",
+      status: report && canExportReport(report) ? "Active" : "Paused",
+      time: "08:00",
+      timezone: "Africa/Douala",
+    };
+    setScheduleRows((current) => [schedule, ...current]);
+    pushToast({ description: "Draft schedule added. Review recipients, format, and governance before production delivery.", title: "Schedule created", tone: "success" });
+  }
+  const columns: TableColumn<ScheduledReportRecord>[] = [
+    { header: "Report", key: "report", render: (schedule) => <div><p className="font-medium">{schedule.reportTitle}</p><p className="text-xs text-muted-foreground">{schedule.id}</p></div>, value: (schedule) => schedule.reportTitle },
+    { header: "Frequency", key: "frequency", render: (schedule) => `${schedule.frequency} · ${schedule.time} ${schedule.timezone}`, value: (schedule) => schedule.frequency },
+    { header: "Recipients", key: "recipients", render: (schedule) => schedule.recipients.join(", "), value: (schedule) => schedule.recipients.join(" ") },
+    { header: "Next Run", key: "nextRun", render: (schedule) => new Date(schedule.nextRun).toLocaleString(), value: (schedule) => schedule.nextRun },
+    { header: "Status", key: "status", render: (schedule) => <Badge tone={scheduleTone(schedule.status)}>{schedule.status}</Badge>, value: (schedule) => schedule.status },
+  ];
+  const candidateColumns: TableColumn<ReportRecord>[] = [
+    {
+      header: "Report",
+      key: "report",
+      render: (report) => (
+        <button className="text-left font-medium text-primary hover:underline" onClick={() => onOpenReport(report, "Overview")} type="button">
+          {report.title}
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">{report.project} · {report.period}</span>
+        </button>
+      ),
+      value: (report) => `${report.title} ${report.project} ${report.period}`,
+    },
+    { header: "Readiness", key: "readiness", render: (report) => <Badge tone={canExportReport(report) ? "success" : "warning"}>{canExportReport(report) ? "Ready to schedule" : "Review first"}</Badge>, value: (report) => (canExportReport(report) ? "Ready" : "Review") },
+    { header: "Governance", key: "governance", render: (report) => <Badge tone={governanceTone(report.governance)}>{report.governance}</Badge>, value: (report) => report.governance },
+    { header: "Formats", key: "formats", render: (report) => report.formats.join(", ") || "No format", value: (report) => report.formats.join(" ") },
+    {
+      header: "Action",
+      key: "action",
+      render: (report) => <Button onClick={() => onOpenReport(report, "Schedules")} size="sm" variant="secondary">Review</Button>,
+      align: "right",
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        action={<Button onClick={createSchedule} type="button"><CalendarClock aria-hidden="true" /> Create Schedule</Button>}
+        description="Automate report generation and delivery by daily, weekly, monthly, quarterly, or custom schedules with delivery tracking and failure logs."
+        route="/reports/scheduled"
+        title="Scheduled Reports"
+      />
+      <DataTable columns={columns} emptyLabel="No scheduled reports yet" rows={scheduleRows} searchLabel="Search schedules, recipients, frequency" title="Scheduled report delivery" />
+      <Panel title="Schedule readiness">
+        <DataTable
+          columns={candidateColumns}
+          emptyDescription="Create a standard report first, generate it, then return here to prepare delivery scheduling."
+          emptyLabel="No reports available for scheduling"
+          rows={reports}
+          searchLabel="Search reports to schedule"
+          title="Reports that can be scheduled"
+        />
+      </Panel>
+      <Panel title="Failure logs and delivery control">
+        <Timeline records={scheduleRows.filter((schedule) => schedule.failureLog).map((schedule) => ({ badge: schedule.status, label: schedule.reportTitle, meta: schedule.failureLog ?? "", tone: scheduleTone(schedule.status) }))} />
+      </Panel>
+    </div>
+  );
+}
+
+function ExportsSection({
+  exports,
+  onExportData,
+  onOpenReport,
+  reports,
+}: {
+  exports: ExportJobRecord[];
+  onExportData: (report: ReportRecord) => void;
+  onOpenReport: (report: ReportRecord, tab?: ReportDetailTab) => void;
+  reports: ReportRecord[];
+}) {
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const [exportRows, setExportRows] = useState<ExportJobRecord[]>(exports);
+  const reportById = useMemo(() => new Map(reports.map((report) => [report.id, report])), [reports]);
+  function createExport(): void {
+    const report = reports.find(canExportReport) ?? reports[0];
+    const job: ExportJobRecord = {
+      format: report?.formats[0] ?? "Excel",
+      governance: report && canExportReport(report) ? "Approved" : "Needs approval",
+      id: `export-draft-${Date.now()}`,
+      name: report ? `${report.title} export` : "Draft export job",
+      reportId: report?.id,
+      requestedAt: new Date().toISOString(),
+      requestedBy: "Current user",
+      rows: report ? Math.max(report.metrics?.submissions_total ?? 0, report.metrics?.submissions_approved ?? 0, 1) : 0,
+      source: "Reports",
+      status: report && canExportReport(report) ? "Ready" : "Queued",
+    };
+    setExportRows((current) => [job, ...current]);
+    pushToast({ description: "Export job added. Governance status reflects whether the source report is ready for export.", title: "Export created", tone: "success" });
+  }
+
+  function sourceReport(job: ExportJobRecord): ReportRecord | null {
+    if (job.reportId) return reportById.get(job.reportId) ?? null;
+    return reports.find((report) => job.name.toLowerCase().startsWith(report.title.toLowerCase())) ?? null;
+  }
+
   const columns: TableColumn<ExportJobRecord>[] = [
     { header: "Export", key: "name", render: (job) => <div><p className="font-medium">{job.name}</p><p className="text-xs text-muted-foreground">{job.id} · {job.source}</p></div>, value: (job) => `${job.name} ${job.source}` },
     { header: "Requested", key: "requested", render: (job) => <div><p>{job.requestedBy}</p><p className="text-xs text-muted-foreground">{new Date(job.requestedAt).toLocaleString()}</p></div>, value: (job) => `${job.requestedBy} ${job.requestedAt}` },
@@ -1220,16 +1339,34 @@ function ExportsSection({ exports }: { exports: ExportJobRecord[] }) {
     { header: "Rows", key: "rows", render: (job) => job.rows.toLocaleString(), value: (job) => String(job.rows) },
     { header: "Status", key: "status", render: (job) => <Badge tone={exportStatusTone(job.status)}>{job.status}</Badge>, value: (job) => job.status },
     { header: "Governance", key: "governance", render: (job) => <Badge tone={governanceTone(job.governance)}>{job.governance}</Badge>, value: (job) => job.governance },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (job) => {
+        const report = sourceReport(job);
+        return (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Button disabled={!report} onClick={() => report ? onOpenReport(report, "Exports") : undefined} size="sm" variant="secondary">
+              <Eye aria-hidden="true" /> Source
+            </Button>
+            <Button disabled={!report || !canExportReport(report)} onClick={() => report ? onExportData(report) : undefined} size="sm" variant="secondary">
+              <Download aria-hidden="true" /> CSV
+            </Button>
+          </div>
+        );
+      },
+      align: "right",
+    },
   ];
   return (
     <div className="space-y-3">
       <SectionHeader
-        action={<Button onClick={() => pushToast({ description: "Connect an export-job service to generate Excel, CSV, PDF, or JSON exports. This control is a preview for now.", title: "Creating export jobs isn't available yet", tone: "warning" })} type="button"><Download aria-hidden="true" /> Create Export</Button>}
+        action={<Button onClick={createExport} type="button"><Download aria-hidden="true" /> Create Export</Button>}
         description="Manage Excel, CSV, PDF, and JSON export jobs from reports, indicators, submissions, projects, beneficiaries, and data quality with governance approval checks."
         route="/reports/exports"
         title="Exports"
       />
-      <DataTable columns={columns} emptyLabel="No export jobs yet" rows={exports} searchLabel="Search exports, sources, requester, status" title="Export center" />
+      <DataTable columns={columns} emptyLabel="No export jobs yet" rows={exportRows} searchLabel="Search exports, sources, requester, status" title="Export center" />
     </div>
   );
 }
@@ -1282,20 +1419,6 @@ function ReportDetail({
     pushToast({ description: `${report.title} is ready as a CSV definition export.`, title: "Report exported", tone: "success" });
   }
 
-  function exportReportMetricsJson(): void {
-    const payload = buildReportMetricsExport(report);
-    if (!payload) {
-      pushToast({
-        title: "Generate the report first",
-        description: "Generate this report to compute metrics before exporting the JSON package.",
-        tone: "warning",
-      });
-      return;
-    }
-    downloadJson(`atlas-report-${report.id}-metrics.json`, payload);
-    pushToast({ description: `${report.title} computed metrics JSON package is ready.`, title: "Metrics exported", tone: "success" });
-  }
-
   return (
     <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1317,9 +1440,6 @@ function ReportDetail({
           ) : null}
           {!preview ? (
             <Button onClick={() => onExportData(report)} type="button" variant="secondary"><Download aria-hidden="true" /> Export data (CSV)</Button>
-          ) : null}
-          {!preview ? (
-            <Button disabled={!report.metrics} onClick={exportReportMetricsJson} type="button" variant="secondary"><Download aria-hidden="true" /> Export JSON</Button>
           ) : null}
           <Button disabled={!canExportReport(report)} onClick={exportReportDefinition} type="button"><Download aria-hidden="true" /> Export</Button>
         </div>
@@ -1476,9 +1596,9 @@ function DashboardCard({ dashboard }: { dashboard: DashboardRecord }) {
   );
 }
 
-function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number }) {
+function MetricCard({ icon: Icon, label, onClick, tone, value }: { icon: LucideIcon; label: string; onClick: () => void; tone: BadgeProps["tone"]; value: number }) {
   return (
-    <article className="rounded-xl border bg-panel p-3 shadow-line">
+    <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30" onClick={onClick} type="button">
       <div className="flex items-center justify-between gap-3">
         <span className="rounded-xl bg-primary/10 p-2 text-primary">
           <Icon aria-hidden="true" size={18} />
@@ -1487,7 +1607,7 @@ function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; labe
       </div>
       <p className="mt-4 text-2xl font-semibold">{value.toLocaleString()}</p>
       <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </article>
+    </button>
   );
 }
 
@@ -1518,20 +1638,6 @@ function SectionHeader({ action, description, route, title }: { action?: ReactNo
           </div>
         </div>
         {action}
-      </div>
-    </div>
-  );
-}
-
-function ComingSoonSection({ action, sectionId }: { action?: ReactNode; sectionId: ReportsSection }) {
-  const meta = reportsSections.find((section) => section.id === sectionId);
-  if (!meta) return null;
-  return (
-    <div className="space-y-3">
-      <SectionHeader action={action} description={meta.description} route={meta.route} title={meta.label} />
-      <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">On our roadmap</p>
-        <p className="mt-2 leading-6">{meta.label} is planned for a future release and isn&apos;t available in this workspace yet. {meta.description}</p>
       </div>
     </div>
   );

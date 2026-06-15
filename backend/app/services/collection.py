@@ -19,13 +19,23 @@ from app.models.collection import (
     DataForm,
     FieldOfficerProfile,
     FieldWorkAssignment,
+    MobileNotification,
     OfficerAssignment,
     Project,
     Submission,
 )
 from app.models.governance import DataVersion, LineageEvent
 from app.models.identity import Organization, User
-from app.models.operations import Beneficiary, DataQualitySignal, DeviceRegistry, EntityCategory, SessionLog, VisitRecord
+from app.models.operations import (
+    Beneficiary,
+    DataQualitySignal,
+    DeviceRegistry,
+    EntityAttribute,
+    EntityAttributeValue,
+    EntityCategory,
+    SessionLog,
+    VisitRecord,
+)
 from app.repositories.audit import AuditRepository
 from app.repositories.collection import FieldOfficerRepository, FormRepository, SubmissionRepository, SurveyRepository, SyncRepository
 from app.repositories.governance import GovernanceRepository
@@ -3117,6 +3127,14 @@ class SubmissionService:
                 actor_user_id=actor_user_id,
                 submission=submission,
             )
+        if to_status in {"approved", "correction_requested", "rejected"}:
+            await self._notify_field_officer_review_result(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=submission,
+                status=to_status,
+                comment=payload.comment,
+            )
         await event_publisher.publish(
             settings.kafka_submission_events_topic,
             {
@@ -3126,6 +3144,59 @@ class SubmissionService:
             },
         )
         return submission
+
+    async def _notify_field_officer_review_result(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+        status: str,
+        comment: str,
+    ) -> None:
+        if submission.field_officer_id is None:
+            return
+        result = await self.session.execute(
+            select(FieldOfficerProfile.user_id).where(
+                FieldOfficerProfile.organization_id == organization_id,
+                FieldOfficerProfile.id == submission.field_officer_id,
+                FieldOfficerProfile.deleted_at.is_(None),
+            )
+        )
+        officer_user_id = result.scalar_one_or_none()
+        if officer_user_id is None:
+            return
+        title = {
+            "approved": "Submission approved",
+            "correction_requested": "Submission returned",
+            "rejected": "Submission returned",
+        }.get(status, "Submission reviewed")
+        action_hint = (
+            "Open Submissions, review the supervisor comment, correct the form, and sync again."
+            if status in {"correction_requested", "rejected"}
+            else "Your synced submission has been approved."
+        )
+        body = f"{submission.client_submission_id}: {comment.strip()} {action_hint}".strip()
+        self.session.add(
+            MobileNotification(
+                organization_id=organization_id,
+                user_id=officer_user_id,
+                title=title,
+                body=body,
+                event_type=f"submission.{status}",
+                resource_type="submission",
+                resource_id=submission.id,
+                created_by_server_at=datetime.now(UTC),
+            )
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="mobile.notification_created",
+            resource_type="submission",
+            resource_id=str(submission.id),
+            metadata={"event_type": f"submission.{status}", "recipient_user_id": str(officer_user_id)},
+        )
 
     def _submission_review_summary(self, submission: Submission) -> dict[str, object]:
         payload = submission.payload_json if isinstance(submission.payload_json, dict) else {}
@@ -3484,6 +3555,13 @@ class SubmissionService:
                 transformation="approved_submission_created_beneficiary",
                 field_values=values,
             )
+            await self._persist_entity_attribute_values(
+                organization_id=organization_id,
+                submission=submission,
+                beneficiary=beneficiary,
+                controls=controls,
+                values=values,
+            )
             self._record_beneficiary_visit(
                 organization_id=organization_id,
                 submission=submission,
@@ -3606,6 +3684,13 @@ class SubmissionService:
             beneficiary=existing,
             transformation="approved_submission_linked_beneficiary",
             field_values=values,
+        )
+        await self._persist_entity_attribute_values(
+            organization_id=organization_id,
+            submission=submission,
+            beneficiary=existing,
+            controls=controls,
+            values=values,
         )
         self._record_beneficiary_visit(
             organization_id=organization_id,
@@ -3929,6 +4014,68 @@ class SubmissionService:
                 },
             )
         )
+
+    async def _persist_entity_attribute_values(
+        self,
+        *,
+        organization_id: UUID,
+        submission: Submission,
+        beneficiary: Beneficiary,
+        controls: dict[str, object],
+        values: dict[str, object],
+    ) -> None:
+        category_id = controls.get("entity_category_id") or controls.get("entityCategoryId")
+        if category_id is None:
+            return
+        try:
+            entity_category_id = UUID(str(category_id))
+        except ValueError:
+            return
+        result = await self.session.execute(
+            select(EntityAttribute).where(
+                EntityAttribute.organization_id == organization_id,
+                EntityAttribute.category_id == entity_category_id,
+                EntityAttribute.deleted_at.is_(None),
+                EntityAttribute.status != "archived",
+            )
+        )
+        attributes = list(result.scalars())
+        if not attributes:
+            return
+        existing_result = await self.session.execute(
+            select(EntityAttributeValue).where(
+                EntityAttributeValue.organization_id == organization_id,
+                EntityAttributeValue.entity_id == beneficiary.id,
+                EntityAttributeValue.attribute_id.in_({attribute.id for attribute in attributes}),
+            )
+        )
+        existing_by_attribute = {item.attribute_id: item for item in existing_result.scalars()}
+        recorded_at = datetime.now(UTC).isoformat()
+        for attribute in attributes:
+            value = values.get(attribute.field_key.lower())
+            if value is None or value == "":
+                continue
+            value_json = {
+                "value": value,
+                "sourceFormId": str(submission.form_id),
+                "sourceSubmissionId": str(submission.id),
+                "sourceClientSubmissionId": submission.client_submission_id,
+                "approvedAt": recorded_at,
+            }
+            existing = existing_by_attribute.get(attribute.id)
+            if existing is not None:
+                existing.value_json = value_json
+                existing.source_submission_id = submission.id
+            else:
+                self.session.add(
+                    EntityAttributeValue(
+                        organization_id=organization_id,
+                        entity_id=beneficiary.id,
+                        attribute_id=attribute.id,
+                        value_json=value_json,
+                        source_submission_id=submission.id,
+                    )
+                )
 
     def _entity_controls(self, controls_json: dict[str, Any]) -> dict[str, Any]:
         return _as_dict(controls_json.get("entity_controls"))

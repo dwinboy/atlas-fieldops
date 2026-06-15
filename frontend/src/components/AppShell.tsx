@@ -3,6 +3,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowRight,
   ChevronDown,
   ChevronRight,
@@ -150,15 +151,15 @@ function OrganizationMark({
     return (
       <div
         aria-label={`${name} logo`}
-        className="h-10 w-10 shrink-0 rounded-xl border bg-background bg-cover bg-center shadow-sm"
+        className="h-12 w-12 shrink-0 rounded-xl border bg-background bg-cover bg-center shadow-sm"
         role="img"
         style={{ backgroundImage: `url("${logoUrl}")` }}
       />
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
-      <AtlasFieldOpsLogo alt={`${name} logo`} size={34} />
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/10 via-background to-background shadow-sm">
+      <AtlasFieldOpsLogo alt={`${name} logo`} size={42} />
     </div>
   );
 }
@@ -248,9 +249,11 @@ export function AppShell({
   token,
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const liveDataEnabled = Boolean(token && token !== "preview-token");
+  const previewMode = token === "preview-token";
   const summaryQuery = useQuery({
     queryKey: ["operations-summary", token],
     queryFn: () => getOperationsSummary(token ?? ""),
@@ -304,6 +307,7 @@ export function AppShell({
     ? `${principal.scope_type.replace("_", " ")} access`
     : "Workspace access";
   const focusedEditorRoute = pathname?.replace(/\/+$/, "") === "/forms/create";
+  const compactSidebar = collapsedSidebar && !sidebarHovered;
 
   const navigation = (
     <nav aria-label="Primary navigation" className="space-y-1">
@@ -313,7 +317,7 @@ export function AppShell({
             <p
               className={cn(
                 "px-2 pt-2.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground",
-                collapsedSidebar && "sr-only",
+                compactSidebar && "sr-only",
               )}
             >
               {group.label}
@@ -335,14 +339,14 @@ export function AppShell({
                       active
                         ? tone.navActive
                         : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                      collapsedSidebar && "justify-center px-0",
+                      compactSidebar && "justify-center px-0",
                     )}
                     onClick={() => {
                       setActiveView(item.id);
                       router.push(item.route);
                       setMobileNavOpen(false);
                     }}
-                    title={collapsedSidebar ? `${item.label} — ${item.hint}` : undefined}
+                    title={compactSidebar ? `${item.label} — ${item.hint}` : undefined}
                     type="button"
                   >
                     {active ? (
@@ -351,7 +355,7 @@ export function AppShell({
                         className={cn(
                           "absolute left-0 top-2 h-5 w-1 rounded-r-full",
                           tone.navRail,
-                          collapsedSidebar && "left-1",
+                          compactSidebar && "left-1",
                         )}
                       />
                     ) : null}
@@ -364,7 +368,7 @@ export function AppShell({
                       )}
                     >
                       <Icon aria-hidden="true" size={15} />
-                      {collapsedSidebar && badgeCount > 0 ? (
+                      {compactSidebar && badgeCount > 0 ? (
                         <span
                           aria-hidden="true"
                           className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-warning"
@@ -374,18 +378,18 @@ export function AppShell({
                     <span
                       className={cn(
                         "min-w-0 flex-1 truncate",
-                        collapsedSidebar && "sr-only",
+                        compactSidebar && "sr-only",
                       )}
                     >
                       {item.label}
                     </span>
-                    {!collapsedSidebar && badgeCount > 0 ? (
+                    {!compactSidebar && badgeCount > 0 ? (
                       <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-warning">
                         {badgeCount > 99 ? "99+" : badgeCount}
                       </span>
                     ) : null}
                   </button>
-                  {!collapsedSidebar && navChildren.length ? (
+                  {!compactSidebar && navChildren.length ? (
                     <div className="ml-[1.45rem] mt-0.5 space-y-0.5 border-l border-border/70 pl-2.5">
                       {navChildren.map((child) => {
                         const childActive = normalizedPath === child.route.replace(/\/+$/, "");
@@ -399,6 +403,7 @@ export function AppShell({
                             )}
                             key={child.route}
                             onClick={() => {
+                              setActiveView(item.id);
                               router.push(child.route);
                               setMobileNavOpen(false);
                             }}
@@ -424,24 +429,28 @@ export function AppShell({
     <div
       className={cn(
         "min-h-screen max-w-full overflow-x-hidden bg-background text-foreground lg:grid",
-        collapsedSidebar
+        compactSidebar
           ? "lg:grid-cols-[68px_1fr]"
           : "lg:grid-cols-[248px_1fr]",
       )}
     >
-      <aside className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col">
+      <aside
+        className="sticky top-0 hidden h-screen min-h-0 border-r bg-panel/88 p-2.5 shadow-[8px_0_40px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:flex lg:flex-col"
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
+      >
         <div className="shrink-0">
           <div
             className={cn(
               "mb-4 flex items-center gap-2.5 px-1",
-              collapsedSidebar && "justify-center",
+              compactSidebar && "justify-center",
             )}
           >
             <OrganizationMark
               logoUrl={organizationLogoUrl}
               name={organizationLabel}
             />
-            <div className={cn("min-w-0", collapsedSidebar && "sr-only")}>
+            <div className={cn("min-w-0", compactSidebar && "sr-only")}>
               <p className="truncate text-[13px] font-semibold">
                 {organizationLabel}
               </p>
@@ -454,20 +463,20 @@ export function AppShell({
         <button
           className={cn(
             "mb-3 flex h-8 w-full shrink-0 items-center gap-2 rounded-lg border bg-background/70 px-2.5 text-[12px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground",
-            collapsedSidebar && "justify-center px-0",
+            compactSidebar && "justify-center px-0",
           )}
           onClick={() => setCommandOpen(true)}
           title="Search the workspace (⌘K)"
           type="button"
         >
           <Search aria-hidden="true" size={14} />
-          <span className={cn("flex-1 text-left", collapsedSidebar && "sr-only")}>
+          <span className={cn("flex-1 text-left", compactSidebar && "sr-only")}>
             Search…
           </span>
           <kbd
             className={cn(
               "rounded border bg-muted px-1 font-mono text-[10px]",
-              collapsedSidebar && "sr-only",
+              compactSidebar && "sr-only",
             )}
           >
             ⌘K
@@ -481,7 +490,7 @@ export function AppShell({
             <div
               className={cn(
                 "flex h-8 items-center gap-2 rounded-md px-2 text-[12px] text-muted-foreground",
-                collapsedSidebar && "justify-center px-0",
+                compactSidebar && "justify-center px-0",
               )}
               title={`Mobile sync health: ${syncHealthPercent}%`}
             >
@@ -496,7 +505,7 @@ export function AppShell({
                         : "offline"
                 }
               />
-              <span className={cn("truncate", collapsedSidebar && "sr-only")}>
+              <span className={cn("truncate", compactSidebar && "sr-only")}>
                 Sync health {syncHealthPercent}%
               </span>
             </div>
@@ -504,7 +513,7 @@ export function AppShell({
           <button
             className={cn(
               "flex h-8 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground",
-              collapsedSidebar && "justify-center px-0",
+              compactSidebar && "justify-center px-0",
             )}
             onClick={toggleSidebar}
             type="button"
@@ -514,7 +523,9 @@ export function AppShell({
             ) : (
               <PanelLeftClose aria-hidden="true" size={17} />
             )}
-            <span className={cn(collapsedSidebar && "sr-only")}>Collapse</span>
+            <span className={cn(compactSidebar && "sr-only")}>
+              {collapsedSidebar ? "Expand" : "Collapse"}
+            </span>
           </button>
         </div>
       </aside>
@@ -595,6 +606,39 @@ export function AppShell({
             />
           </div>
         </header>
+
+        {previewMode ? (
+          <section className="border-b border-warning/30 bg-warning/10 px-3 py-4 shadow-line sm:px-4 lg:px-5">
+            <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 rounded-2xl border border-warning/30 bg-panel/85 p-4 shadow-line backdrop-blur md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
+                  <AlertTriangle aria-hidden="true" size={22} />
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">Preview workspace</h2>
+                    <Badge tone="warning">Sample data only</Badge>
+                  </div>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    You are exploring Atlas FieldOps with demonstration data. Some live actions are disabled in preview mode, including saving permanent records, publishing to real field officers, syncing mobile data, uploads, approvals, and production exports.
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <a
+                  className="rounded-lg border bg-background/80 px-3 py-2 text-sm font-semibold text-foreground shadow-line transition hover:border-primary/30 hover:text-primary"
+                  href="mailto:contact@atlasfieldops.com"
+                >
+                  contact@atlasfieldops.com
+                </a>
+                <Button onClick={onSignOut} type="button" variant="primary">
+                  Sign in for live workspace
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {mobileNavOpen ? (
           <div className="border-b bg-panel p-3 lg:hidden">{navigation}</div>

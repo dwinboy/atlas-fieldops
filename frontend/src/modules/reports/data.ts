@@ -86,6 +86,7 @@ export type ScheduledReportRecord = {
 
 export type ExportJobRecord = {
   id: string;
+  reportId?: string;
   source: "Reports" | "Indicators" | "Submissions" | "Projects" | "Beneficiaries" | "Data Quality";
   name: string;
   requestedBy: string;
@@ -128,14 +129,13 @@ export const reportsSections: {
   label: string;
   route: string;
   description: string;
-  status?: "planned";
 }[] = [
   { id: "dashboard", label: "Overview", route: "/reports", description: "Reporting hub, executive KPIs, recent reports, schedules, exports, and usage analytics." },
   { id: "standard", label: "Standard Reports", route: "/reports/standard", description: "Prebuilt program, project, submission, indicator, quality, coverage, field operations, beneficiary, and donor reports." },
-  { id: "custom", label: "Custom Reports", route: "/reports/custom", description: "Build ad hoc reports by selecting data sources, fields, filters, groups, visualizations, preview, and export options.", status: "planned" },
-  { id: "dashboards", label: "Dashboards", route: "/reports/dashboards", description: "Create and manage interactive dashboards with cards, tables, charts, maps, feeds, and progress widgets.", status: "planned" },
-  { id: "scheduled", label: "Scheduled Reports", route: "/reports/scheduled", description: "Automate report generation and delivery by email, download center, or API delivery.", status: "planned" },
-  { id: "exports", label: "Exports", route: "/reports/exports", description: "Track authorized CSV, Excel, PDF, and JSON exports under governance controls.", status: "planned" },
+  { id: "custom", label: "Custom Reports", route: "/reports/custom", description: "Build ad hoc reports by selecting data sources, fields, filters, groups, visualizations, preview, and export options." },
+  { id: "dashboards", label: "Dashboards", route: "/reports/dashboards", description: "Create and manage interactive dashboards with cards, tables, charts, maps, feeds, and progress widgets." },
+  { id: "scheduled", label: "Scheduled Reports", route: "/reports/scheduled", description: "Automate report generation and delivery by email, download center, or API delivery." },
+  { id: "exports", label: "Exports", route: "/reports/exports", description: "Track authorized CSV, Excel, PDF, and JSON exports under governance controls." },
 ];
 
 const todayIso = new Date().toISOString();

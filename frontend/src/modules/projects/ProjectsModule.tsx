@@ -64,6 +64,7 @@ import {
 import { SECTOR_TERMINOLOGY } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
+import { previewEntities } from "@/modules/beneficiaries/data";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import {
   projectSections,
@@ -349,6 +350,36 @@ const previewSectorPacks: ProjectSectorPackRead[] = (() => {
     : [buildFallbackSectorPack(SECTOR_TERMINOLOGY.custom)];
   return [...richPreviewSectorPacks, ...generated, ...customPack];
 })();
+
+const sectorPackPriority = [
+  "custom",
+  "retail",
+  "inventory",
+  "sales",
+  "logistics",
+  "manufacturing",
+  "assets",
+  "audits",
+  "inspections",
+];
+
+function sortedSectorPacks(packs: ProjectSectorPackRead[]): ProjectSectorPackRead[] {
+  return [...packs].sort((first, second) => {
+    const firstRank = sectorPackPriority.indexOf(first.id);
+    const secondRank = sectorPackPriority.indexOf(second.id);
+    if (firstRank !== -1 || secondRank !== -1) {
+      return (firstRank === -1 ? 999 : firstRank) - (secondRank === -1 ? 999 : secondRank);
+    }
+    return first.name.localeCompare(second.name);
+  });
+}
+
+function completeSectorPacks(apiPacks: ProjectSectorPackRead[] | undefined): ProjectSectorPackRead[] {
+  const byId = new Map<string, ProjectSectorPackRead>();
+  for (const pack of previewSectorPacks) byId.set(pack.id, pack);
+  for (const pack of apiPacks ?? []) byId.set(pack.id, pack);
+  return sortedSectorPacks(Array.from(byId.values()));
+}
 
 const countryOptions = [
   "Cameroon",
@@ -1040,16 +1071,26 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     queryFn: () => getProjectDetail(token ?? "", selectedProjectId ?? ""),
   });
 
-  const projects = useMemo(
-    () => (preview ? [...localProjects, ...previewProjects] : (projectsQuery.data ?? [])),
-    [localProjects, preview, projectsQuery.data],
-  );
+  const previewEntityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entity of previewEntities) {
+      counts.set(entity.projectId, (counts.get(entity.projectId) ?? 0) + 1);
+    }
+    return counts;
+  }, []);
+  const projects = useMemo(() => {
+    if (!preview) return projectsQuery.data ?? [];
+    return [...localProjects, ...previewProjects].map((project) => ({
+      ...project,
+      beneficiary_count: previewEntityCounts.get(project.id) ?? 0,
+    }));
+  }, [localProjects, preview, previewEntityCounts, projectsQuery.data]);
   const summary: ProjectSummaryRead =
     preview ? (summaryQuery.data ?? computeProjectSummary(projects) ?? previewSummary) : (summaryQuery.data ?? computeProjectSummary(projects));
   const templates = preview ? previewTemplates : (templatesQuery.data ?? []);
   const sectorPacks = preview
-    ? previewSectorPacks
-    : (sectorPacksQuery.data ?? previewSectorPacks);
+    ? sortedSectorPacks(previewSectorPacks)
+    : completeSectorPacks(sectorPacksQuery.data);
   const selectedProject = selectedProjectId
     ? (projects.find((project) => project.id === selectedProjectId) ?? null)
     : null;
@@ -3508,7 +3549,7 @@ function ProjectWizardStepContent({
               <option value="">Select sector pack</option>
               {sectorPacks.map((pack) => (
                 <option key={pack.id} value={pack.id}>
-                  {pack.name}
+                  {pack.sector} · {pack.name}
                 </option>
               ))}
             </Select>

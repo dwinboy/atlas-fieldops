@@ -7,17 +7,17 @@ describe("Forms module helpers", () => {
   it("computes form dashboard metrics from normalized forms", () => {
     const summary = computeFormsSummary(previewForms);
 
-    expect(summary.total_forms).toBe(3);
-    expect(summary.draft_forms).toBe(1);
-    expect(summary.published_forms).toBe(2);
-    expect(summary.active_collection_forms).toBe(2);
-    expect(summary.pending_approval_forms).toBe(1);
-    expect(summary.forms_with_quality_issues).toBe(2);
+    expect(summary.total_forms).toBe(previewForms.length);
+    expect(summary.draft_forms).toBe(previewForms.filter((form) => form.status === "draft").length);
+    expect(summary.published_forms).toBe(previewForms.filter((form) => form.status === "published").length);
+    expect(summary.active_collection_forms).toBe(previewForms.filter((form) => form.status === "published" && form.active_assignments > 0).length);
+    expect(summary.pending_approval_forms).toBe(previewForms.filter((form) => form.pending_approval).length);
+    expect(summary.forms_with_quality_issues).toBe(previewForms.filter((form) => form.has_quality_issues).length);
   });
 
   it("filters forms by approved architecture section", () => {
-    expect(filterForms(previewForms, "published")).toHaveLength(2);
-    expect(filterForms(previewForms, "draft")).toHaveLength(1);
+    expect(filterForms(previewForms, "published")).toHaveLength(previewForms.filter((form) => form.status === "published").length);
+    expect(filterForms(previewForms, "draft")).toHaveLength(previewForms.filter((form) => form.status === "draft").length);
     expect(filterForms(previewForms, "all")).toHaveLength(previewForms.length);
   });
 

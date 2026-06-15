@@ -36,7 +36,8 @@ def create_app() -> ASGIApp:
     app.middleware("http")(request_context_middleware)
     app.include_router(api_router, prefix="/api/v1")
     FastAPIInstrumentor.instrument_app(app)
-    Instrumentator().instrument(app).expose(app)
+    if settings.enable_prometheus_metrics and settings.app_env != "test":
+        Instrumentator().instrument(app).expose(app)
 
     return CORSMiddleware(
         app,

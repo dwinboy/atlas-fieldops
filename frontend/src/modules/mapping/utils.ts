@@ -54,7 +54,7 @@ export function deriveProjectDataCoverage(
     counts.set(name, { submissions: 0, beneficiaries: 0 });
   }
   for (const feature of features) {
-    if (feature.category !== "Submission" && feature.category !== "Beneficiary") continue;
+    if (feature.category !== "Submission" && feature.category !== "Beneficiary" && feature.category !== "Facility") continue;
     const entry = counts.get(feature.project) ?? { submissions: 0, beneficiaries: 0 };
     if (feature.category === "Submission") entry.submissions += 1;
     else entry.beneficiaries += 1;
@@ -182,6 +182,7 @@ export function deriveQualityIssues(features: MapFeatureRecord[]): SpatialQualit
           ? "Review for duplicate beneficiary records before approval."
           : "Request a GPS recapture or review submission accuracy before approval.",
         severity: feature.status === "Critical" ? "Critical" : "Medium",
+        sourceFeatureId: feature.id,
         submissionId: feature.category === "Submission" ? feature.label : feature.id,
         validationState: "Needs review" as SpatialValidationState,
       };

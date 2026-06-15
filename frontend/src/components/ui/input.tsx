@@ -83,6 +83,7 @@ export function Select({
   const generatedId = useId();
   const menuId = `${props.id ?? generatedId}-menu`;
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const options = useMemo(() => extractOptions(children), [children]);
   const [open, setOpen] = useState(false);
   const [highlightedValue, setHighlightedValue] = useState("");
@@ -109,7 +110,11 @@ export function Select({
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
         setOpen(false);
       }
     }
@@ -241,6 +246,7 @@ export function Select({
             <div
               className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
               id={menuId}
+              ref={menuRef}
               role="listbox"
               style={menuStyle}
             >
@@ -259,10 +265,6 @@ export function Select({
                     disabled={option.disabled}
                     key={`${option.value}-${option.label}`}
                     onClick={() => choose(option)}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      choose(option);
-                    }}
                     role="option"
                     type="button"
                   >

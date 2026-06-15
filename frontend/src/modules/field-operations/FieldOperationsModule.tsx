@@ -1219,6 +1219,23 @@ export function FieldOperationsModule({
     : undefined;
   const previewOfficerProfile = useMemo<FieldOfficerProfileDetailRead | undefined>(() => {
     if (!selectedPreviewOfficer) return undefined;
+    const officerAssignments = assignments.filter((assignment) =>
+      assignment.fieldOfficers.includes(selectedPreviewOfficer.full_name),
+    );
+    const assignedEntityCodes = new Set(
+      officerAssignments.flatMap((assignment) => assignment.assignedEntityIds ?? []),
+    );
+    const assignedEntities = previewEntities.filter((entity) =>
+      assignedEntityCodes.has(entity.entityId),
+    );
+    const completedSubmissions = officerAssignments.reduce(
+      (sum, assignment) => sum + assignment.completedCount,
+      0,
+    );
+    const assignedProjects = new Set(officerAssignments.map((assignment) => assignment.project).filter(Boolean));
+    const assignedForms = new Set(officerAssignments.map((assignment) => assignment.form).filter(Boolean));
+    const qualityFlags = assignedEntities.reduce((sum, entity) => sum + entity.qualityFlags, 0);
+    const dataQualityScore = Math.max(0, 100 - qualityFlags * 8);
     return {
       activity: [],
       assignments: [],
@@ -1240,17 +1257,17 @@ export function FieldOperationsModule({
       forms: [],
       locations: selectedPreviewOfficer.home_region ? [selectedPreviewOfficer.home_region] : [],
       metrics: [
-        { label: "Projects", value: "0", tone: "neutral" },
-        { label: "Assignments", value: "0", tone: "neutral" },
-        { label: "Entities", value: "0", tone: "neutral" },
-        { label: "Submissions", value: "0", tone: "neutral" },
-        { label: "Approval Rate", value: "0%", tone: "neutral" },
-        { label: "Data Quality", value: "100%", tone: "success" },
+        { label: "Projects", value: String(assignedProjects.size), tone: assignedProjects.size ? "success" : "neutral" },
+        { label: "Assignments", value: String(officerAssignments.length), tone: officerAssignments.length ? "success" : "neutral" },
+        { label: "Entities", value: String(assignedEntityCodes.size), tone: assignedEntityCodes.size ? "success" : "neutral" },
+        { label: "Submissions", value: String(completedSubmissions), tone: completedSubmissions ? "success" : "neutral" },
+        { label: "Approval Rate", value: completedSubmissions ? "91%" : "0%", tone: completedSubmissions ? "success" : "neutral" },
+        { label: "Data Quality", value: `${dataQualityScore}%`, tone: dataQualityScore >= 85 ? "success" : "warning" },
         { label: "Last Sync", value: selectedPreviewOfficer.last_sync_at ?? "Never", tone: "neutral" },
       ],
       officer: selectedPreviewOfficer,
       organization_name: principal?.organization_name ?? "Preview organization",
-      performance: { total_submissions: 0, approval_rate: 0, data_quality_score: 100 },
+      performance: { total_submissions: completedSubmissions, approval_rate: completedSubmissions ? 91 : 0, data_quality_score: dataQualityScore },
       permissions: [
         { enabled: true, key: "collect_data", label: "Can collect assigned data", source: "Preview role" },
         { enabled: false, key: "export_data", label: "Can export own data", source: "Restricted by governance" },
@@ -1277,7 +1294,7 @@ export function FieldOperationsModule({
       supervisor: null,
       team: selectedPreviewOfficer.home_region ?? "Preview field team",
     };
-  }, [principal?.organization_name, selectedPreviewOfficer]);
+  }, [assignments, principal?.organization_name, selectedPreviewOfficer]);
   const selectedOfficerProfile = preview ? previewOfficerProfile : officerProfileQuery.data;
 
   const openOfficerProfile = (officerId: string) => {
@@ -1419,7 +1436,13 @@ export function FieldOperationsModule({
     [caseEntities],
   );
   const operationsSummary: OperationsSummary =
-    preview ? (summaryQuery.data ?? previewOperationsSummary) : (summaryQuery.data ?? {
+    preview ? {
+      ...previewOperationsSummary,
+      active_programs: new Set(assignments.map((assignment) => assignment.project).filter(Boolean)).size,
+      beneficiaries: caseEntities.length,
+      indicators: targets.length,
+      quality_flags: caseEntities.filter((entity) => entity.qualityFlags > 0 || entity.duplicateStatus !== "Clear").length,
+    } : (summaryQuery.data ?? {
       active_programs: 0,
       beneficiaries: 0,
       indicators: 0,
@@ -1443,6 +1466,16 @@ export function FieldOperationsModule({
   const selectedActivity = visitRequests.find((activity) => activity.id === selectedActivityId) ?? null;
   const selectedActivityEvidence = activityMediaQuery.data ?? [];
   const activityReport = activityReportQuery.data;
+  const supervisorActionVisits = useMemo(
+    () =>
+      visitRequests
+        .filter((activity) =>
+          ["pending", "change_requested", "flagged"].includes(activity.status) ||
+          ["outside_planned_area", "poor_gps_accuracy", "warning_distance"].includes(activity.verification_status),
+        )
+        .slice(0, 5),
+    [visitRequests],
+  );
   const activityAnalytics = useMemo(() => {
     const total = visitRequests.length;
     const pending = visitRequests.filter((activity) => activity.status === "pending").length;
@@ -2161,7 +2194,7 @@ export function FieldOperationsModule({
       value: (visit) => `${visit.verification_status} ${visit.distance_from_planned_meters ?? ""}`,
       render: (visit) => (
         <div>
-          <Badge tone={visit.verification_status === "verified" ? "success" : visit.verification_status === "not_checked_in" ? "neutral" : "warning"}>
+          <Badge tone={visit.verification_status === "verified" ? "success" : visit.verification_status === "not_checked_in" ? "neutral" : visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? "danger" : "warning"}>
             {visit.verification_status.replaceAll("_", " ")}
           </Badge>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -2169,6 +2202,9 @@ export function FieldOperationsModule({
               ? "No check-in distance yet"
               : `${Math.round(visit.distance_from_planned_meters)}m from planned point`}
           </p>
+          {visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? (
+            <p className="mt-1 text-xs font-medium text-danger">Supervisor review needed</p>
+          ) : null}
         </div>
       ),
     },
@@ -3212,6 +3248,58 @@ Password:          ${lastInviteCredentials.password}`}
               reviewPending={reviewVisitMutation.isPending}
             />
           ) : null}
+          <div className="rounded-xl border bg-panel p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Needs supervisor action</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Pending requests, change requests, and GPS exceptions appear here first so supervisors know what to approve or investigate.
+                </p>
+              </div>
+              <Badge tone={supervisorActionVisits.length ? "warning" : "success"}>
+                {supervisorActionVisits.length ? `${supervisorActionVisits.length} item(s)` : "Clear"}
+              </Badge>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {supervisorActionVisits.length ? (
+                supervisorActionVisits.map((visit) => (
+                  <div className="flex flex-col gap-3 rounded-lg border bg-background px-3 py-2 md:flex-row md:items-center md:justify-between" key={visit.id}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold">{visit.title}</p>
+                        <Badge tone={visit.status === "flagged" ? "danger" : "warning"}>{visit.status.replaceAll("_", " ")}</Badge>
+                        <Badge tone={visit.verification_status === "outside_planned_area" || visit.verification_status === "poor_gps_accuracy" ? "danger" : "neutral"}>
+                          {visit.verification_status.replaceAll("_", " ")}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {visit.location_name} · {formatTime(visit.requested_start_at)} · {visit.distance_from_planned_meters === null ? "No check-in distance" : `${Math.round(visit.distance_from_planned_meters)}m from planned point`}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => setSelectedActivityId(visit.id)} size="sm" variant="secondary">
+                        Review evidence
+                      </Button>
+                      {["pending", "change_requested"].includes(visit.status) ? (
+                        <Button
+                          disabled={!canApproveOperationalActivities || reviewVisitMutation.isPending}
+                          onClick={() => reviewVisitMutation.mutate({ action: "approve", visitRequestId: visit.id })}
+                          size="sm"
+                          variant="primary"
+                        >
+                          Approve
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed bg-background p-3 text-xs text-muted-foreground">
+                  No pending movement approvals or GPS exceptions right now.
+                </p>
+              )}
+            </div>
+          </div>
           <DataTable
             columns={visitRequestColumns}
             emptyLabel="No operational activities yet. Field officers can request organization or project activities from the mobile app."

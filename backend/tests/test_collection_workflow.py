@@ -13,7 +13,14 @@ from app.models.collection import FieldOfficerProfile
 from app.models.identity import Organization, User
 from app.repositories.collection import FormRepository
 from app.schemas.auth import CurrentPrincipal
-from app.models.operations import Beneficiary, DataQualitySignal, MonitoringIndicator
+from app.models.operations import (
+    Beneficiary,
+    DataQualitySignal,
+    EntityAttribute,
+    EntityAttributeValue,
+    EntityCategory,
+    MonitoringIndicator,
+)
 from app.schemas.collection import (
     DataFormCreate,
     DeviceMetadata,
@@ -46,6 +53,9 @@ from app.services.collection import (
 )
 from app.schemas.operations import (
     BeneficiaryUpdate,
+    FieldVisitCheckIn,
+    FieldVisitRequestCreate,
+    FieldVisitRequestReview,
     FieldWorkPlanCreate,
     FieldWorkPlanUpdate,
     IndicatorUpdate,
@@ -1033,6 +1043,79 @@ async def test_unique_fields_links_existing_beneficiary_via_custom_field() -> No
 
 
 @pytest.mark.asyncio
+async def test_approved_submission_persists_entity_attribute_values() -> None:
+    env = await _seed_dedup_environment(
+        {
+            "entity_controls": {
+                "linked_to_entity": True,
+                "entity_type": "Farmer",
+                "creates_new_entity": True,
+                "requires_existing_entity": False,
+            }
+        }
+    )
+    session: object = env["session"]
+    async with session:
+        category_id = uuid4()
+        attribute_id = uuid4()
+        session.add_all(
+            [
+                EntityCategory(
+                    id=category_id,
+                    organization_id=env["organization_id"],
+                    project_id=env["project_id"],
+                    name="Farmer",
+                    slug="farmer",
+                ),
+                EntityAttribute(
+                    id=attribute_id,
+                    organization_id=env["organization_id"],
+                    category_id=category_id,
+                    label="Plot Code",
+                    field_key="plot_code",
+                    field_type="text",
+                ),
+            ]
+        )
+        form = await session.get(DataForm, env["form_id"])
+        assert form is not None
+        form.controls_json = {
+            "entity_controls": {
+                **form.controls_json["entity_controls"],
+                "entity_category_id": str(category_id),
+            }
+        }
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="attr-001",
+                payload={"farmer_name": "Attribute Farmer", "plot_code": "PLOT-9"},
+            ),
+        )
+        await session.commit()
+
+        await service.review_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="approve", comment="Approved"),
+        )
+        await session.commit()
+
+        value = (await session.execute(select(EntityAttributeValue))).scalar_one()
+        assert value.entity_id == submission.entity_id
+        assert value.attribute_id == attribute_id
+        assert value.source_submission_id == submission.id
+        assert value.value_json["value"] == "PLOT-9"
+        assert value.value_json["sourceClientSubmissionId"] == "attr-001"
+
+
+@pytest.mark.asyncio
 async def test_review_submission_archive_transition_locks_approved_submission() -> None:
     env = await _seed_dedup_environment({"entity_controls": {}})
     session: object = env["session"]
@@ -1457,6 +1540,98 @@ async def test_work_plans_and_targets_persist_with_audit() -> None:
             "operational_target.created",
             "operational_target.created",
             "operational_target.updated",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_field_officer_visit_request_syncs_for_supervisor_approval_and_check_in() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        supervisor_user_id = uuid4()
+        project_id = uuid4()
+        officer_id = uuid4()
+        start_at = datetime(2026, 6, 20, 8, 0, tzinfo=UTC)
+        end_at = datetime(2026, 6, 20, 12, 0, tzinfo=UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Visit Org", slug="visit-org"),
+                User(id=field_user_id, email="visit-field@example.org", full_name="Visit Field", password_hash="x"),
+                User(id=supervisor_user_id, email="visit-supervisor@example.org", full_name="Visit Supervisor", password_hash="x"),
+                FieldOfficerProfile(
+                    id=officer_id,
+                    organization_id=organization_id,
+                    user_id=field_user_id,
+                    supervisor_user_id=supervisor_user_id,
+                    is_active=True,
+                ),
+                Project(id=project_id, organization_id=organization_id, name="Visit Project", slug="visit-project", status="active"),
+            ]
+        )
+        await session.flush()
+
+        service = OperationsService(session)
+        requested = await service.create_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=field_user_id,
+            payload=FieldVisitRequestCreate(
+                project_id=project_id,
+                title="Visit Store A",
+                activity_scope="project",
+                purpose="Verify inventory count and speak with store manager.",
+                location_name="Store A",
+                latitude=5.9,
+                longitude=10.1,
+                requested_start_at=start_at,
+                requested_end_at=end_at,
+            ),
+        )
+        assert requested.status == "pending"
+        assert requested.supervisor_user_id == supervisor_user_id
+
+        supervisor_queue = await service.list_field_visit_requests(
+            organization_id=organization_id,
+            actor_user_id=supervisor_user_id,
+            actor_roles=["district_supervisor"],
+        )
+        assert [visit.id for visit in supervisor_queue] == [requested.id]
+
+        approved = await service.review_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=supervisor_user_id,
+            visit_request_id=requested.id,
+            payload=FieldVisitRequestReview(action="approve", comment="Approved for morning visit."),
+            actor_roles=["district_supervisor"],
+        )
+        assert approved.status == "approved"
+        assert approved.reviewed_by_user_id == supervisor_user_id
+
+        checked_in = await service.check_in_field_visit_request(
+            organization_id=organization_id,
+            actor_user_id=field_user_id,
+            visit_request_id=requested.id,
+            payload=FieldVisitCheckIn(latitude=5.9002, longitude=10.1002, accuracy=12, timestamp=start_at),
+        )
+        assert checked_in.status == "checked_in"
+        assert checked_in.verification_status == "verified"
+        assert checked_in.check_in_latitude == 5.9002
+        assert checked_in.distance_from_planned_meters is not None
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "field_visit_request",
+            )
+        )
+        assert [log.action for log in audit_result.scalars()] == [
+            "field_visit.request_submitted",
+            "field_visit.request_approved",
+            "field_visit.checked_in",
         ]
 
 

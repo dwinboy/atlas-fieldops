@@ -247,20 +247,30 @@ export function BeneficiariesModule({
   const duplicates = entities.filter(
     (entity) => entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0,
   );
-  const entityTypeOptions = useMemo(
+  const allEntityTypeOptions = useMemo(
     () => Array.from(new Set(entities.map((entity) => entity.entityType))).sort(),
     [entities],
   );
+  const entityTypeOptions = useMemo(() => {
+    const categoryNames = new Set<string>();
+    for (const category of entityCategoriesQuery.data ?? []) {
+      if (projectFilter === "all" || category.project_id === projectFilter) categoryNames.add(category.name);
+    }
+    for (const entity of entities) {
+      if (projectFilter === "all" || entity.projectId === projectFilter) categoryNames.add(entity.entityType);
+    }
+    return Array.from(categoryNames).sort();
+  }, [entities, entityCategoriesQuery.data, projectFilter]);
   const registrationEntityTypes = useMemo(
     () =>
       Array.from(
         new Set([
           ...entityTypes,
           ...(entityCategoriesQuery.data ?? []).map((category) => category.name),
-          ...entityTypeOptions,
+          ...allEntityTypeOptions,
         ]),
       ).sort(),
-    [entityCategoriesQuery.data, entityTypeOptions],
+    [allEntityTypeOptions, entityCategoriesQuery.data],
   );
   const filteredEntities = useMemo(
     () =>
@@ -739,7 +749,10 @@ export function BeneficiariesModule({
           Project
           <Select
             className="mt-1"
-            onChange={(event) => setProjectFilter(event.target.value)}
+            onChange={(event) => {
+              setProjectFilter(event.target.value);
+              setEntityTypeFilter("all");
+            }}
             value={projectFilter}
           >
             <option value="all">All projects</option>

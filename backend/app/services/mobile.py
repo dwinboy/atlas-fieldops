@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import canonical_role
 from app.models.administration import PlatformReferenceList, PlatformReferenceValue
-from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, OfficerAssignment, Project
+from app.models.collection import DataForm, DataFormVersion, FieldOfficerProfile, MobileNotification, OfficerAssignment, Project
 from app.models.collection import Submission
 from app.models.operations import Beneficiary, EntityCategory, MediaEvidence, WorkforceProfile
 from app.repositories.audit import AuditRepository
@@ -37,6 +37,7 @@ from app.schemas.mobile import (
     MobileFormRead,
     MobileFormVersionRead,
     MobileLocationRead,
+    MobileNotificationRead,
     MobileOfflineRulesRead,
     MobileOfficerProfileRead,
     MobilePermissionSetRead,
@@ -1278,6 +1279,7 @@ class MobileService:
             pending_uploads=0,
         )
 
+        notifications = await self._notifications(organization_id, user_id)
         return MobileSyncPackageRead(
             bootstrap=self._bootstrap(principal, project_reads, officer=officer, assigned_counts=assigned_counts),
             assignments=assignment_reads,
@@ -1289,7 +1291,7 @@ class MobileService:
             reference_lists=reference_lists,
             returned_submissions=returned_submissions,
             submission_statuses=submission_statuses,
-            notifications=[],
+            notifications=notifications,
         )
 
     async def returned_submissions(self, principal: CurrentPrincipal) -> list[MobileSubmissionRead]:
@@ -1304,6 +1306,50 @@ class MobileService:
             for submission in submissions
             if submission.status in {"rejected", "correction_requested"}
         ]
+
+    async def notifications(self, principal: CurrentPrincipal) -> list[MobileNotificationRead]:
+        return await self._notifications(UUID(principal.organization_id), UUID(principal.user_id))
+
+    async def mark_notification_read(self, principal: CurrentPrincipal, notification_id: UUID) -> MobileNotificationRead:
+        organization_id = UUID(principal.organization_id)
+        user_id = UUID(principal.user_id)
+        result = await self.session.execute(
+            select(MobileNotification).where(
+                MobileNotification.organization_id == organization_id,
+                MobileNotification.user_id == user_id,
+                MobileNotification.id == notification_id,
+                MobileNotification.deleted_at.is_(None),
+            )
+        )
+        notification = result.scalar_one_or_none()
+        if notification is None:
+            raise CollectionNotFoundError("Notification not found")
+        if notification.read_at is None:
+            notification.read_at = datetime.now(UTC)
+            await self.session.flush()
+        return self._notification_read(notification)
+
+    async def _notifications(self, organization_id: UUID, user_id: UUID) -> list[MobileNotificationRead]:
+        result = await self.session.execute(
+            select(MobileNotification)
+            .where(
+                MobileNotification.organization_id == organization_id,
+                MobileNotification.user_id == user_id,
+                MobileNotification.deleted_at.is_(None),
+            )
+            .order_by(MobileNotification.created_by_server_at.desc())
+            .limit(100)
+        )
+        return [self._notification_read(notification) for notification in result.scalars().all()]
+
+    def _notification_read(self, notification: MobileNotification) -> MobileNotificationRead:
+        return MobileNotificationRead(
+            id=str(notification.id),
+            title=notification.title,
+            body=notification.body,
+            read_at=notification.read_at,
+            created_by_server_at=notification.created_by_server_at,
+        )
 
     async def _officer_submissions(self, organization_id: UUID, officer_id: UUID, *, limit: int = 200) -> list[Submission]:
         result = await self.session.execute(

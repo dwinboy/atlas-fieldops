@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function AtlasFieldOpsLogo({
   alt = "Atlas FieldOps",
   className,
-  size = 40,
+  size = 48,
 }: {
   alt?: string;
   className?: string;
@@ -16,7 +16,7 @@ export function AtlasFieldOpsLogo({
       alt={alt}
       className={cn("shrink-0 object-contain", className)}
       height={size}
-      priority={size >= 40}
+      priority={size >= 48}
       src="/brand/atlas-fieldops-logo.png"
       width={size}
     />

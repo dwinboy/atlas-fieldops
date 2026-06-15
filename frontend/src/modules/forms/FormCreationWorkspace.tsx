@@ -105,6 +105,7 @@ type StarterTemplate = {
   formType: string;
   id: string;
   name: string;
+  sectorIds: string[];
 };
 
 type RecommendedQuestion = {
@@ -485,7 +486,7 @@ function MobileFormPreview({
     >
       <div className="flex items-center justify-between border-b bg-foreground px-4 py-2 text-[11px] font-semibold text-background">
         <span className="flex items-center gap-1.5">
-          <AtlasFieldOpsLogo size={16} />
+          <AtlasFieldOpsLogo size={24} />
           Atlas FieldOps
         </span>
         <span>Preview</span>
@@ -762,6 +763,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Registration",
     id: "entity-registration",
     name: "Entity / Record Registration",
+    sectorIds: ["custom", "agriculture", "health", "education", "wash", "humanitarian", "nutrition", "livelihoods", "protection", "governance", "environment", "research", "retail", "sales", "inventory", "logistics", "manufacturing", "hr", "audits", "inspections", "assets"],
   },
   {
     description:
@@ -778,6 +780,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Baseline Survey",
     id: "baseline",
     name: "Baseline Survey",
+    sectorIds: ["agriculture", "health", "education", "wash", "humanitarian", "nutrition", "livelihoods", "protection", "governance", "environment", "research"],
   },
   {
     description:
@@ -794,6 +797,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Monitoring Visit",
     id: "monitoring-visit",
     name: "Monitoring Visit",
+    sectorIds: ["agriculture", "health", "education", "wash", "humanitarian", "nutrition", "livelihoods", "protection", "governance", "environment", "research", "logistics", "assets"],
   },
   {
     description:
@@ -809,6 +813,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Training Attendance",
     id: "attendance-distribution",
     name: "Attendance / Distribution",
+    sectorIds: ["education", "health", "humanitarian", "nutrition", "livelihoods", "protection", "governance", "hr"],
   },
   {
     description:
@@ -825,6 +830,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Inventory Count",
     id: "inventory-count",
     name: "Inventory Count",
+    sectorIds: ["retail", "inventory", "logistics", "manufacturing", "assets"],
   },
   {
     description:
@@ -841,6 +847,7 @@ const starterTemplates: StarterTemplate[] = [
     formType: "Inspection",
     id: "inspection-checklist",
     name: "Inspection Checklist",
+    sectorIds: ["health", "education", "wash", "logistics", "manufacturing", "audits", "inspections", "assets"],
   },
 ];
 
@@ -4965,6 +4972,18 @@ export function FormCreationWorkspace({
     () => getSectorTerminology(selectedProject?.sector_id ?? selectedProject?.sector_name ?? null),
     [selectedProject?.sector_id, selectedProject?.sector_name],
   );
+  const sectorTemplateOptions = useMemo(() => {
+    const sectorId = sectorTerminology.sectorId;
+    return [...starterTemplates].sort((first, second) => {
+      const firstMatch = first.sectorIds.includes(sectorId);
+      const secondMatch = second.sectorIds.includes(sectorId);
+      if (firstMatch !== secondMatch) return firstMatch ? -1 : 1;
+      if (firstMatch && secondMatch && first.sectorIds.length !== second.sectorIds.length) {
+        return first.sectorIds.length - second.sectorIds.length;
+      }
+      return first.name.localeCompare(second.name);
+    });
+  }, [sectorTerminology.sectorId]);
   const primaryEntityLabel = sectorTerminology.primaryEntity;
   const primaryEntityPluralLabel = sectorTerminology.primaryEntityPlural;
   const metricLabel = sectorTerminology.metricLabel ?? "Metric";
@@ -5895,6 +5914,20 @@ export function FormCreationWorkspace({
     if (selectedDuplicateFormId || !existingForms.length) return;
     setSelectedDuplicateFormId(existingForms[0]?.id ?? "");
   }, [existingForms, selectedDuplicateFormId]);
+
+  useEffect(() => {
+    if (startMethod !== "template") return;
+    const selectedTemplate = starterTemplates.find(
+      (template) => template.id === selectedTemplateId,
+    );
+    if (selectedTemplate?.sectorIds.includes(sectorTerminology.sectorId)) return;
+    setSelectedTemplateId(sectorTemplateOptions[0]?.id ?? "");
+  }, [
+    sectorTemplateOptions,
+    sectorTerminology.sectorId,
+    selectedTemplateId,
+    startMethod,
+  ]);
 
   async function handleImportFileSelected(file: File | null): Promise<void> {
     setImportFile(file);
@@ -6974,46 +7007,60 @@ export function FormCreationWorkspace({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold">Choose a template</h3>
                 <HelpHint label="About form templates" title="Choose a template">
-                  Templates create a real editable draft with recommended
-                  questions, response types, required fields, GPS, and evidence
-                  prompts. You can change every question before publishing.
+                  Templates are recommended from the selected project sector
+                  first. You can still choose another template and edit every
+                  question before publishing.
                 </HelpHint>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Showing best matches for {sectorTerminology.sectorName}. Change
+                the project in Basic Information to get a different sector list.
+              </p>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {starterTemplates.map((template) => (
-                  <button
-                    className={cn(
-                      "rounded-lg border bg-panel p-3 text-left transition hover:border-primary/40",
-                      selectedTemplateId === template.id &&
-                        "border-primary/50 bg-primary/10",
-                    )}
-                    key={template.id}
-                    onClick={() => {
-                      setSelectedTemplateId(template.id);
-                      updateSetup({
-                        formType: template.formType,
-                        formName:
-                          setup.formName.trim() || `${template.name} Form`,
-                      });
-                    }}
-                    type="button"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold">{template.name}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {template.description}
-                        </p>
+                {sectorTemplateOptions.map((template) => {
+                  const recommended = template.sectorIds.includes(
+                    sectorTerminology.sectorId,
+                  );
+                  return (
+                    <button
+                      className={cn(
+                        "rounded-lg border bg-panel p-3 text-left transition hover:border-primary/40",
+                        selectedTemplateId === template.id &&
+                          "border-primary/50 bg-primary/10",
+                      )}
+                      key={template.id}
+                      onClick={() => {
+                        setSelectedTemplateId(template.id);
+                        updateSetup({
+                          formType: template.formType,
+                          formName:
+                            setup.formName.trim() || `${template.name} Form`,
+                        });
+                      }}
+                      type="button"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold">{template.name}</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            {template.description}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          {recommended ? (
+                            <Badge tone="success">Recommended</Badge>
+                          ) : null}
+                          <Badge tone="neutral">
+                            {template.fields.length} fields
+                          </Badge>
+                        </div>
                       </div>
-                      <Badge tone="neutral">
-                        {template.fields.length} fields
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      {template.formType}
-                    </p>
-                  </button>
-                ))}
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {template.formType}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : null}

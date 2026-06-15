@@ -5,12 +5,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Card, EmptyState } from "@/components/ui";
 import { useAppContext } from "@/context/AppContext";
+import { NotificationService } from "@/services/notificationService";
 import { localDatabase } from "@/storage/localDatabase";
 import type { MobileNotification } from "@/models/contracts";
 import { colors, fontFamily, radii, spacing, tone, type Tone, typography } from "@/theme";
 
 export default function NotificationsScreen() {
   const { refreshKey, refresh } = useAppContext();
+  const notificationService = useMemo(() => new NotificationService(localDatabase), []);
 
   const notifications = useMemo(
     () =>
@@ -24,14 +26,13 @@ export default function NotificationsScreen() {
 
   function markRead(n: MobileNotification) {
     if (n.readAt) return;
-    localDatabase.notifications.upsert({ ...n, readAt: new Date().toISOString() });
+    notificationService.markRead(n.localId);
     refresh();
   }
 
   function markAllRead() {
-    const now = new Date().toISOString();
     for (const n of notifications.filter((n) => !n.readAt)) {
-      localDatabase.notifications.upsert({ ...n, readAt: now });
+      notificationService.markRead(n.localId);
     }
     refresh();
   }

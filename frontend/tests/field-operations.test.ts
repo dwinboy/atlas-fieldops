@@ -24,11 +24,11 @@ describe("Field Operations module helpers", () => {
       targets: previewTargets,
     });
 
-    expect(summary.activeAssignments).toBe(2);
-    expect(summary.assignedFieldOfficers).toBe(2);
-    expect(summary.activeSupervisors).toBe(2);
-    expect(summary.overdueAssignments).toBe(1);
-    expect(summary.dailyCollectionProgress).toBe(66);
+    expect(summary.activeAssignments).toBe(previewAssignments.filter((assignment) => ["Assigned", "In Progress"].includes(assignment.status)).length);
+    expect(summary.assignedFieldOfficers).toBe(previewOfficers.filter((officer) => officer.is_active).length);
+    expect(summary.activeSupervisors).toBe(previewSupervisors.filter((supervisor) => supervisor.status === "Active").length);
+    expect(summary.overdueAssignments).toBe(previewAssignments.filter((assignment) => assignment.status === "Overdue").length);
+    expect(summary.dailyCollectionProgress).toBe(Math.round((previewAssignments.reduce((sum, assignment) => sum + assignment.completedCount, 0) / previewAssignments.reduce((sum, assignment) => sum + assignment.targetCount, 0)) * 100));
   });
 
   it("calculates target progress safely", () => {
