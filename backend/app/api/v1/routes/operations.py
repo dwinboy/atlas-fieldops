@@ -25,6 +25,9 @@ from app.schemas.operations import (
     DataQualitySignalUpdate,
     DonorReportCreate,
     DonorReportRead,
+    ReportScheduleCreate,
+    ReportScheduleRead,
+    ReportScheduleStatusUpdate,
     EntityCategoryCreate,
     EntityCategoryRead,
     EntityCategoryUpdate,
@@ -909,6 +912,70 @@ async def export_report_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/report-schedules", response_model=list[ReportScheduleRead], summary="List scheduled report deliveries")
+async def list_report_schedules(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ReportScheduleRead]:
+    return await OperationsService(session).list_report_schedules(organization_uuid(principal))
+
+
+@router.post("/report-schedules", response_model=ReportScheduleRead, status_code=status.HTTP_201_CREATED, summary="Schedule a recurring report delivery")
+async def create_report_schedule(
+    payload: ReportScheduleCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReportScheduleRead:
+    try:
+        return await OperationsService(session).create_report_schedule(
+            organization_uuid(principal), user_uuid(principal), payload
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/report-schedules/{schedule_id}/run", response_model=ReportScheduleRead, summary="Run a scheduled report delivery now")
+async def run_report_schedule(
+    schedule_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReportScheduleRead:
+    try:
+        return await OperationsService(session).run_report_schedule_now(
+            organization_uuid(principal), user_uuid(principal), schedule_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/report-schedules/{schedule_id}/status", response_model=ReportScheduleRead, summary="Pause or resume a scheduled report")
+async def update_report_schedule_status(
+    schedule_id: UUID,
+    payload: ReportScheduleStatusUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReportScheduleRead:
+    try:
+        return await OperationsService(session).set_report_schedule_status(
+            organization_uuid(principal), schedule_id, payload.status
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/report-schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a scheduled report")
+async def delete_report_schedule(
+    schedule_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        await OperationsService(session).delete_report_schedule(organization_uuid(principal), schedule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/data/imports/preview", response_model=ImportPreviewResponse, summary="Preview and validate imported data")

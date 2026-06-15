@@ -1,4 +1,5 @@
 import type { BadgeProps } from "@/components/ui/badge";
+import type { DonorReportIndicatorMetric } from "@/lib/api";
 import type {
   DashboardRecord,
   ExportJobRecord,
@@ -99,6 +100,57 @@ export function summarizeReportQuery(report: ReportRecord): string {
 
 export function canExportReport(report: ReportRecord): boolean {
   return report.status === "Ready" && (report.governance === "Approved" || report.governance === "Internal only");
+}
+
+/**
+ * Build a live KPI strip from the indicator metrics computed across generated
+ * reports. Each distinct indicator (by code) becomes one KPI with its real
+ * current value and target, so the reporting hub shows actual results instead
+ * of an empty placeholder in production.
+ */
+export function deriveReportKpis(reports: ReportRecord[]): KpiRecord[] {
+  const byCode = new Map<string, DonorReportIndicatorMetric>();
+  for (const report of reports) {
+    for (const indicator of report.metrics?.indicators ?? []) {
+      const existing = byCode.get(indicator.code);
+      // Prefer the highest computed value when the same indicator appears in
+      // multiple report packages, so the KPI reflects the most complete figure.
+      if (!existing || indicator.current_value > existing.current_value) {
+        byCode.set(indicator.code, indicator);
+      }
+    }
+  }
+  return Array.from(byCode.values())
+    .sort((left, right) => right.current_value - left.current_value)
+    .map((indicator) => ({
+      id: `kpi-${indicator.code}`,
+      label: indicator.name,
+      value: indicator.current_value,
+      target: indicator.target_value,
+      unit: indicator.unit,
+      trend: "Flat" as const,
+      periodComparison: "Latest computed value vs target",
+      drillDown: indicator.code,
+    }));
+}
+
+/**
+ * Build the machine-readable export package for a generated report. Returns
+ * null when the report has not been generated yet (no computed metrics), so the
+ * UI can prompt the user to generate it before exporting.
+ */
+export function buildReportMetricsExport(report: ReportRecord): Record<string, unknown> | null {
+  if (!report.metrics) return null;
+  return {
+    id: report.id,
+    title: report.title,
+    donor: report.donor,
+    category: report.category,
+    period: report.period,
+    governance: report.governance,
+    generatedAt: report.lastGenerated,
+    metrics: report.metrics,
+  };
 }
 
 export function toCsv(rows: Record<string, string | number | boolean | null | undefined>[]): string {

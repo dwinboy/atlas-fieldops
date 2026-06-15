@@ -63,6 +63,8 @@ from app.schemas.collection import (
     FieldWorkAssignmentUpdate,
     FormDataImportConfirmRequest,
     FormDataImportConfirmResponse,
+    FormDataImportReturnRequest,
+    FormDataImportReturnResponse,
     FormDataImportIssue,
     FormDataImportRequest,
     FormDataImportResponse,
@@ -2176,6 +2178,16 @@ class SubmissionService:
 
         schema = FormSchema.model_validate(form_version.schema_json)
         question_control_metadata = _question_control_metadata(schema)
+        # Duplicate detection uses the form's configured matching fields, so it
+        # adapts to whatever entity model the sector pack defines rather than
+        # assuming beneficiary/farmer fields.
+        governance = self._governance_settings(form.controls_json or {})
+        raw_detection_fields = governance.get("duplicate_detection_fields")
+        duplicate_detection_fields = [
+            str(field).strip()
+            for field in (raw_detection_fields if isinstance(raw_detection_fields, list) else [])
+            if str(field).strip()
+        ]
         now = datetime.now(UTC)
         imported: list[Submission] = []
         all_issues: list[FormDataImportIssue] = []
@@ -2233,6 +2245,36 @@ class SubmissionService:
                     "importReason": payload.import_reason,
                 },
             }
+
+            if duplicate_detection_fields:
+                duplicate_match = await self._find_duplicate_submission(
+                    organization_id=organization_id,
+                    form_id=form.id,
+                    payload_values=self._flat_payload_values(responses),
+                    detection_fields=list(duplicate_detection_fields),
+                )
+                if duplicate_match is not None:
+                    submission_payload["_duplicate_submission_signal"] = duplicate_match
+                    submission_payload["_quality_status"] = "needs_review"
+                    submission_payload["_review_required"] = True
+                    matched_fields_raw = duplicate_match.get("matched_fields", [])
+                    matched_fields = ", ".join(
+                        str(field)
+                        for field in (matched_fields_raw if isinstance(matched_fields_raw, list) else [])
+                    )
+                    all_issues.append(
+                        FormDataImportIssue(
+                            row_number=row_number,
+                            field_name=None,
+                            issue_type="possible_duplicate",
+                            severity="warning",
+                            message=(
+                                f"Possible duplicate of {duplicate_match.get('matched_client_submission_id')} "
+                                f"matching {matched_fields or 'configured fields'}."
+                            ),
+                            suggested_fix="Review before approving; confirm this is not an existing record.",
+                        )
+                    )
 
             submission = await self.submissions.create(
                 organization_id=organization_id,
@@ -2417,6 +2459,94 @@ class SubmissionService:
             skipped_rows=skipped_rows,
             issues=issues,
             submissions=[SubmissionRead.model_validate(submission) for submission in confirmed],
+        )
+
+    async def return_imported_form_rows(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        form_id: UUID,
+        payload: FormDataImportReturnRequest,
+    ) -> FormDataImportReturnResponse:
+        """Bulk-return staged uploaded rows to source for correction and re-upload."""
+        returned: list[Submission] = []
+        issues: list[FormDataImportIssue] = []
+        skipped_rows = 0
+        returnable_statuses = {"import_staged", "under_review", "submitted", "resubmitted"}
+        now = datetime.now(UTC)
+        for index, submission_id in enumerate(payload.submission_ids, start=1):
+            submission = await self.submissions.get(organization_id=organization_id, submission_id=submission_id)
+            if submission is None or submission.form_id != form_id or not submission.is_imported:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="not_returnable",
+                        severity="error",
+                        message="This row is not an uploaded submission for the selected form.",
+                        suggested_fix="Return only uploaded rows from this form.",
+                    )
+                )
+                continue
+            if submission.status not in returnable_statuses:
+                skipped_rows += 1
+                issues.append(
+                    FormDataImportIssue(
+                        row_number=index,
+                        field_name=None,
+                        issue_type="invalid_status",
+                        severity="error",
+                        message=f"{submission.client_submission_id} is {submission.status} and cannot be returned to source.",
+                        suggested_fix="Only staged or in-review uploaded rows can be returned to source.",
+                    )
+                )
+                continue
+            await self.submissions.transition(
+                submission=submission,
+                actor_user_id=actor_user_id,
+                to_status="correction_requested",
+                comment=payload.comment,
+            )
+            submission.payload_json = {
+                **(submission.payload_json or {}),
+                "_quality_status": "returned_to_source",
+                "_review_required": True,
+                "_returned_to_source_at": now.isoformat(),
+                "_returned_to_source_by_user_id": str(actor_user_id),
+                "_returned_to_source_comment": payload.comment,
+            }
+            await self.audit.append(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                action="form.import_row_returned",
+                resource_type="submission",
+                resource_id=str(submission.id),
+                metadata={
+                    "form_id": str(form_id),
+                    "client_submission_id": submission.client_submission_id,
+                    "source_system": submission.source_system,
+                    "comment": payload.comment,
+                },
+            )
+            returned.append(submission)
+        await event_publisher.publish(
+            settings.kafka_submission_events_topic,
+            {
+                "type": "form.import_rows_returned",
+                "organization_id": str(organization_id),
+                "form_id": str(form_id),
+                "returned_rows": len(returned),
+                "skipped_rows": skipped_rows,
+            },
+        )
+        await self.session.flush()
+        return FormDataImportReturnResponse(
+            returned_rows=len(returned),
+            skipped_rows=skipped_rows,
+            issues=issues,
+            submissions=[SubmissionRead.model_validate(submission) for submission in returned],
         )
 
     async def list_import_cleaning_rows(

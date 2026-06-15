@@ -4,6 +4,8 @@ import { previewIndicators, previewTargets } from "@/modules/indicators/data";
 import {
   calculateIndicatorResult,
   computeIndicatorSummary,
+  deriveLogframeRows,
+  deriveResultsMatrix,
   progressPercent,
   summarizeTargets,
   targetAchievement,
@@ -34,6 +36,40 @@ describe("Indicators module helpers", () => {
     expect(validateFormQuestionLink(previewIndicators[0])).toEqual([]);
     expect(validateFormQuestionLink(previewIndicators[3])).toContain("Missing linked form");
     expect(validateFormQuestionLink(previewIndicators[3])).toContain("Missing approved data source");
+  });
+
+  it("derives a results matrix by grouping live metrics under their result area", () => {
+    const matrix = deriveResultsMatrix(previewIndicators);
+    const areas = new Set(
+      previewIndicators
+        .filter((indicator) => indicator.status !== "Archived")
+        .map((indicator) => indicator.resultArea?.trim() || "Unassigned result area"),
+    );
+    expect(matrix.length).toBe(areas.size);
+    for (const node of matrix) {
+      expect(node.level).toBe("Outcome");
+      expect(node.indicators.length).toBeGreaterThan(0);
+      expect(node.progress).toBeGreaterThanOrEqual(0);
+      expect(node.progress).toBeLessThanOrEqual(100);
+    }
+    // Areas are ordered by how many metrics roll up into them (desc).
+    for (let index = 1; index < matrix.length; index += 1) {
+      expect(matrix[index - 1].indicators.length).toBeGreaterThanOrEqual(matrix[index].indicators.length);
+    }
+  });
+
+  it("builds live logframe rows from configured metrics with real values", () => {
+    const rows = deriveLogframeRows(previewIndicators);
+    const active = previewIndicators.filter((indicator) => indicator.status !== "Archived");
+    expect(rows).toHaveLength(active.length);
+    const first = rows[0];
+    const source = active[0];
+    expect(first.id).toBe(source.id);
+    expect(first.indicators).toEqual([source.code]);
+    expect(first.target).toBe(String(source.target));
+    expect(first.currentValue).toBe(String(source.current));
+    expect(first.baseline).toBe(source.baseline === null ? "—" : String(source.baseline));
+    expect(first.narrativeSummary).toBe(source.resultArea?.trim() || source.name);
   });
 
   it("supports calculation and target achievement engines", () => {

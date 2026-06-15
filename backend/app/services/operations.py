@@ -2,7 +2,7 @@ import csv
 import math
 import re
 from difflib import SequenceMatcher
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 from uuid import UUID
 from typing import Literal, cast
@@ -18,6 +18,7 @@ from app.models.operations import (
     CaseRecord,
     DataQualitySignal,
     DonorReport,
+    ReportSchedule,
     FieldVisitRequest,
     FieldWorkPlan,
     OperationalTargetRecord,
@@ -52,6 +53,8 @@ from app.schemas.operations import (
     DataQualitySignalRead,
     DataQualitySignalUpdate,
     DonorReportCreate,
+    ReportScheduleCreate,
+    ReportScheduleRead,
     EntityAttributeRead,
     EntityAttributeCreate,
     EntityCategoryCreate,
@@ -2575,6 +2578,126 @@ class OperationsService:
         await self.session.commit()
         await event_publisher.publish("report.generated", {"organization_id": str(organization_id), "report_id": str(report.id)})
         return report
+
+    @staticmethod
+    def _compute_report_next_run(frequency: str, hour: int, *, from_dt: datetime) -> datetime:
+        base = from_dt.astimezone(UTC)
+        target_hour = max(0, min(23, hour))
+        if frequency == "weekly":
+            return (base + timedelta(days=7)).replace(hour=target_hour, minute=0, second=0, microsecond=0)
+        if frequency == "monthly":
+            return (base + timedelta(days=30)).replace(hour=target_hour, minute=0, second=0, microsecond=0)
+        candidate = base.replace(hour=target_hour, minute=0, second=0, microsecond=0)
+        if candidate <= base:
+            candidate += timedelta(days=1)
+        return candidate
+
+    @staticmethod
+    def _report_schedule_read(schedule: ReportSchedule, report_name: str | None) -> ReportScheduleRead:
+        return ReportScheduleRead.model_validate(schedule, from_attributes=True).model_copy(
+            update={"report_name": report_name}
+        )
+
+    async def _get_report_schedule(self, organization_id: UUID, schedule_id: UUID) -> ReportSchedule:
+        result = await self.session.execute(
+            select(ReportSchedule).where(
+                ReportSchedule.organization_id == organization_id,
+                ReportSchedule.id == schedule_id,
+            )
+        )
+        schedule = result.scalar_one_or_none()
+        if schedule is None:
+            raise ValueError("Report schedule not found")
+        return schedule
+
+    async def create_report_schedule(
+        self, organization_id: UUID, actor_user_id: UUID, payload: ReportScheduleCreate
+    ) -> ReportScheduleRead:
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=payload.report_id)
+        if report is None:
+            raise ValueError("Report not found")
+        now = datetime.now(UTC)
+        schedule = ReportSchedule(
+            organization_id=organization_id,
+            report_id=payload.report_id,
+            frequency=payload.frequency,
+            hour=payload.hour,
+            timezone=payload.timezone,
+            recipients=list(payload.recipients),
+            export_format=payload.export_format,
+            status="active",
+            next_run_at=self._compute_report_next_run(payload.frequency, payload.hour, from_dt=now),
+            created_by_user_id=actor_user_id,
+        )
+        self.session.add(schedule)
+        await self.session.commit()
+        await self.session.refresh(schedule)
+        await event_publisher.publish(
+            "report.schedule_created",
+            {"organization_id": str(organization_id), "schedule_id": str(schedule.id), "report_id": str(report.id)},
+        )
+        return self._report_schedule_read(schedule, report.name)
+
+    async def list_report_schedules(self, organization_id: UUID) -> list[ReportScheduleRead]:
+        result = await self.session.execute(
+            select(ReportSchedule, DonorReport.name)
+            .join(DonorReport, DonorReport.id == ReportSchedule.report_id)
+            .where(ReportSchedule.organization_id == organization_id)
+            .order_by(ReportSchedule.next_run_at)
+        )
+        return [self._report_schedule_read(schedule, name) for schedule, name in result.all()]
+
+    async def set_report_schedule_status(
+        self, organization_id: UUID, schedule_id: UUID, status_value: str
+    ) -> ReportScheduleRead:
+        schedule = await self._get_report_schedule(organization_id, schedule_id)
+        schedule.status = status_value
+        await self.session.commit()
+        await self.session.refresh(schedule)
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=schedule.report_id)
+        return self._report_schedule_read(schedule, report.name if report else None)
+
+    async def delete_report_schedule(self, organization_id: UUID, schedule_id: UUID) -> None:
+        schedule = await self._get_report_schedule(organization_id, schedule_id)
+        await self.session.delete(schedule)
+        await self.session.commit()
+
+    async def run_report_schedule_now(
+        self, organization_id: UUID, actor_user_id: UUID, schedule_id: UUID
+    ) -> ReportScheduleRead:
+        schedule = await self._get_report_schedule(organization_id, schedule_id)
+        report_id = schedule.report_id
+        frequency = schedule.frequency
+        hour = schedule.hour
+        now = datetime.now(UTC)
+        last_status = "delivered"
+        failure_log: str | None = None
+        try:
+            await self.generate_report(organization_id, report_id)
+        except ValueError as exc:
+            last_status = "failed"
+            failure_log = str(exc)[:500]
+        # Re-fetch after generate_report's own commit so the instance is fresh.
+        schedule = await self._get_report_schedule(organization_id, schedule_id)
+        schedule.last_run_at = now
+        schedule.last_status = last_status
+        schedule.failure_log = failure_log
+        schedule.next_run_at = self._compute_report_next_run(frequency, hour, from_dt=now)
+        await self.session.commit()
+        await self.session.refresh(schedule)
+        await event_publisher.publish(
+            "report.scheduled_delivery",
+            {
+                "organization_id": str(organization_id),
+                "schedule_id": str(schedule.id),
+                "report_id": str(report_id),
+                "status": last_status,
+                "recipients": list(schedule.recipients),
+                "actor_user_id": str(actor_user_id),
+            },
+        )
+        report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)
+        return self._report_schedule_read(schedule, report.name if report else None)
 
     async def export_report_csv(self, organization_id: UUID, report_id: UUID) -> tuple[str, str]:
         report = await self.repository.get_report_by_id(organization_id=organization_id, report_id=report_id)

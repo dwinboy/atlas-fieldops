@@ -5,6 +5,8 @@ import type {
   IndicatorStatus,
   IndicatorSummary,
   IndicatorTarget,
+  LogframeRow,
+  ResultsFrameworkNode,
 } from "@/modules/indicators/data";
 
 export function progressPercent(current: number, baseline: number | null, target: number): number {
@@ -91,6 +93,66 @@ export function calculateIndicatorResult({
   if (type === "Percentage") return denominator && denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
   if (type === "Ratio") return denominator && denominator > 0 ? Number((numerator / denominator).toFixed(2)) : 0;
   return numerator;
+}
+
+/**
+ * Build a real results matrix by grouping live metrics under their result area.
+ * This drives the Results Framework matrix/card view from actual indicator data
+ * instead of a static sample, so the matrix reflects what teams configured —
+ * adapting to whatever result areas a sector pack or project defines.
+ */
+export function deriveResultsMatrix(indicators: IndicatorRecord[]): ResultsFrameworkNode[] {
+  const groups = new Map<string, IndicatorRecord[]>();
+  for (const indicator of indicators) {
+    if (indicator.status === "Archived") continue;
+    const area = indicator.resultArea?.trim() || "Unassigned result area";
+    const list = groups.get(area) ?? [];
+    list.push(indicator);
+    groups.set(area, list);
+  }
+  return Array.from(groups.entries())
+    .map(([area, items]) => {
+      const projects = Array.from(new Set(items.map((item) => item.project)));
+      const progresses = items.map((item) => progressPercent(item.current, item.baseline, item.target));
+      const progress = progresses.length
+        ? Math.round(progresses.reduce((sum, value) => sum + value, 0) / progresses.length)
+        : 0;
+      const status: IndicatorStatus =
+        progress >= 80 ? "On Track" : items.some((item) => item.target > 0) ? "Behind Target" : "Needs Baseline";
+      return {
+        id: `result-area-${area.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        level: "Outcome" as const,
+        title: area,
+        project: projects.length === 1 ? projects[0] : `${projects.length} projects`,
+        parentId: null,
+        indicators: items.map((item) => item.code),
+        progress,
+        status,
+      };
+    })
+    .sort((left, right) => right.indicators.length - left.indicators.length);
+}
+
+/**
+ * Build live logframe rows from configured metrics: one row per metric, with
+ * its result area as the narrative summary and its real baseline/target/current
+ * values and verification source. Adapts to whatever metrics a project defines.
+ */
+export function deriveLogframeRows(indicators: IndicatorRecord[]): LogframeRow[] {
+  return indicators
+    .filter((indicator) => indicator.status !== "Archived")
+    .map((indicator) => ({
+      id: indicator.id,
+      project: indicator.project,
+      narrativeSummary: indicator.resultArea?.trim() || indicator.name,
+      indicators: [indicator.code],
+      meansOfVerification: indicator.dataSource || "Approved submissions",
+      assumptions: indicator.definition || "—",
+      baseline: indicator.baseline === null ? "—" : String(indicator.baseline),
+      target: String(indicator.target),
+      currentValue: String(indicator.current),
+      version: "Live",
+    }));
 }
 
 export function summarizeTargets(targets: IndicatorTarget[]): { averageAchievement: number; behind: number; onTrack: number } {

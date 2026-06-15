@@ -607,6 +607,37 @@ class DonorReportRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ReportScheduleCreate(BaseModel):
+    report_id: UUID
+    frequency: str = Field(default="weekly", pattern=r"^(daily|weekly|monthly)$")
+    hour: int = Field(default=8, ge=0, le=23)
+    timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    recipients: list[str] = Field(default_factory=list, max_length=50)
+    export_format: str = Field(default="pdf", pattern=r"^(pdf|excel|csv|json)$")
+
+
+class ReportScheduleStatusUpdate(BaseModel):
+    status: str = Field(pattern=r"^(active|paused)$")
+
+
+class ReportScheduleRead(BaseModel):
+    id: UUID
+    report_id: UUID
+    report_name: str | None = None
+    frequency: str
+    hour: int
+    timezone: str
+    recipients: list[str] = Field(default_factory=list)
+    export_format: str
+    status: str
+    next_run_at: datetime
+    last_run_at: datetime | None = None
+    last_status: str | None = None
+    failure_log: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class OrganizationalUnitCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     code: str = Field(min_length=2, max_length=80)

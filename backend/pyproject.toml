@@ -9,7 +9,11 @@ dependencies = [
   "asyncpg>=0.29",
   "bcrypt>=4.1",
   "email-validator>=2.1",
-  "fastapi>=0.111",
+  # fastapi 0.137 introduces _IncludedRouter route objects that break
+  # prometheus-fastapi-instrumentator's route iteration
+  # ("'_IncludedRouter' object has no attribute 'path'"). Cap below 0.137
+  # until the instrumentator supports it.
+  "fastapi>=0.111,<0.137",
   "opentelemetry-api>=1.24",
   "opentelemetry-instrumentation-fastapi>=0.45b0",
   "prometheus-fastapi-instrumentator>=7.0,<8.0",
@@ -19,6 +23,9 @@ dependencies = [
   "redis>=5.0",
   "shapely>=2.0",
   "sqlalchemy[asyncio]>=2.0",
+  # Pin to the starlette 0.x major that fastapi 0.136 was built against;
+  # starlette 1.x is a breaking major.
+  "starlette>=0.40,<1.0",
   "structlog>=24.1",
   "uvicorn[standard]>=0.29"
 ]

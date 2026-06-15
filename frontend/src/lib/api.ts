@@ -2598,6 +2598,13 @@ export type FormDataImportConfirmResponse = {
   submissions: SubmissionRead[];
 };
 
+export type FormDataImportReturnResponse = {
+  returned_rows: number;
+  skipped_rows: number;
+  issues: FormDataImportIssue[];
+  submissions: SubmissionRead[];
+};
+
 export type TemplateFieldSummary = {
   field_count: number;
   repeat_group_count: number;
@@ -4159,6 +4166,66 @@ export async function exportReportCsv(token: string, reportId: string): Promise<
   return response.text();
 }
 
+export type ReportScheduleRead = {
+  id: string;
+  report_id: string;
+  report_name: string | null;
+  frequency: string;
+  hour: number;
+  timezone: string;
+  recipients: string[];
+  export_format: string;
+  status: string;
+  next_run_at: string;
+  last_run_at: string | null;
+  last_status: string | null;
+  failure_log: string | null;
+};
+
+export type ReportScheduleCreate = {
+  report_id: string;
+  frequency: string;
+  hour: number;
+  timezone?: string;
+  recipients?: string[];
+  export_format?: string;
+};
+
+export async function listReportSchedules(token: string): Promise<ReportScheduleRead[]> {
+  return request<ReportScheduleRead[]>("/operations/report-schedules", { token });
+}
+
+export async function createReportSchedule(token: string, payload: ReportScheduleCreate): Promise<ReportScheduleRead> {
+  return request<ReportScheduleRead>("/operations/report-schedules", { method: "POST", token, bodyJson: payload });
+}
+
+export async function runReportSchedule(token: string, scheduleId: string): Promise<ReportScheduleRead> {
+  return request<ReportScheduleRead>(`/operations/report-schedules/${scheduleId}/run`, { method: "POST", token });
+}
+
+export async function updateReportScheduleStatus(
+  token: string,
+  scheduleId: string,
+  status: "active" | "paused",
+): Promise<ReportScheduleRead> {
+  return request<ReportScheduleRead>(`/operations/report-schedules/${scheduleId}/status`, {
+    method: "PATCH",
+    token,
+    bodyJson: { status },
+  });
+}
+
+export async function deleteReportSchedule(token: string, scheduleId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/operations/report-schedules/${scheduleId}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ApiError(detail || response.statusText, response.status);
+  }
+}
+
 export async function previewImport(token: string, payload: ImportPreviewRequest): Promise<ImportPreviewResponse> {
   return request<ImportPreviewResponse>("/operations/data/imports/preview", { method: "POST", token, bodyJson: payload });
 }
@@ -4323,6 +4390,18 @@ export async function confirmImportedFormDataRows(
   });
 }
 
+export async function returnImportedFormDataRows(
+  token: string,
+  formId: string,
+  payload: { submission_ids: string[]; comment: string },
+): Promise<FormDataImportReturnResponse> {
+  return request<FormDataImportReturnResponse>(`/forms/${formId}/data-import/return`, {
+    method: "POST",
+    token,
+    bodyJson: payload,
+  });
+}
+
 export async function createForm(token: string, payload: DataFormCreate): Promise<DataFormRead> {
   return request<DataFormRead>("/forms", { method: "POST", token, bodyJson: payload });
 }
@@ -4391,6 +4470,7 @@ export const api = {
   bulkUpdateImportCleaningRows,
   confirmImportJob,
   confirmImportedFormDataRows,
+  returnImportedFormDataRows,
   createAdministrationApiKey,
   createAdministrationBackup,
   createAdministrationIntegration,
