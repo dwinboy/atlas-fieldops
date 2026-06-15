@@ -638,6 +638,90 @@ class ReportScheduleRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+DASHBOARD_WIDGET_TYPES = {"kpi", "bar_chart", "pie_chart", "line_chart", "table", "progress", "map_link"}
+DASHBOARD_DATA_SOURCES = {"indicators", "form_performance", "submissions", "data_quality", "donor_report"}
+DASHBOARD_TYPES = {
+    "Executive Dashboard",
+    "Project Dashboard",
+    "Donor Dashboard",
+    "Field Operations Dashboard",
+    "Indicator Dashboard",
+    "Data Quality Dashboard",
+}
+DASHBOARD_VISIBILITIES = {"Managers", "Donors", "Supervisors", "Data team"}
+
+
+class DashboardWidget(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    type: str
+    title: str = Field(min_length=1, max_length=160)
+    data_source: str
+    reference_id: str | None = Field(default=None, max_length=80)
+    metric: str | None = Field(default=None, max_length=40)
+    width: int = Field(default=1, ge=1, le=3)
+
+    @model_validator(mode="after")
+    def validate_choices(self) -> "DashboardWidget":
+        if self.type not in DASHBOARD_WIDGET_TYPES:
+            raise ValueError("Unsupported widget type")
+        if self.data_source not in DASHBOARD_DATA_SOURCES:
+            raise ValueError("Unsupported widget data source")
+        return self
+
+
+class CustomDashboardCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=220)
+    description: str | None = Field(default=None, max_length=2000)
+    dashboard_type: str = Field(default="Project Dashboard", max_length=60)
+    project_id: UUID | None = None
+    visibility: str = Field(default="Managers", max_length=40)
+    status: str = Field(default="draft", pattern=r"^(draft|active|archived)$")
+    widgets: list[DashboardWidget] = Field(default_factory=list, max_length=24)
+
+    @model_validator(mode="after")
+    def validate_dashboard_choices(self) -> "CustomDashboardCreate":
+        if self.dashboard_type not in DASHBOARD_TYPES:
+            raise ValueError("Unsupported dashboard type")
+        if self.visibility not in DASHBOARD_VISIBILITIES:
+            raise ValueError("Unsupported dashboard visibility")
+        return self
+
+
+class CustomDashboardUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=220)
+    description: str | None = Field(default=None, max_length=2000)
+    dashboard_type: str | None = Field(default=None, max_length=60)
+    project_id: UUID | None = None
+    visibility: str | None = Field(default=None, max_length=40)
+    status: str | None = Field(default=None, pattern=r"^(draft|active|archived)$")
+    widgets: list[DashboardWidget] | None = Field(default=None, max_length=24)
+
+    @model_validator(mode="after")
+    def validate_dashboard_choices(self) -> "CustomDashboardUpdate":
+        if self.dashboard_type is not None and self.dashboard_type not in DASHBOARD_TYPES:
+            raise ValueError("Unsupported dashboard type")
+        if self.visibility is not None and self.visibility not in DASHBOARD_VISIBILITIES:
+            raise ValueError("Unsupported dashboard visibility")
+        return self
+
+
+class CustomDashboardRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    project_id: UUID | None
+    created_by_user_id: UUID | None
+    name: str
+    description: str | None
+    dashboard_type: str
+    visibility: str
+    status: str
+    widgets: list[DashboardWidget] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class OrganizationalUnitCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     code: str = Field(min_length=2, max_length=80)

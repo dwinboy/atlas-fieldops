@@ -19,6 +19,9 @@ from app.schemas.operations import (
     BulkEditRequest,
     CaseCreate,
     CaseRead,
+    CustomDashboardCreate,
+    CustomDashboardRead,
+    CustomDashboardUpdate,
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
@@ -613,7 +616,7 @@ async def update_entity_category(
 
 @router.get("/data-quality/signals", response_model=list[DataQualitySignalRead], summary="List data cleaning and reconciliation signals")
 async def list_quality_signals(
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
     session: Annotated[AsyncSession, Depends(get_session)],
     status_filter: Annotated[str | None, Query(alias="status")] = "open",
     signal_type: Annotated[str | None, Query()] = None,
@@ -912,6 +915,63 @@ async def export_report_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/dashboards", response_model=list[CustomDashboardRead], summary="List custom dashboards")
+async def list_dashboards(
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[CustomDashboardRead]:
+    return await OperationsService(session).list_dashboards(organization_uuid(principal))
+
+
+@router.post("/dashboards", response_model=CustomDashboardRead, status_code=status.HTTP_201_CREATED, summary="Create custom dashboard")
+async def create_dashboard(
+    payload: CustomDashboardCreate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CustomDashboardRead:
+    return await OperationsService(session).create_dashboard(
+        organization_uuid(principal), user_uuid(principal), payload
+    )
+
+
+@router.get("/dashboards/{dashboard_id}", response_model=CustomDashboardRead, summary="Get a custom dashboard")
+async def get_dashboard(
+    dashboard_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_READ))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CustomDashboardRead:
+    try:
+        return await OperationsService(session).get_dashboard(organization_uuid(principal), dashboard_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.patch("/dashboards/{dashboard_id}", response_model=CustomDashboardRead, summary="Update a custom dashboard")
+async def update_dashboard(
+    dashboard_id: UUID,
+    payload: CustomDashboardUpdate,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CustomDashboardRead:
+    try:
+        return await OperationsService(session).update_dashboard(organization_uuid(principal), dashboard_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.delete("/dashboards/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a custom dashboard")
+async def delete_dashboard(
+    dashboard_id: UUID,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.REPORT_MANAGE))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        await OperationsService(session).delete_dashboard(organization_uuid(principal), dashboard_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/report-schedules", response_model=list[ReportScheduleRead], summary="List scheduled report deliveries")

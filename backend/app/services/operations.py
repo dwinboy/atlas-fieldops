@@ -16,6 +16,7 @@ from app.models.collection import FieldOfficerProfile, OfficerAssignment, Projec
 from app.models.operations import (
     Beneficiary,
     CaseRecord,
+    CustomDashboard,
     DataQualitySignal,
     DonorReport,
     ReportSchedule,
@@ -48,6 +49,10 @@ from app.schemas.operations import (
     BulkEditRead,
     BulkEditRequest,
     CaseCreate,
+    CustomDashboardCreate,
+    CustomDashboardRead,
+    CustomDashboardUpdate,
+    DashboardWidget,
     DataRouteCreate,
     DataRouteRead,
     DataQualitySignalRead,
@@ -2578,6 +2583,72 @@ class OperationsService:
         await self.session.commit()
         await event_publisher.publish("report.generated", {"organization_id": str(organization_id), "report_id": str(report.id)})
         return report
+
+    @staticmethod
+    def _dashboard_read(dashboard: CustomDashboard) -> CustomDashboardRead:
+        return CustomDashboardRead(
+            id=dashboard.id,
+            organization_id=dashboard.organization_id,
+            project_id=dashboard.project_id,
+            created_by_user_id=dashboard.created_by_user_id,
+            name=dashboard.name,
+            description=dashboard.description,
+            dashboard_type=dashboard.dashboard_type,
+            visibility=dashboard.visibility,
+            status=dashboard.status,
+            widgets=[DashboardWidget.model_validate(widget) for widget in dashboard.widgets_json],
+            created_at=dashboard.created_at,
+            updated_at=dashboard.updated_at,
+        )
+
+    async def create_dashboard(
+        self, organization_id: UUID, actor_user_id: UUID, payload: CustomDashboardCreate
+    ) -> CustomDashboardRead:
+        values = payload.model_dump(exclude={"widgets"})
+        values["widgets_json"] = [widget.model_dump() for widget in payload.widgets]
+        values["created_by_user_id"] = actor_user_id
+        dashboard = await self.repository.create_dashboard(organization_id=organization_id, values=values)
+        await self.session.commit()
+        await event_publisher.publish(
+            "dashboard.created", {"organization_id": str(organization_id), "dashboard_id": str(dashboard.id)}
+        )
+        return self._dashboard_read(dashboard)
+
+    async def list_dashboards(self, organization_id: UUID) -> list[CustomDashboardRead]:
+        dashboards = await self.repository.list_dashboards(organization_id)
+        return [self._dashboard_read(dashboard) for dashboard in dashboards]
+
+    async def get_dashboard(self, organization_id: UUID, dashboard_id: UUID) -> CustomDashboardRead:
+        dashboard = await self.repository.get_dashboard_by_id(organization_id=organization_id, dashboard_id=dashboard_id)
+        if dashboard is None:
+            raise ValueError("Dashboard not found")
+        return self._dashboard_read(dashboard)
+
+    async def update_dashboard(
+        self, organization_id: UUID, dashboard_id: UUID, payload: CustomDashboardUpdate
+    ) -> CustomDashboardRead:
+        dashboard = await self.repository.get_dashboard_by_id(organization_id=organization_id, dashboard_id=dashboard_id)
+        if dashboard is None:
+            raise ValueError("Dashboard not found")
+        values = payload.model_dump(exclude_unset=True, exclude={"widgets"})
+        if payload.widgets is not None:
+            values["widgets_json"] = [widget.model_dump() for widget in payload.widgets]
+        dashboard = await self.repository.update_dashboard(dashboard, values)
+        await self.session.commit()
+        await event_publisher.publish(
+            "dashboard.updated", {"organization_id": str(organization_id), "dashboard_id": str(dashboard.id)}
+        )
+        return self._dashboard_read(dashboard)
+
+    async def delete_dashboard(self, organization_id: UUID, dashboard_id: UUID) -> None:
+        dashboard = await self.repository.get_dashboard_by_id(organization_id=organization_id, dashboard_id=dashboard_id)
+        if dashboard is None:
+            raise ValueError("Dashboard not found")
+        await self.repository.soft_delete_dashboard(dashboard)
+        await self.session.commit()
+        await event_publisher.publish(
+            "dashboard.deleted", {"organization_id": str(organization_id), "dashboard_id": str(dashboard.id)}
+        )
 
     @staticmethod
     def _compute_report_next_run(frequency: str, hour: int, *, from_dt: datetime) -> datetime:

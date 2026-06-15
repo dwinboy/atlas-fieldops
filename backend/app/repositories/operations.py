@@ -11,6 +11,7 @@ from app.models.operations import (
     Beneficiary,
     BulkEditBatch,
     CaseRecord,
+    CustomDashboard,
     DataExportJob,
     DataImportJob,
     DataImportRow,
@@ -424,6 +425,40 @@ class OperationsRepository:
             setattr(report, key, value)
         await self.session.flush()
         return report
+
+    async def create_dashboard(self, *, organization_id: UUID, values: dict[str, object]) -> CustomDashboard:
+        dashboard = CustomDashboard(organization_id=organization_id, **values)
+        self.session.add(dashboard)
+        await self.session.flush()
+        return dashboard
+
+    async def list_dashboards(self, organization_id: UUID) -> list[CustomDashboard]:
+        result = await self.session.execute(
+            select(CustomDashboard)
+            .where(CustomDashboard.organization_id == organization_id, CustomDashboard.deleted_at.is_(None))
+            .order_by(CustomDashboard.updated_at.desc())
+        )
+        return list(result.scalars())
+
+    async def get_dashboard_by_id(self, *, organization_id: UUID, dashboard_id: UUID) -> CustomDashboard | None:
+        result = await self.session.execute(
+            select(CustomDashboard).where(
+                CustomDashboard.organization_id == organization_id,
+                CustomDashboard.id == dashboard_id,
+                CustomDashboard.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_dashboard(self, dashboard: CustomDashboard, values: dict[str, object]) -> CustomDashboard:
+        for key, value in values.items():
+            setattr(dashboard, key, value)
+        await self.session.flush()
+        return dashboard
+
+    async def soft_delete_dashboard(self, dashboard: CustomDashboard) -> None:
+        dashboard.deleted_at = datetime.now(UTC)
+        await self.session.flush()
 
     async def count_submissions_scoped(
         self,

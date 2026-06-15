@@ -604,6 +604,20 @@ class ReportSchedule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     created_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
+class CustomDashboard(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    __tablename__ = "custom_dashboards"
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(220), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dashboard_type: Mapped[str] = mapped_column(String(60), default="Project Dashboard")
+    visibility: Mapped[str] = mapped_column(String(40), default="Managers")
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    widgets_json: Mapped[list[dict[str, Any]]] = mapped_column(JsonType, default=list)
+
+
 class OrganizationBranding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "organization_branding"
     __table_args__ = (UniqueConstraint("organization_id"),)
