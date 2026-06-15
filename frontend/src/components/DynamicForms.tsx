@@ -910,6 +910,112 @@ function hasFieldTag(field: FormField, tag: string): boolean {
   return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
 }
 
+function cleanChoiceOptions(options: string[]): string[] {
+  return options.map((option) => option.trim()).filter(Boolean);
+}
+
+function ChoiceOptionsEditor({
+  onChange,
+  options,
+}: {
+  onChange: (options: string[]) => void;
+  options: string[];
+}) {
+  const [draftOptions, setDraftOptions] = useState<string[]>(
+    options.length ? options : [""],
+  );
+  const optionRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  function commit(nextOptions: string[]): void {
+    setDraftOptions(nextOptions.length ? nextOptions : [""]);
+    onChange(cleanChoiceOptions(nextOptions));
+  }
+
+  function focusOption(index: number): void {
+    window.setTimeout(() => optionRefs.current[index]?.focus(), 0);
+  }
+
+  function updateOption(index: number, value: string): void {
+    const nextOptions = [...draftOptions];
+    nextOptions[index] = value;
+    commit(nextOptions);
+  }
+
+  function insertOption(afterIndex: number, value = ""): void {
+    const nextOptions = [...draftOptions];
+    nextOptions.splice(afterIndex + 1, 0, value);
+    commit(nextOptions);
+    focusOption(afterIndex + 1);
+  }
+
+  function removeOption(index: number): void {
+    const nextOptions = draftOptions.filter((_, optionIndex) => optionIndex !== index);
+    commit(nextOptions);
+    focusOption(Math.max(0, index - 1));
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {draftOptions.map((option, index) => (
+        <div className="flex items-center gap-2" key={`choice-${index}`}>
+          <input
+            ref={(element) => {
+              optionRefs.current[index] = element;
+            }}
+            aria-label={`Option ${index + 1}`}
+            className="h-9 w-full rounded-lg border border-input bg-panel/95 px-2.5 text-sm text-foreground shadow-line transition-all duration-150 ease-product placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-3 focus:ring-ring/15"
+            onChange={(event) => updateOption(index, event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                insertOption(index);
+              }
+              if (event.key === "Backspace" && !option && draftOptions.length > 1) {
+                event.preventDefault();
+                removeOption(index);
+              }
+            }}
+            onPaste={(event) => {
+              const pastedLines = event.clipboardData
+                .getData("text")
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+              if (pastedLines.length <= 1) return;
+              event.preventDefault();
+              const nextOptions = [...draftOptions];
+              nextOptions.splice(index, 1, ...pastedLines);
+              commit(nextOptions);
+              focusOption(index + pastedLines.length - 1);
+            }}
+            placeholder={`Option ${index + 1}`}
+            value={option}
+          />
+          <Button
+            aria-label={`Remove option ${index + 1}`}
+            disabled={draftOptions.length === 1 && !option.trim()}
+            onClick={() => removeOption(index)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 aria-hidden="true" size={14} />
+          </Button>
+        </div>
+      ))}
+      <Button
+        onClick={() => insertOption(draftOptions.length - 1)}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        <Plus aria-hidden="true" />
+        Add option
+      </Button>
+    </div>
+  );
+}
+
 function fieldAppearanceWithTag(
   field: FormField,
   tag: string,
@@ -2515,18 +2621,18 @@ function FieldPropertiesPanel({
           {field.options ? (
             <label className="block text-sm font-medium">
               Option list
-              <Textarea
-                className="mt-2 min-h-28"
-                onChange={(event) =>
+              <ChoiceOptionsEditor
+                key={`${field.id}-properties`}
+                onChange={(options) =>
                   updateSelectedField({
-                    options: event.target.value
-                      .split("\n")
-                      .map((option) => option.trim())
-                      .filter(Boolean),
+                    options,
                   })
                 }
-                value={field.options.join("\n")}
+                options={field.options}
               />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Press Enter to add another response option.
+              </span>
             </label>
           ) : null}
         </div>
@@ -11205,30 +11311,26 @@ export function DynamicForms({
                               selectedField.options ? (
                                 <label className="mt-4 block text-sm font-semibold">
                                   Options
-                                  <Textarea
-                                    className="mt-2 min-h-28"
-                                    onChange={(event) =>
+                                  <ChoiceOptionsEditor
+                                    key={selectedField.id}
+                                    onChange={(options) =>
                                       updateSelectedForm(
                                         updateField(
                                           selectedForm,
                                           selectedField.id,
                                           {
-                                            options: event.target.value
-                                              .split("\n")
-                                              .map((option) => option.trim())
-                                              .filter(Boolean),
+                                            options,
                                           },
                                         ),
                                       )
                                     }
-                                    placeholder={"Yes\nNo\nNot applicable"}
-                                    value={(selectedField.options ?? []).join(
-                                      "\n",
-                                    )}
+                                    options={selectedField.options ?? []}
                                   />
                                   <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                                    Enter one option per line. These values are
-                                    used by web and mobile collection.
+                                    Press Enter to add the next response. Paste
+                                    multiple lines to create many options at
+                                    once. These values are used by web and mobile
+                                    collection.
                                   </span>
                                 </label>
                               ) : (
@@ -13677,20 +13779,20 @@ export function DynamicForms({
                       {selectedField.options ? (
                         <label className="block text-sm font-medium">
                           Choices
-                          <textarea
-                            className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                            value={selectedField.options.join("\n")}
-                            onChange={(event) =>
+                          <ChoiceOptionsEditor
+                            key={`${selectedField.id}-compact`}
+                            onChange={(options) =>
                               updateSelectedForm(
                                 updateField(selectedForm, selectedField.id, {
-                                  options: event.target.value
-                                    .split("\n")
-                                    .map((option) => option.trim())
-                                    .filter(Boolean),
+                                  options,
                                 }),
                               )
                             }
+                            options={selectedField.options}
                           />
+                          <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                            Press Enter to add another response option.
+                          </span>
                         </label>
                       ) : null}
                     </div>

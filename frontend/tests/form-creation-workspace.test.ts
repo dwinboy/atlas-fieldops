@@ -19,6 +19,7 @@ const setup: FormSetupDraft = {
   formType: "Baseline Survey",
   language: "English",
   owner: "M&E Manager",
+  projectId: "project-agriculture",
   projectName: "Agricultural Resilience Program",
 };
 

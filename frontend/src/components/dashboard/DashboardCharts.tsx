@@ -50,26 +50,33 @@ function ChartTooltip({
   );
 }
 
+export type ApprovalStatusKey = "approved" | "pending" | "returned" | "rejected";
+
 export type ApprovalStatusChartProps = {
   approved: number;
   pending: number;
   rejected: number;
   returned: number;
+  activeKey?: string | null;
+  onSliceClick?: (key: ApprovalStatusKey) => void;
 };
 
 export function ApprovalStatusChart({
+  activeKey,
   approved,
+  onSliceClick,
   pending,
   rejected,
   returned,
 }: ApprovalStatusChartProps) {
   const total = approved + pending + rejected + returned;
-  const data = [
-    { color: "hsl(var(--success))", name: "Approved", value: approved },
-    { color: "hsl(var(--warning))", name: "Pending", value: pending },
-    { color: "hsl(var(--accent))", name: "Returned", value: returned },
-    { color: "hsl(var(--danger))", name: "Rejected", value: rejected },
-  ].filter((entry) => entry.value > 0);
+  const allSegments: { color: string; key: ApprovalStatusKey; name: string; value: number }[] = [
+    { color: "hsl(var(--success))", key: "approved", name: "Approved", value: approved },
+    { color: "hsl(var(--warning))", key: "pending", name: "Pending", value: pending },
+    { color: "hsl(var(--accent))", key: "returned", name: "Returned", value: returned },
+    { color: "hsl(var(--danger))", key: "rejected", name: "Rejected", value: rejected },
+  ];
+  const data = allSegments.filter((entry) => entry.value > 0);
 
   if (!total) {
     return (
@@ -95,7 +102,13 @@ export function ApprovalStatusChart({
               strokeWidth={2}
             >
               {data.map((entry) => (
-                <Cell fill={entry.color} key={entry.name} />
+                <Cell
+                  cursor={onSliceClick ? "pointer" : undefined}
+                  fill={entry.color}
+                  key={entry.name}
+                  onClick={onSliceClick ? () => onSliceClick(entry.key) : undefined}
+                  opacity={activeKey && activeKey !== entry.key ? 0.35 : 1}
+                />
               ))}
             </Pie>
             <Tooltip content={<ChartTooltip />} />
@@ -104,18 +117,26 @@ export function ApprovalStatusChart({
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5">
         {data.map((entry) => (
-          <li className="flex items-center justify-between gap-2 text-xs" key={entry.name}>
-            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-              <span
-                aria-hidden="true"
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: entry.color }}
-              />
-              <span className="truncate">{entry.name}</span>
-            </span>
-            <span className="shrink-0 font-semibold">
-              {entry.value.toLocaleString()}
-            </span>
+          <li key={entry.name}>
+            <button
+              className="flex w-full items-center justify-between gap-2 text-left text-xs disabled:cursor-default"
+              disabled={!onSliceClick}
+              onClick={onSliceClick ? () => onSliceClick(entry.key) : undefined}
+              style={{ opacity: activeKey && activeKey !== entry.key ? 0.5 : 1 }}
+              type="button"
+            >
+              <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <span
+                  aria-hidden="true"
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: entry.color }}
+                />
+                <span className="truncate">{entry.name}</span>
+              </span>
+              <span className="shrink-0 font-semibold">
+                {entry.value.toLocaleString()}
+              </span>
+            </button>
           </li>
         ))}
       </ul>
@@ -124,11 +145,20 @@ export function ApprovalStatusChart({
 }
 
 export type FormResponseDatum = {
+  id?: string;
   name: string;
   responses: number;
 };
 
-export function FormResponseChart({ data }: { data: FormResponseDatum[] }) {
+export function FormResponseChart({
+  activeId,
+  data,
+  onBarClick,
+}: {
+  activeId?: string | null;
+  data: FormResponseDatum[];
+  onBarClick?: (datum: FormResponseDatum) => void;
+}) {
   if (!data.length) return null;
 
   const chartHeight = Math.max(96, data.length * 32);
@@ -160,11 +190,20 @@ export function FormResponseChart({ data }: { data: FormResponseDatum[] }) {
           <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted))" }} />
           <Bar
             barSize={14}
+            cursor={onBarClick ? "pointer" : undefined}
             dataKey="responses"
-            fill="hsl(var(--primary))"
             name="Responses"
+            onClick={onBarClick ? (entry) => onBarClick((entry?.payload ?? entry) as FormResponseDatum) : undefined}
             radius={[0, 4, 4, 0]}
-          />
+          >
+            {data.map((entry) => (
+              <Cell
+                fill="hsl(var(--primary))"
+                key={entry.id ?? entry.name}
+                opacity={activeId && entry.id !== activeId ? 0.35 : 1}
+              />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

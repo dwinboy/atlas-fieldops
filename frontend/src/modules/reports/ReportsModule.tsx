@@ -79,11 +79,17 @@ import {
   DashboardFilterBar,
   defaultDashboardFilters,
   dashboardRangeDays,
+  applyCrossFilterToQualitySignals,
+  applyCrossFilterToSubmissions,
+  CrossFilterChip,
   filterDonorReportsByFilters,
   filterFormsByFilters,
   filterIndicatorsByFilters,
   filterQualitySignalsByFilters,
+  filterQualitySignalsByPreviousPeriod,
   filterSubmissionsByFilters,
+  filterSubmissionsByPreviousPeriod,
+  type DashboardCrossFilter,
   type DashboardFilters,
 } from "@/modules/reports/dashboardFilters";
 import { DashboardWidgetBody, type DashboardWidgetData } from "@/modules/reports/DashboardWidgets";
@@ -1265,8 +1271,13 @@ function DashboardsSection({
   const [editingDashboard, setEditingDashboard] = useState<CustomDashboardRead | null>(null);
   const [viewingDashboard, setViewingDashboard] = useState<CustomDashboardRead | null>(null);
   const [filters, setFilters] = useState<DashboardFilters>(defaultDashboardFilters);
+  const [crossFilter, setCrossFilter] = useState<DashboardCrossFilter | null>(null);
   const [exporting, setExporting] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCrossFilter(null);
+  }, [filters, viewingDashboard?.id]);
 
   const customDashboardsQuery = useQuery({
     queryKey: ["custom-dashboards", token],
@@ -1318,10 +1329,45 @@ function DashboardsSection({
     [qualitySignals, filters, allowedSubmissionIds],
   );
 
-  const formPerformance = useMemo(() => getActiveFormPerformance(filteredForms, filteredSubmissions), [filteredForms, filteredSubmissions]);
+  const crossFilteredSubmissions = useMemo(
+    () => applyCrossFilterToSubmissions(filteredSubmissions, crossFilter),
+    [filteredSubmissions, crossFilter],
+  );
+  const crossFilteredQualitySignals = useMemo(
+    () => applyCrossFilterToQualitySignals(filteredQualitySignals, crossFilter),
+    [filteredQualitySignals, crossFilter],
+  );
+
+  const formPerformance = useMemo(
+    () => getActiveFormPerformance(filteredForms, crossFilteredSubmissions),
+    [filteredForms, crossFilteredSubmissions],
+  );
   const formTotals = useMemo(() => getFormPerformanceTotals(formPerformance), [formPerformance]);
-  const approvalOverview = useMemo(() => getDashboardApprovalOverview(filteredSubmissions, formTotals), [filteredSubmissions, formTotals]);
-  const coverage = useMemo(() => getDashboardCoverageOverview(filteredSubmissions), [filteredSubmissions]);
+  const approvalOverview = useMemo(() => getDashboardApprovalOverview(crossFilteredSubmissions, formTotals), [crossFilteredSubmissions, formTotals]);
+  const coverage = useMemo(() => getDashboardCoverageOverview(crossFilteredSubmissions), [crossFilteredSubmissions]);
+
+  const hasPreviousPeriod = useMemo(() => dashboardRangeDays(filters.range) !== null, [filters.range]);
+  const previousFilteredSubmissions = useMemo(
+    () => filterSubmissionsByPreviousPeriod(submissions, filters),
+    [submissions, filters],
+  );
+  const previousCrossFilteredSubmissions = useMemo(
+    () => applyCrossFilterToSubmissions(previousFilteredSubmissions, crossFilter),
+    [previousFilteredSubmissions, crossFilter],
+  );
+  const previousFormPerformance = useMemo(
+    () => getActiveFormPerformance(filteredForms, previousCrossFilteredSubmissions),
+    [filteredForms, previousCrossFilteredSubmissions],
+  );
+  const previousFormTotals = useMemo(() => getFormPerformanceTotals(previousFormPerformance), [previousFormPerformance]);
+  const previousApprovalOverview = useMemo(
+    () => getDashboardApprovalOverview(previousCrossFilteredSubmissions, previousFormTotals),
+    [previousCrossFilteredSubmissions, previousFormTotals],
+  );
+  const previousQualitySignals = useMemo(
+    () => applyCrossFilterToQualitySignals(filterQualitySignalsByPreviousPeriod(qualitySignals, filters, allowedSubmissionIds), crossFilter),
+    [qualitySignals, filters, allowedSubmissionIds, crossFilter],
+  );
 
   const widgetData: DashboardWidgetData = useMemo(
     () => ({
@@ -1330,11 +1376,24 @@ function DashboardsSection({
       donorReports: filteredDonorReports,
       formPerformance,
       indicators: filteredIndicators,
-      qualitySignals: filteredQualitySignals,
-      submissions: filteredSubmissions,
+      qualitySignals: crossFilteredQualitySignals,
+      submissions: crossFilteredSubmissions,
       trendDays: dashboardRangeDays(filters.range) ?? 14,
+      ...(hasPreviousPeriod ? { previousApprovalOverview, previousQualitySignals } : {}),
     }),
-    [approvalOverview, coverage, filteredDonorReports, formPerformance, filteredIndicators, filteredQualitySignals, filteredSubmissions, filters.range],
+    [
+      approvalOverview,
+      coverage,
+      filteredDonorReports,
+      formPerformance,
+      filteredIndicators,
+      crossFilteredQualitySignals,
+      crossFilteredSubmissions,
+      filters.range,
+      hasPreviousPeriod,
+      previousApprovalOverview,
+      previousQualitySignals,
+    ],
   );
 
   const isLoadingWidgetData =
@@ -1445,6 +1504,21 @@ function DashboardsSection({
     deleteMutation.mutate(dashboard.id);
   }
 
+  if (builderOpen) {
+    return (
+      <DashboardBuilder
+        dashboard={editingDashboard}
+        data={widgetData}
+        onBack={() => {
+          setBuilderOpen(false);
+          setEditingDashboard(null);
+        }}
+        onSave={handleSave}
+        saving={!preview && (createMutation.isPending || updateMutation.isPending)}
+      />
+    );
+  }
+
   const columns: TableColumn<ReportRecord>[] = [
     {
       header: "Source Report",
@@ -1528,19 +1602,14 @@ function DashboardsSection({
           title="Reports powering dashboards"
         />
       </Panel>
-      <DashboardBuilder
-        dashboard={editingDashboard}
-        data={widgetData}
-        onOpenChange={setBuilderOpen}
-        onSave={handleSave}
-        open={builderOpen}
-        saving={!preview && (createMutation.isPending || updateMutation.isPending)}
-      />
       {viewingDashboard ? (
         <Modal contentClassName="max-w-6xl" onOpenChange={() => setViewingDashboard(null)} open={Boolean(viewingDashboard)} title={viewingDashboard.name}>
           <div className="max-h-[75vh] overflow-y-auto p-5 product-scrollbar">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <DashboardFilterBar filters={filters} onChange={setFilters} projects={projects} />
+              <div className="flex flex-wrap items-center gap-2">
+                <DashboardFilterBar filters={filters} onChange={setFilters} projects={projects} />
+                <CrossFilterChip crossFilter={crossFilter} onClear={() => setCrossFilter(null)} />
+              </div>
               <div className="flex gap-2">
                 <Button disabled={exporting} onClick={() => handleExportImage(viewingDashboard)} size="sm" variant="secondary">
                   <FileImage aria-hidden="true" /> Export PNG
@@ -1566,7 +1635,7 @@ function DashboardsSection({
                         {TypeIcon ? <TypeIcon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
                         <p className="text-sm font-semibold">{widget.title}</p>
                       </div>
-                      <DashboardWidgetBody data={widgetData} widget={widget} />
+                      <DashboardWidgetBody crossFilter={crossFilter} data={widgetData} onCrossFilter={setCrossFilter} widget={widget} />
                     </div>
                   );
                 })}

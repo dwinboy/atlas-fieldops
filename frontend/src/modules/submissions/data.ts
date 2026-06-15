@@ -284,6 +284,8 @@ export const previewSubmissions: SubmissionRecord[] = [
     server_sequence: 4,
     sla_due_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
     status: "approved",
+    approved_at: new Date(now - 25 * 60 * 1000).toISOString(),
+    approved_by_name: "Data Manager",
     submitted_at: new Date(now - 6 * 60 * 60 * 1000).toISOString(),
     supervisor: "Grace M.",
     survey_id: "preview-baseline",
@@ -327,6 +329,7 @@ const generatedSubmissionSeeds: {
 previewSubmissions.push(
   ...generatedSubmissionSeeds.map((seed, index): SubmissionRecord => {
     const submittedAt = new Date(now - (index + 9) * 45 * 60 * 1000).toISOString();
+    const reviewedAt = new Date(now - (index + 2) * 20 * 60 * 1000).toISOString();
     const approved = seed.status === "approved";
     const returned = seed.status === "correction_requested";
     const rejected = seed.status === "rejected";
@@ -341,6 +344,9 @@ previewSubmissions.push(
       ] : [],
       audit_events: [
         { action: "Submission Submitted", actor: seed.actor, created_at: submittedAt, new_value: seed.status },
+        ...(approved || returned || rejected
+          ? [{ action: statusLabel, actor: "Supervisor", created_at: reviewedAt, new_value: seed.status, old_value: "under_review", reason: approved ? "Approved for reporting." : "Needs follow-up before reporting." }]
+          : []),
       ],
       captured_at: submittedAt,
       client_submission_id: `${displayIdPrefix}-2026-${String(index + 10).padStart(4, "0")}`,
@@ -355,7 +361,7 @@ previewSubmissions.push(
       gps_status: seed.source === "mobile" ? "valid" : "warning",
       history: [
         { action: "Submitted", actor: seed.actor, created_at: submittedAt },
-        ...(approved || returned || rejected ? [{ action: statusLabel, actor: "Supervisor", comment: approved ? "Approved for reporting." : "Needs follow-up before reporting.", created_at: new Date(now - (index + 2) * 20 * 60 * 1000).toISOString() }] : []),
+        ...(approved || returned || rejected ? [{ action: statusLabel, actor: "Supervisor", comment: approved ? "Approved for reporting." : "Needs follow-up before reporting.", created_at: reviewedAt }] : []),
       ],
       import_batch_id: seed.source === "import" ? "preview-import-batch-002" : undefined,
       imported_at: seed.source === "import" ? submittedAt : undefined,
@@ -383,13 +389,15 @@ previewSubmissions.push(
       server_sequence: 1,
       sla_due_at: new Date(now + (index + 1) * 4 * 60 * 60 * 1000).toISOString(),
       status: seed.status,
+      approved_at: approved ? reviewedAt : undefined,
+      approved_by_name: approved ? "Supervisor" : undefined,
       submitted_at: submittedAt,
       supervisor: "Supervisor",
       survey_id: `${seed.projectId}-survey`,
       sync_received_at: submittedAt,
       workflow: [
         { action_date: submittedAt, reviewer: "System", sla_status: index % 4 === 0 ? "Warning" : "On Time", stage: "Submitted" },
-        { reviewer: "Supervisor", sla_status: index % 4 === 0 ? "Warning" : "On Time", stage: approved ? "Approved" : returned ? "Returned for Correction" : rejected ? "Rejected" : "Pending Review" },
+        { action_date: approved || returned || rejected ? reviewedAt : undefined, reviewer: "Supervisor", sla_status: index % 4 === 0 ? "Warning" : "On Time", stage: approved ? "Approved" : returned ? "Returned for Correction" : rejected ? "Rejected" : "Pending Review" },
       ],
     };
   }),

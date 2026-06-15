@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import {
   CartesianGrid,
   Cell,
@@ -25,8 +26,10 @@ import type {
   SubmissionRead,
 } from "@/lib/api";
 import type { DashboardApprovalOverview, DashboardCoverageOverview, FormPerformance } from "@/lib/dashboard";
+import { cn } from "@/lib/utils";
 import type { EmbeddedMapPoint } from "@/modules/mapping/EmbeddedMap";
 import { progressTone } from "@/modules/indicators/utils";
+import { toggleCrossFilter, type DashboardCrossFilter } from "@/modules/reports/dashboardFilters";
 import type { ReportRecord } from "@/modules/reports/data";
 
 const EmbeddedMap = dynamic(() => import("@/modules/mapping/EmbeddedMap"), { ssr: false });
@@ -40,6 +43,8 @@ export type DashboardWidgetData = {
   donorReports: ReportRecord[];
   submissions: SubmissionRead[];
   trendDays?: number;
+  previousApprovalOverview?: DashboardApprovalOverview;
+  previousQualitySignals?: DataQualitySignalRead[];
 };
 
 export function cycleWidgetWidth(width: number): 1 | 2 | 3 {
@@ -91,11 +96,59 @@ export const formMetricLabels: Record<string, string> = {
   quality: "Quality score",
 };
 
+export type KpiTrend = {
+  direction: "up" | "down" | "flat";
+  percent: number;
+  tone: "success" | "danger" | "neutral";
+};
+
 export type KpiValue = {
   label: string;
   value: string;
   detail?: string;
+  trend?: KpiTrend;
 };
+
+const submissionMetricGoodDirection: Record<string, "up" | "down" | "neutral"> = {
+  total: "neutral",
+  approved: "up",
+  pending: "down",
+  rejected: "down",
+  returned: "down",
+};
+
+function submissionMetricValue(overview: DashboardApprovalOverview, metric: string): number {
+  switch (metric) {
+    case "approved":
+      return overview.approved;
+    case "pending":
+      return overview.pending;
+    case "rejected":
+      return overview.rejected;
+    case "returned":
+      return overview.returned;
+    default:
+      return overview.total;
+  }
+}
+
+function countQualitySignals(signals: DataQualitySignalRead[], metric: string): number {
+  return metric === "critical"
+    ? signals.filter((signal) => signal.severity.toLowerCase() === "critical").length
+    : signals.filter((signal) => signal.status.toLowerCase() === "open").length;
+}
+
+export function computeTrend(current: number, previous: number, goodDirection: "up" | "down" | "neutral"): KpiTrend {
+  if (current === previous) return { direction: "flat", percent: 0, tone: "neutral" };
+  if (previous === 0) {
+    const direction = current > 0 ? "up" : "down";
+    return { direction, percent: 100, tone: goodDirection === "neutral" ? "neutral" : direction === goodDirection ? "success" : "danger" };
+  }
+  const direction = current > previous ? "up" : "down";
+  const percent = Math.round((Math.abs(current - previous) / previous) * 100);
+  const tone = goodDirection === "neutral" ? "neutral" : direction === goodDirection ? "success" : "danger";
+  return { direction, percent, tone };
+}
 
 export function getKpiValue(widget: DashboardWidget, data: DashboardWidgetData): KpiValue | null {
   switch (widget.data_source) {
@@ -109,27 +162,24 @@ export function getKpiValue(widget: DashboardWidget, data: DashboardWidgetData):
       };
     }
     case "submissions": {
-      const overview = data.approvalOverview;
       const metric = widget.metric ?? "total";
-      const value =
-        metric === "approved"
-          ? overview.approved
-          : metric === "pending"
-            ? overview.pending
-            : metric === "rejected"
-              ? overview.rejected
-              : metric === "returned"
-                ? overview.returned
-                : overview.total;
-      return { label: submissionMetricLabels[metric] ?? submissionMetricLabels.total, value: value.toLocaleString() };
+      const value = submissionMetricValue(data.approvalOverview, metric);
+      const result: KpiValue = { label: submissionMetricLabels[metric] ?? submissionMetricLabels.total, value: value.toLocaleString() };
+      if (data.previousApprovalOverview) {
+        const previousValue = submissionMetricValue(data.previousApprovalOverview, metric);
+        result.trend = computeTrend(value, previousValue, submissionMetricGoodDirection[metric] ?? "neutral");
+      }
+      return result;
     }
     case "data_quality": {
       const metric = widget.metric ?? "open";
-      const value =
-        metric === "critical"
-          ? data.qualitySignals.filter((signal) => signal.severity.toLowerCase() === "critical").length
-          : data.qualitySignals.filter((signal) => signal.status.toLowerCase() === "open").length;
-      return { label: metric === "critical" ? "Critical quality issues" : "Open quality issues", value: value.toLocaleString() };
+      const value = countQualitySignals(data.qualitySignals, metric);
+      const result: KpiValue = { label: metric === "critical" ? "Critical quality issues" : "Open quality issues", value: value.toLocaleString() };
+      if (data.previousQualitySignals) {
+        const previousValue = countQualitySignals(data.previousQualitySignals, metric);
+        result.trend = computeTrend(value, previousValue, "down");
+      }
+      return result;
     }
     case "donor_report": {
       const report = data.donorReports.find((item) => item.id === widget.reference_id);
@@ -209,7 +259,7 @@ export function getSubmissionsTrend(submissions: SubmissionRead[], days = 14): T
   return Array.from(buckets.entries()).map(([date, count]) => ({ date, count }));
 }
 
-export type SeverityCount = { severity: string; count: number; color: string };
+export type SeverityCount = { id: string; severity: string; count: number; color: string };
 
 const severityColors: Record<string, string> = {
   critical: "hsl(var(--danger))",
@@ -225,6 +275,7 @@ export function getQualitySeverityCounts(signals: DataQualitySignalRead[]): Seve
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return Array.from(counts.entries()).map(([severity, count]) => ({
+    id: severity,
     severity: severity.charAt(0).toUpperCase() + severity.slice(1),
     count,
     color: severityColors[severity] ?? "hsl(var(--muted-foreground))",
@@ -232,15 +283,15 @@ export function getQualitySeverityCounts(signals: DataQualitySignalRead[]): Seve
 }
 
 export function getIndicatorProgressData(indicators: IndicatorRead[]): FormResponseDatum[] {
-  return indicators.map((indicator) => ({ name: indicator.code || indicator.name, responses: indicator.progress_percent }));
+  return indicators.map((indicator) => ({ id: indicator.id, name: indicator.code || indicator.name, responses: indicator.progress_percent }));
 }
 
 export function getFormPerformanceBarData(formPerformance: FormPerformance[]): FormResponseDatum[] {
-  return formPerformance.map((item) => ({ name: item.form.name, responses: item.totalSubmissions }));
+  return formPerformance.map((item) => ({ id: item.form.id, name: item.form.name, responses: item.totalSubmissions }));
 }
 
 export function getQualitySeverityBarData(signals: DataQualitySignalRead[]): FormResponseDatum[] {
-  return getQualitySeverityCounts(signals).map((item) => ({ name: item.severity, responses: item.count }));
+  return getQualitySeverityCounts(signals).map((item) => ({ id: item.id, name: item.severity, responses: item.count }));
 }
 
 export function WidgetEmptyState({ message }: { message: string }) {
@@ -248,6 +299,23 @@ export function WidgetEmptyState({ message }: { message: string }) {
     <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed text-center text-xs text-muted-foreground">
       {message}
     </div>
+  );
+}
+
+const trendToneClass: Record<KpiTrend["tone"], string> = {
+  success: "text-success",
+  danger: "text-danger",
+  neutral: "text-muted-foreground",
+};
+
+export function KpiTrendBadge({ days, trend }: { days?: number; trend: KpiTrend }) {
+  const Icon = trend.direction === "up" ? ArrowUpRight : trend.direction === "down" ? ArrowDownRight : Minus;
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-xs font-medium", trendToneClass[trend.tone])}>
+      <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+      {trend.direction === "flat" ? "No change" : `${trend.percent}%`}
+      {days ? <span className="text-muted-foreground">vs previous {days}d</span> : null}
+    </span>
   );
 }
 
@@ -277,7 +345,15 @@ function cnTone(tone: ReturnType<typeof progressTone>): string {
   return "font-semibold text-muted-foreground";
 }
 
-function SeverityDonutChart({ signals }: { signals: DataQualitySignalRead[] }) {
+function SeverityDonutChart({
+  activeSeverity,
+  onSeverityClick,
+  signals,
+}: {
+  activeSeverity?: string | null;
+  onSeverityClick?: (severityId: string) => void;
+  signals: DataQualitySignalRead[];
+}) {
   const data = getQualitySeverityCounts(signals).filter((entry) => entry.count > 0);
   if (!data.length) return <WidgetEmptyState message="No data quality signals yet." />;
 
@@ -297,7 +373,13 @@ function SeverityDonutChart({ signals }: { signals: DataQualitySignalRead[] }) {
               strokeWidth={2}
             >
               {data.map((entry) => (
-                <Cell fill={entry.color} key={entry.severity} />
+                <Cell
+                  cursor={onSeverityClick ? "pointer" : undefined}
+                  fill={entry.color}
+                  key={entry.severity}
+                  onClick={onSeverityClick ? () => onSeverityClick(entry.id) : undefined}
+                  opacity={activeSeverity && activeSeverity !== entry.id ? 0.35 : 1}
+                />
               ))}
             </Pie>
             <Tooltip content={<ChartTooltip />} />
@@ -306,12 +388,20 @@ function SeverityDonutChart({ signals }: { signals: DataQualitySignalRead[] }) {
       </div>
       <ul className="min-w-0 flex-1 space-y-1.5">
         {data.map((entry) => (
-          <li className="flex items-center justify-between gap-2 text-xs" key={entry.severity}>
-            <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="truncate">{entry.severity}</span>
-            </span>
-            <span className="shrink-0 font-semibold">{entry.count.toLocaleString()}</span>
+          <li key={entry.severity}>
+            <button
+              className="flex w-full items-center justify-between gap-2 text-left text-xs disabled:cursor-default"
+              disabled={!onSeverityClick}
+              onClick={onSeverityClick ? () => onSeverityClick(entry.id) : undefined}
+              style={{ opacity: activeSeverity && activeSeverity !== entry.id ? 0.5 : 1 }}
+              type="button"
+            >
+              <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="truncate">{entry.severity}</span>
+              </span>
+              <span className="shrink-0 font-semibold">{entry.count.toLocaleString()}</span>
+            </button>
           </li>
         ))}
       </ul>
@@ -375,14 +465,27 @@ function WidgetTable({ headers, rows }: { headers: string[]; rows: WidgetTableRo
   );
 }
 
-export function DashboardWidgetBody({ widget, data }: { widget: DashboardWidget; data: DashboardWidgetData }) {
+export function DashboardWidgetBody({
+  crossFilter = null,
+  data,
+  onCrossFilter,
+  widget,
+}: {
+  crossFilter?: DashboardCrossFilter | null;
+  data: DashboardWidgetData;
+  onCrossFilter?: (filter: DashboardCrossFilter | null) => void;
+  widget: DashboardWidget;
+}) {
   switch (widget.type) {
     case "kpi": {
       const kpi = getKpiValue(widget, data);
       if (!kpi) return <WidgetEmptyState message="Select a data source to show a value." />;
       return (
         <div>
-          <p className="text-2xl font-semibold">{kpi.value}</p>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <p className="text-2xl font-semibold">{kpi.value}</p>
+            {kpi.trend ? <KpiTrendBadge days={data.trendDays} trend={kpi.trend} /> : null}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">{kpi.label}</p>
           {kpi.detail ? <p className="mt-1 text-xs text-muted-foreground">{kpi.detail}</p> : null}
         </div>
@@ -397,22 +500,73 @@ export function DashboardWidgetBody({ widget, data }: { widget: DashboardWidget;
       if (widget.data_source === "form_performance") {
         const chartData = getFormPerformanceBarData(data.formPerformance);
         if (!chartData.length) return <WidgetEmptyState message="No active forms with submissions yet." />;
-        return <FormResponseChart data={chartData} />;
+        return (
+          <FormResponseChart
+            activeId={crossFilter?.field === "form" ? crossFilter.value : null}
+            data={chartData}
+            onBarClick={
+              onCrossFilter
+                ? (datum) => datum.id && onCrossFilter(toggleCrossFilter(crossFilter, { field: "form", value: datum.id, label: `Form: ${datum.name}` }))
+                : undefined
+            }
+          />
+        );
       }
       if (widget.data_source === "data_quality") {
         const chartData = getQualitySeverityBarData(data.qualitySignals);
         if (!chartData.length) return <WidgetEmptyState message="No data quality signals yet." />;
-        return <FormResponseChart data={chartData} />;
+        return (
+          <FormResponseChart
+            activeId={crossFilter?.field === "severity" ? crossFilter.value : null}
+            data={chartData}
+            onBarClick={
+              onCrossFilter
+                ? (datum) =>
+                    datum.id && onCrossFilter(toggleCrossFilter(crossFilter, { field: "severity", value: datum.id, label: `${datum.name} severity` }))
+                : undefined
+            }
+          />
+        );
       }
       return <WidgetEmptyState message="Unsupported data source for this chart." />;
     }
     case "pie_chart": {
       if (widget.data_source === "submissions") {
         const { approved, pending, rejected, returned } = data.approvalOverview;
-        return <ApprovalStatusChart approved={approved} pending={pending} rejected={rejected} returned={returned} />;
+        return (
+          <ApprovalStatusChart
+            activeKey={crossFilter?.field === "status" ? crossFilter.value : null}
+            approved={approved}
+            onSliceClick={
+              onCrossFilter
+                ? (key) => onCrossFilter(toggleCrossFilter(crossFilter, { field: "status", value: key, label: submissionMetricLabels[key] ?? key }))
+                : undefined
+            }
+            pending={pending}
+            rejected={rejected}
+            returned={returned}
+          />
+        );
       }
       if (widget.data_source === "data_quality") {
-        return <SeverityDonutChart signals={data.qualitySignals} />;
+        return (
+          <SeverityDonutChart
+            activeSeverity={crossFilter?.field === "severity" ? crossFilter.value : null}
+            onSeverityClick={
+              onCrossFilter
+                ? (severityId) =>
+                    onCrossFilter(
+                      toggleCrossFilter(crossFilter, {
+                        field: "severity",
+                        value: severityId,
+                        label: `${severityId.charAt(0).toUpperCase()}${severityId.slice(1)} severity`,
+                      }),
+                    )
+                : undefined
+            }
+            signals={data.qualitySignals}
+          />
+        );
       }
       return <WidgetEmptyState message="Unsupported data source for this chart." />;
     }

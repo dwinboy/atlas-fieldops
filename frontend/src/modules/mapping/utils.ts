@@ -2,6 +2,8 @@ import type { BadgeProps } from "@/components/ui/badge";
 import type { IndicatorRead } from "@/lib/api";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import type {
+  BoundaryRecord,
+  DrawnBoundary,
   IndicatorGeography,
   LayerVisibility,
   MapFeatureRecord,
@@ -119,6 +121,38 @@ export function filterFeaturesBySection(features: MapFeatureRecord[], section: M
   return matching.length ? matching : features.filter((feature) => feature.category === "Project" || feature.category === category);
 }
 
+export type MapFeatureFilters = {
+  category: string;
+  location: string;
+  project: string;
+  source: string;
+  status: string;
+};
+
+export function featureSource(feature: MapFeatureRecord): string {
+  if (feature.source) return feature.source;
+  if (typeof feature.popup.Source === "string") return feature.popup.Source;
+  if (typeof feature.popup["Submission source"] === "string") return feature.popup["Submission source"];
+  if (feature.category === "Submission") return "Field Submitted";
+  if (feature.category === "Beneficiary" || feature.category === "Facility") return "Entity Registry";
+  if (feature.category === "Quality") return "Data Quality";
+  if (feature.category === "Indicator") return "Indicator Result";
+  return "Project Registry";
+}
+
+export function applyMapFeatureFilters(features: MapFeatureRecord[], filters: MapFeatureFilters): MapFeatureRecord[] {
+  return features.filter((feature) => {
+    const location = [feature.location, feature.region, feature.district].join(" ").toLowerCase();
+    return (
+      (!filters.project || feature.project === filters.project) &&
+      (!filters.category || feature.category === filters.category) &&
+      (!filters.status || feature.status === filters.status) &&
+      (!filters.source || featureSource(feature) === filters.source) &&
+      (!filters.location || location.includes(filters.location.toLowerCase()))
+    );
+  });
+}
+
 export function maskCoordinate(value: number, visibility: LayerVisibility): string {
   if (visibility === "Restricted" || visibility === "Aggregated") {
     return `${value.toFixed(1)}xx`;
@@ -137,6 +171,37 @@ export function maskedCoordinates(
 }
 
 export type BoundingBox = { north: number; south: number; east: number; west: number };
+
+export type MapBoundaryShape = {
+  id: string;
+  label: string;
+  bounds: BoundingBox;
+  status: SpatialStatus;
+  pointCount: number;
+};
+
+/** Pads a project's GPS extent into a drawable bounding box (avoids zero-area rectangles for single-point extents). */
+export function extentToBounds(extent: ProjectExtent): BoundingBox {
+  const padLat = Math.max((extent.maxLat - extent.minLat) * 0.1, 0.01);
+  const padLng = Math.max((extent.maxLng - extent.minLng) * 0.1, 0.01);
+  return {
+    east: extent.maxLng + padLng,
+    north: extent.maxLat + padLat,
+    south: extent.minLat - padLat,
+    west: extent.minLng - padLng,
+  };
+}
+
+export function extentStatus(pointCount: number): SpatialStatus {
+  return pointCount >= 10 ? "Healthy" : pointCount >= 3 ? "Warning" : "Critical";
+}
+
+export function statusColor(status: SpatialStatus): string {
+  if (status === "Healthy") return "#16a34a";
+  if (status === "Warning") return "#f59e0b";
+  if (status === "Inactive") return "#94a3b8";
+  return "#dc2626";
+}
 
 export function isFeatureInBounds(feature: { latitude: number; longitude: number }, bounds: BoundingBox): boolean {
   return (
@@ -245,6 +310,42 @@ export function toGeoJson(features: MapFeatureRecord[], visibility: LayerVisibil
     null,
     2,
   );
+}
+
+/** Serialize a sketched boundary polygon to a GeoJSON FeatureCollection for export and external GIS tools. */
+export function drawnBoundaryToGeoJson(boundary: DrawnBoundary): string {
+  const ring = [...boundary.positions, boundary.positions[0]].map(([latitude, longitude]) => [longitude, latitude]);
+  return JSON.stringify(
+    {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [ring] },
+          properties: { id: boundary.id, name: boundary.name, createdAt: boundary.createdAt },
+        },
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+/** Represents a sketched boundary in the boundary registry table until it's exported and formally registered. */
+export function boundaryFromDrawnShape(boundary: DrawnBoundary): BoundaryRecord {
+  return {
+    code: `DRW-${boundary.id.slice(-6).toUpperCase()}`,
+    coveragePercent: 0,
+    geometryStatus: "Needs review",
+    id: boundary.id,
+    name: boundary.name,
+    parent: "Drawn on map",
+    status: "Warning",
+    type: "Project Area",
+    updatedAt: boundary.createdAt,
+    validationIssues: ["Sketched on the map this session. Export GeoJSON and register the official boundary for formal reporting."],
+    version: "drawn",
+  };
 }
 
 /**

@@ -66,6 +66,7 @@ import {
   computeSubmissionsSummary,
   filterSubmissions,
   formatSubmissionStatus,
+  getSubmissionFilterOptions,
   getPreviewSubmissions,
   normalizeSubmission,
   qualityTone,
@@ -1999,6 +2000,14 @@ function formatResponseValue(value: unknown, type?: string, options?: FormFieldM
   return String(value);
 }
 
+function responseTypeFromValue(value: unknown): string {
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return "number";
+  if (Array.isArray(value)) return "multi_select";
+  if (value && typeof value === "object") return "object";
+  return "text";
+}
+
 function responseValueToInput(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value, null, 2);
@@ -2450,12 +2459,26 @@ function DataExplorerSection({
 }) {
   const [selectedFormId, setSelectedFormId] = useState("");
   const [activeView, setActiveView] = useState(DATA_EXPLORER_MAIN_VIEW);
+  const dataExplorerForms = useMemo(() => {
+    if (forms.length) return forms;
+    const byId = new Map<string, Pick<DataFormRead, "id" | "name">>();
+    for (const submission of submissions) {
+      if (byId.has(submission.form_id)) continue;
+      byId.set(submission.form_id, {
+        id: submission.form_id,
+        name: submission.form_name || humanizeKey(submission.form_id),
+      });
+    }
+    return Array.from(byId.values()).sort((first, second) =>
+      first.name.localeCompare(second.name),
+    );
+  }, [forms, submissions]);
 
   useEffect(() => {
-    if (!selectedFormId && forms.length) {
-      setSelectedFormId(forms[0].id);
+    if (!selectedFormId && dataExplorerForms.length) {
+      setSelectedFormId(dataExplorerForms[0].id);
     }
-  }, [forms, selectedFormId]);
+  }, [dataExplorerForms, selectedFormId]);
 
   useEffect(() => {
     setActiveView(DATA_EXPLORER_MAIN_VIEW);
@@ -2482,8 +2505,22 @@ function DataExplorerSection({
         columns.push({ key, label: field.label || humanizeKey(key), type: field.type, options: field.options });
       }
     }
+    if (columns.length) return columns;
+    const inferredKeys = new Map<string, unknown>();
+    for (const submission of formRows) {
+      for (const [key, value] of Object.entries(normalizedSubmissionAnswers(submission.payload_json))) {
+        if (!inferredKeys.has(key)) inferredKeys.set(key, value);
+      }
+    }
+    for (const [key, value] of inferredKeys) {
+      columns.push({
+        key,
+        label: humanizeKey(key),
+        type: responseTypeFromValue(value),
+      });
+    }
     return columns;
-  }, [formSchemaQuery.data]);
+  }, [formRows, formSchemaQuery.data]);
 
   const repeatGroups = useMemo(() => {
     const schema = (formSchemaQuery.data?.schema ?? {}) as ParsedFormSchema;
@@ -2561,7 +2598,7 @@ function DataExplorerSection({
         <div className="flex flex-wrap items-center gap-2">
           <Select onChange={(event) => setSelectedFormId(event.target.value)} value={selectedFormId}>
             <option value="">Select a form</option>
-            {forms.map((form) => (
+            {dataExplorerForms.map((form) => (
               <option key={form.id} value={form.id}>
                 {form.name}
               </option>
@@ -2580,11 +2617,7 @@ function DataExplorerSection({
       }
       title="Field data by form"
     >
-      {preview ? (
-        <p className="rounded-xl border bg-background/60 p-3 text-sm text-muted-foreground">
-          Connect to the API to browse field-level submission data.
-        </p>
-      ) : !selectedFormId ? (
+      {!selectedFormId ? (
         <EmptyMini label="Select a form to view its collected data." />
       ) : formSchemaQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading form schema…</p>
@@ -3225,15 +3258,19 @@ function SubmissionFilters({
   onChange: (patch: Partial<SubmissionFiltersState>) => void;
   submissions: SubmissionRecord[];
 }) {
-  const projects = Array.from(
-    new Set(submissions.map((submission) => submission.project_name)),
-  );
-  const forms = Array.from(
-    new Set(submissions.map((submission) => submission.form_name)),
-  );
-  const reviewers = Array.from(
-    new Set(submissions.map((submission) => submission.reviewer)),
-  );
+  const projectForSelectedForm = filters.formName
+    ? Array.from(
+        new Set(
+          submissions
+            .filter((submission) => submission.form_name === filters.formName)
+            .map((submission) => submission.project_name),
+        ),
+      )
+    : [];
+  const effectiveProjectName =
+    filters.projectName ||
+    (projectForSelectedForm.length === 1 ? projectForSelectedForm[0] ?? "" : "");
+  const linkedOptions = getSubmissionFilterOptions(submissions, filters);
   const sectionStatusLabel = submissionSections.find((section) => section.id === activeSection)?.label ?? "Current status";
   const hasActiveFilters =
     Boolean(filters.projectName) ||
@@ -3244,22 +3281,75 @@ function SubmissionFilters({
   return (
     <div className="grid gap-3 rounded-xl border bg-panel p-3 shadow-line grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       <Select
-        onChange={(event) => onChange({ projectName: event.target.value })}
-        value={filters.projectName}
+        onChange={(event) => {
+          const nextProjectName = event.target.value;
+          const formStillMatches =
+            !filters.formName ||
+            !nextProjectName ||
+            submissions.some(
+              (submission) =>
+                submission.project_name === nextProjectName &&
+                submission.form_name === filters.formName,
+            );
+          const reviewerStillMatches =
+            !filters.reviewer ||
+            !nextProjectName ||
+            submissions.some(
+              (submission) =>
+                submission.project_name === nextProjectName &&
+                submission.reviewer === filters.reviewer &&
+                (!filters.formName || submission.form_name === filters.formName),
+            );
+          onChange({
+            formName: formStillMatches ? filters.formName : "",
+            projectName: nextProjectName,
+            reviewer: reviewerStillMatches ? filters.reviewer : "",
+          });
+        }}
+        value={effectiveProjectName}
       >
         <option value="">All projects</option>
-        {projects.map((project) => (
+        {linkedOptions.projects.map((project) => (
           <option key={project} value={project}>
             {project}
           </option>
         ))}
       </Select>
       <Select
-        onChange={(event) => onChange({ formName: event.target.value })}
+        onChange={(event) => {
+          const nextFormName = event.target.value;
+          const matchingProjects = nextFormName
+            ? Array.from(
+                new Set(
+                  submissions
+                    .filter((submission) => submission.form_name === nextFormName)
+                    .map((submission) => submission.project_name),
+                ),
+              )
+            : [];
+          const nextProjectName =
+            nextFormName && matchingProjects.length === 1
+              ? matchingProjects[0] ?? ""
+              : filters.projectName;
+          const reviewerStillMatches =
+            !filters.reviewer ||
+            !nextFormName ||
+            submissions.some(
+              (submission) =>
+                submission.form_name === nextFormName &&
+                submission.reviewer === filters.reviewer &&
+                (!nextProjectName || submission.project_name === nextProjectName),
+            );
+          onChange({
+            formName: nextFormName,
+            projectName: nextProjectName,
+            reviewer: reviewerStillMatches ? filters.reviewer : "",
+          });
+        }}
         value={filters.formName}
       >
         <option value="">All forms</option>
-        {forms.map((form) => (
+        {linkedOptions.forms.map((form) => (
           <option key={form} value={form}>
             {form}
           </option>
@@ -3273,7 +3363,7 @@ function SubmissionFilters({
         value={filters.reviewer}
       >
         <option value="">All reviewers</option>
-        {reviewers.map((reviewer) => (
+        {linkedOptions.reviewers.map((reviewer) => (
           <option key={reviewer} value={reviewer}>
             {reviewer}
           </option>

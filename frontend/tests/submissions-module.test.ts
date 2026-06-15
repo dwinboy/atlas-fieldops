@@ -6,6 +6,7 @@ import {
   computeSubmissionsSummary,
   filterSubmissions,
   formatSubmissionStatus,
+  getSubmissionFilterOptions,
   qualityTone,
   reviewStageFromStatus,
   slaStatus,
@@ -29,6 +30,29 @@ describe("Submissions module helpers", () => {
     expect(filterSubmissions(previewSubmissions, "approved")).toHaveLength(previewSubmissions.filter((submission) => submission.status === "approved").length);
     expect(filterSubmissions(previewSubmissions, "returned")).toHaveLength(previewSubmissions.filter((submission) => ["correction_requested", "needs_correction", "returned"].includes(submission.status)).length);
     expect(filterSubmissions(previewSubmissions, "archived")).toHaveLength(previewSubmissions.filter((submission) => submission.status === "archived").length);
+  });
+
+  it("links project, form, and reviewer filter options", () => {
+    const retailOptions = getSubmissionFilterOptions(previewSubmissions, {
+      projectName: "Retail Store Stock Visibility",
+    });
+
+    expect(retailOptions.forms.every((formName) =>
+      previewSubmissions.some(
+        (submission) =>
+          submission.project_name === "Retail Store Stock Visibility" &&
+          submission.form_name === formName,
+      ),
+    )).toBe(true);
+    expect(retailOptions.forms).toContain("Retail Stock Count and Shelf Availability");
+    expect(retailOptions.forms).not.toContain("Cold Chain Delivery Proof");
+
+    const formOptions = getSubmissionFilterOptions(previewSubmissions, {
+      formName: "Cold Chain Delivery Proof",
+    });
+
+    expect(formOptions.projects).toEqual(["Cold Chain Delivery Monitoring"]);
+    expect(formOptions.reviewers).toEqual(["Supervisor"]);
   });
 
   it("maps statuses, quality, and SLA to review states", () => {

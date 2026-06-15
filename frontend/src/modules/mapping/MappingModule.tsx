@@ -6,6 +6,7 @@ import {
   CircleDot,
   Download,
   Eye,
+  FileJson,
   FileWarning,
   Filter,
   Layers,
@@ -15,9 +16,12 @@ import {
   MapPinned,
   Maximize2,
   Navigation,
+  PenLine,
   Printer,
   Search,
   Shield,
+  Square,
+  Trash2,
   Upload,
   type LucideIcon,
 } from "lucide-react";
@@ -55,6 +59,7 @@ import {
   previewSpatialIssues,
   type BoundaryRecord,
   type CoverageRecord,
+  type DrawnBoundary,
   type IndicatorGeography,
   type LayerVisibility,
   type MapBasemap,
@@ -67,21 +72,31 @@ import {
   type SpatialQualityIssue,
 } from "@/modules/mapping/data";
 import {
+  boundaryFromDrawnShape,
   computeMappingSummary,
   computeProjectExtents,
   coverageTone,
+  applyMapFeatureFilters,
   deriveProjectDataCoverage,
   deriveQualityIssues,
+  drawnBoundaryToGeoJson,
+  extentStatus,
+  extentToBounds,
+  featureSource,
   filterFeaturesBySection,
   isFeatureInBounds,
   maskCoordinate,
   severityTone,
   statusTone,
+  toGeoJson,
   toCsv,
   validateGpsPoint,
   visibilityTone,
   type BoundingBox,
+  type MapFeatureFilters,
+  type MapBoundaryShape,
 } from "@/modules/mapping/utils";
+import type { BoundaryDrawMode } from "@/modules/mapping/LeafletMap";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type MappingModuleProps = {
@@ -91,18 +106,37 @@ type MappingModuleProps = {
 
 type MapViewerProps = {
   activeSection: MappingSection;
+  allFeatures: MapFeatureRecord[];
   areaBounds: BoundingBox | null;
   basemap: MapBasemap;
+  boundaryDrawMode: BoundaryDrawMode;
+  boundaryDrawPoints: [number, number][];
+  boundaryShapes: MapBoundaryShape[];
   drawMode: boolean;
+  drawnBoundaries: DrawnBoundary[];
   features: MapFeatureRecord[];
+  featureOpacityByCategory: Partial<Record<MapFeatureRecord["category"], number>>;
+  filters: MapFeatureFilters;
   layers: MapLayerRecord[];
+  layerOpacity: Record<string, number>;
+  layerVisibility: Record<string, boolean>;
   mapQuery: string;
+  densityMode: boolean;
   onAreaBoundsChange: (bounds: BoundingBox | null) => void;
   onBasemapChange: (basemap: MapBasemap) => void;
+  onBoundaryDrawComplete: (positions: [number, number][]) => void;
+  onBoundaryDrawPoint: (point: [number, number]) => void;
+  onCancelBoundaryDraw: () => void;
   onDrawModeChange: (active: boolean) => void;
   onFeatureSelect: (feature: MapFeatureRecord) => void;
+  onFinishBoundaryDraw: () => void;
+  onFiltersChange: (filters: MapFeatureFilters) => void;
+  onDensityModeChange: (enabled: boolean) => void;
+  onLayerOpacityChange: (layerId: string, opacity: number) => void;
+  onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
   onOpenFeatureSource: (feature: MapFeatureRecord) => void;
   onMapQueryChange: (query: string) => void;
+  onStartBoundaryDraw: (mode: "polygon" | "rectangle") => void;
   privacyVisibility: LayerVisibility;
   sectionInfo: { label: string; description: string };
   selectedFeature: MapFeatureRecord | null;
@@ -136,6 +170,16 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
   const csv = toCsv(rows);
   if (!csv) return;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadGeoJson(filename: string, geojson: string): void {
+  const blob = new Blob([geojson], { type: "application/geo+json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -222,12 +266,35 @@ function deriveLiveBoundaries(extents: ProjectExtent[]): BoundaryRecord[] {
     id: `live-boundary-${index}`,
     name: `${extent.project} observed extent`,
     parent: "Project GPS evidence",
-    status: extent.pointCount >= 10 ? "Healthy" : extent.pointCount >= 3 ? "Warning" : "Critical",
+    status: extentStatus(extent.pointCount),
     type: "Project Area",
     updatedAt: new Date().toISOString(),
     validationIssues: ["Derived from point extent; upload official boundary geometry for formal reporting."],
     version: "derived",
   }));
+}
+
+function emptyMapFeatureFilters(): MapFeatureFilters {
+  return { category: "", location: "", project: "", source: "", status: "" };
+}
+
+function layerFeatureCategory(layer: MapLayerRecord): MapFeatureRecord["category"] | null {
+  const direct = layerCategory(layer);
+  if (direct) return direct;
+  const text = `${layer.name} ${layer.type}`.toLowerCase();
+  if (text.includes("submission")) return "Submission";
+  if (text.includes("beneficiar") || text.includes("household") || text.includes("farmer")) return "Beneficiary";
+  if (text.includes("facilit") || text.includes("clinic") || text.includes("school") || text.includes("warehouse") || text.includes("water")) return "Facility";
+  if (text.includes("indicator")) return "Indicator";
+  if (text.includes("quality") || text.includes("gps issue")) return "Quality";
+  if (text.includes("coverage")) return "Coverage";
+  if (text.includes("project") || text.includes("boundary")) return "Project";
+  return null;
+}
+
+function featureLayerId(feature: MapFeatureRecord, layers: MapLayerRecord[]): string | null {
+  const layer = layers.find((candidate) => layerFeatureCategory(candidate) === feature.category);
+  return layer?.id ?? null;
 }
 
 function deriveLiveIndicatorGeography({
@@ -278,10 +345,20 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const [mapQuery, setMapQuery] = useState("");
   const [drawMode, setDrawMode] = useState(false);
   const [areaBounds, setAreaBounds] = useState<BoundingBox | null>(null);
+  const [boundaryDrawMode, setBoundaryDrawMode] = useState<BoundaryDrawMode>(null);
+  const [boundaryDrawPoints, setBoundaryDrawPoints] = useState<[number, number][]>([]);
+  const [pendingBoundaryPositions, setPendingBoundaryPositions] = useState<[number, number][] | null>(null);
+  const [boundaryNameDraft, setBoundaryNameDraft] = useState("");
+  const [drawnBoundaries, setDrawnBoundaries] = useState<DrawnBoundary[]>([]);
+  const [densityMode, setDensityMode] = useState(false);
+  const [filters, setFilters] = useState<MapFeatureFilters>(() => emptyMapFeatureFilters());
+  const [layerOpacity, setLayerOpacity] = useState<Record<string, number>>({});
+  const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
   const preserveFeatureIdRef = useRef<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pendingMapFeatureId = useWorkspaceStore((state) => state.pendingMapFeatureId);
   const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
+  const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = !token || token === "preview-token";
   const terminology = useSectorTerminology(token);
 
@@ -319,6 +396,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
 
     const submissionFeatures: MapFeatureRecord[] = geotaggedSubmissions.map((submission) => {
       const accuracy = submission.accuracy ?? 0;
+      const source = submission.is_imported ? "Imported" : submission.offline_created ? "Mobile" : submission.device_id ? "Field Submitted" : "Web Entry";
       return {
         category: "Submission",
         count: 1,
@@ -332,12 +410,15 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         popup: {
           "GPS accuracy": submission.accuracy != null ? `${submission.accuracy}m` : "Unknown",
           "Submission ID": submission.client_submission_id,
+          "Submission source": source,
+          "Submitted by": submission.submitted_by_name ?? "Unknown",
           Status: submission.status,
           Submitted: new Date(submission.submitted_at).toLocaleDateString(),
         },
         project: projectNameById[submission.project_id ?? ""] ?? "Unassigned project",
         qualityScore: submission.accuracy == null ? 60 : Math.max(0, Math.min(100, Math.round(100 - submission.accuracy))),
         region: "",
+        source,
         status: submission.accuracy == null ? "Warning" : accuracy <= 15 ? "Healthy" : accuracy <= 30 ? "Warning" : "Critical",
       };
     });
@@ -360,6 +441,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         popup: {
           [`${terminology.primaryEntity} ID`]: beneficiary.beneficiary_uid,
           Enrollment: beneficiary.enrollment_status,
+          Source: "Entity Registry",
           Type: beneficiary.beneficiary_type,
           "Vulnerability score": beneficiary.vulnerability_score,
         },
@@ -367,6 +449,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         qualityScore: Math.round((1 - duplicateRisk) * 100),
         region: beneficiary.region ?? "",
         sensitive: true,
+        source: "Entity Registry",
         status: duplicateRisk >= 0.7 ? "Critical" : duplicateRisk >= 0.4 ? "Warning" : "Healthy",
       };
     });
@@ -380,8 +463,47 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   );
 
   const mapFeatures = useMemo(() => (preview ? previewMapFeatures : realMapFeatures), [preview, realMapFeatures]);
-  const projectExtents = useMemo(() => computeProjectExtents(realMapFeatures), [realMapFeatures]);
+  const projectExtents = useMemo(() => computeProjectExtents(mapFeatures), [mapFeatures]);
+  const boundaryShapes = useMemo<MapBoundaryShape[]>(
+    () =>
+      projectExtents.map((extent) => ({
+        bounds: extentToBounds(extent),
+        id: `extent-${extent.project}`,
+        label: `${extent.project} extent`,
+        pointCount: extent.pointCount,
+        status: extentStatus(extent.pointCount),
+      })),
+    [projectExtents],
+  );
   const mapLayers = useMemo(() => (preview ? previewMapLayers : deriveLiveMapLayers(realMapFeatures)), [preview, realMapFeatures]);
+  useEffect(() => {
+    setLayerVisibility((current) => {
+      const next: Record<string, boolean> = {};
+      for (const layer of mapLayers) next[layer.id] = current[layer.id] ?? true;
+      return next;
+    });
+    setLayerOpacity((current) => {
+      const next: Record<string, number> = {};
+      for (const layer of mapLayers) next[layer.id] = current[layer.id] ?? 100;
+      return next;
+    });
+  }, [mapLayers]);
+  const controlledMapFeatures = useMemo(() => {
+    const filtered = applyMapFeatureFilters(mapFeatures, filters);
+    return filtered.filter((feature) => {
+      const layerId = featureLayerId(feature, mapLayers);
+      return !layerId || layerVisibility[layerId] !== false;
+    });
+  }, [filters, layerVisibility, mapFeatures, mapLayers]);
+  const featureOpacityByCategory = useMemo<Partial<Record<MapFeatureRecord["category"], number>>>(() => {
+    const opacityByCategory: Partial<Record<MapFeatureRecord["category"], number>> = {};
+    for (const layer of mapLayers) {
+      const category = layerFeatureCategory(layer);
+      if (!category) continue;
+      opacityByCategory[category] = (layerOpacity[layer.id] ?? 100) / 100;
+    }
+    return opacityByCategory;
+  }, [layerOpacity, mapLayers]);
   const boundaries = useMemo(() => (preview ? previewBoundaries : deriveLiveBoundaries(projectExtents)), [preview, projectExtents]);
   const coverage = useMemo(() => (preview ? previewCoverage : []), [preview]);
   const indicatorGeography = useMemo(
@@ -428,8 +550,8 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   }, [activeSection, pathname]);
 
   const visibleFeatures = useMemo(
-    () => filterFeaturesBySection(mapFeatures, activeSection),
-    [activeSection, mapFeatures],
+    () => filterFeaturesBySection(controlledMapFeatures, activeSection),
+    [activeSection, controlledMapFeatures],
   );
   const summary = useMemo(
     () =>
@@ -503,21 +625,79 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     setSelectedFeature(filterFeaturesBySection(mapFeatures, section)[0] ?? null);
     setAreaBounds(null);
     setDrawMode(false);
+    cancelBoundaryDraw();
     const route = mappingSections.find((item) => item.id === section)?.route;
     if (route && route !== pathname) router.push(route);
   }
 
   function viewProjectExtentOnMap(extent: ProjectExtent): void {
-    const padLat = Math.max((extent.maxLat - extent.minLat) * 0.1, 0.01);
-    const padLng = Math.max((extent.maxLng - extent.minLng) * 0.1, 0.01);
-    setAreaBounds({
-      east: extent.maxLng + padLng,
-      north: extent.maxLat + padLat,
-      south: extent.minLat - padLat,
-      west: extent.minLng - padLng,
-    });
+    setAreaBounds(extentToBounds(extent));
     setActiveSection("submission-maps");
     setDrawMode(false);
+    cancelBoundaryDraw();
+  }
+
+  function handleDrawModeChange(active: boolean): void {
+    setDrawMode(active);
+    if (active) cancelBoundaryDraw();
+  }
+
+  function startBoundaryDraw(mode: "polygon" | "rectangle"): void {
+    setDrawMode(false);
+    setAreaBounds(null);
+    setBoundaryDrawPoints([]);
+    setBoundaryDrawMode(mode);
+  }
+
+  function cancelBoundaryDraw(): void {
+    setBoundaryDrawMode(null);
+    setBoundaryDrawPoints([]);
+  }
+
+  function handleBoundaryDrawPoint(point: [number, number]): void {
+    setBoundaryDrawPoints((current) => [...current, point]);
+  }
+
+  function finishBoundaryDraw(): void {
+    if (boundaryDrawPoints.length < 3) return;
+    setPendingBoundaryPositions(boundaryDrawPoints);
+    setBoundaryDrawMode(null);
+    setBoundaryDrawPoints([]);
+  }
+
+  function handleBoundaryDrawComplete(positions: [number, number][]): void {
+    setPendingBoundaryPositions(positions);
+    setBoundaryDrawMode(null);
+    setBoundaryDrawPoints([]);
+  }
+
+  function saveDrawnBoundary(): void {
+    if (!pendingBoundaryPositions) return;
+    const name = boundaryNameDraft.trim() || `Sketched boundary ${drawnBoundaries.length + 1}`;
+    setDrawnBoundaries((current) => [
+      ...current,
+      { createdAt: new Date().toISOString(), id: `drawn-boundary-${Date.now()}`, name, positions: pendingBoundaryPositions },
+    ]);
+    setPendingBoundaryPositions(null);
+    setBoundaryNameDraft("");
+    pushToast({
+      description: `"${name}" added to the boundary registry for this session. Export GeoJSON to register it officially.`,
+      title: "Boundary sketched",
+      tone: "success",
+    });
+  }
+
+  function discardDrawnBoundary(): void {
+    setPendingBoundaryPositions(null);
+    setBoundaryNameDraft("");
+  }
+
+  function deleteDrawnBoundary(id: string): void {
+    setDrawnBoundaries((current) => current.filter((boundary) => boundary.id !== id));
+  }
+
+  function exportDrawnBoundary(boundary: DrawnBoundary): void {
+    downloadGeoJson(`${boundary.name.trim().toLowerCase().replace(/\s+/g, "-") || boundary.id}.geojson`, drawnBoundaryToGeoJson(boundary));
   }
 
   function exportCurrentView(): void {
@@ -541,6 +721,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
       })),
     );
     setMapResult(`Map export prepared with ${spatiallyFilteredFeatures.length} record(s) from the current filtered view. Export access should be audited by Governance for production deployments.`);
+  }
+
+  function exportCurrentGeoJson(): void {
+    downloadGeoJson("atlas-mapping-view.geojson", toGeoJson(spatiallyFilteredFeatures, privacyVisibility));
+    setMapResult(`GeoJSON export prepared with ${spatiallyFilteredFeatures.length} mapped feature(s). Sensitive coordinates follow the active role-based visibility policy.`);
   }
 
   function openFeatureSource(feature: MapFeatureRecord): void {
@@ -579,7 +764,11 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             </Button>
             <Button onClick={exportCurrentView} variant="secondary">
               <Download aria-hidden="true" />
-              Export map
+              Export CSV
+            </Button>
+            <Button onClick={exportCurrentGeoJson} variant="secondary">
+              <FileJson aria-hidden="true" />
+              Export GeoJSON
             </Button>
           </div>
         </div>
@@ -630,18 +819,37 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         <>
           <EnterpriseMapViewer
             activeSection={activeSection}
+            allFeatures={mapFeatures}
             areaBounds={areaBounds}
             basemap={basemap}
+            boundaryDrawMode={boundaryDrawMode}
+            boundaryDrawPoints={boundaryDrawPoints}
+            boundaryShapes={boundaryShapes}
             drawMode={drawMode}
+            drawnBoundaries={drawnBoundaries}
+            densityMode={densityMode}
+            featureOpacityByCategory={featureOpacityByCategory}
             features={spatiallyFilteredFeatures}
+            filters={filters}
             layers={searchedLayers}
+            layerOpacity={layerOpacity}
+            layerVisibility={layerVisibility}
             mapQuery={mapQuery}
             onAreaBoundsChange={setAreaBounds}
             onBasemapChange={setBasemap}
-            onDrawModeChange={setDrawMode}
+            onBoundaryDrawComplete={handleBoundaryDrawComplete}
+            onBoundaryDrawPoint={handleBoundaryDrawPoint}
+            onCancelBoundaryDraw={cancelBoundaryDraw}
+            onDrawModeChange={handleDrawModeChange}
+            onDensityModeChange={setDensityMode}
             onFeatureSelect={setSelectedFeature}
+            onFiltersChange={setFilters}
+            onFinishBoundaryDraw={finishBoundaryDraw}
+            onLayerOpacityChange={(layerId, opacity) => setLayerOpacity((current) => ({ ...current, [layerId]: opacity }))}
+            onLayerVisibilityChange={(layerId, visible) => setLayerVisibility((current) => ({ ...current, [layerId]: visible }))}
             onOpenFeatureSource={openFeatureSource}
             onMapQueryChange={setMapQuery}
+            onStartBoundaryDraw={startBoundaryDraw}
             privacyVisibility={privacyVisibility}
             sectionInfo={activeInfo}
             selectedFeature={selectedFeature}
@@ -651,9 +859,12 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             activeSection={activeSection}
             boundaries={boundaries}
             coverage={coverage}
+            drawnBoundaries={drawnBoundaries}
             indicatorGeography={indicatorGeography}
             mapFeatures={spatiallyFilteredFeatures}
             mapLayers={mapLayers}
+            onDeleteDrawnBoundary={deleteDrawnBoundary}
+            onExportDrawnBoundary={exportDrawnBoundary}
             onFeatureSelect={setSelectedFeature}
             onOpenIndicators={() => setActiveView("indicators")}
             projectDataCoverage={projectDataCoverage}
@@ -671,6 +882,30 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
       ) : (
         <MappingNotAvailable section={activeInfo} onSelectSection={selectSection} />
       )}
+
+      <Modal
+        onOpenChange={(open) => {
+          if (!open) discardDrawnBoundary();
+        }}
+        open={pendingBoundaryPositions !== null}
+        title="Name this boundary"
+      >
+        <div className="space-y-3 p-5">
+          <p className="text-sm leading-6 text-muted-foreground">
+            This boundary is sketched on the map for this session only. Save it to add it to the boundary registry, then export it as GeoJSON to register the official geometry.
+          </p>
+          <Input
+            autoFocus
+            onChange={(event) => setBoundaryNameDraft(event.target.value)}
+            placeholder="e.g. Mezam project area"
+            value={boundaryNameDraft}
+          />
+          <div className="flex justify-end gap-2">
+            <Button onClick={discardDrawnBoundary} variant="secondary">Discard</Button>
+            <Button onClick={saveDrawnBoundary} variant="primary">Save boundary</Button>
+          </div>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -770,18 +1005,37 @@ function MappingDashboard({
 
 function EnterpriseMapViewer({
   activeSection,
+  allFeatures,
   areaBounds,
   basemap,
+  boundaryDrawMode,
+  boundaryDrawPoints,
+  boundaryShapes,
   drawMode,
+  drawnBoundaries,
+  densityMode,
+  featureOpacityByCategory,
   features,
+  filters,
   layers,
+  layerOpacity,
+  layerVisibility,
   mapQuery,
   onAreaBoundsChange,
   onBasemapChange,
+  onBoundaryDrawComplete,
+  onBoundaryDrawPoint,
+  onCancelBoundaryDraw,
   onDrawModeChange,
+  onDensityModeChange,
   onFeatureSelect,
+  onFiltersChange,
+  onFinishBoundaryDraw,
+  onLayerOpacityChange,
+  onLayerVisibilityChange,
   onOpenFeatureSource,
   onMapQueryChange,
+  onStartBoundaryDraw,
   privacyVisibility,
   sectionInfo,
   selectedFeature,
@@ -790,6 +1044,18 @@ function EnterpriseMapViewer({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
   const [metadataLayer, setMetadataLayer] = useState<MapLayerRecord | null>(null);
+  const showBoundaryShapes = activeSection === "boundaries" || activeSection === "project-maps";
+  const visibleBoundaryShapes = showBoundaryShapes ? boundaryShapes : [];
+  const filterOptions = useMemo(
+    () => ({
+      categories: Array.from(new Set(allFeatures.map((feature) => feature.category))).sort(),
+      locations: Array.from(new Set(allFeatures.flatMap((feature) => [feature.region, feature.district, feature.location]).filter(Boolean))).sort(),
+      projects: Array.from(new Set(allFeatures.map((feature) => feature.project).filter(Boolean))).sort(),
+      sources: Array.from(new Set(allFeatures.map(featureSource))).sort(),
+      statuses: Array.from(new Set(allFeatures.map((feature) => feature.status))).sort(),
+    }),
+    [allFeatures],
+  );
 
   function toggleFullscreen(): void {
     if (document.fullscreenElement) {
@@ -819,15 +1085,36 @@ function EnterpriseMapViewer({
         </div>
         <div className="mt-4 space-y-2">
           {layers.map((layer) => (
-            <button className="w-full rounded-xl border bg-background/70 p-3 text-left transition hover:border-primary/30 hover:bg-primary/5" key={layer.id} onClick={() => setMetadataLayer(layer)} type="button">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">{layer.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{layer.geometryType} · {layer.featureCount.toLocaleString()} features</p>
-                </div>
+            <div className={cn("rounded-xl border bg-background/70 p-3 transition", layerVisibility[layer.id] === false && "opacity-60")} key={layer.id}>
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  checked={layerVisibility[layer.id] !== false}
+                  className="mt-1 accent-primary"
+                  onChange={(event) => onLayerVisibilityChange(layer.id, event.target.checked)}
+                  type="checkbox"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{layer.name}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">{layer.geometryType} · {layer.featureCount.toLocaleString()} features</span>
+                </span>
                 <Badge tone={visibilityTone(layer.visibility)}>{layer.visibility}</Badge>
+              </label>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Opacity</span>
+                <input
+                  aria-label={`${layer.name} opacity`}
+                  className="min-w-0 flex-1 accent-primary"
+                  max={100}
+                  min={20}
+                  onChange={(event) => onLayerOpacityChange(layer.id, Number(event.target.value))}
+                  type="range"
+                  value={layerOpacity[layer.id] ?? 100}
+                />
+                <button className="text-xs font-medium text-primary hover:underline" onClick={() => setMetadataLayer(layer)} type="button">
+                  Details
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </aside>
@@ -857,13 +1144,51 @@ function EnterpriseMapViewer({
             <Button onClick={() => window.print()} size="sm" variant="secondary"><Printer aria-hidden="true" /> Print</Button>
           </div>
         </div>
+        <div className="grid gap-2 border-b bg-background/60 p-3 md:grid-cols-2 xl:grid-cols-6">
+          <Select aria-label="Filter by project" value={filters.project} onChange={(event) => onFiltersChange({ ...filters, project: event.target.value })}>
+            <option value="">All projects</option>
+            {filterOptions.projects.map((project) => <option key={project} value={project}>{project}</option>)}
+          </Select>
+          <Select aria-label="Filter by layer category" value={filters.category} onChange={(event) => onFiltersChange({ ...filters, category: event.target.value })}>
+            <option value="">All map types</option>
+            {filterOptions.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+          </Select>
+          <Select aria-label="Filter by spatial status" value={filters.status} onChange={(event) => onFiltersChange({ ...filters, status: event.target.value })}>
+            <option value="">All statuses</option>
+            {filterOptions.statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </Select>
+          <Select aria-label="Filter by data source" value={filters.source} onChange={(event) => onFiltersChange({ ...filters, source: event.target.value })}>
+            <option value="">All sources</option>
+            {filterOptions.sources.map((source) => <option key={source} value={source}>{source}</option>)}
+          </Select>
+          <Select aria-label="Filter by location" value={filters.location} onChange={(event) => onFiltersChange({ ...filters, location: event.target.value })}>
+            <option value="">All locations</option>
+            {filterOptions.locations.map((location) => <option key={location} value={location}>{location}</option>)}
+          </Select>
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={() => onDensityModeChange(!densityMode)} size="sm" variant={densityMode ? "primary" : "secondary"}>
+              {densityMode ? "Density on" : "Density view"}
+            </Button>
+            <Button className="flex-1" onClick={() => onFiltersChange(emptyMapFeatureFilters())} size="sm" variant="secondary">
+              Clear
+            </Button>
+          </div>
+        </div>
         <div className="relative min-h-[480px] overflow-hidden" ref={mapContainerRef}>
           <LeafletMap
             areaBounds={areaBounds}
             basemap={basemap}
+            boundaryDrawMode={boundaryDrawMode}
+            boundaryDrawPoints={boundaryDrawPoints}
+            boundaryShapes={visibleBoundaryShapes}
             drawMode={drawMode}
+            drawnBoundaries={drawnBoundaries}
+            densityMode={densityMode}
+            featureOpacityByCategory={featureOpacityByCategory}
             features={features}
             onAreaBoundsChange={onAreaBoundsChange}
+            onBoundaryDrawComplete={onBoundaryDrawComplete}
+            onBoundaryDrawPoint={onBoundaryDrawPoint}
             onFeatureSelect={onFeatureSelect}
             onMapReady={(map) => {
               mapInstanceRef.current = map;
@@ -878,6 +1203,7 @@ function EnterpriseMapViewer({
                 <LegendItem color="bg-success" label="Healthy spatial evidence" />
                 <LegendItem color="bg-warning" label="Needs validation" />
                 <LegendItem color="bg-danger" label="Critical issue or gap" />
+                {showBoundaryShapes ? <LegendItem color="border-2 border-primary bg-transparent" label="Project extent (observed boundary)" /> : null}
               </div>
             </div>
             <div className="pointer-events-auto absolute right-4 top-4 max-w-56 rounded-xl border bg-panel/95 p-3 text-xs shadow-line">
@@ -907,6 +1233,42 @@ function EnterpriseMapViewer({
                   >
                     {drawMode ? "Cancel drawing" : "Draw area"}
                   </Button>
+                  <div className="mt-3 border-t pt-3">
+                    <p className="font-semibold">Boundary sketch</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {boundaryDrawMode === "polygon"
+                        ? `${boundaryDrawPoints.length} point${boundaryDrawPoints.length === 1 ? "" : "s"} placed. Add at least 3 points.`
+                        : boundaryDrawMode === "rectangle"
+                          ? "Drag on the map to sketch a rectangle boundary."
+                          : "Sketch a project boundary and export it as GeoJSON."}
+                    </p>
+                    <div className="mt-2 grid gap-2">
+                      {boundaryDrawMode ? (
+                        <>
+                          {boundaryDrawMode === "polygon" ? (
+                            <Button disabled={boundaryDrawPoints.length < 3} onClick={onFinishBoundaryDraw} size="sm" variant="primary">
+                              <FileJson aria-hidden="true" />
+                              Finish polygon
+                            </Button>
+                          ) : null}
+                          <Button onClick={onCancelBoundaryDraw} size="sm" variant="secondary">
+                            Cancel boundary
+                          </Button>
+                        </>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button onClick={() => onStartBoundaryDraw("polygon")} size="sm" variant="secondary">
+                            <PenLine aria-hidden="true" />
+                            Polygon
+                          </Button>
+                          <Button onClick={() => onStartBoundaryDraw("rectangle")} size="sm" variant="secondary">
+                            <Square aria-hidden="true" />
+                            Rectangle
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -970,9 +1332,12 @@ function SectionContent({
   activeSection,
   boundaries,
   coverage,
+  drawnBoundaries,
   indicatorGeography,
   mapFeatures,
   mapLayers,
+  onDeleteDrawnBoundary,
+  onExportDrawnBoundary,
   onFeatureSelect,
   onOpenIndicators,
   projectDataCoverage,
@@ -989,9 +1354,12 @@ function SectionContent({
   activeSection: MappingSection;
   boundaries: BoundaryRecord[];
   coverage: CoverageRecord[];
+  drawnBoundaries: DrawnBoundary[];
   indicatorGeography: IndicatorGeography[];
   mapFeatures: MapFeatureRecord[];
   mapLayers: MapLayerRecord[];
+  onDeleteDrawnBoundary: (id: string) => void;
+  onExportDrawnBoundary: (boundary: DrawnBoundary) => void;
   onFeatureSelect: (feature: MapFeatureRecord) => void;
   onOpenIndicators: () => void;
   projectDataCoverage: ProjectDataCoverage[];
@@ -1006,7 +1374,18 @@ function SectionContent({
   spatialIssues: SpatialQualityIssue[];
 }) {
   if (activeSection === "layers") return <LayersTable features={mapFeatures} layers={mapLayers} onFeatureSelect={onFeatureSelect} privacyVisibility={privacyVisibility} />;
-  if (activeSection === "boundaries") return <BoundariesTable boundaries={boundaries} features={mapFeatures} privacyVisibility={privacyVisibility} />;
+  if (activeSection === "boundaries") {
+    return (
+      <BoundariesTable
+        boundaries={boundaries}
+        drawnBoundaries={drawnBoundaries}
+        features={mapFeatures}
+        onDeleteDrawnBoundary={onDeleteDrawnBoundary}
+        onExportDrawnBoundary={onExportDrawnBoundary}
+        privacyVisibility={privacyVisibility}
+      />
+    );
+  }
   if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} features={mapFeatures} preview={preview} privacyVisibility={privacyVisibility} projectDataCoverage={projectDataCoverage} />;
   if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} onOpenIndicators={onOpenIndicators} />;
   if (activeSection === "data-quality-maps") {
@@ -1234,11 +1613,17 @@ function boundaryProjectName(boundary: BoundaryRecord): string {
 
 function BoundariesTable({
   boundaries,
+  drawnBoundaries,
   features,
+  onDeleteDrawnBoundary,
+  onExportDrawnBoundary,
   privacyVisibility,
 }: {
   boundaries: BoundaryRecord[];
+  drawnBoundaries: DrawnBoundary[];
   features: MapFeatureRecord[];
+  onDeleteDrawnBoundary: (id: string) => void;
+  onExportDrawnBoundary: (boundary: DrawnBoundary) => void;
   privacyVisibility: LayerVisibility;
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -1246,7 +1631,15 @@ function BoundariesTable({
   const [historyBoundary, setHistoryBoundary] = useState<BoundaryRecord | null>(null);
   const [sourceBoundary, setSourceBoundary] = useState<BoundaryRecord | null>(null);
   const [uploadedBoundaries, setUploadedBoundaries] = useState<BoundaryRecord[]>([]);
-  const tableBoundaries = useMemo(() => [...uploadedBoundaries, ...boundaries], [boundaries, uploadedBoundaries]);
+  const drawnBoundaryRecords = useMemo(() => drawnBoundaries.map(boundaryFromDrawnShape), [drawnBoundaries]);
+  const drawnBoundaryById = useMemo(
+    () => new globalThis.Map(drawnBoundaries.map((boundary) => [boundary.id, boundary])),
+    [drawnBoundaries],
+  );
+  const tableBoundaries = useMemo(
+    () => [...drawnBoundaryRecords, ...uploadedBoundaries, ...boundaries],
+    [boundaries, drawnBoundaryRecords, uploadedBoundaries],
+  );
   const sourceProject = sourceBoundary ? boundaryProjectName(sourceBoundary) : "";
   const sourceFeatures = sourceProject ? features.filter((feature) => feature.project === sourceProject) : [];
   function registerBoundaryUpload(event: ChangeEvent<HTMLInputElement>): void {
@@ -1272,12 +1665,24 @@ function BoundariesTable({
       key: "actions",
       header: "Actions",
       align: "right",
-      render: (row) => (
-        <div className="flex flex-wrap justify-end gap-1.5">
-          <Button onClick={() => setSourceBoundary(row)} size="sm" variant="secondary"><MapPin aria-hidden="true" /> Sources</Button>
-          <Button onClick={() => setHistoryBoundary(row)} size="sm" variant="secondary"><Archive aria-hidden="true" /> History</Button>
-        </div>
-      ),
+      render: (row) => {
+        const drawnBoundary = drawnBoundaryById.get(row.id);
+        return (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {drawnBoundary ? (
+              <>
+                <Button onClick={() => onExportDrawnBoundary(drawnBoundary)} size="sm" variant="secondary"><FileJson aria-hidden="true" /> Export</Button>
+                <Button onClick={() => onDeleteDrawnBoundary(drawnBoundary.id)} size="sm" variant="secondary"><Trash2 aria-hidden="true" /> Remove</Button>
+              </>
+            ) : (
+              <>
+                <Button onClick={() => setSourceBoundary(row)} size="sm" variant="secondary"><MapPin aria-hidden="true" /> Sources</Button>
+                <Button onClick={() => setHistoryBoundary(row)} size="sm" variant="secondary"><Archive aria-hidden="true" /> History</Button>
+              </>
+            )}
+          </div>
+        );
+      },
     },
   ];
   const sourceColumns: TableColumn<MapFeatureRecord>[] = [

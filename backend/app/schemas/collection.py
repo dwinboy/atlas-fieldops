@@ -43,12 +43,18 @@ class SurveyRole(StrEnum):
 
 
 FORM_TYPES = {
-    "registration",
-    "monitoring",
-    "follow_up",
-    "verification",
     "assessment",
+    "attendance",
+    "baseline",
+    "case_update",
+    "complaint",
     "custom",
+    "distribution",
+    "endline",
+    "follow_up",
+    "monitoring",
+    "registration",
+    "verification",
 }
 
 

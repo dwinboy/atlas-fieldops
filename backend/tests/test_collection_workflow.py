@@ -30,6 +30,7 @@ from app.schemas.collection import (
     FormDataImportReturnRequest,
     FormControlsSettings,
     LocationCapture,
+    ImportCleaningBulkUpdateRequest,
     SubmissionCreate,
     SubmissionResponsesUpdate,
     SubmissionReviewAction,
@@ -113,6 +114,42 @@ def test_form_schema_accepts_offline_supported_field_types() -> None:
     assert payload.project_id == project_id
     assert payload.survey_id == survey_id
     assert payload.publish is True
+
+
+def test_form_schema_accepts_operational_lifecycle_form_types() -> None:
+    for form_type in [
+        "registration",
+        "baseline",
+        "monitoring",
+        "attendance",
+        "distribution",
+        "assessment",
+        "complaint",
+        "endline",
+        "follow_up",
+        "case_update",
+        "custom",
+    ]:
+        payload = DataFormCreate.model_validate(
+            {
+                "project_id": uuid4(),
+                "survey_id": uuid4(),
+                "name": f"{form_type} form",
+                "slug": f"{form_type.replace('_', '-')}-form",
+                "form_type": form_type,
+                "schema": {
+                    "sections": [
+                        {
+                            "id": "main",
+                            "title": "Main",
+                            "fields": [{"id": "name", "type": "text", "label": "Name"}],
+                        }
+                    ]
+                },
+            }
+        )
+
+        assert payload.form_type == form_type
 
 
 def test_form_schema_rejects_unsupported_field_types() -> None:
@@ -520,6 +557,114 @@ async def test_confirmed_imported_form_row_creates_linked_beneficiary() -> None:
         assert timeline, "status history should be recorded"
         assert timeline[-1].to_status == "approved"
         assert timeline[-1].actor_name == "Manager"
+
+
+@pytest.mark.asyncio
+async def test_cleaned_imported_form_row_can_be_confirmed_and_used() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        project_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Clean Org", slug="clean-org"),
+                User(id=actor_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                Project(id=project_id, organization_id=organization_id, name="Clean Project", slug="clean-project", status="active"),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=actor_user_id,
+                    name="Entity Registration",
+                    slug="entity-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "creates_new_entity": True,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "farmer_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportRequest(
+                rows=[{"phone": "677000009"}],
+                source_name="dirty.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="Backfill registration data",
+            ),
+        )
+        submission_id = imported.submissions[0].id
+        assert imported.imported_rows == 1
+        assert imported.warning_count >= 1
+
+        staged_rows = await service.list_import_cleaning_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+        )
+        assert staged_rows[0].ready_to_confirm is False
+        assert "farmer_name" in staged_rows[0].missing_field_keys
+
+        cleaned = await service.bulk_update_import_cleaning_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            payload=ImportCleaningBulkUpdateRequest(
+                rows=[{"submission_id": submission_id, "responses": {"farmer_name": "Cleaned Farmer", "phone": "677000009"}}],
+                reason="Filled missing farmer name from source file.",
+            ),
+        )
+        assert cleaned.updated_rows == 1
+        assert cleaned.rows[0].ready_to_confirm is True
+
+        confirmed = await service.confirm_imported_form_rows(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            form_id=form_id,
+            payload=FormDataImportConfirmRequest(submission_ids=[submission_id], comment="Cleaned and ready"),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert confirmed.confirmed_rows == 1
+        assert beneficiary.display_name == "Cleaned Farmer"
+        assert beneficiary.phone_number == "677000009"
+        assert beneficiary.profile_json["sourceSubmissionId"] == str(submission_id)
 
 
 @pytest.mark.asyncio

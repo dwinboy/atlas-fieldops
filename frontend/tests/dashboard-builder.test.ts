@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { DashboardWidget, DataFormRead, DataQualitySignalRead, IndicatorRead, ProjectListItemRead, SubmissionRead } from "@/lib/api";
 import type { DashboardApprovalOverview, DashboardCoverageOverview, FormPerformance } from "@/lib/dashboard";
 import {
+  computeTrend,
   cycleWidgetWidth,
   getFormPerformanceBarData,
   getFormPerformanceTableRows,
@@ -16,12 +17,18 @@ import {
   type DashboardWidgetData,
 } from "@/modules/reports/DashboardWidgets";
 import {
+  applyCrossFilterToQualitySignals,
+  applyCrossFilterToSubmissions,
   dashboardRangeDays,
   filterDonorReportsByFilters,
   filterFormsByFilters,
   filterIndicatorsByFilters,
   filterQualitySignalsByFilters,
+  filterQualitySignalsByPreviousPeriod,
   filterSubmissionsByFilters,
+  filterSubmissionsByPreviousPeriod,
+  toggleCrossFilter,
+  type DashboardCrossFilter,
   type DashboardFilters,
 } from "@/modules/reports/dashboardFilters";
 import { dataSourceLabels, widgetTypeDataSources, widgetTypeLabels, type WidgetDataSource, type WidgetType } from "@/modules/reports/data";
@@ -201,6 +208,10 @@ function makeProject(overrides: Partial<ProjectListItemRead> = {}): ProjectListI
   };
 }
 
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 const baseApprovalOverview: DashboardApprovalOverview = { approved: 12, pending: 4, rejected: 2, returned: 1, total: 19 };
 const baseCoverage: DashboardCoverageOverview = { coveragePercent: 75, locatedSubmissions: 15, totalSubmissions: 20, uniqueLocations: 6 };
 
@@ -337,6 +348,78 @@ describe("getKpiValue", () => {
 
     expect(kpi).toBeNull();
   });
+
+  it("omits the trend when no previous period data is supplied", () => {
+    const data = makeData();
+    const kpi = getKpiValue(makeWidget({ data_source: "submissions", metric: "approved" }), data);
+
+    expect(kpi?.trend).toBeUndefined();
+  });
+
+  it("computes an upward trend for an increase in approved submissions", () => {
+    const data = makeData({ previousApprovalOverview: { approved: 8, pending: 4, rejected: 2, returned: 1, total: 15 } });
+    const kpi = getKpiValue(makeWidget({ data_source: "submissions", metric: "approved" }), data);
+
+    expect(kpi?.trend).toEqual({ direction: "up", percent: 50, tone: "success" });
+  });
+
+  it("treats a rise in pending submissions as a bad-direction trend", () => {
+    const data = makeData({
+      approvalOverview: { approved: 12, pending: 8, rejected: 2, returned: 1, total: 23 },
+      previousApprovalOverview: { approved: 12, pending: 4, rejected: 2, returned: 1, total: 19 },
+    });
+    const kpi = getKpiValue(makeWidget({ data_source: "submissions", metric: "pending" }), data);
+
+    expect(kpi?.trend).toEqual({ direction: "up", percent: 100, tone: "danger" });
+  });
+
+  it("treats the total submissions metric as neutral regardless of direction", () => {
+    const data = makeData({ previousApprovalOverview: { approved: 8, pending: 4, rejected: 2, returned: 1, total: 15 } });
+    const kpi = getKpiValue(makeWidget({ data_source: "submissions", metric: "total" }), data);
+
+    expect(kpi?.trend).toEqual({ direction: "up", percent: 27, tone: "neutral" });
+  });
+
+  it("computes a favorable trend when open quality issues decrease", () => {
+    const data = makeData({
+      qualitySignals: [makeQualitySignal({ id: "s1", severity: "low", status: "open" })],
+      previousQualitySignals: [
+        makeQualitySignal({ id: "p1", severity: "low", status: "open" }),
+        makeQualitySignal({ id: "p2", severity: "low", status: "open" }),
+      ],
+    });
+    const kpi = getKpiValue(makeWidget({ data_source: "data_quality", metric: "open" }), data);
+
+    expect(kpi?.trend).toEqual({ direction: "down", percent: 50, tone: "success" });
+  });
+});
+
+describe("computeTrend", () => {
+  it("reports no change when the value is unchanged", () => {
+    expect(computeTrend(10, 10, "up")).toEqual({ direction: "flat", percent: 0, tone: "neutral" });
+  });
+
+  it("reports no change when both current and previous are zero", () => {
+    expect(computeTrend(0, 0, "down")).toEqual({ direction: "flat", percent: 0, tone: "neutral" });
+  });
+
+  it("treats an increase from zero as a 100% change", () => {
+    expect(computeTrend(5, 0, "up")).toEqual({ direction: "up", percent: 100, tone: "success" });
+    expect(computeTrend(5, 0, "down")).toEqual({ direction: "up", percent: 100, tone: "danger" });
+  });
+
+  it("marks a decrease as favorable when the good direction is down", () => {
+    expect(computeTrend(8, 10, "down")).toEqual({ direction: "down", percent: 20, tone: "success" });
+  });
+
+  it("marks a decrease as unfavorable when the good direction is up", () => {
+    expect(computeTrend(8, 10, "up")).toEqual({ direction: "down", percent: 20, tone: "danger" });
+  });
+
+  it("is always neutral when the good direction is neutral", () => {
+    expect(computeTrend(15, 10, "neutral")).toEqual({ direction: "up", percent: 50, tone: "neutral" });
+    expect(computeTrend(5, 10, "neutral")).toEqual({ direction: "down", percent: 50, tone: "neutral" });
+  });
 });
 
 describe("table row helpers", () => {
@@ -363,11 +446,11 @@ describe("table row helpers", () => {
 
 describe("chart data helpers", () => {
   it("derives indicator progress bars", () => {
-    expect(getIndicatorProgressData([makeIndicator()])).toEqual([{ name: "IND-1", responses: 40 }]);
+    expect(getIndicatorProgressData([makeIndicator()])).toEqual([{ id: "indicator-1", name: "IND-1", responses: 40 }]);
   });
 
   it("derives form performance bars", () => {
-    expect(getFormPerformanceBarData([makeFormPerformance()])).toEqual([{ name: "Household Survey", responses: 10 }]);
+    expect(getFormPerformanceBarData([makeFormPerformance()])).toEqual([{ id: "form-1", name: "Household Survey", responses: 10 }]);
   });
 
   it("groups data quality signals by severity", () => {
@@ -380,15 +463,15 @@ describe("chart data helpers", () => {
     const counts = getQualitySeverityCounts(signals);
     expect(counts).toEqual(
       expect.arrayContaining([
-        { severity: "Critical", count: 2, color: "hsl(var(--danger))" },
-        { severity: "Low", count: 1, color: "hsl(var(--success))" },
+        { id: "critical", severity: "Critical", count: 2, color: "hsl(var(--danger))" },
+        { id: "low", severity: "Low", count: 1, color: "hsl(var(--success))" },
       ]),
     );
 
     expect(getQualitySeverityBarData(signals)).toEqual(
       expect.arrayContaining([
-        { name: "Critical", responses: 2 },
-        { name: "Low", responses: 1 },
+        { id: "critical", name: "Critical", responses: 2 },
+        { id: "low", name: "Low", responses: 1 },
       ]),
     );
   });
@@ -544,6 +627,64 @@ describe("filterQualitySignalsByFilters", () => {
   });
 });
 
+describe("filterSubmissionsByPreviousPeriod", () => {
+  const submissions = [
+    makeSubmission({ id: "current", project_id: "project-1", submitted_at: daysAgoIso(10) }),
+    makeSubmission({ id: "previous", project_id: "project-1", submitted_at: daysAgoIso(45) }),
+    makeSubmission({ id: "previous-other-project", project_id: "project-2", submitted_at: daysAgoIso(45) }),
+    makeSubmission({ id: "too-old", project_id: "project-1", submitted_at: daysAgoIso(90) }),
+  ];
+
+  it("returns submissions from the period immediately before the selected range", () => {
+    const filters: DashboardFilters = { projectId: "all", range: "30d" };
+    const result = filterSubmissionsByPreviousPeriod(submissions, filters);
+
+    expect(result.map((s) => s.id)).toEqual(["previous", "previous-other-project"]);
+  });
+
+  it("combines with the project filter", () => {
+    const filters: DashboardFilters = { projectId: "project-1", range: "30d" };
+    const result = filterSubmissionsByPreviousPeriod(submissions, filters);
+
+    expect(result.map((s) => s.id)).toEqual(["previous"]);
+  });
+
+  it("returns an empty array for the all-time range", () => {
+    const filters: DashboardFilters = { projectId: "all", range: "all" };
+    expect(filterSubmissionsByPreviousPeriod(submissions, filters)).toEqual([]);
+  });
+});
+
+describe("filterQualitySignalsByPreviousPeriod", () => {
+  const signals = [
+    makeQualitySignal({ id: "current", submission_id: "submission-1", created_at: daysAgoIso(10) }),
+    makeQualitySignal({ id: "previous", submission_id: "submission-1", created_at: daysAgoIso(45) }),
+    makeQualitySignal({ id: "previous-no-submission", submission_id: null, created_at: daysAgoIso(45) }),
+    makeQualitySignal({ id: "previous-other-submission", submission_id: "submission-2", created_at: daysAgoIso(45) }),
+    makeQualitySignal({ id: "too-old", submission_id: "submission-1", created_at: daysAgoIso(90) }),
+  ];
+
+  it("returns signals from the period immediately before the selected range", () => {
+    const filters: DashboardFilters = { projectId: "all", range: "30d" };
+    const result = filterQualitySignalsByPreviousPeriod(signals, filters, null);
+
+    expect(result.map((s) => s.id)).toEqual(["previous", "previous-no-submission", "previous-other-submission"]);
+  });
+
+  it("excludes signals tied to submissions outside the allowed set", () => {
+    const filters: DashboardFilters = { projectId: "project-1", range: "30d" };
+    const allowedSubmissionIds = new Set(["submission-1"]);
+    const result = filterQualitySignalsByPreviousPeriod(signals, filters, allowedSubmissionIds);
+
+    expect(result.map((s) => s.id)).toEqual(["previous", "previous-no-submission"]);
+  });
+
+  it("returns an empty array for the all-time range", () => {
+    const filters: DashboardFilters = { projectId: "all", range: "all" };
+    expect(filterQualitySignalsByPreviousPeriod(signals, filters, null)).toEqual([]);
+  });
+});
+
 describe("filterDonorReportsByFilters", () => {
   const projects = [makeProject({ id: "project-1", name: "Project A" }), makeProject({ id: "project-2", name: "Project B" })];
   const reports = [makeDonorReport({ id: "report-a", project: "Project A" }), makeDonorReport({ id: "report-b", project: "Project B" })];
@@ -560,5 +701,76 @@ describe("filterDonorReportsByFilters", () => {
   it("returns everything if the selected project cannot be found", () => {
     const result = filterDonorReportsByFilters(reports, { projectId: "missing-project", range: "all" }, projects);
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("applyCrossFilterToSubmissions", () => {
+  const submissions = [
+    makeSubmission({ id: "approved", form_id: "form-1", status: "approved" }),
+    makeSubmission({ id: "pending", form_id: "form-1", status: "pending_review" }),
+    makeSubmission({ id: "rejected", form_id: "form-2", status: "rejected" }),
+    makeSubmission({ id: "correction", form_id: "form-2", status: "needs_correction" }),
+  ];
+
+  it("returns everything when no cross filter is active", () => {
+    expect(applyCrossFilterToSubmissions(submissions, null)).toEqual(submissions);
+  });
+
+  it("filters by submission status category", () => {
+    const crossFilter: DashboardCrossFilter = { field: "status", value: "approved", label: "Approved" };
+    expect(applyCrossFilterToSubmissions(submissions, crossFilter).map((s) => s.id)).toEqual(["approved"]);
+  });
+
+  it("treats rejected status as both rejected and returned-for-correction", () => {
+    const rejectedFilter: DashboardCrossFilter = { field: "status", value: "rejected", label: "Rejected" };
+    expect(applyCrossFilterToSubmissions(submissions, rejectedFilter).map((s) => s.id)).toEqual(["rejected"]);
+
+    const returnedFilter: DashboardCrossFilter = { field: "status", value: "returned", label: "Returned" };
+    expect(applyCrossFilterToSubmissions(submissions, returnedFilter).map((s) => s.id)).toEqual(["rejected", "correction"]);
+  });
+
+  it("filters by form_id", () => {
+    const crossFilter: DashboardCrossFilter = { field: "form", value: "form-2", label: "Form: B" };
+    expect(applyCrossFilterToSubmissions(submissions, crossFilter).map((s) => s.id)).toEqual(["rejected", "correction"]);
+  });
+});
+
+describe("applyCrossFilterToQualitySignals", () => {
+  const signals = [
+    makeQualitySignal({ id: "critical-1", severity: "critical" }),
+    makeQualitySignal({ id: "critical-2", severity: "Critical" }),
+    makeQualitySignal({ id: "low-1", severity: "low" }),
+  ];
+
+  it("returns everything when no cross filter is active", () => {
+    expect(applyCrossFilterToQualitySignals(signals, null)).toEqual(signals);
+  });
+
+  it("returns everything for non-severity cross filters", () => {
+    const crossFilter: DashboardCrossFilter = { field: "form", value: "form-1", label: "Form: A" };
+    expect(applyCrossFilterToQualitySignals(signals, crossFilter)).toEqual(signals);
+  });
+
+  it("filters by severity, case-insensitively", () => {
+    const crossFilter: DashboardCrossFilter = { field: "severity", value: "critical", label: "Critical severity" };
+    expect(applyCrossFilterToQualitySignals(signals, crossFilter).map((s) => s.id)).toEqual(["critical-1", "critical-2"]);
+  });
+});
+
+describe("toggleCrossFilter", () => {
+  it("sets the cross filter when none is active", () => {
+    const next: DashboardCrossFilter = { field: "status", value: "approved", label: "Approved" };
+    expect(toggleCrossFilter(null, next)).toEqual(next);
+  });
+
+  it("clears the cross filter when the same segment is clicked again", () => {
+    const current: DashboardCrossFilter = { field: "status", value: "approved", label: "Approved" };
+    expect(toggleCrossFilter(current, current)).toBeNull();
+  });
+
+  it("replaces the cross filter when a different segment is clicked", () => {
+    const current: DashboardCrossFilter = { field: "status", value: "approved", label: "Approved" };
+    const next: DashboardCrossFilter = { field: "severity", value: "critical", label: "Critical severity" };
+    expect(toggleCrossFilter(current, next)).toEqual(next);
   });
 });

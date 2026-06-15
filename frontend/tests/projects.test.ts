@@ -25,4 +25,10 @@ describe("projects utilities", () => {
     expect(healthTone("Excellent")).toBe("success");
     expect(healthTone("Critical")).toBe("danger");
   });
+
+  it("keeps preview projects tied to their sector packs", () => {
+    expect(
+      previewProjects.filter((project) => !project.sector_id).map((project) => project.name),
+    ).toEqual([]);
+  });
 });

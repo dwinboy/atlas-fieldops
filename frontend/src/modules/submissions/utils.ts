@@ -293,6 +293,40 @@ export function filterSubmissions(submissions: SubmissionRecord[], section: Subm
   return submissions;
 }
 
+export function getSubmissionFilterOptions(
+  submissions: SubmissionRecord[],
+  filters: { formName?: string; projectName?: string },
+): { forms: string[]; projects: string[]; reviewers: string[] } {
+  const projectsForForm = filters.formName
+    ? Array.from(
+        new Set(
+          submissions
+            .filter((submission) => submission.form_name === filters.formName)
+            .map((submission) => submission.project_name),
+        ),
+      )
+    : [];
+  const effectiveProjectName =
+    filters.projectName ||
+    (projectsForForm.length === 1 ? projectsForForm[0] ?? "" : "");
+  const projectRows = effectiveProjectName
+    ? submissions.filter((submission) => submission.project_name === effectiveProjectName)
+    : submissions;
+  const formRows = filters.formName
+    ? submissions.filter((submission) => submission.form_name === filters.formName)
+    : submissions;
+  const reviewerRows = submissions.filter((submission) => {
+    if (effectiveProjectName && submission.project_name !== effectiveProjectName) return false;
+    if (filters.formName && submission.form_name !== filters.formName) return false;
+    return true;
+  });
+  return {
+    forms: Array.from(new Set(projectRows.map((submission) => submission.form_name))).sort((first, second) => first.localeCompare(second)),
+    projects: Array.from(new Set(formRows.map((submission) => submission.project_name))).sort((first, second) => first.localeCompare(second)),
+    reviewers: Array.from(new Set(reviewerRows.map((submission) => submission.reviewer))).sort((first, second) => first.localeCompare(second)),
+  };
+}
+
 export function applyPreviewReviewAction(
   submissions: SubmissionRecord[],
   submissionId: string,

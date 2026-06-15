@@ -59,13 +59,13 @@ export function formatDashboardDateLabel(value?: string): string {
   });
 }
 
-function isApprovedSubmission(submission: SubmissionRead): boolean {
+export function isApprovedSubmission(submission: SubmissionRead): boolean {
   return ["approved", "accepted", "validated"].includes(
     submission.status.toLowerCase(),
   );
 }
 
-function isCorrectionSubmission(submission: SubmissionRead): boolean {
+export function isCorrectionSubmission(submission: SubmissionRead): boolean {
   return [
     "correction_requested",
     "needs_correction",
@@ -85,7 +85,7 @@ export function isPendingReviewSubmission(submission: SubmissionRead): boolean {
   ].includes(submission.status.toLowerCase());
 }
 
-function isRejectedSubmission(submission: SubmissionRead): boolean {
+export function isRejectedSubmission(submission: SubmissionRead): boolean {
   return ["rejected", "invalid", "discarded"].includes(
     submission.status.toLowerCase(),
   );

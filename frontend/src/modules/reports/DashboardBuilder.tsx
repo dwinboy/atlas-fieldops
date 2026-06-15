@@ -11,13 +11,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, GripVertical, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
 import type { CustomDashboardCreate, CustomDashboardRead, DashboardWidget } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -160,16 +159,14 @@ function SortableWidgetCard({
 export function DashboardBuilder({
   data,
   dashboard,
-  onOpenChange,
+  onBack,
   onSave,
-  open,
   saving,
 }: {
   data: DashboardWidgetData;
   dashboard: CustomDashboardRead | null;
-  onOpenChange: (open: boolean) => void;
+  onBack: () => void;
   onSave: (payload: CustomDashboardCreate) => void;
-  open: boolean;
   saving: boolean;
 }) {
   const [draft, setDraft] = useState<DashboardDraft>(() => draftFromDashboard(dashboard));
@@ -185,12 +182,10 @@ export function DashboardBuilder({
   );
 
   useEffect(() => {
-    if (open) {
-      setDraft(draftFromDashboard(dashboard));
-      resetNewWidget("kpi");
-    }
+    setDraft(draftFromDashboard(dashboard));
+    resetNewWidget("kpi");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, dashboard]);
+  }, [dashboard]);
 
   function resetNewWidget(type: WidgetType): void {
     const dataSource = widgetTypeDataSources[type][0];
@@ -272,15 +267,31 @@ export function DashboardBuilder({
   const canAddWidget = draft.widgets.length < 24 && (!needsReference || referenceChoices.length > 0);
 
   return (
-    <Modal
-      contentClassName="max-w-6xl"
-      onOpenChange={onOpenChange}
-      open={open}
-      title={dashboard ? "Edit dashboard" : "Create dashboard"}
-    >
-      <div className="flex max-h-[75vh] flex-col overflow-y-auto px-5 py-4 product-scrollbar">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="space-y-1 text-sm">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 rounded-xl border bg-panel p-3.5 shadow-line sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Button onClick={onBack} type="button" variant="secondary">
+            <ArrowLeft aria-hidden="true" /> Back to dashboards
+          </Button>
+          <div>
+            <h2 className="text-lg font-semibold">{dashboard ? "Edit dashboard" : "Create dashboard"}</h2>
+            <p className="text-xs text-muted-foreground">Combine indicators, submissions, donor metrics, and data quality signals into one view.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge tone="neutral">{draft.widgets.length} widget{draft.widgets.length === 1 ? "" : "s"}</Badge>
+          <Button onClick={onBack} type="button" variant="secondary">
+            Cancel
+          </Button>
+          <Button disabled={!draft.name.trim() || saving} onClick={handleSave} type="button">
+            {saving ? "Saving..." : "Save dashboard"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <label className="space-y-1 text-sm lg:col-span-2">
             <span className="font-medium">Name</span>
             <Input onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Dashboard name" value={draft.name} />
           </label>
@@ -315,7 +326,7 @@ export function DashboardBuilder({
               <option value="archived">Archived</option>
             </Select>
           </label>
-          <label className="space-y-1 text-sm md:col-span-2">
+          <label className="space-y-1 text-sm lg:col-span-3">
             <span className="font-medium">Description</span>
             <Textarea
               onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
@@ -325,105 +336,96 @@ export function DashboardBuilder({
             />
           </label>
         </div>
+      </div>
 
-        <div className="mt-4 rounded-xl border bg-panel p-3">
-          <p className="mb-2 text-sm font-semibold">Add widget</p>
-          <div className="grid gap-2 md:grid-cols-5">
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <p className="mb-2 text-sm font-semibold">Add widget</p>
+        <div className="grid gap-2 md:grid-cols-5">
+          <label className="space-y-1 text-xs">
+            <span className="font-medium text-muted-foreground">Widget type</span>
+            <Select onChange={(event) => resetNewWidget(event.target.value as WidgetType)} value={newWidgetType}>
+              {Object.entries(widgetTypeLabels).map(([type, label]) => (
+                <option key={type} value={type}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="space-y-1 text-xs">
+            <span className="font-medium text-muted-foreground">Data source</span>
+            <Select onChange={(event) => changeDataSource(event.target.value as WidgetDataSource)} value={newWidgetDataSource}>
+              {widgetTypeDataSources[newWidgetType].map((source) => (
+                <option key={source} value={source}>
+                  {dataSourceLabels[source]}
+                </option>
+              ))}
+            </Select>
+          </label>
+          {needsReference ? (
             <label className="space-y-1 text-xs">
-              <span className="font-medium text-muted-foreground">Widget type</span>
-              <Select onChange={(event) => resetNewWidget(event.target.value as WidgetType)} value={newWidgetType}>
-                {Object.entries(widgetTypeLabels).map(([type, label]) => (
-                  <option key={type} value={type}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="font-medium text-muted-foreground">Data source</span>
-              <Select onChange={(event) => changeDataSource(event.target.value as WidgetDataSource)} value={newWidgetDataSource}>
-                {widgetTypeDataSources[newWidgetType].map((source) => (
-                  <option key={source} value={source}>
-                    {dataSourceLabels[source]}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            {needsReference ? (
-              <label className="space-y-1 text-xs">
-                <span className="font-medium text-muted-foreground">
-                  {newWidgetDataSource === "indicators" ? "Indicator" : newWidgetDataSource === "form_performance" ? "Form" : "Donor report"}
-                </span>
-                <Select onChange={(event) => setNewWidgetReference(event.target.value)} value={newWidgetReference || referenceChoices[0]?.value || ""}>
-                  {referenceChoices.length ? (
-                    referenceChoices.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="">No options available</option>
-                  )}
-                </Select>
-              </label>
-            ) : null}
-            {needsMetric ? (
-              <label className="space-y-1 text-xs">
-                <span className="font-medium text-muted-foreground">Metric</span>
-                <Select onChange={(event) => setNewWidgetMetric(event.target.value)} value={newWidgetMetric || metricChoices[0]?.value || ""}>
-                  {metricChoices.map((option) => (
+              <span className="font-medium text-muted-foreground">
+                {newWidgetDataSource === "indicators" ? "Indicator" : newWidgetDataSource === "form_performance" ? "Form" : "Donor report"}
+              </span>
+              <Select onChange={(event) => setNewWidgetReference(event.target.value)} value={newWidgetReference || referenceChoices[0]?.value || ""}>
+                {referenceChoices.length ? (
+                  referenceChoices.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
-                  ))}
-                </Select>
-              </label>
-            ) : null}
-            <label className="space-y-1 text-xs">
-              <span className="font-medium text-muted-foreground">Title (optional)</span>
-              <Input
-                onChange={(event) => setNewWidgetTitle(event.target.value)}
-                placeholder={defaultWidgetTitle(newWidgetType, newWidgetDataSource, newWidgetReference || referenceChoices[0]?.value || "", newWidgetMetric || metricChoices[0]?.value || "", data)}
-                value={newWidgetTitle}
-              />
+                  ))
+                ) : (
+                  <option value="">No options available</option>
+                )}
+              </Select>
             </label>
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-2">
-            {draft.widgets.length >= 24 ? <span className="text-xs text-muted-foreground">Maximum of 24 widgets per dashboard.</span> : <span />}
-            <Button disabled={!canAddWidget} onClick={addWidget} size="sm" type="button">
-              <Plus aria-hidden="true" /> Add widget
-            </Button>
-          </div>
+          ) : null}
+          {needsMetric ? (
+            <label className="space-y-1 text-xs">
+              <span className="font-medium text-muted-foreground">Metric</span>
+              <Select onChange={(event) => setNewWidgetMetric(event.target.value)} value={newWidgetMetric || metricChoices[0]?.value || ""}>
+                {metricChoices.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
+          <label className="space-y-1 text-xs">
+            <span className="font-medium text-muted-foreground">Title (optional)</span>
+            <Input
+              onChange={(event) => setNewWidgetTitle(event.target.value)}
+              placeholder={defaultWidgetTitle(newWidgetType, newWidgetDataSource, newWidgetReference || referenceChoices[0]?.value || "", newWidgetMetric || metricChoices[0]?.value || "", data)}
+              value={newWidgetTitle}
+            />
+          </label>
         </div>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {draft.widgets.length >= 24 ? <span className="text-xs text-muted-foreground">Maximum of 24 widgets per dashboard.</span> : <span />}
+          <Button disabled={!canAddWidget} onClick={addWidget} size="sm" type="button">
+            <Plus aria-hidden="true" /> Add widget
+          </Button>
+        </div>
+      </div>
 
-        <div className="mt-4">
-          {draft.widgets.length ? (
-            <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>
-              <SortableContext items={draft.widgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {draft.widgets.map((widget) => (
-                    <SortableWidgetCard data={data} key={widget.id} onRemove={() => removeWidget(widget.id)} onResize={() => resizeWidget(widget.id)} widget={widget} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed text-center text-xs text-muted-foreground">
-              No widgets yet. Add a KPI, chart, table, or progress widget above.
-            </div>
-          )}
-        </div>
+      <div className="rounded-xl border bg-panel p-3.5 shadow-line">
+        <p className="mb-2 text-sm font-semibold">Layout</p>
+        {draft.widgets.length ? (
+          <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>
+            <SortableContext items={draft.widgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {draft.widgets.map((widget) => (
+                  <SortableWidgetCard data={data} key={widget.id} onRemove={() => removeWidget(widget.id)} onResize={() => resizeWidget(widget.id)} widget={widget} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed text-center text-xs text-muted-foreground">
+            No widgets yet. Add a KPI, chart, table, or progress widget above.
+          </div>
+        )}
       </div>
-      <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-        <Badge tone="neutral">{draft.widgets.length} widget{draft.widgets.length === 1 ? "" : "s"}</Badge>
-        <div className="flex-1" />
-        <Button onClick={() => onOpenChange(false)} type="button" variant="secondary">
-          Cancel
-        </Button>
-        <Button disabled={!draft.name.trim() || saving} onClick={handleSave} type="button">
-          {saving ? "Saving..." : "Save dashboard"}
-        </Button>
-      </div>
-    </Modal>
+    </div>
   );
 }

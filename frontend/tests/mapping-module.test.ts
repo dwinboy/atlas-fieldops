@@ -7,10 +7,15 @@ import {
 } from "@/modules/mapping/data";
 import type { IndicatorRead } from "@/lib/api";
 import {
+  applyMapFeatureFilters,
   computeMappingSummary,
   deriveIndicatorGeography,
+  extentStatus,
+  extentToBounds,
+  featureSource,
   filterFeaturesBySection,
   maskCoordinate,
+  statusColor,
   toGeoJson,
   validateGpsPoint,
 } from "@/modules/mapping/utils";
@@ -34,6 +39,21 @@ describe("Mapping module helpers", () => {
     expect(filterFeaturesBySection(previewMapFeatures, "submission-maps").every((feature) => feature.category === "Submission")).toBe(true);
     expect(filterFeaturesBySection(previewMapFeatures, "data-quality-maps").every((feature) => feature.category === "Quality")).toBe(true);
     expect(filterFeaturesBySection(previewMapFeatures, "dashboard")).toHaveLength(previewMapFeatures.length);
+  });
+
+  it("applies operational GIS filters without mutating the source feature set", () => {
+    const filtered = applyMapFeatureFilters(previewMapFeatures, {
+      category: "Submission",
+      location: "Mezam",
+      project: "Agricultural Resilience Program",
+      source: "Field Submitted",
+      status: "Healthy",
+    });
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.category).toBe("Submission");
+    expect(featureSource(filtered[0])).toBe("Field Submitted");
+    expect(previewMapFeatures).toHaveLength(6);
   });
 
   it("masks sensitive coordinates for restricted or aggregated visibility", () => {
@@ -68,6 +88,32 @@ describe("Mapping module helpers", () => {
       expect(lat).toBe(Math.round(sensitive.latitude * 100) / 100);
       expect(lng).toBe(Math.round(sensitive.longitude * 100) / 100);
     }
+  });
+
+  it("pads a project's GPS extent into a drawable bounding box", () => {
+    const extent = { project: "P", pointCount: 5, centroidLat: 5, centroidLng: 10, minLat: 4, maxLat: 6, minLng: 9, maxLng: 11 };
+    const bounds = extentToBounds(extent);
+    expect(bounds.north).toBeGreaterThan(extent.maxLat);
+    expect(bounds.south).toBeLessThan(extent.minLat);
+    expect(bounds.east).toBeGreaterThan(extent.maxLng);
+    expect(bounds.west).toBeLessThan(extent.minLng);
+
+    // A single-point extent (zero width/height) still gets a non-zero padded box.
+    const point = { project: "Q", pointCount: 1, centroidLat: 5, centroidLng: 10, minLat: 5, maxLat: 5, minLng: 10, maxLng: 10 };
+    const pointBounds = extentToBounds(point);
+    expect(pointBounds.north).toBeGreaterThan(pointBounds.south);
+    expect(pointBounds.east).toBeGreaterThan(pointBounds.west);
+  });
+
+  it("classifies extent status and maps statuses to map colors", () => {
+    expect(extentStatus(12)).toBe("Healthy");
+    expect(extentStatus(5)).toBe("Warning");
+    expect(extentStatus(1)).toBe("Critical");
+
+    expect(statusColor("Healthy")).toMatch(/^#/);
+    expect(statusColor("Warning")).toMatch(/^#/);
+    expect(statusColor("Critical")).toMatch(/^#/);
+    expect(statusColor("Inactive")).toMatch(/^#/);
   });
 
   it("derives project-level indicator geography from live metrics", () => {

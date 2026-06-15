@@ -352,15 +352,27 @@ const previewSectorPacks: ProjectSectorPackRead[] = (() => {
 })();
 
 const sectorPackPriority = [
-  "custom",
+  "agriculture",
+  "health",
+  "education",
+  "wash",
+  "humanitarian",
+  "nutrition",
+  "livelihoods",
+  "protection",
+  "governance",
+  "environment",
+  "research",
   "retail",
   "inventory",
   "sales",
   "logistics",
   "manufacturing",
+  "hr",
   "assets",
   "audits",
   "inspections",
+  "custom",
 ];
 
 function sortedSectorPacks(packs: ProjectSectorPackRead[]): ProjectSectorPackRead[] {
@@ -1143,6 +1155,17 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   }, [filterCountry, filterDateFrom, filterDateTo, filterOwner, filterRegion, filterStatus, visibleProjects]);
 
   useEffect(() => {
+    const normalizedPath = pathname?.replace(/\/+$/, "") || "";
+    if (normalizedPath === "/projects/create") {
+      setSelectedProjectId(null);
+      setActiveSection("dashboard");
+      setProjectWizardError("");
+      setEditingProjectId(null);
+      setProjectDraft(defaultProjectDraft);
+      setWizardStep(0);
+      setWizardOpen(true);
+      return;
+    }
     const match = pathname?.match(/^\/projects\/([^/]+)\/data-import\/?$/);
     if (!match?.[1]) return;
     setSelectedProjectId(match[1]);

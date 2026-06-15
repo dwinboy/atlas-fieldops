@@ -57,6 +57,15 @@ export type BoundaryRecord = {
   updatedAt: string;
 };
 
+/** A boundary polygon sketched on the map in this session (client-side only, exportable as GeoJSON). */
+export type DrawnBoundary = {
+  id: string;
+  name: string;
+  /** Closed ring of [latitude, longitude] vertices. */
+  positions: [number, number][];
+  createdAt: string;
+};
+
 export type MapFeatureRecord = {
   id: string;
   label: string;
@@ -79,6 +88,7 @@ export type MapFeatureRecord = {
   gpsAccuracy: number;
   count: number;
   popup: Record<string, string | number>;
+  source?: string;
   sensitive?: boolean;
 };
 

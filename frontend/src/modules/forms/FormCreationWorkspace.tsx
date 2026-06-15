@@ -51,6 +51,7 @@ import {
   type FieldOfficerRead,
   type FormControlsSettings,
   type EntityCategoryRead,
+  type ProjectListItemRead,
   type TeamRead,
 } from "@/lib/api";
 import {
@@ -64,7 +65,7 @@ import {
   type FormReadinessItem,
   type FormSection,
 } from "@/lib/forms";
-import { getSectorTerminology } from "@/lib/sectorTerminology";
+import { SECTOR_TERMINOLOGY, getSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import type { FormListItem } from "@/modules/forms/data";
 import { statusTone } from "@/modules/forms/utils";
@@ -297,6 +298,7 @@ export type FormSetupDraft = {
   formType: string;
   language: string;
   owner: string;
+  projectId: string;
   projectName: string;
 };
 
@@ -365,6 +367,7 @@ const setupDefaults: FormSetupDraft = {
   formType: "Custom",
   language: "English",
   owner: "Operations Manager",
+  projectId: "",
   projectName: projectOptions[0] ?? "Project",
 };
 
@@ -4881,17 +4884,28 @@ export function FormCreationWorkspace({
     queryFn: () => getFormSchema(token ?? "", initialForm?.id ?? ""),
     queryKey: ["form-builder-schema", token, initialForm?.id],
   });
-  const availableProjectOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          preview
-            ? [...localProjects.map((project) => project.name), ...projectOptions]
-            : tenantProjects.map((project) => project.name),
-        ),
-      ),
-    [localProjects, preview, tenantProjects],
-  );
+  const availableProjectOptions = useMemo(() => {
+    const projectsById = new Map<string, Pick<ProjectListItemRead, "id" | "name" | "sector_id" | "sector_name">>();
+    const addProject = (project: Pick<ProjectListItemRead, "id" | "name" | "sector_id" | "sector_name">) => {
+      if (!project.id || projectsById.has(project.id)) return;
+      projectsById.set(project.id, project);
+    };
+
+    if (preview) {
+      for (const project of localProjects) addProject(project);
+      for (const project of previewProjects) addProject(project);
+      for (const name of projectOptions) {
+        if (Array.from(projectsById.values()).some((project) => project.name === name)) continue;
+        projectsById.set(name, { id: name, name, sector_id: null, sector_name: null });
+      }
+    } else {
+      for (const project of tenantProjects) addProject(project);
+    }
+
+    return Array.from(projectsById.values()).sort((first, second) =>
+      first.name.localeCompare(second.name),
+    );
+  }, [localProjects, preview, tenantProjects]);
   const initialDraft = useMemo(
     () =>
       initialForm && (preview || !token)
@@ -4910,11 +4924,13 @@ export function FormCreationWorkspace({
             formType: initialForm.form_type,
             language: "English",
             owner: initialForm.owner,
+            projectId: initialForm.project_id ?? "",
             projectName: initialForm.project_name,
           }
         : {
             ...setupDefaults,
             formName: "New data collection form",
+            projectId: "",
             projectName: "",
           },
     [initialForm],
@@ -4963,11 +4979,15 @@ export function FormCreationWorkspace({
     useState<PreviewFrame>("mobile");
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const selectedProject = useMemo(
-    () =>
-      preview
-        ? [...localProjects, ...previewProjects].find((project) => project.name === setup.projectName)
-        : tenantProjects.find((project) => project.name === setup.projectName),
-    [localProjects, preview, setup.projectName, tenantProjects],
+    () => {
+      const projects = preview ? [...localProjects, ...previewProjects] : tenantProjects;
+      return (
+        projects.find((project) => project.id === setup.projectId) ??
+        projects.find((project) => project.name === setup.projectName) ??
+        null
+      );
+    },
+    [localProjects, preview, setup.projectId, setup.projectName, tenantProjects],
   );
   const selectedProjectId = selectedProject?.id ?? null;
   const sectorTerminology = useMemo(
@@ -4990,11 +5010,34 @@ export function FormCreationWorkspace({
   const primaryEntityPluralLabel = sectorTerminology.primaryEntityPlural;
   const metricLabel = sectorTerminology.metricLabel ?? "Metric";
   const metricPluralLabel = sectorTerminology.metricPluralLabel ?? "Metrics";
+  const sectorPrimaryEntityLabels = useMemo(
+    () =>
+      new Set([
+        defaultControlsDraft.entityType,
+        ...Object.values(SECTOR_TERMINOLOGY).map((terminology) => terminology.primaryEntity),
+      ]),
+    [],
+  );
   const formTypeOptions = useMemo(() => {
     const sectorOptions = sectorFormTypeOptions[sectorTerminology.sectorId] ?? [];
     const current = setup.formType.trim();
     return Array.from(new Set([...(sectorOptions.length ? sectorOptions : formTypes), ...(current ? [current] : [])]));
   }, [sectorTerminology.sectorId, setup.formType]);
+  useEffect(() => {
+    setControlsDraft((current) => {
+      const currentEntityType = current.entityType.trim();
+      const canApplySectorDefault =
+        !currentEntityType || sectorPrimaryEntityLabels.has(currentEntityType);
+      if (!canApplySectorDefault || currentEntityType === primaryEntityLabel) {
+        return current;
+      }
+      return {
+        ...current,
+        entityCategoryId: "",
+        entityType: primaryEntityLabel,
+      };
+    });
+  }, [primaryEntityLabel, sectorPrimaryEntityLabels]);
   const entityCategoriesQuery = useQuery({
     enabled: Boolean(token && !preview && selectedProjectId),
     queryFn: () =>
@@ -5055,7 +5098,7 @@ export function FormCreationWorkspace({
       ? tenantSurveys.find((survey) => survey.project_id === selectedProjectId)
       : null;
   const projectLinked = preview
-    ? Boolean(setup.projectName.trim())
+    ? Boolean(setup.projectId || setup.projectName.trim())
     : Boolean(selectedProjectId);
   const checklist = useMemo(
     () => validateFormForPublish(draftForm, setup, projectLinked, controlsDraft),
@@ -5891,8 +5934,13 @@ export function FormCreationWorkspace({
 
   useEffect(() => {
     if (preview || !tenantProjects.length || !initialForm) return;
+    if (initialForm.project_id && tenantProjects.some((project) => project.id === initialForm.project_id)) return;
     if (tenantProjects.some((project) => project.name === setup.projectName)) return;
-    setSetup((current) => ({ ...current, projectName: initialForm.project_name ?? "" }));
+    setSetup((current) => ({
+      ...current,
+      projectId: initialForm.project_id ?? "",
+      projectName: initialForm.project_name ?? "",
+    }));
   }, [initialForm, preview, setup.projectName, tenantProjects]);
 
   useEffect(() => {
@@ -6805,18 +6853,27 @@ export function FormCreationWorkspace({
               <label className="text-sm">
                 <span className="mb-1 block font-medium">Project</span>
                 <Select
-                  onChange={(event) =>
-                    updateSetup({ projectName: event.target.value })
-                  }
-                  value={setup.projectName}
+                  onChange={(event) => {
+                    const project = availableProjectOptions.find(
+                      (option) => option.id === event.target.value,
+                    );
+                    updateSetup({
+                      projectId: project?.id ?? "",
+                      projectName: project?.name ?? "",
+                    });
+                  }}
+                  value={setup.projectId || setup.projectName}
                 >
                   <option value="">Choose project when ready to publish</option>
                   {!availableProjectOptions.length ? (
                     <option value="">Create or select a project first</option>
                   ) : null}
                   {availableProjectOptions.map((project) => (
-                    <option key={project} value={project}>
-                      {project}
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.sector_id
+                        ? ` · ${getSectorTerminology(project.sector_id).sectorName}`
+                        : ""}
                     </option>
                   ))}
                 </Select>

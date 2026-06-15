@@ -111,7 +111,7 @@ const config: Config = {
         elevated: "0 18px 50px -30px rgba(15, 23, 42, 0.35)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {
