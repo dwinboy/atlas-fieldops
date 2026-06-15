@@ -1036,7 +1036,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   );
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
-  const canManageProjects = hasAnyPermission(principal, [
+  const canManageProjects = preview || hasAnyPermission(principal, [
     "projects.create",
     "projects.manage",
     "projects.edit",

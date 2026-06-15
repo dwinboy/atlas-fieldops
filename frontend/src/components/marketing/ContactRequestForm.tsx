@@ -126,7 +126,7 @@ export function ContactRequestForm({
           >
             Edit request
           </button>
-          <a className="inline-flex h-11 items-center rounded-md border border-black/10 px-5 text-sm font-semibold text-[#0c1f1b] transition hover:bg-black/[0.03]" href="mailto:hello@atlasfieldops.com">
+          <a className="inline-flex h-11 items-center rounded-md border border-black/10 px-5 text-sm font-semibold text-[#0c1f1b] transition hover:bg-black/[0.03]" href="mailto:contact@atlasfieldops.com">
             Email sales
           </a>
         </div>
@@ -160,10 +160,11 @@ export function ContactRequestForm({
             />
           </label>
         ))}
-        <label className="text-sm font-medium text-[#0c1f1b]">
+        <label className="text-sm font-medium text-[#0c1f1b]" htmlFor="lead-organization-size">
           Organization size
           <select
             className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
+            id="lead-organization-size"
             onChange={(event) => updateField("organization_size", event.target.value)}
             value={request.organization_size}
           >
@@ -174,10 +175,11 @@ export function ContactRequestForm({
             <option value="500+">500+ users</option>
           </select>
         </label>
-        <label className="text-sm font-medium text-[#0c1f1b]">
+        <label className="text-sm font-medium text-[#0c1f1b]" htmlFor="lead-sector">
           Primary sector
           <select
             className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
+            id="lead-sector"
             onChange={(event) => updateField("sector", event.target.value)}
             value={request.sector}
           >
@@ -188,10 +190,11 @@ export function ContactRequestForm({
             <option value="other">Other / multi-sector</option>
           </select>
         </label>
-        <label className="text-sm font-medium text-[#0c1f1b]">
+        <label className="text-sm font-medium text-[#0c1f1b]" htmlFor="lead-interest-area">
           Interest area
           <select
             className="mt-2 h-11 w-full rounded-md border border-black/10 bg-white px-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
+            id="lead-interest-area"
             onChange={(event) => updateField("interest_area", event.target.value)}
             value={request.interest_area}
           >
@@ -216,10 +219,11 @@ export function ContactRequestForm({
           </p>
         ) : null}
       </div>
-      <label className="mt-4 block text-sm font-medium text-[#0c1f1b]">
+      <label className="mt-4 block text-sm font-medium text-[#0c1f1b]" htmlFor="lead-message">
         What are you trying to improve?
         <textarea
           className="mt-2 min-h-32 w-full rounded-md border border-black/10 p-3 outline-none transition focus:ring-2 focus:ring-[#0d9488]/25"
+          id="lead-message"
           onChange={(event) => updateField("message", event.target.value)}
           placeholder="Field data collection, entity tracking, reporting, offline sync..."
           value={request.message}

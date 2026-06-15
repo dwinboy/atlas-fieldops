@@ -68,6 +68,7 @@ import { getSectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import type { FormListItem } from "@/modules/forms/data";
 import { statusTone } from "@/modules/forms/utils";
+import { previewProjects } from "@/modules/projects/data";
 import { useWorkspaceStore, type LocalWorkspaceForm } from "@/stores/workspace";
 
 type CreationStage =
@@ -349,6 +350,7 @@ export const sectorFormTypeOptions: Record<string, string[]> = {
 };
 
 const projectOptions = [
+  ...previewProjects.map((project) => project.name),
   "Agricultural Resilience Program",
   "Community Health Access Project",
   "Education Quality Improvement",
@@ -4963,7 +4965,7 @@ export function FormCreationWorkspace({
   const selectedProject = useMemo(
     () =>
       preview
-        ? localProjects.find((project) => project.name === setup.projectName)
+        ? [...localProjects, ...previewProjects].find((project) => project.name === setup.projectName)
         : tenantProjects.find((project) => project.name === setup.projectName),
     [localProjects, preview, setup.projectName, tenantProjects],
   );
