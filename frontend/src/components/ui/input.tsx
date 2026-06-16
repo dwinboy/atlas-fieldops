@@ -84,9 +84,11 @@ export function Select({
   const menuId = `${props.id ?? generatedId}-menu`;
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const options = useMemo(() => extractOptions(children), [children]);
   const [open, setOpen] = useState(false);
   const [highlightedValue, setHighlightedValue] = useState("");
+  const [query, setQuery] = useState("");
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [internalValue, setInternalValue] = useState(
     defaultValue ?? options.find((option) => option.value)?.value ?? "",
@@ -96,9 +98,19 @@ export function Select({
     options.find((option) => option.value === selectedValue) ??
     options.find((option) => !option.disabled) ??
     options[0];
+  const searchable = options.length > 20;
+  const visibleOptions = useMemo(
+    () =>
+      query.trim()
+        ? options.filter((option) =>
+            option.label.toLowerCase().includes(query.trim().toLowerCase()),
+          )
+        : options,
+    [options, query],
+  );
   const enabledOptions = useMemo(
-    () => options.filter((option) => !option.disabled),
-    [options],
+    () => visibleOptions.filter((option) => !option.disabled),
+    [visibleOptions],
   );
   const highlighted =
     enabledOptions.find((option) => option.value === highlightedValue) ??
@@ -156,6 +168,16 @@ export function Select({
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
   }, [enabledOptions, open, selected?.value]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    if (searchable) {
+      window.setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open, searchable]);
 
   useEffect(() => {
     if (selectedValue || !options.length) return;
@@ -245,14 +267,39 @@ export function Select({
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="origin-top overflow-y-auto rounded-xl border bg-panel p-1 shadow-elevated transition-all duration-150 ease-product product-scrollbar"
+              className="origin-top overflow-y-auto overscroll-contain rounded-xl border bg-panel shadow-elevated transition-all duration-150 ease-product product-scrollbar"
               id={menuId}
+              onWheel={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               ref={menuRef}
               role="listbox"
               style={menuStyle}
             >
-              {options.map((option) => {
+              {searchable ? (
+                <div className="sticky top-0 z-10 border-b bg-panel p-2">
+                  <input
+                    aria-label="Search options"
+                    className={cn(inputClass, "h-8 shadow-none")}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setOpen(false);
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                        event.preventDefault();
+                        moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+                      }
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (highlighted) choose(highlighted);
+                      }
+                    }}
+                    placeholder="Search options"
+                    ref={searchRef}
+                    value={query}
+                  />
+                </div>
+              ) : null}
+              <div className="p-1">
+              {visibleOptions.map((option) => {
                 const active = option.value === selectedValue;
                 const highlighted = option.value === highlightedValue;
                 return (
@@ -275,6 +322,12 @@ export function Select({
                   </button>
                 );
               })}
+              {visibleOptions.length === 0 ? (
+                <div className="px-2.5 py-2 text-xs text-muted-foreground">
+                  No options match your search.
+                </div>
+              ) : null}
+              </div>
             </div>,
             document.body,
           )

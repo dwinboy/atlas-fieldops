@@ -4,6 +4,7 @@ export type MappingSection =
   | "submission-maps"
   | "beneficiary-maps"
   | "facility-maps"
+  | "field-officer-maps"
   | "coverage-maps"
   | "indicator-maps"
   | "data-quality-maps"
@@ -76,7 +77,9 @@ export type MapFeatureRecord = {
     | "Facility"
     | "Coverage"
     | "Indicator"
-    | "Quality";
+    | "Quality"
+    | "Assignment"
+    | "Field Officer";
   project: string;
   location: string;
   region: string;
@@ -160,6 +163,7 @@ export const mappingSections: {
   { id: "beneficiary-maps", label: "Beneficiary Maps", route: "/mapping/beneficiary-maps", description: "Beneficiary and household geography with privacy masking and aggregated role-based views." },
   { id: "data-quality-maps", label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS accuracy issues and duplicate-risk records flagged from your real submission and beneficiary data." },
   { id: "facility-maps", label: "Facility Maps", route: "/mapping/facility-maps", description: "Schools, clinics, water points, offices, warehouses, catchments, and service availability." },
+  { id: "field-officer-maps", label: "Field Officer Maps", route: "/mapping/field-officer-maps", description: "Field officer mobile sync locations, supervisor coverage, device status, and recent activity signals." },
   { id: "coverage-maps", label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Covered, under-covered, no-data, and over-sampled areas by assignment, form, target, and location." },
   { id: "indicator-maps", label: "Indicator Maps", route: "/mapping/indicator-maps", description: "Indicator values, baselines, targets, achievement, and hotspots by location." },
   { id: "layers", label: "Map Layers", route: "/mapping/layers", description: "Review live point layers derived from submissions and entity records, plus uploaded GIS layers when connected." },
@@ -222,6 +226,34 @@ export const previewMapLayers: MapLayerRecord[] = [
     type: "Coverage",
     version: "v1",
     visibility: "Aggregated",
+  },
+  {
+    createdAt: "2026-06-06T07:20:00.000Z",
+    description: "Field assignments shown by selected service area, target records, and completion status.",
+    featureCount: 12,
+    geometryType: "Point",
+    id: "live-layer-assignment",
+    name: "Assignment points",
+    owner: "Field Operations",
+    source: "Field assignment schedule",
+    status: "Warning",
+    type: "Assignment evidence",
+    version: "live",
+    visibility: "Internal",
+  },
+  {
+    createdAt: "2026-06-06T07:35:00.000Z",
+    description: "Recent field officer mobile sync locations and device activity.",
+    featureCount: 8,
+    geometryType: "Point",
+    id: "live-layer-field officer",
+    name: "Field Officer points",
+    owner: "Field Operations",
+    source: "Mobile sync",
+    status: "Healthy",
+    type: "Field Officer evidence",
+    version: "live",
+    visibility: "Restricted",
   },
 ];
 
@@ -329,6 +361,40 @@ export const previewMapFeatures: MapFeatureRecord[] = [
     qualityScore: 85,
     region: "West",
     status: "Warning",
+  },
+  {
+    category: "Assignment",
+    count: 120,
+    district: "Mezam",
+    gpsAccuracy: 10,
+    id: "feature-assignment-mezam",
+    label: "Mezam monitoring round",
+    latitude: 5.969,
+    location: "Northwest / Mezam",
+    longitude: 10.166,
+    popup: { Completed: 86, Form: "Monthly Monitoring Visit", Officers: 3, Priority: "High", Status: "In Progress", Target: 120 },
+    project: "Agricultural Resilience Program",
+    qualityScore: 72,
+    region: "Northwest",
+    source: "Field Operations",
+    status: "Warning",
+  },
+  {
+    category: "Field Officer",
+    count: 1,
+    district: "Mezam",
+    gpsAccuracy: 7,
+    id: "feature-officer-amina",
+    label: "Amina Diallo",
+    latitude: 5.973,
+    location: "Northwest / Mezam",
+    longitude: 10.171,
+    popup: { Device: "Samsung A14", "Last sync": "Today", Supervisor: "Joseph N.", Status: "Active" },
+    project: "Agricultural Resilience Program",
+    qualityScore: 93,
+    region: "Northwest",
+    source: "Mobile Sync",
+    status: "Healthy",
   },
 ];
 

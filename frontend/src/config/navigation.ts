@@ -296,6 +296,7 @@ const sidebarSections: NavigationSection[] = [
           { label: "Submission Maps", route: "/mapping/submission-maps", description: "Submitted records plotted by location and quality." },
           { label: "Entity Maps", route: "/mapping/beneficiary-maps", description: "Entity and household locations with privacy controls." },
           { label: "Facility Maps", route: "/mapping/facility-maps", description: "Facilities, schools, clinics, assets, sites, and service points." },
+          { label: "Field Officer Maps", route: "/mapping/field-officer-maps", description: "Mobile sync locations, device signals, and supervisor action queues." },
           { label: "Coverage Maps", route: "/mapping/coverage-maps", description: "Project coverage evidence and underlying GPS records." },
           { label: "Metric Maps", route: "/mapping/indicator-maps", description: "Metric progress linked to project geography." },
           { label: "Data Quality Maps", route: "/mapping/data-quality-maps", description: "GPS issues with inspectable source records." },

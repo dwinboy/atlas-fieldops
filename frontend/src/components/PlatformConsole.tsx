@@ -34,7 +34,7 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   createOrganization,
@@ -70,6 +70,7 @@ import {
   listPlatformSupportQueue,
   listPlatformUsage,
   listPlatformUsers,
+  requestPlatformBackup,
   runPlatformUserSecurityAction,
   updatePlatformFeatureFlag,
   updatePlatformApiGovernancePolicy,
@@ -170,7 +171,7 @@ type DangerousAction =
   | { kind: "support"; organization: PlatformOrganizationRead }
   | { kind: "feature-enable" | "feature-disable"; flag: PlatformFeatureFlagRead }
   | { kind: "user-lock" | "user-unlock" | "user-reset" | "user-revoke" | "user-mfa"; user: PlatformUserRead }
-  | { kind: "backup" | "maintenance" }
+  | { kind: "backup" }
   | null;
 
 type PlanDraft = {
@@ -391,6 +392,7 @@ export function PlatformConsole({
   const [organizationName, setOrganizationName] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizationSlugEdited, setOrganizationSlugEdited] = useState(false);
+  const [consoleSearch, setConsoleSearch] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("ChangeMe12345!");
@@ -805,6 +807,28 @@ export function PlatformConsole({
     },
   });
 
+  const backupRequestMutation = useMutation({
+    mutationFn: (reason: string) => requestPlatformBackup(token ?? "", { reason }),
+    onSuccess: async (result) => {
+      await backupsQuery.refetch();
+      await auditQuery.refetch();
+      setDangerAction(null);
+      setDangerReason("");
+      pushToast({
+        title: "Backup request recorded",
+        description: result.message,
+        tone: "success",
+      });
+    },
+    onError: () => {
+      pushToast({
+        title: "Backup request was not recorded",
+        description: "Confirm your Super Admin session and provide a clear audit reason.",
+        tone: "danger",
+      });
+    },
+  });
+
   const releaseMutation = useMutation({
     mutationFn: () => updatePlatformRelease(token ?? "", releaseDraft),
     onSuccess: async () => {
@@ -1072,6 +1096,48 @@ export function PlatformConsole({
   }
 
   const activeDefinition = consoleSections.find((section) => section.id === activeSection) ?? consoleSections[0];
+  const normalizedConsoleSearch = consoleSearch.trim().toLowerCase();
+  const visibleConsoleSections = normalizedConsoleSearch
+    ? consoleSections.filter((section) =>
+        [section.label, section.description, section.id]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedConsoleSearch),
+      )
+    : consoleSections;
+
+  function checkIntegrationStatus(integration: PlatformIntegrationRead) {
+    const healthy = integration.status === "connected" && integration.health === "healthy";
+    pushToast({
+      title: healthy ? `${integration.name} is healthy` : `${integration.name} needs attention`,
+      description: healthy
+        ? "The last recorded platform status shows this provider is connected and healthy."
+        : "Open Configure to update provider status, owner, health notes, and the audit reason after checking the provider console.",
+      tone: healthy ? "success" : "warning",
+    });
+  }
+
+  function openMaintenanceControls() {
+    setActiveSection("release-center");
+    setReleaseDraft((draft) => ({
+      ...draft,
+      maintenance_mode: true,
+      release_status: draft.release_status === "Ready for review" ? "QA in progress" : draft.release_status,
+    }));
+    window.history.pushState(null, "", "/platform/release-center#maintenance");
+    window.setTimeout(() => {
+      document.getElementById("platform-maintenance-controls")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+    pushToast({
+      title: "Maintenance controls ready",
+      description: "Set the window, affected services, user message, and audit reason, then save the release state.",
+      tone: "warning",
+    });
+  }
+
   const organizations = organizationsQuery.data ?? [];
   const users = usersQuery.data ?? [];
   const auditLogs = auditQuery.data ?? [];
@@ -1755,7 +1821,7 @@ export function PlatformConsole({
       );
     }
     if (activeSection === "sector-packs") return <SectorPacks packs={sectorPacks} isLoading={sectorPacksQuery.isFetching} />;
-    if (activeSection === "integrations") return <Integrations onEdit={openIntegrationEditor} rows={integrations} />;
+    if (activeSection === "integrations") return <Integrations onEdit={openIntegrationEditor} onTest={checkIntegrationStatus} rows={integrations} />;
     if (activeSection === "backups") {
       return (
         <Backups
@@ -1811,11 +1877,10 @@ export function PlatformConsole({
       featureFlagMutation.mutate({ flag: dangerAction.flag, enabled: dangerAction.kind === "feature-enable" });
       return;
     }
-    pushToast({
-      title: dangerAction.kind === "backup" ? "Backup request recorded" : "Maintenance request recorded",
-      description: "The elevated operation placeholder is ready for backend workflow integration and audit enforcement.",
-      tone: "warning",
-    });
+    if (dangerAction.kind === "backup") {
+      backupRequestMutation.mutate(dangerReason.trim());
+      return;
+    }
     setDangerAction(null);
     setDangerReason("");
   }
@@ -1848,7 +1913,7 @@ export function PlatformConsole({
               </div>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {consoleSections.map((section) => {
+              {visibleConsoleSections.map((section) => {
                 const Icon = section.icon;
                 const active = activeSection === section.id;
                 return (
@@ -1869,6 +1934,11 @@ export function PlatformConsole({
                   </button>
                 );
               })}
+              {!visibleConsoleSections.length ? (
+                <div className="rounded-lg border border-white/10 bg-white/[0.06] p-3 text-xs leading-5 text-white/70">
+                  No platform settings match &quot;{consoleSearch}&quot;.
+                </div>
+              ) : null}
             </nav>
             <div className="border-t border-white/10 p-4">
               <Button className="w-full justify-center bg-white/10 text-white hover:bg-white/15" onClick={onSignOut} type="button" variant="ghost">
@@ -1901,12 +1971,21 @@ export function PlatformConsole({
                 </div>
                 <label className="relative min-w-64">
                   <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-                  <Input className="pl-9" placeholder="Search console" />
+                  <Input
+                    aria-label="Search platform console"
+                    className="pl-9"
+                    onChange={(event) => setConsoleSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" || !visibleConsoleSections[0]) return;
+                      const nextSection = visibleConsoleSections[0];
+                      setActiveSection(nextSection.id);
+                      window.history.pushState(null, "", nextSection.route);
+                    }}
+                    placeholder="Search console"
+                    value={consoleSearch}
+                  />
                 </label>
-                <Button onClick={() => {
-                  setActiveSection("release-center");
-                  window.history.pushState(null, "", "/platform/release-center");
-                }} type="button" variant="secondary">
+                <Button onClick={openMaintenanceControls} type="button" variant="secondary">
                   <AlertTriangle aria-hidden="true" />
                   Maintenance
                 </Button>
@@ -1943,7 +2022,13 @@ export function PlatformConsole({
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Status
-              <Input value={planDraft.status} onChange={(event) => setPlanDraft((draft) => ({ ...draft, status: event.target.value }))} placeholder="Active" />
+              <Select value={planDraft.status} onChange={(event) => setPlanDraft((draft) => ({ ...draft, status: event.target.value }))}>
+                <option value="Active">Active</option>
+                <option value="Trial">Trial</option>
+                <option value="Grace">Grace period</option>
+                <option value="Suspended">Suspended</option>
+                <option value="Archived">Archived</option>
+              </Select>
             </label>
             <label className="grid gap-2 text-sm font-medium">
               User limit
@@ -2009,11 +2094,22 @@ export function PlatformConsole({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-medium">
               Status
-              <Input value={integrationDraft.status} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, status: event.target.value }))} />
+              <Select value={integrationDraft.status} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, status: event.target.value }))}>
+                <option value="connected">Connected</option>
+                <option value="configured">Configured</option>
+                <option value="not_connected">Not connected</option>
+                <option value="future_ready">Future ready</option>
+                <option value="disabled">Disabled</option>
+              </Select>
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Health
-              <Input value={integrationDraft.health} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, health: event.target.value }))} />
+              <Select value={integrationDraft.health} onChange={(event) => setIntegrationDraft((draft) => ({ ...draft, health: event.target.value }))}>
+                <option value="healthy">Healthy</option>
+                <option value="warning">Warning</option>
+                <option value="critical">Critical</option>
+                <option value="unknown">Unknown</option>
+              </Select>
             </label>
             <label className="grid gap-2 text-sm font-medium sm:col-span-2">
               Owner
@@ -2070,7 +2166,7 @@ export function PlatformConsole({
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDangerAction(null)} type="button" variant="secondary">Cancel</Button>
             <Button
-              disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending || userSecurityMutation.isPending || featureFlagMutation.isPending}
+              disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending || userSecurityMutation.isPending || featureFlagMutation.isPending || backupRequestMutation.isPending}
               onClick={confirmDangerousAction}
               type="button"
               variant="danger"
@@ -2457,6 +2553,29 @@ function CompliancePolicy({
   policy?: PlatformCompliancePolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading compliance policy" : "Compliance policy unavailable"} detail="Data residency, export, masking, and audit retention controls will appear after the platform API responds." />;
+  const complianceValidationItems = [
+    {
+      label: "Default data region is set",
+      complete: Boolean(draft.default_data_region.trim()),
+    },
+    {
+      label: "At least one allowed data region is listed",
+      complete: draft.allowed_data_regions_text.split("\n").some((region) => region.trim()),
+    },
+    {
+      label: "Audit retention is at least 30 days",
+      complete: draft.audit_retention_days >= 30,
+    },
+    {
+      label: "Data processing contact is a valid email",
+      complete: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.data_processing_contact.trim()),
+    },
+    {
+      label: "Subprocessors URL starts with https://",
+      complete: draft.subprocessors_public_url.trim().startsWith("https://"),
+    },
+  ];
+  const complianceBlocked = complianceValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2496,6 +2615,22 @@ function CompliancePolicy({
             Require DPA for exports
           </label>
         </div>
+        {complianceBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix compliance settings before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {complianceValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Allowed data regions
           <textarea
@@ -2515,7 +2650,7 @@ function CompliancePolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || complianceBlocked} onClick={onSave} type="button" variant="primary">
             Save compliance policy
           </Button>
         </div>
@@ -2540,6 +2675,29 @@ function SlaPolicy({
   policy?: PlatformSlaPolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading SLA policy" : "SLA policy unavailable"} detail="Support response targets and escalation contacts will appear after the platform API responds." />;
+  const slaValidationItems = [
+    {
+      label: "Uptime target is between 90% and 100%",
+      complete: draft.uptime_target_percent >= 90 && draft.uptime_target_percent <= 100,
+    },
+    {
+      label: "Critical response is at least 1 minute",
+      complete: draft.critical_response_minutes >= 1,
+    },
+    {
+      label: "High response is at least 1 hour",
+      complete: draft.high_response_hours >= 1,
+    },
+    {
+      label: "Normal response is at least 1 hour",
+      complete: draft.normal_response_hours >= 1,
+    },
+    {
+      label: "Support session maximum is at least 5 minutes",
+      complete: draft.support_session_max_minutes >= 5,
+    },
+  ];
+  const slaBlocked = slaValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2583,6 +2741,22 @@ function SlaPolicy({
             <Input value={draft.status_page_url} onChange={(event) => onDraftChange((current) => ({ ...current, status_page_url: event.target.value }))} placeholder="https://status.atlasfieldops.com" />
           </label>
         </div>
+        {slaBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix SLA targets before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {slaValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2593,7 +2767,7 @@ function SlaPolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || slaBlocked} onClick={onSave} type="button" variant="primary">
             Save SLA policy
           </Button>
         </div>
@@ -2618,6 +2792,25 @@ function QuotaPolicy({
   policy?: PlatformQuotaPolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading quota policy" : "Quota policy unavailable"} detail="Usage thresholds, rate limits, and overage controls will appear after the platform API responds." />;
+  const quotaValidationItems = [
+    {
+      label: "Warning threshold is between 1% and 100%",
+      complete: draft.warning_threshold_percent >= 1 && draft.warning_threshold_percent <= 100,
+    },
+    {
+      label: "Critical threshold is between 1% and 100%",
+      complete: draft.critical_threshold_percent >= 1 && draft.critical_threshold_percent <= 100,
+    },
+    {
+      label: "Warning threshold is lower than critical threshold",
+      complete: draft.warning_threshold_percent < draft.critical_threshold_percent,
+    },
+    {
+      label: "API rate limit is at least 1 request per minute",
+      complete: draft.api_rate_limit_per_minute >= 1,
+    },
+  ];
+  const quotaBlocked = quotaValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2642,11 +2835,21 @@ function QuotaPolicy({
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Storage overage action
-            <Input value={draft.storage_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, storage_overage_action: event.target.value }))} placeholder="warn, block_uploads, suspend" />
+            <Select value={draft.storage_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, storage_overage_action: event.target.value }))}>
+              <option value="warn">Warn only</option>
+              <option value="block_uploads">Block uploads</option>
+              <option value="block_new">Block new records</option>
+              <option value="suspend">Suspend tenant</option>
+            </Select>
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Submission overage action
-            <Input value={draft.submission_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, submission_overage_action: event.target.value }))} placeholder="warn, block_new, suspend" />
+            <Select value={draft.submission_overage_action} onChange={(event) => onDraftChange((current) => ({ ...current, submission_overage_action: event.target.value }))}>
+              <option value="warn">Warn only</option>
+              <option value="block_uploads">Block uploads</option>
+              <option value="block_new">Block new records</option>
+              <option value="suspend">Suspend tenant</option>
+            </Select>
           </label>
           <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
             <input checked={draft.notify_owners_on_warning} onChange={(event) => onDraftChange((current) => ({ ...current, notify_owners_on_warning: event.target.checked }))} type="checkbox" />
@@ -2657,6 +2860,22 @@ function QuotaPolicy({
             Notify Super Admins on critical
           </label>
         </div>
+        {quotaBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix quota thresholds before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {quotaValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2667,7 +2886,7 @@ function QuotaPolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || quotaBlocked} onClick={onSave} type="button" variant="primary">
             Save quota policy
           </Button>
         </div>
@@ -2692,6 +2911,33 @@ function ObservabilityPolicy({
   policy?: PlatformObservabilityPolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading observability policy" : "Observability policy unavailable"} detail="Health checks, alert thresholds, and mobile sync risk controls will appear after the platform API responds." />;
+  const observabilityValidationItems = [
+    {
+      label: "Health checks run every 10 seconds or more",
+      complete: draft.health_check_interval_seconds >= 10,
+    },
+    {
+      label: "API error threshold is between 0% and 100%",
+      complete: draft.api_error_rate_threshold_percent >= 0 && draft.api_error_rate_threshold_percent <= 100,
+    },
+    {
+      label: "Slow request threshold is at least 100 ms",
+      complete: draft.slow_request_threshold_ms >= 100,
+    },
+    {
+      label: "Mobile sync failure threshold is between 0% and 100%",
+      complete: draft.mobile_sync_failure_threshold_percent >= 0 && draft.mobile_sync_failure_threshold_percent <= 100,
+    },
+    {
+      label: "Offline device alert is at least 1 day",
+      complete: draft.offline_device_alert_days >= 1,
+    },
+    {
+      label: "Alert email is valid",
+      complete: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.alert_email.trim()),
+    },
+  ];
+  const observabilityBlocked = observabilityValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2731,6 +2977,22 @@ function ObservabilityPolicy({
             <Input value={draft.pager_channel} onChange={(event) => onDraftChange((current) => ({ ...current, pager_channel: event.target.value }))} placeholder="#platform-alerts" />
           </label>
         </div>
+        {observabilityBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix observability thresholds before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {observabilityValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2741,7 +3003,7 @@ function ObservabilityPolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || observabilityBlocked} onClick={onSave} type="button" variant="primary">
             Save observability policy
           </Button>
         </div>
@@ -2766,6 +3028,37 @@ function RetentionPolicy({
   policy?: PlatformRetentionPolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading retention policy" : "Retention policy unavailable"} detail="Tenant data, audit log, export, backup, and anonymization retention will appear after the platform API responds." />;
+  const retentionValidationItems = [
+    {
+      label: "Tenant data retention is at least 30 days",
+      complete: draft.tenant_data_retention_days >= 30,
+    },
+    {
+      label: "Audit logs are kept at least 365 days",
+      complete: draft.audit_log_retention_days >= 365,
+    },
+    {
+      label: "Backups are kept at least 7 days",
+      complete: draft.backup_retention_days >= 7,
+    },
+    {
+      label: "Exports are kept at least 1 day",
+      complete: draft.export_retention_days >= 1,
+    },
+    {
+      label: "Inactive tenants archive after at least 30 days",
+      complete: draft.inactive_tenant_archive_days >= 30,
+    },
+    {
+      label: "Deleted users anonymize after at least 1 day",
+      complete: draft.anonymize_deleted_user_days >= 1,
+    },
+    {
+      label: "Audit logs are retained at least as long as backups",
+      complete: draft.audit_log_retention_days >= draft.backup_retention_days,
+    },
+  ];
+  const retentionBlocked = retentionValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2805,6 +3098,22 @@ function RetentionPolicy({
             Legal hold can pause deletion
           </label>
         </div>
+        {retentionBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix retention windows before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {retentionValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2815,7 +3124,7 @@ function RetentionPolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || retentionBlocked} onClick={onSave} type="button" variant="primary">
             Save retention policy
           </Button>
         </div>
@@ -2840,6 +3149,33 @@ function ApiGovernancePolicy({
   policy?: PlatformApiGovernancePolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading API governance policy" : "API governance policy unavailable"} detail="Public API, API key, webhook, and secret rotation controls will appear after the platform API responds." />;
+  const apiValidationItems = [
+    {
+      label: "API keys expire between 1 and 365 days",
+      complete: draft.api_key_expiry_days >= 1 && draft.api_key_expiry_days <= 365,
+    },
+    {
+      label: "Webhook retries are between 0 and 10 attempts",
+      complete: draft.webhook_retry_attempts >= 0 && draft.webhook_retry_attempts <= 10,
+    },
+    {
+      label: "Webhook timeout is between 1 and 120 seconds",
+      complete: draft.webhook_timeout_seconds >= 1 && draft.webhook_timeout_seconds <= 120,
+    },
+    {
+      label: "Secret rotation is between 1 and 365 days",
+      complete: draft.secret_rotation_days >= 1 && draft.secret_rotation_days <= 365,
+    },
+    {
+      label: "Public API requires scoped API keys",
+      complete: !draft.public_api_enabled || draft.require_scoped_api_keys,
+    },
+    {
+      label: "External API access is audited",
+      complete: !draft.public_api_enabled || draft.audit_external_access,
+    },
+  ];
+  const apiBlocked = apiValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2879,6 +3215,22 @@ function ApiGovernancePolicy({
             <Input min={1} type="number" value={draft.secret_rotation_days} onChange={(event) => onDraftChange((current) => ({ ...current, secret_rotation_days: Number(event.target.value) }))} />
           </label>
         </div>
+        {apiBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix API governance settings before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {apiValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2889,7 +3241,7 @@ function ApiGovernancePolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || apiBlocked} onClick={onSave} type="button" variant="primary">
             Save API governance policy
           </Button>
         </div>
@@ -2914,6 +3266,37 @@ function AiGovernancePolicy({
   policy?: PlatformAiGovernancePolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading AI governance policy" : "AI governance policy unavailable"} detail="AI assistance, PII redaction, review, token budget, and audit controls will appear after the platform API responds." />;
+  const aiValidationItems = [
+    {
+      label: "Enabled AI uses an active provider",
+      complete: !draft.ai_features_enabled || draft.default_provider !== "Disabled",
+    },
+    {
+      label: "Monthly token budget is not negative",
+      complete: draft.monthly_token_budget >= 0,
+    },
+    {
+      label: "Enabled AI has a monthly token budget",
+      complete: !draft.ai_features_enabled || draft.monthly_token_budget > 0,
+    },
+    {
+      label: "Prompt retention is between 0 and 365 days",
+      complete: draft.max_prompt_retention_days >= 0 && draft.max_prompt_retention_days <= 365,
+    },
+    {
+      label: "Enabled AI requires PII redaction",
+      complete: !draft.ai_features_enabled || draft.pii_redaction_required,
+    },
+    {
+      label: "Enabled AI requires human review",
+      complete: !draft.ai_features_enabled || draft.human_review_required,
+    },
+    {
+      label: "Enabled AI actions are audited",
+      complete: !draft.ai_features_enabled || draft.audit_ai_actions,
+    },
+  ];
+  const aiBlocked = aiValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2942,7 +3325,13 @@ function AiGovernancePolicy({
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Default provider
-            <Input value={draft.default_provider} onChange={(event) => onDraftChange((current) => ({ ...current, default_provider: event.target.value }))} />
+            <Select value={draft.default_provider} onChange={(event) => onDraftChange((current) => ({ ...current, default_provider: event.target.value }))}>
+              <option value="OpenAI">OpenAI</option>
+              <option value="Azure OpenAI">Azure OpenAI</option>
+              <option value="Anthropic">Anthropic</option>
+              <option value="Disabled">Disabled</option>
+              <option value="Custom">Custom provider</option>
+            </Select>
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Monthly token budget
@@ -2953,6 +3342,22 @@ function AiGovernancePolicy({
             <Input min={0} type="number" value={draft.max_prompt_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, max_prompt_retention_days: Number(event.target.value) }))} />
           </label>
         </div>
+        {aiBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix AI governance settings before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {aiValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -2963,7 +3368,7 @@ function AiGovernancePolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || aiBlocked} onClick={onSave} type="button" variant="primary">
             Save AI governance policy
           </Button>
         </div>
@@ -2988,6 +3393,29 @@ function CommunicationPolicy({
   policy?: PlatformCommunicationPolicyRead;
 }) {
   if (!policy) return <EmptyState title={isLoading ? "Loading communication policy" : "Communication policy unavailable"} detail="Email, SMS, push, broadcast, and notification log defaults will appear after the platform API responds." />;
+  const communicationValidationItems = [
+    {
+      label: "Default from email is valid when transactional email is enabled",
+      complete: !draft.transactional_email_enabled || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.default_from_email.trim()),
+    },
+    {
+      label: "Support reply-to email is valid",
+      complete: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.support_reply_to_email.trim()),
+    },
+    {
+      label: "Notification logs are kept between 30 and 3650 days",
+      complete: draft.notification_log_retention_days >= 30 && draft.notification_log_retention_days <= 3650,
+    },
+    {
+      label: "Tenant broadcasts have at least one enabled channel",
+      complete:
+        !draft.tenant_broadcasts_enabled ||
+        draft.transactional_email_enabled ||
+        draft.sms_enabled ||
+        draft.push_notifications_enabled,
+    },
+  ];
+  const communicationBlocked = communicationValidationItems.some((item) => !item.complete);
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3027,6 +3455,22 @@ function CommunicationPolicy({
             <Input min={30} type="number" value={draft.notification_log_retention_days} onChange={(event) => onDraftChange((current) => ({ ...current, notification_log_retention_days: Number(event.target.value) }))} />
           </label>
         </div>
+        {communicationBlocked ? (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" size={16} />
+              <span>Fix communication settings before saving.</span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              {communicationValidationItems.map((item) => (
+                <span className="flex items-center gap-2" key={item.label}>
+                  <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Audit reason
           <textarea
@@ -3037,7 +3481,7 @@ function CommunicationPolicy({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || communicationBlocked} onClick={onSave} type="button" variant="primary">
             Save communication policy
           </Button>
         </div>
@@ -3085,9 +3529,17 @@ function SummaryList({ items, title }: { items: string[]; title: string }) {
   );
 }
 
-function Integrations({ onEdit, rows }: { onEdit: (row: PlatformIntegrationRead) => void; rows: PlatformIntegrationRead[] }) {
+function Integrations({
+  onEdit,
+  onTest,
+  rows,
+}: {
+  onEdit: (row: PlatformIntegrationRead) => void;
+  onTest: (row: PlatformIntegrationRead) => void;
+  rows: PlatformIntegrationRead[];
+}) {
   return (
-    <Panel title="Platform integrations" description="Secrets are never shown in the UI. Connection tests and disable actions are Super Admin-only and audited.">
+    <Panel title="Platform integrations" description="Secrets are never shown in the UI. Status checks explain the recorded provider health, while configuration changes require an audit reason.">
       <div className="grid gap-3 lg:grid-cols-2">
         {rows.map((row) => (
           <article className="rounded-lg border bg-panel p-4" key={row.key}>
@@ -3099,7 +3551,7 @@ function Integrations({ onEdit, rows }: { onEdit: (row: PlatformIntegrationRead)
               <Badge tone={statusTone(row.health)}>{row.status}</Badge>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button size="sm" type="button" variant="secondary">Test connection</Button>
+              <Button onClick={() => onTest(row)} size="sm" type="button" variant="secondary">Check status</Button>
               <Button onClick={() => onEdit(row)} size="sm" type="button" variant="secondary">Configure</Button>
             </div>
           </article>
@@ -3131,6 +3583,33 @@ function ReleaseCenter({
     ["Redis", release.redis_ready],
     ["Kafka", release.kafka_ready],
   ] as const;
+  const maintenanceStart = draft.maintenance_starts_at ? new Date(draft.maintenance_starts_at).getTime() : Number.NaN;
+  const maintenanceEnd = draft.maintenance_ends_at ? new Date(draft.maintenance_ends_at).getTime() : Number.NaN;
+  const maintenanceWindowInvalid =
+    draft.maintenance_mode &&
+    Number.isFinite(maintenanceStart) &&
+    Number.isFinite(maintenanceEnd) &&
+    maintenanceEnd <= maintenanceStart;
+  const maintenanceMissing =
+    draft.maintenance_mode &&
+    (!draft.maintenance_starts_at ||
+      !draft.maintenance_ends_at ||
+      draft.affected_services.length === 0 ||
+      !draft.maintenance_message.trim());
+  const maintenanceBlocked = maintenanceMissing || maintenanceWindowInvalid;
+  const maintenanceChecklist = [
+    { label: "Start time", complete: Boolean(draft.maintenance_starts_at) },
+    { label: "End time", complete: Boolean(draft.maintenance_ends_at) && !maintenanceWindowInvalid },
+    { label: "Affected services", complete: draft.affected_services.length > 0 },
+    { label: "User message", complete: Boolean(draft.maintenance_message.trim()) },
+  ];
+  const announcementBlocked =
+    draft.announcement_enabled &&
+    (!draft.announcement_title.trim() || !draft.announcement_body.trim());
+  const announcementChecklist = [
+    { label: "Notice title", complete: Boolean(draft.announcement_title.trim()) },
+    { label: "User guidance", complete: Boolean(draft.announcement_body.trim()) },
+  ];
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3173,14 +3652,21 @@ function ReleaseCenter({
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Release status
-            <Input value={draft.release_status} onChange={(event) => onDraftChange((current) => ({ ...current, release_status: event.target.value }))} />
+            <Select value={draft.release_status} onChange={(event) => onDraftChange((current) => ({ ...current, release_status: event.target.value }))}>
+              <option value="Ready for review">Ready for review</option>
+              <option value="QA in progress">QA in progress</option>
+              <option value="Ready to deploy">Ready to deploy</option>
+              <option value="Deploying">Deploying</option>
+              <option value="Released">Released</option>
+              <option value="Rollback needed">Rollback needed</option>
+            </Select>
           </label>
           <label className="flex items-center gap-2 rounded-lg border bg-panel p-3 text-sm font-medium">
             <input checked={draft.maintenance_mode} onChange={(event) => onDraftChange((current) => ({ ...current, maintenance_mode: event.target.checked }))} type="checkbox" />
             Maintenance mode planned
           </label>
         </div>
-        <div className="mt-4 rounded-lg border bg-muted/20 p-4">
+        <div className="mt-4 rounded-lg border bg-muted/20 p-4 scroll-mt-24" id="platform-maintenance-controls">
           <div className="mb-3">
             <h3 className="text-sm font-semibold">Maintenance window</h3>
             <p className="mt-1 text-xs text-muted-foreground">Use this when backend, frontend, mobile sync, imports, or reporting may be interrupted.</p>
@@ -3215,6 +3701,22 @@ function ReleaseCenter({
               value={draft.maintenance_message}
             />
           </label>
+          {draft.maintenance_mode ? (
+            <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+                <AlertTriangle aria-hidden="true" size={16} />
+                <span>{maintenanceWindowInvalid ? "Maintenance end must be after maintenance start." : "Complete the maintenance window before saving."}</span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+                {maintenanceChecklist.map((item) => (
+                  <span className="flex items-center gap-2" key={item.label}>
+                    <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="mt-4 rounded-lg border bg-muted/20 p-4">
           <div className="mb-3">
@@ -3232,7 +3734,12 @@ function ReleaseCenter({
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Tone
-              <Input value={draft.announcement_tone} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_tone: event.target.value }))} placeholder="info, warning, danger" />
+              <Select value={draft.announcement_tone} onChange={(event) => onDraftChange((current) => ({ ...current, announcement_tone: event.target.value }))}>
+                <option value="info">Info</option>
+                <option value="success">Success</option>
+                <option value="warning">Warning</option>
+                <option value="danger">Danger</option>
+              </Select>
             </label>
           </div>
           <label className="mt-3 grid gap-2 text-sm font-medium">
@@ -3244,6 +3751,22 @@ function ReleaseCenter({
               value={draft.announcement_body}
             />
           </label>
+          {draft.announcement_enabled ? (
+            <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-warning">
+                <AlertTriangle aria-hidden="true" size={16} />
+                <span>{announcementBlocked ? "Complete the workspace notice before saving." : "Workspace notice is ready to publish."}</span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                {announcementChecklist.map((item) => (
+                  <span className="flex items-center gap-2" key={item.label}>
+                    <CheckCircle2 aria-hidden="true" className={item.complete ? "text-success" : "text-muted-foreground"} size={14} />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
         <label className="mt-4 grid gap-2 text-sm font-medium">
           Release notes
@@ -3264,7 +3787,7 @@ function ReleaseCenter({
           />
         </label>
         <div className="mt-4 flex justify-end">
-          <Button disabled={!draft.reason.trim() || isSaving} onClick={onSave} type="button" variant="primary">
+          <Button disabled={!draft.reason.trim() || isSaving || maintenanceBlocked || announcementBlocked} onClick={onSave} type="button" variant="primary">
             Save release state
           </Button>
         </div>
@@ -3294,7 +3817,12 @@ function Backups({
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="grid gap-2 text-sm font-medium">
             Backup frequency
-            <Input value={draft.backup_frequency} onChange={(event) => onDraftChange((current) => ({ ...current, backup_frequency: event.target.value }))} />
+            <Select value={draft.backup_frequency} onChange={(event) => onDraftChange((current) => ({ ...current, backup_frequency: event.target.value }))}>
+              <option value="Hourly">Hourly</option>
+              <option value="Daily">Daily</option>
+              <option value="Weekly">Weekly</option>
+              <option value="Monthly">Monthly</option>
+            </Select>
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Data retention days

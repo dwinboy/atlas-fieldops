@@ -71,6 +71,7 @@ export const canonicalRoutes = {
     "/mapping/submission-maps",
     "/mapping/beneficiary-maps",
     "/mapping/facility-maps",
+    "/mapping/field-officer-maps",
     "/mapping/coverage-maps",
     "/mapping/indicator-maps",
     "/mapping/data-quality-maps",

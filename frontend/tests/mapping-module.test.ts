@@ -16,6 +16,7 @@ import {
   filterFeaturesBySection,
   maskCoordinate,
   statusColor,
+  summarizeMapAreaForAssignment,
   toGeoJson,
   validateGpsPoint,
 } from "@/modules/mapping/utils";
@@ -28,7 +29,7 @@ describe("Mapping module helpers", () => {
       layers: previewMapLayers,
     });
 
-    expect(summary.activeMapLayers).toBe(4);
+    expect(summary.activeMapLayers).toBe(6);
     expect(summary.uploadedBoundaries).toBe(4);
     expect(summary.submissionPoints).toBe(18420);
     expect(summary.gpsIssues).toBeGreaterThan(0);
@@ -53,7 +54,18 @@ describe("Mapping module helpers", () => {
     expect(filtered).toHaveLength(1);
     expect(filtered[0]?.category).toBe("Submission");
     expect(featureSource(filtered[0])).toBe("Field Submitted");
-    expect(previewMapFeatures).toHaveLength(6);
+    expect(previewMapFeatures).toHaveLength(8);
+  });
+
+  it("summarizes selected map areas for field assignments", () => {
+    const summary = summarizeMapAreaForAssignment(previewMapFeatures);
+
+    expect(summary.projects).toContain("Agricultural Resilience Program");
+    expect(summary.location).toContain("Mayo-Sava");
+    expect(summary.entityIds).toEqual(
+      expect.arrayContaining(["feature-beneficiary-wouri", "feature-facility-mifi"]),
+    );
+    expect(summary.targetCount).toBeGreaterThan(previewMapFeatures.length);
   });
 
   it("masks sensitive coordinates for restricted or aggregated visibility", () => {

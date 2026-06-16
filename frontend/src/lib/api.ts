@@ -527,6 +527,10 @@ export type PlatformActionResult = {
   message: string;
 };
 
+export type PlatformBackupRequest = {
+  reason: string;
+};
+
 export type PlatformSupportSessionRead = {
   id: string;
   organization_id: string;
@@ -3008,6 +3012,10 @@ export async function getPlatformBackupPolicy(token: string): Promise<PlatformBa
 
 export async function updatePlatformBackupPolicy(token: string, payload: PlatformBackupPolicyUpdate): Promise<PlatformBackupPolicyRead> {
   return request<PlatformBackupPolicyRead>("/platform/backup-policy", { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function requestPlatformBackup(token: string, payload: PlatformBackupRequest): Promise<PlatformActionResult> {
+  return request<PlatformActionResult>("/platform/backups/request", { method: "POST", token, bodyJson: payload });
 }
 
 export async function getPlatformRelease(token: string): Promise<PlatformReleaseRead> {

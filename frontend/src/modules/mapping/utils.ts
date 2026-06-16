@@ -111,6 +111,7 @@ export function filterFeaturesBySection(features: MapFeatureRecord[], section: M
     "coverage-maps": "Coverage",
     "data-quality-maps": "Quality",
     "facility-maps": "Facility",
+    "field-officer-maps": "Field Officer",
     "indicator-maps": "Indicator",
     "project-maps": "Project",
     "submission-maps": "Submission",
@@ -135,6 +136,8 @@ export function featureSource(feature: MapFeatureRecord): string {
   if (typeof feature.popup["Submission source"] === "string") return feature.popup["Submission source"];
   if (feature.category === "Submission") return "Field Submitted";
   if (feature.category === "Beneficiary" || feature.category === "Facility") return "Entity Registry";
+  if (feature.category === "Assignment") return "Field Operations";
+  if (feature.category === "Field Officer") return "Mobile Sync";
   if (feature.category === "Quality") return "Data Quality";
   if (feature.category === "Indicator") return "Indicator Result";
   return "Project Registry";
@@ -151,6 +154,29 @@ export function applyMapFeatureFilters(features: MapFeatureRecord[], filters: Ma
       (!filters.location || location.includes(filters.location.toLowerCase()))
     );
   });
+}
+
+export type MapAreaAssignmentSummary = {
+  entityIds: string[];
+  location: string;
+  projects: string[];
+  targetCount: number;
+};
+
+export function summarizeMapAreaForAssignment(features: MapFeatureRecord[]): MapAreaAssignmentSummary {
+  const projects = Array.from(new Set(features.map((feature) => feature.project).filter(Boolean))).sort();
+  const locations = Array.from(new Set(features.map((feature) => feature.district || feature.region || feature.location).filter(Boolean))).sort();
+  return {
+    entityIds: features
+      .filter((feature) => feature.category === "Beneficiary" || feature.category === "Facility")
+      .map((feature) => {
+        const rawEntityId = feature.popup["Entity record ID"];
+        return typeof rawEntityId === "string" ? rawEntityId : feature.id;
+      }),
+    location: locations.slice(0, 3).join(", ") || "Selected map area",
+    projects,
+    targetCount: features.reduce((sum, feature) => sum + Math.max(1, feature.count), 0),
+  };
 }
 
 export function maskCoordinate(value: number, visibility: LayerVisibility): string {
@@ -237,15 +263,29 @@ export function deriveQualityIssues(features: MapFeatureRecord[]): SpatialQualit
     .filter((feature) => feature.status !== "Healthy")
     .map((feature) => {
       const isBeneficiary = feature.category === "Beneficiary";
+      const isAssignment = feature.category === "Assignment";
+      const isOfficer = feature.category === "Field Officer";
+      const issueType = isBeneficiary
+        ? "High duplicate risk"
+        : isAssignment
+          ? "Assignment coverage issue"
+          : isOfficer
+            ? "Field officer sync/GPS issue"
+            : "Low GPS accuracy";
+      const recommendedAction = isBeneficiary
+        ? "Review for duplicate beneficiary records before approval."
+        : isAssignment
+          ? "Review assignment progress, deadline, or target coverage with the supervisor."
+          : isOfficer
+            ? "Check last sync, device status, and whether the officer is inside the assigned area."
+            : "Request a GPS recapture or review submission accuracy before approval.";
       return {
         enumerator: "—",
         id: `quality-${feature.id}`,
-        issueType: isBeneficiary ? "High duplicate risk" : "Low GPS accuracy",
+        issueType,
         location: feature.location,
         project: feature.project,
-        recommendedAction: isBeneficiary
-          ? "Review for duplicate beneficiary records before approval."
-          : "Request a GPS recapture or review submission accuracy before approval.",
+        recommendedAction,
         severity: feature.status === "Critical" ? "Critical" : "Medium",
         sourceFeatureId: feature.id,
         submissionId: feature.category === "Submission" ? feature.label : feature.id,

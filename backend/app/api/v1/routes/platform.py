@@ -31,6 +31,7 @@ from app.schemas.platform import (
     PlatformBackupJobRead,
     PlatformBackupPolicyRead,
     PlatformBackupPolicyUpdate,
+    PlatformBackupRequest,
     PlatformCompliancePolicyRead,
     PlatformCompliancePolicyUpdate,
     PlatformCommunicationPolicyRead,
@@ -891,6 +892,28 @@ async def platform_backups(
         PlatformBackupJobRead(id="backup-config-daily", backup_type="Configuration Backup", status="scheduled", size="Pending first run", created_at=now, retention="30 days"),
         PlatformBackupJobRead(id="backup-database-daily", backup_type="Database Backup", status="architecture-ready", size="Provider managed", created_at=now, retention="90 days"),
     ]
+
+
+@router.post("/backups/request", response_model=PlatformActionResult, summary="Request a platform backup")
+async def request_platform_backup(
+    payload: PlatformBackupRequest,
+    principal: Annotated[CurrentPrincipal, Depends(require_role("super_admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PlatformActionResult:
+    actor_id = principal_user_uuid(principal)
+    await AuditRepository(session).append(
+        organization_id=principal_platform_organization_uuid(principal),
+        actor_user_id=actor_id,
+        action="platform.backup_requested",
+        resource_type="backup",
+        resource_id="global",
+        metadata={"reason": payload.reason, "environment": settings.app_env},
+    )
+    await session.commit()
+    return PlatformActionResult(
+        status="accepted",
+        message="Backup request recorded. Verify provider-managed execution from backup jobs and the infrastructure console.",
+    )
 
 
 @router.get("/backup-policy", response_model=PlatformBackupPolicyRead, summary="Read platform backup and retention policy")

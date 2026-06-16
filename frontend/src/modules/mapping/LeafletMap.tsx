@@ -351,12 +351,15 @@ export default function LeafletMap({
             <Tooltip sticky>{boundary.name}</Tooltip>
           </Polygon>
         ))}
-        {boundaryDrawMode === "polygon" && boundaryDrawPoints.length ? (
+        {boundaryDrawPoints.length ? (
           <>
             {boundaryDrawPoints.length >= 3 ? (
-              <Polygon pathOptions={{ color: DRAW_COLOR, dashArray: "6 4", fillOpacity: 0.08, weight: 2 }} positions={boundaryDrawPoints} />
+              <Polygon
+                pathOptions={{ color: DRAW_COLOR, dashArray: boundaryDrawMode === "polygon" ? "6 4" : "2 6", fillOpacity: 0.08, weight: 2 }}
+                positions={boundaryDrawPoints}
+              />
             ) : (
-              <Polyline pathOptions={{ color: DRAW_COLOR, dashArray: "6 4", weight: 2 }} positions={boundaryDrawPoints} />
+              <Polyline pathOptions={{ color: DRAW_COLOR, dashArray: boundaryDrawMode === "polygon" ? "6 4" : "2 6", weight: 2 }} positions={boundaryDrawPoints} />
             )}
             {boundaryDrawPoints.map((point, index) => (
               <CircleMarker center={point} key={`${point[0]}-${point[1]}-${index}`} pathOptions={{ color: DRAW_COLOR, fillOpacity: 1 }} radius={4} />

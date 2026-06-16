@@ -36,17 +36,27 @@ import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
+  createFieldOfficerAssignment,
+  createFieldWorkAssignment,
   listBeneficiaries,
+  listFieldOfficers,
+  listFieldWorkAssignments,
+  listForms,
   listIndicators,
   listProjects,
   listSubmissions,
   type CurrentPrincipal,
+  type DataFormRead,
+  type FieldOfficerRead,
+  type FieldWorkAssignmentRead,
   type IndicatorRead,
   type ProjectListItemRead,
 } from "@/lib/api";
+import { previewOfficers } from "@/modules/field-operations/data";
+import { previewForms } from "@/modules/forms/data";
 import { useSectorTerminology, type SectorTerminology } from "@/lib/sectorTerminology";
 import { cn } from "@/lib/utils";
 import {
@@ -88,6 +98,7 @@ import {
   maskCoordinate,
   severityTone,
   statusTone,
+  summarizeMapAreaForAssignment,
   toGeoJson,
   toCsv,
   validateGpsPoint,
@@ -108,6 +119,7 @@ type MapViewerProps = {
   activeSection: MappingSection;
   allFeatures: MapFeatureRecord[];
   areaBounds: BoundingBox | null;
+  areaAssignmentSummary: ReturnType<typeof summarizeMapAreaForAssignment>;
   basemap: MapBasemap;
   boundaryDrawMode: BoundaryDrawMode;
   boundaryDrawPoints: [number, number][];
@@ -127,6 +139,7 @@ type MapViewerProps = {
   onBoundaryDrawComplete: (positions: [number, number][]) => void;
   onBoundaryDrawPoint: (point: [number, number]) => void;
   onCancelBoundaryDraw: () => void;
+  onCreateAreaAssignment: () => void;
   onDrawModeChange: (active: boolean) => void;
   onFeatureSelect: (feature: MapFeatureRecord) => void;
   onFinishBoundaryDraw: () => void;
@@ -134,6 +147,7 @@ type MapViewerProps = {
   onDensityModeChange: (enabled: boolean) => void;
   onLayerOpacityChange: (layerId: string, opacity: number) => void;
   onLayerVisibilityChange: (layerId: string, visible: boolean) => void;
+  onPauseBoundaryDraw: () => void;
   onOpenFeatureSource: (feature: MapFeatureRecord) => void;
   onMapQueryChange: (query: string) => void;
   onStartBoundaryDraw: (mode: "polygon" | "rectangle") => void;
@@ -142,9 +156,52 @@ type MapViewerProps = {
   selectedFeature: MapFeatureRecord | null;
 };
 
+type MapAssignmentDraft = {
+  description: string;
+  endDate: string;
+  formId: string;
+  name: string;
+  officerIds: string[];
+  priority: "Low" | "Normal" | "High" | "Urgent";
+  projectName: string;
+  startDate: string;
+};
+
+type MapWorkspaceMode = "explore" | "analyze" | "draw" | "assign" | "export";
+
+type SavedMapView = {
+  basemap: MapBasemap;
+  createdAt: string;
+  densityMode: boolean;
+  filters: MapFeatureFilters;
+  id: string;
+  mode: MapWorkspaceMode;
+  name: string;
+};
+
+type MapExportReadiness = {
+  blockers: string[];
+  label: string;
+  recommendations: string[];
+  score: number;
+  tone: BadgeProps["tone"];
+};
+
 const basemaps: MapBasemap[] = ["Light", "Streets", "Terrain", "Satellite"];
 
-const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "facility-maps", "coverage-maps", "indicator-maps", "data-quality-maps", "layers", "boundaries"];
+const mapWorkspaceModes: {
+  description: string;
+  id: MapWorkspaceMode;
+  label: string;
+}[] = [
+  { description: "Browse points, boundaries, and popups.", id: "explore", label: "Explore" },
+  { description: "Use density, quality, and performance layers.", id: "analyze", label: "Analyze" },
+  { description: "Sketch project or operational boundaries.", id: "draw", label: "Draw Boundary" },
+  { description: "Select an area and create field work.", id: "assign", label: "Assign Work" },
+  { description: "Prepare CSV, GeoJSON, print, or report outputs.", id: "export", label: "Export" },
+];
+
+const REAL_DATA_SECTIONS: MappingSection[] = ["dashboard", "project-maps", "submission-maps", "beneficiary-maps", "facility-maps", "field-officer-maps", "coverage-maps", "indicator-maps", "data-quality-maps", "layers", "boundaries"];
 
 function sectionFromPath(pathname: string | null): MappingSection {
   const match = mappingSections.find((section) => section.route === pathname);
@@ -194,6 +251,7 @@ function deriveLiveMapLayers(features: MapFeatureRecord[]): MapLayerRecord[] {
     const rows = features.filter((feature) => feature.category === category);
     const hasCritical = rows.some((feature) => feature.status === "Critical");
     const hasWarning = rows.some((feature) => feature.status === "Warning");
+    const restrictedCategory = category === "Beneficiary" || category === "Field Officer";
     return {
       createdAt: new Date().toISOString(),
       description: `Auto-derived ${category.toLowerCase()} point layer from live GPS-tagged records.`,
@@ -202,11 +260,11 @@ function deriveLiveMapLayers(features: MapFeatureRecord[]): MapLayerRecord[] {
       id: `live-layer-${category.toLowerCase()}`,
       name: `${category} points`,
       owner: "Atlas FieldOps",
-      source: "Live submissions and entity records",
+      source: category === "Assignment" ? "Field assignments" : category === "Field Officer" ? "Mobile sync" : "Live submissions and entity records",
       status: hasCritical ? "Critical" : hasWarning ? "Warning" : "Healthy",
       type: `${category} evidence`,
       version: "live",
-      visibility: category === "Beneficiary" ? "Restricted" : "Internal",
+      visibility: restrictedCategory ? "Restricted" : "Internal",
     };
   });
 }
@@ -278,6 +336,38 @@ function emptyMapFeatureFilters(): MapFeatureFilters {
   return { category: "", location: "", project: "", source: "", status: "" };
 }
 
+function defaultSavedMapViews(): SavedMapView[] {
+  return [
+    {
+      basemap: "Light",
+      createdAt: "preset",
+      densityMode: false,
+      filters: { ...emptyMapFeatureFilters(), category: "Assignment" },
+      id: "preset-field-assignments",
+      mode: "assign",
+      name: "Field assignments",
+    },
+    {
+      basemap: "Light",
+      createdAt: "preset",
+      densityMode: true,
+      filters: { ...emptyMapFeatureFilters(), category: "Quality" },
+      id: "preset-quality-risks",
+      mode: "analyze",
+      name: "Quality risks",
+    },
+    {
+      basemap: "Terrain",
+      createdAt: "preset",
+      densityMode: true,
+      filters: { ...emptyMapFeatureFilters(), category: "Indicator" },
+      id: "preset-performance-hotspots",
+      mode: "analyze",
+      name: "Performance hotspots",
+    },
+  ];
+}
+
 function layerFeatureCategory(layer: MapLayerRecord): MapFeatureRecord["category"] | null {
   const direct = layerCategory(layer);
   if (direct) return direct;
@@ -287,9 +377,59 @@ function layerFeatureCategory(layer: MapLayerRecord): MapFeatureRecord["category
   if (text.includes("facilit") || text.includes("clinic") || text.includes("school") || text.includes("warehouse") || text.includes("water")) return "Facility";
   if (text.includes("indicator")) return "Indicator";
   if (text.includes("quality") || text.includes("gps issue")) return "Quality";
+  if (text.includes("assignment")) return "Assignment";
+  if (text.includes("field officer") || text.includes("officer")) return "Field Officer";
   if (text.includes("coverage")) return "Coverage";
   if (text.includes("project") || text.includes("boundary")) return "Project";
   return null;
+}
+
+function layerGroupLabel(layer: MapLayerRecord): string {
+  const category = layerFeatureCategory(layer);
+  if (category === "Assignment" || category === "Field Officer") return "Operational";
+  if (category === "Submission" || category === "Beneficiary" || category === "Facility") return "Evidence";
+  if (category === "Indicator" || category === "Coverage") return "Performance";
+  if (category === "Quality") return "Data Quality";
+  return "Boundaries & Reference";
+}
+
+function categoryLegendColor(category: MapFeatureRecord["category"]): string {
+  if (category === "Assignment") return "bg-primary";
+  if (category === "Field Officer") return "bg-accent";
+  if (category === "Submission") return "bg-success";
+  if (category === "Beneficiary") return "bg-emerald-500";
+  if (category === "Facility") return "bg-sky-500";
+  if (category === "Indicator") return "bg-violet-500";
+  if (category === "Quality") return "bg-danger";
+  if (category === "Coverage") return "bg-warning";
+  return "bg-muted-foreground";
+}
+
+function exportReadiness({
+  featureCount,
+  privacyVisibility,
+  qualityIssues,
+  sensitiveCount,
+}: {
+  featureCount: number;
+  privacyVisibility: LayerVisibility;
+  qualityIssues: number;
+  sensitiveCount: number;
+}): MapExportReadiness {
+  const blockers: string[] = [];
+  const recommendations: string[] = [];
+  if (featureCount === 0) blockers.push("No visible map records in the current view.");
+  if (qualityIssues > 0) recommendations.push(`${qualityIssues} mapped record${qualityIssues === 1 ? "" : "s"} need spatial quality review.`);
+  if (sensitiveCount > 0 && privacyVisibility !== "Aggregated") recommendations.push("Sensitive locations are visible to internal users; use aggregated view for donor or public exports.");
+  if (sensitiveCount > 0 && privacyVisibility === "Aggregated") recommendations.push("Sensitive coordinates will be masked in exports.");
+  const score = Math.max(0, 100 - blockers.length * 45 - recommendations.length * 15);
+  return {
+    blockers,
+    label: blockers.length ? "Blocked" : score >= 80 ? "Ready" : "Review before export",
+    recommendations,
+    score,
+    tone: blockers.length ? "danger" : score >= 80 ? "success" : "warning",
+  };
 }
 
 function featureLayerId(feature: MapFeatureRecord, layers: MapLayerRecord[]): string | null {
@@ -335,6 +475,77 @@ function categoryFromEntityType(entityType: string | null | undefined): MapFeatu
   return "Beneficiary";
 }
 
+function assignmentStatus(record: FieldWorkAssignmentRead): MapFeatureRecord["status"] {
+  const status = record.status.toLowerCase();
+  if (status.includes("overdue") || status.includes("cancelled")) return "Critical";
+  if (status.includes("complete")) return "Healthy";
+  const target = Math.max(1, record.target_count);
+  const progress = record.completed_count / target;
+  return progress >= 0.8 ? "Healthy" : progress >= 0.35 ? "Warning" : "Critical";
+}
+
+function officerActivityStatus(officer: FieldOfficerRead): MapFeatureRecord["status"] {
+  if (!officer.is_active) return "Inactive";
+  if (!officer.last_sync_at && !officer.last_seen_at) return "Warning";
+  const timestamp = new Date(officer.last_sync_at ?? officer.last_seen_at ?? "").getTime();
+  if (Number.isNaN(timestamp)) return "Warning";
+  const hoursSinceSync = (Date.now() - timestamp) / (1000 * 60 * 60);
+  if (hoursSinceSync <= 24) return "Healthy";
+  if (hoursSinceSync <= 72) return "Warning";
+  return "Critical";
+}
+
+function featureProjectCentroids(features: MapFeatureRecord[]): Map<string, { latitude: number; longitude: number; count: number }> {
+  const groups = new globalThis.Map<string, MapFeatureRecord[]>();
+  for (const feature of features) {
+    const items = groups.get(feature.project) ?? [];
+    items.push(feature);
+    groups.set(feature.project, items);
+  }
+  return new globalThis.Map(
+    Array.from(groups.entries()).map(([project, items]) => [
+      project,
+      {
+        count: items.length,
+        latitude: items.reduce((sum, feature) => sum + feature.latitude, 0) / items.length,
+        longitude: items.reduce((sum, feature) => sum + feature.longitude, 0) / items.length,
+      },
+    ]),
+  );
+}
+
+function qualityMapFeatures(issues: SpatialQualityIssue[], sourceFeatures: MapFeatureRecord[]): MapFeatureRecord[] {
+  const featureById = new globalThis.Map(sourceFeatures.map((feature) => [feature.id, feature]));
+  return issues.flatMap((issue) => {
+    const sourceFeature = issue.sourceFeatureId ? featureById.get(issue.sourceFeatureId) : null;
+    if (!sourceFeature) return [];
+    return [
+      {
+        category: "Quality" as const,
+        count: 1,
+        district: sourceFeature.district,
+        gpsAccuracy: sourceFeature.gpsAccuracy,
+        id: `quality-feature-${issue.id}`,
+        label: issue.issueType,
+        latitude: sourceFeature.latitude,
+        location: issue.location,
+        longitude: sourceFeature.longitude,
+        popup: {
+          "Issue type": issue.issueType,
+          "Related record": sourceFeature.label,
+          "Recommended action": issue.recommendedAction,
+          Severity: issue.severity,
+        },
+        project: issue.project,
+        qualityScore: Math.max(0, sourceFeature.qualityScore - 20),
+        region: sourceFeature.region,
+        source: "Data Quality",
+        status: issue.severity === "Critical" || issue.validationState === "Failed" ? "Critical" : "Warning",
+      },
+    ];
+  });
+}
+
 export function MappingModule({ principal, token }: MappingModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -354,6 +565,8 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const [filters, setFilters] = useState<MapFeatureFilters>(() => emptyMapFeatureFilters());
   const [layerOpacity, setLayerOpacity] = useState<Record<string, number>>({});
   const [layerVisibility, setLayerVisibility] = useState<Record<string, boolean>>({});
+  const [assignmentDraft, setAssignmentDraft] = useState<MapAssignmentDraft | null>(null);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const preserveFeatureIdRef = useRef<string | null>(null);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pendingMapFeatureId = useWorkspaceStore((state) => state.pendingMapFeatureId);
@@ -382,11 +595,30 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     queryFn: () => listIndicators(token ?? ""),
     queryKey: ["mapping", "indicators", token],
   });
+  const formsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listForms(token ?? ""),
+    queryKey: ["mapping", "forms", token],
+  });
+  const fieldOfficersQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listFieldOfficers(token ?? ""),
+    queryKey: ["mapping", "field-officers", token],
+  });
+  const fieldWorkAssignmentsQuery = useQuery({
+    enabled: Boolean(token && !preview),
+    queryFn: () => listFieldWorkAssignments(token ?? ""),
+    queryKey: ["mapping", "field-work-assignments", token],
+  });
 
   const realMapFeatures = useMemo<MapFeatureRecord[]>(() => {
     const projectNameById: Record<string, string> = Object.fromEntries(
       (projectsQuery.data ?? []).map((project) => [project.id, project.name]),
     );
+    const formNameById: Record<string, string> = Object.fromEntries(
+      (formsQuery.data ?? []).map((form) => [form.id, form.name]),
+    );
+    const officerById = new globalThis.Map((fieldOfficersQuery.data ?? []).map((officer) => [officer.id, officer]));
     const geotaggedSubmissions = (submissionsQuery.data ?? [])
       .filter((submission) => submission.latitude && submission.longitude)
       .sort((left, right) => new Date(right.submitted_at).getTime() - new Date(left.submitted_at).getTime());
@@ -441,6 +673,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         popup: {
           [`${terminology.primaryEntity} ID`]: beneficiary.beneficiary_uid,
           Enrollment: beneficiary.enrollment_status,
+          "Entity record ID": beneficiary.id,
           Source: "Entity Registry",
           Type: beneficiary.beneficiary_type,
           "Vulnerability score": beneficiary.vulnerability_score,
@@ -454,15 +687,176 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
       };
     });
 
-    return [...submissionFeatures, ...beneficiaryFeatures];
-  }, [beneficiariesQuery.data, projectsQuery.data, submissionsQuery.data, terminology]);
+    const locatedEvidence = [...submissionFeatures, ...beneficiaryFeatures];
+    const centroidsByProject = featureProjectCentroids(locatedEvidence);
+    const entityFeatureByRawId = new globalThis.Map(
+      geotaggedBeneficiaries.map((beneficiary, index) => [beneficiary.id, beneficiaryFeatures[index]]),
+    );
+
+    const assignmentFeatures: MapFeatureRecord[] = (fieldWorkAssignmentsQuery.data ?? []).flatMap((assignment) => {
+      const project = projectNameById[assignment.project_id] ?? "Unassigned project";
+      const assignedEntityFeature = assignment.assigned_entity_ids
+        .map((entityId) => entityFeatureByRawId.get(entityId))
+        .find(Boolean);
+      const assignedOfficer = assignment.officer_ids
+        .map((officerId) => officerById.get(officerId))
+        .find((officer) => officer?.last_latitude && officer.last_longitude);
+      const centroid = centroidsByProject.get(project);
+      const latitude = assignedEntityFeature?.latitude ?? assignedOfficer?.last_latitude ?? centroid?.latitude;
+      const longitude = assignedEntityFeature?.longitude ?? assignedOfficer?.last_longitude ?? centroid?.longitude;
+      if (latitude == null || longitude == null) return [];
+      const status = assignmentStatus(assignment);
+      const target = Math.max(1, assignment.target_count);
+      const completion = Math.min(100, Math.round((assignment.completed_count / target) * 100));
+      return [
+        {
+          category: "Assignment" as const,
+          count: Math.max(1, assignment.target_count),
+          district: assignedEntityFeature?.district ?? "",
+          gpsAccuracy: assignedOfficer ? 12 : 0,
+          id: `assignment-${assignment.id}`,
+          label: assignment.name,
+          latitude,
+          location: assignment.location || assignedEntityFeature?.location || "Assignment area",
+          longitude,
+          popup: {
+            Completed: assignment.completed_count,
+            Form: assignment.form_id ? formNameById[assignment.form_id] ?? "Linked form" : "No form linked",
+            Officers: assignment.officer_ids.length,
+            Priority: assignment.priority,
+            Status: assignment.status,
+            Target: assignment.target_count,
+          },
+          project,
+          qualityScore: completion,
+          region: assignedEntityFeature?.region ?? "",
+          source: "Field Operations",
+          status,
+        },
+      ];
+    });
+
+    const assignmentCountByOfficer = new globalThis.Map<string, number>();
+    for (const assignment of fieldWorkAssignmentsQuery.data ?? []) {
+      for (const officerId of assignment.officer_ids) {
+        assignmentCountByOfficer.set(officerId, (assignmentCountByOfficer.get(officerId) ?? 0) + 1);
+      }
+    }
+    const officerFeatures: MapFeatureRecord[] = (fieldOfficersQuery.data ?? []).flatMap((officer) => {
+      if (officer.last_latitude == null || officer.last_longitude == null) return [];
+      const status = officerActivityStatus(officer);
+      return [
+        {
+          category: "Field Officer" as const,
+          count: 1,
+          district: officer.home_region ?? "",
+          gpsAccuracy: 10,
+          id: `field-officer-${officer.id}`,
+          label: officer.full_name,
+          latitude: officer.last_latitude,
+          location: officer.home_region || "Last mobile sync location",
+          longitude: officer.last_longitude,
+          popup: {
+            "Active assignments": assignmentCountByOfficer.get(officer.id) ?? 0,
+            Device: officer.device_id ?? "Not registered",
+            "Last seen": officer.last_seen_at ? new Date(officer.last_seen_at).toLocaleString() : "Unknown",
+            "Last sync": officer.last_sync_at ? new Date(officer.last_sync_at).toLocaleString() : "Unknown",
+            Supervisor: officer.supervisor_name ?? "Not assigned",
+          },
+          project: "Field Operations",
+          qualityScore: status === "Healthy" ? 95 : status === "Warning" ? 70 : 35,
+          region: officer.home_region ?? "",
+          source: "Mobile Sync",
+          status,
+        },
+      ];
+    });
+
+    const indicatorFeatures: MapFeatureRecord[] = (indicatorsQuery.data ?? []).flatMap((indicator) => {
+      if (!indicator.is_active) return [];
+      const project = indicator.project_id ? projectNameById[indicator.project_id] ?? "Linked project" : "Organization-wide";
+      const centroid = centroidsByProject.get(project) ?? Array.from(centroidsByProject.values())[0];
+      if (!centroid) return [];
+      const achievement = Math.round(indicator.progress_percent);
+      return [
+        {
+          category: "Indicator" as const,
+          count: Math.max(1, Math.round(indicator.current_value)),
+          district: "",
+          gpsAccuracy: 0,
+          id: `indicator-${indicator.id}`,
+          label: indicator.name,
+          latitude: centroid.latitude,
+          location: `${project} performance area`,
+          longitude: centroid.longitude,
+          popup: {
+            Achievement: `${achievement}%`,
+            Baseline: indicator.baseline_value,
+            Current: indicator.current_value,
+            Target: indicator.target_value,
+          },
+          project,
+          qualityScore: Math.max(0, Math.min(100, achievement)),
+          region: "",
+          source: "Indicator Result",
+          status: achievement >= 80 ? "Healthy" : achievement >= 50 ? "Warning" : "Critical",
+        },
+      ];
+    });
+
+    return [...locatedEvidence, ...assignmentFeatures, ...officerFeatures, ...indicatorFeatures];
+  }, [
+    beneficiariesQuery.data,
+    fieldOfficersQuery.data,
+    fieldWorkAssignmentsQuery.data,
+    formsQuery.data,
+    indicatorsQuery.data,
+    projectsQuery.data,
+    submissionsQuery.data,
+    terminology,
+  ]);
 
   const latestSubmissionFeature = useMemo(
     () => realMapFeatures.find((feature) => feature.category === "Submission") ?? null,
     [realMapFeatures],
   );
 
-  const mapFeatures = useMemo(() => (preview ? previewMapFeatures : realMapFeatures), [preview, realMapFeatures]);
+  const baseMapFeatures = useMemo(() => (preview ? previewMapFeatures : realMapFeatures), [preview, realMapFeatures]);
+  const spatialIssues = useMemo(
+    () => (preview ? previewSpatialIssues : deriveQualityIssues(baseMapFeatures)),
+    [baseMapFeatures, preview],
+  );
+  const liveQualityFeatures = useMemo(
+    () => (preview ? [] : qualityMapFeatures(spatialIssues, baseMapFeatures)),
+    [baseMapFeatures, preview, spatialIssues],
+  );
+  const mapFeatures = useMemo(
+    () => (preview ? previewMapFeatures : [...baseMapFeatures, ...liveQualityFeatures]),
+    [baseMapFeatures, liveQualityFeatures, preview],
+  );
+  const assignmentForms = useMemo<DataFormRead[]>(
+    () =>
+      preview
+        ? previewForms.map((form) => ({
+            controls_json: form.controls_json,
+            current_version: form.version,
+            description: form.description ?? null,
+            form_type: null,
+            id: form.id,
+            is_active: true,
+            name: form.name,
+            project_id: form.project_id ?? null,
+            slug: form.slug,
+            status: form.status,
+            survey_id: null,
+          }))
+        : (formsQuery.data ?? []).filter((form) => form.is_active && form.status.toLowerCase() === "published"),
+    [formsQuery.data, preview],
+  );
+  const assignmentOfficers = useMemo<FieldOfficerRead[]>(
+    () => (preview ? previewOfficers : fieldOfficersQuery.data ?? []).filter((officer) => officer.is_active),
+    [fieldOfficersQuery.data, preview],
+  );
   const projectExtents = useMemo(() => computeProjectExtents(mapFeatures), [mapFeatures]);
   const boundaryShapes = useMemo<MapBoundaryShape[]>(
     () =>
@@ -475,7 +869,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
       })),
     [projectExtents],
   );
-  const mapLayers = useMemo(() => (preview ? previewMapLayers : deriveLiveMapLayers(realMapFeatures)), [preview, realMapFeatures]);
+  const mapLayers = useMemo(() => (preview ? previewMapLayers : deriveLiveMapLayers(mapFeatures)), [preview, mapFeatures]);
   useEffect(() => {
     setLayerVisibility((current) => {
       const next: Record<string, boolean> = {};
@@ -516,10 +910,6 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             projects: projectsQuery.data ?? [],
           }),
     [indicatorsQuery.data, preview, projectExtents, projectsQuery.data],
-  );
-  const spatialIssues = useMemo(
-    () => (preview ? previewSpatialIssues : deriveQualityIssues(realMapFeatures)),
-    [preview, realMapFeatures],
   );
   const projectDataCoverage = useMemo<ProjectDataCoverage[]>(
     () =>
@@ -576,6 +966,10 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const spatiallyFilteredFeatures = useMemo(
     () => (areaBounds ? searchedFeatures.filter((feature) => isFeatureInBounds(feature, areaBounds)) : searchedFeatures),
     [areaBounds, searchedFeatures],
+  );
+  const selectedAreaAssignmentSummary = useMemo(
+    () => summarizeMapAreaForAssignment(areaBounds ? spatiallyFilteredFeatures : []),
+    [areaBounds, spatiallyFilteredFeatures],
   );
 
   const searchedLayers = useMemo(() => {
@@ -645,8 +1039,14 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   function startBoundaryDraw(mode: "polygon" | "rectangle"): void {
     setDrawMode(false);
     setAreaBounds(null);
-    setBoundaryDrawPoints([]);
+    if (mode === "rectangle" || boundaryDrawPoints.length === 0) {
+      setBoundaryDrawPoints([]);
+    }
     setBoundaryDrawMode(mode);
+  }
+
+  function pauseBoundaryDraw(): void {
+    setBoundaryDrawMode(null);
   }
 
   function cancelBoundaryDraw(): void {
@@ -728,11 +1128,102 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
     setMapResult(`GeoJSON export prepared with ${spatiallyFilteredFeatures.length} mapped feature(s). Sensitive coordinates follow the active role-based visibility policy.`);
   }
 
+  function openAreaAssignmentDraft(): void {
+    if (!areaBounds || spatiallyFilteredFeatures.length === 0) {
+      pushToast({
+        description: "Draw/select an area on the map first. The assignment will use the mapped records inside that area.",
+        title: "Select a map area",
+        tone: "warning",
+      });
+      return;
+    }
+    const summary = summarizeMapAreaForAssignment(spatiallyFilteredFeatures);
+    const projectName = summary.projects[0] ?? "";
+    const startDate = new Date().toISOString().slice(0, 10);
+    const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const firstMatchingForm = assignmentForms.find((form) => {
+      const project = projectsQuery.data?.find((item) => item.name === projectName);
+      return project ? form.project_id === project.id : previewForms.some((item) => item.id === form.id && item.project_name === projectName);
+    }) ?? assignmentForms[0];
+    setAssignmentDraft({
+      description: `GIS assignment from ${summary.location}. Includes ${spatiallyFilteredFeatures.length} mapped point(s), ${summary.targetCount.toLocaleString()} target record(s), and ${summary.entityIds.length} entity/facility record(s).`,
+      endDate,
+      formId: firstMatchingForm?.id ?? "",
+      name: `${projectName || "Map area"} field assignment`,
+      officerIds: assignmentOfficers[0]?.id ? [assignmentOfficers[0].id] : [],
+      priority: summary.projects.length > 1 ? "High" : "Normal",
+      projectName,
+      startDate,
+    });
+  }
+
+  async function submitAreaAssignment(): Promise<void> {
+    if (!assignmentDraft) return;
+    const summary = summarizeMapAreaForAssignment(spatiallyFilteredFeatures);
+    const selectedProject = (projectsQuery.data ?? []).find((project) => project.name === assignmentDraft.projectName);
+    const selectedForm = assignmentForms.find((form) => form.id === assignmentDraft.formId);
+    const selectedOfficers = assignmentOfficers.filter((officer) => assignmentDraft.officerIds.includes(officer.id));
+    if (!preview && (!token || !selectedProject || !selectedForm || selectedOfficers.length === 0)) {
+      pushToast({
+        description: "Choose one saved project, one published form, and at least one active field officer before creating a live assignment.",
+        title: "Assignment needs saved records",
+        tone: "warning",
+      });
+      return;
+    }
+    setAssignmentSaving(true);
+    try {
+      if (!preview && token && selectedProject && selectedForm) {
+        await createFieldWorkAssignment(token, {
+          assigned_entity_ids: summary.entityIds,
+          description: assignmentDraft.description,
+          end_date: assignmentDraft.endDate || null,
+          form_id: selectedForm.id,
+          location: summary.location,
+          name: assignmentDraft.name,
+          officer_ids: selectedOfficers.map((officer) => officer.id),
+          priority: assignmentDraft.priority,
+          project_id: selectedProject.id,
+          start_date: assignmentDraft.startDate || null,
+          target_count: summary.targetCount,
+          assignment_type: summary.entityIds.length ? "Form + Entity list" : "Form + Location",
+        });
+        await Promise.all(
+          selectedOfficers.map((officer) =>
+            createFieldOfficerAssignment(token, {
+              form_id: selectedForm.id,
+              is_active: true,
+              officer_id: officer.id,
+              project_id: selectedProject.id,
+              region: summary.location,
+            }),
+          ),
+        );
+      }
+      setMapResult(`Assignment draft created from ${summary.location}: ${selectedOfficers.length || assignmentDraft.officerIds.length} officer(s), ${summary.targetCount.toLocaleString()} target record(s), ${summary.entityIds.length} entity/facility link(s).`);
+      pushToast({
+        description: preview ? "Preview assignment created from the selected GIS area." : "Live field assignment created and linked to the selected map area.",
+        title: "Map assignment ready",
+        tone: "success",
+      });
+      setAssignmentDraft(null);
+    } catch (error) {
+      pushToast({
+        description: error instanceof Error ? error.message : "The assignment could not be created.",
+        title: "Assignment failed",
+        tone: "danger",
+      });
+    } finally {
+      setAssignmentSaving(false);
+    }
+  }
+
   function openFeatureSource(feature: MapFeatureRecord): void {
     if (feature.category === "Submission") setActiveView("submissions");
     else if (feature.category === "Beneficiary" || feature.category === "Facility") setActiveView("beneficiaries");
     else if (feature.category === "Quality") setActiveView("dataQuality");
     else if (feature.category === "Indicator") setActiveView("indicators");
+    else if (feature.category === "Assignment" || feature.category === "Field Officer") setActiveView("officers");
     else setActiveView("map");
   }
 
@@ -821,6 +1312,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             activeSection={activeSection}
             allFeatures={mapFeatures}
             areaBounds={areaBounds}
+            areaAssignmentSummary={selectedAreaAssignmentSummary}
             basemap={basemap}
             boundaryDrawMode={boundaryDrawMode}
             boundaryDrawPoints={boundaryDrawPoints}
@@ -840,6 +1332,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onBoundaryDrawComplete={handleBoundaryDrawComplete}
             onBoundaryDrawPoint={handleBoundaryDrawPoint}
             onCancelBoundaryDraw={cancelBoundaryDraw}
+            onCreateAreaAssignment={openAreaAssignmentDraft}
             onDrawModeChange={handleDrawModeChange}
             onDensityModeChange={setDensityMode}
             onFeatureSelect={setSelectedFeature}
@@ -847,6 +1340,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onFinishBoundaryDraw={finishBoundaryDraw}
             onLayerOpacityChange={(layerId, opacity) => setLayerOpacity((current) => ({ ...current, [layerId]: opacity }))}
             onLayerVisibilityChange={(layerId, visible) => setLayerVisibility((current) => ({ ...current, [layerId]: visible }))}
+            onPauseBoundaryDraw={pauseBoundaryDraw}
             onOpenFeatureSource={openFeatureSource}
             onMapQueryChange={setMapQuery}
             onStartBoundaryDraw={startBoundaryDraw}
@@ -906,7 +1400,180 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           </div>
         </div>
       </Modal>
+      <MapAreaAssignmentModal
+        draft={assignmentDraft}
+        forms={assignmentForms}
+        officers={assignmentOfficers}
+        onDraftChange={setAssignmentDraft}
+        onOpenChange={(open) => {
+          if (!open) setAssignmentDraft(null);
+        }}
+        onSubmit={() => {
+          void submitAreaAssignment();
+        }}
+        preview={preview}
+        projects={projectsQuery.data ?? []}
+        saving={assignmentSaving}
+        summary={selectedAreaAssignmentSummary}
+      />
     </section>
+  );
+}
+
+function MapAreaAssignmentModal({
+  draft,
+  forms,
+  officers,
+  onDraftChange,
+  onOpenChange,
+  onSubmit,
+  preview,
+  projects,
+  saving,
+  summary,
+}: {
+  draft: MapAssignmentDraft | null;
+  forms: DataFormRead[];
+  officers: FieldOfficerRead[];
+  onDraftChange: (draft: MapAssignmentDraft | null) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  preview: boolean;
+  projects: ProjectListItemRead[];
+  saving: boolean;
+  summary: ReturnType<typeof summarizeMapAreaForAssignment>;
+}) {
+  const projectOptions = useMemo(
+    () => (summary.projects.length ? summary.projects : projects.map((project) => project.name)),
+    [projects, summary.projects],
+  );
+  const selectedProjectId = projects.find((project) => project.name === draft?.projectName)?.id ?? null;
+  const formsForProject = useMemo(
+    () =>
+      forms.filter((form) => {
+        if (!draft?.projectName) return true;
+        if (preview) {
+          const previewForm = previewForms.find((item) => item.id === form.id);
+          return previewForm?.project_name === draft.projectName;
+        }
+        return !selectedProjectId || form.project_id === selectedProjectId;
+      }),
+    [draft?.projectName, forms, preview, selectedProjectId],
+  );
+  if (!draft) return null;
+  const currentDraft = draft;
+  const canSubmit = Boolean(draft.name.trim() && draft.projectName && draft.formId && draft.officerIds.length);
+  function update(next: Partial<MapAssignmentDraft>): void {
+    onDraftChange({ ...currentDraft, ...next });
+  }
+  function updateProject(projectName: string): void {
+    const nextProjectId = projects.find((project) => project.name === projectName)?.id ?? null;
+    const nextForm = forms.find((form) => {
+      if (preview) return previewForms.find((item) => item.id === form.id)?.project_name === projectName;
+      return !nextProjectId || form.project_id === nextProjectId;
+    });
+    update({ formId: nextForm?.id ?? "", projectName });
+  }
+  return (
+    <Modal onOpenChange={onOpenChange} open={Boolean(draft)} title="Create assignment from map area">
+      <div className="space-y-4 p-5">
+        <div className="rounded-xl border bg-muted/20 p-3">
+          <p className="text-sm font-semibold">Selected GIS area</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-3">
+            <Signal label="Target records" value={summary.targetCount.toLocaleString()} tone="accent" />
+            <Signal label="Entity/facility links" value={summary.entityIds.length.toLocaleString()} tone={summary.entityIds.length ? "success" : "neutral"} />
+            <Signal label="Location" value={summary.location} tone="neutral" />
+          </div>
+          {summary.projects.length > 1 ? (
+            <p className="mt-2 text-xs text-warning">This area contains records from multiple projects. Choose the project that owns this assignment.</p>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Assignment name</span>
+            <Input value={draft.name} onChange={(event) => update({ name: event.target.value })} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Project</span>
+            <Select value={draft.projectName} onChange={(event) => updateProject(event.target.value)}>
+              <option value="">Choose project</option>
+              {projectOptions.map((project) => <option key={project} value={project}>{project}</option>)}
+            </Select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Published form</span>
+            <Select value={draft.formId} onChange={(event) => update({ formId: event.target.value })}>
+              <option value="">Choose form</option>
+              {formsForProject.map((form) => <option key={form.id} value={form.id}>{form.name}</option>)}
+            </Select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Priority</span>
+            <Select value={draft.priority} onChange={(event) => update({ priority: event.target.value as MapAssignmentDraft["priority"] })}>
+              {["Normal", "High", "Urgent", "Low"].map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+            </Select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Start date</span>
+            <Input type="date" value={draft.startDate} onChange={(event) => update({ startDate: event.target.value })} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">End date</span>
+            <Input type="date" value={draft.endDate} onChange={(event) => update({ endDate: event.target.value })} />
+          </label>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-muted-foreground">Field officers</p>
+            <Badge tone={draft.officerIds.length ? "success" : "warning"}>{draft.officerIds.length} selected</Badge>
+          </div>
+          <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border bg-background/70 p-2 product-scrollbar md:grid-cols-2">
+            {officers.length ? officers.map((officer) => {
+              const checked = draft.officerIds.includes(officer.id);
+              return (
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-panel p-2 text-sm" key={officer.id}>
+                  <input
+                    checked={checked}
+                    className="mt-1 accent-primary"
+                    onChange={(event) =>
+                      update({
+                        officerIds: event.target.checked
+                          ? [...draft.officerIds, officer.id]
+                          : draft.officerIds.filter((id) => id !== officer.id),
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    <span className="block font-medium">{officer.full_name}</span>
+                    <span className="text-xs text-muted-foreground">{officer.home_region ?? "No region"} · {officer.supervisor_name ?? "No supervisor"}</span>
+                  </span>
+                </label>
+              );
+            }) : <EmptyMini label="No active field officers available." />}
+          </div>
+        </div>
+
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Supervisor notes</span>
+          <Textarea value={draft.description} onChange={(event) => update({ description: event.target.value })} />
+        </label>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+          <p className="text-xs text-muted-foreground">
+            {preview ? "Preview creates a test assignment summary. Live workspace creates Field Operations and mobile form assignments." : "Live assignments sync through Field Operations and the mobile assignment endpoint."}
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={() => onOpenChange(false)} variant="secondary">Cancel</Button>
+            <Button disabled={!canSubmit || saving} onClick={onSubmit} variant="primary">
+              {saving ? "Creating..." : "Create assignment"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1007,6 +1674,7 @@ function EnterpriseMapViewer({
   activeSection,
   allFeatures,
   areaBounds,
+  areaAssignmentSummary,
   basemap,
   boundaryDrawMode,
   boundaryDrawPoints,
@@ -1026,6 +1694,7 @@ function EnterpriseMapViewer({
   onBoundaryDrawComplete,
   onBoundaryDrawPoint,
   onCancelBoundaryDraw,
+  onCreateAreaAssignment,
   onDrawModeChange,
   onDensityModeChange,
   onFeatureSelect,
@@ -1033,6 +1702,7 @@ function EnterpriseMapViewer({
   onFinishBoundaryDraw,
   onLayerOpacityChange,
   onLayerVisibilityChange,
+  onPauseBoundaryDraw,
   onOpenFeatureSource,
   onMapQueryChange,
   onStartBoundaryDraw,
@@ -1044,8 +1714,12 @@ function EnterpriseMapViewer({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
   const [metadataLayer, setMetadataLayer] = useState<MapLayerRecord | null>(null);
+  const [activeMode, setActiveMode] = useState<MapWorkspaceMode>("explore");
+  const [savedViews, setSavedViews] = useState<SavedMapView[]>(() => defaultSavedMapViews());
+  const [saveViewName, setSaveViewName] = useState("");
   const showBoundaryShapes = activeSection === "boundaries" || activeSection === "project-maps";
   const visibleBoundaryShapes = showBoundaryShapes ? boundaryShapes : [];
+  const activeModeInfo = mapWorkspaceModes.find((mode) => mode.id === activeMode) ?? mapWorkspaceModes[0];
   const filterOptions = useMemo(
     () => ({
       categories: Array.from(new Set(allFeatures.map((feature) => feature.category))).sort(),
@@ -1056,12 +1730,115 @@ function EnterpriseMapViewer({
     }),
     [allFeatures],
   );
+  const groupedLayers = useMemo(() => {
+    const groups = new globalThis.Map<string, MapLayerRecord[]>();
+    for (const layer of layers) {
+      const group = layerGroupLabel(layer);
+      groups.set(group, [...(groups.get(group) ?? []), layer]);
+    }
+    const order = ["Operational", "Evidence", "Performance", "Data Quality", "Boundaries & Reference"];
+    return order
+      .map((label) => ({ label, layers: groups.get(label) ?? [] }))
+      .filter((group) => group.layers.length > 0);
+  }, [layers]);
+  const legendStatusItems = useMemo(
+    () =>
+      (["Healthy", "Warning", "Critical", "Inactive"] as const)
+        .map((status) => ({
+          color: status === "Healthy" ? "bg-success" : status === "Warning" ? "bg-warning" : status === "Inactive" ? "bg-muted-foreground" : "bg-danger",
+          count: features.filter((feature) => feature.status === status).length,
+          label: status,
+        }))
+        .filter((item) => item.count > 0),
+    [features],
+  );
+  const legendCategoryItems = useMemo(
+    () =>
+      Array.from(new Set(features.map((feature) => feature.category)))
+        .sort()
+        .map((category) => ({
+          color: categoryLegendColor(category),
+          count: features.filter((feature) => feature.category === category).length,
+          label: category,
+        })),
+    [features],
+  );
+  const sensitiveFeatureCount = useMemo(() => features.filter((feature) => feature.sensitive).length, [features]);
+  const qualityIssueCount = useMemo(
+    () => features.filter((feature) => feature.category === "Quality" || feature.status === "Critical" || feature.gpsAccuracy > 30).length,
+    [features],
+  );
+  const readiness = useMemo(
+    () =>
+      exportReadiness({
+        featureCount: features.length,
+        privacyVisibility,
+        qualityIssues: qualityIssueCount,
+        sensitiveCount: sensitiveFeatureCount,
+      }),
+    [features.length, privacyVisibility, qualityIssueCount, sensitiveFeatureCount],
+  );
+
+  function changeMode(mode: MapWorkspaceMode): void {
+    setActiveMode(mode);
+    if (mode === "explore") {
+      onDrawModeChange(false);
+      onCancelBoundaryDraw();
+      return;
+    }
+    if (mode === "analyze") {
+      onDensityModeChange(true);
+      onDrawModeChange(false);
+      return;
+    }
+    if (mode === "draw") {
+      onDrawModeChange(false);
+      onAreaBoundsChange(null);
+      if (!boundaryDrawMode && boundaryDrawPoints.length === 0) onStartBoundaryDraw("polygon");
+      return;
+    }
+    if (mode === "assign") {
+      onCancelBoundaryDraw();
+      onAreaBoundsChange(null);
+      onDrawModeChange(true);
+      return;
+    }
+    onDrawModeChange(false);
+    onCancelBoundaryDraw();
+  }
+
+  function applySavedView(view: SavedMapView): void {
+    changeMode(view.mode);
+    onBasemapChange(view.basemap);
+    onDensityModeChange(view.densityMode);
+    onFiltersChange(view.filters);
+  }
+
+  function saveCurrentView(): void {
+    const name = saveViewName.trim();
+    if (!name) return;
+    setSavedViews((current) => [
+      {
+        basemap,
+        createdAt: new Date().toISOString(),
+        densityMode,
+        filters,
+        id: `saved-map-view-${Date.now()}`,
+        mode: activeMode,
+        name,
+      },
+      ...current.filter((view) => view.name.toLowerCase() !== name.toLowerCase()),
+    ]);
+    setSaveViewName("");
+  }
 
   function toggleFullscreen(): void {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
     } else {
-      void mapContainerRef.current?.requestFullscreen();
+      void mapContainerRef.current?.requestFullscreen().then(() => {
+        window.setTimeout(() => mapInstanceRef.current?.invalidateSize(), 150);
+      });
     }
   }
 
@@ -1074,51 +1851,7 @@ function EnterpriseMapViewer({
   }, []);
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-      <aside className="rounded-xl border bg-panel p-3 shadow-line">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Layer control</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Role-aware visibility, status, and geometry type.</p>
-          </div>
-          <Layers aria-hidden="true" className="text-primary" size={18} />
-        </div>
-        <div className="mt-4 space-y-2">
-          {layers.map((layer) => (
-            <div className={cn("rounded-xl border bg-background/70 p-3 transition", layerVisibility[layer.id] === false && "opacity-60")} key={layer.id}>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  checked={layerVisibility[layer.id] !== false}
-                  className="mt-1 accent-primary"
-                  onChange={(event) => onLayerVisibilityChange(layer.id, event.target.checked)}
-                  type="checkbox"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{layer.name}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">{layer.geometryType} · {layer.featureCount.toLocaleString()} features</span>
-                </span>
-                <Badge tone={visibilityTone(layer.visibility)}>{layer.visibility}</Badge>
-              </label>
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">Opacity</span>
-                <input
-                  aria-label={`${layer.name} opacity`}
-                  className="min-w-0 flex-1 accent-primary"
-                  max={100}
-                  min={20}
-                  onChange={(event) => onLayerOpacityChange(layer.id, Number(event.target.value))}
-                  type="range"
-                  value={layerOpacity[layer.id] ?? 100}
-                />
-                <button className="text-xs font-medium text-primary hover:underline" onClick={() => setMetadataLayer(layer)} type="button">
-                  Details
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </aside>
-
+    <section className="grid gap-4">
       <div className="overflow-hidden rounded-2xl border bg-panel shadow-line">
         <div className="flex flex-col gap-3 border-b bg-muted/20 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -1126,6 +1859,9 @@ function EnterpriseMapViewer({
               <h2 className="text-sm font-semibold">Map Overview</h2>
               <HelpHint label="About this map" title={activeInfo.label}>{activeInfo.description}</HelpHint>
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Filter records above the map, draw/select an area on the map, then create assignments or export the filtered view.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <label className="relative min-w-48">
@@ -1140,11 +1876,35 @@ function EnterpriseMapViewer({
             <Select value={basemap} onChange={(event) => onBasemapChange(event.target.value as MapBasemap)}>
               {basemaps.map((item) => <option key={item} value={item}>{item}</option>)}
             </Select>
-            <Button onClick={toggleFullscreen} size="sm" variant="secondary"><Maximize2 aria-hidden="true" /> Fullscreen</Button>
+            <Button onClick={toggleFullscreen} size="sm" variant="secondary"><Maximize2 aria-hidden="true" /> Full screen map</Button>
             <Button onClick={() => window.print()} size="sm" variant="secondary"><Printer aria-hidden="true" /> Print</Button>
           </div>
         </div>
-        <div className="grid gap-2 border-b bg-background/60 p-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="border-b bg-background/80 p-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex gap-1 overflow-x-auto product-scrollbar" aria-label="Map workspace modes">
+              {mapWorkspaceModes.map((mode) => (
+                <button
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                    activeMode === mode.id
+                      ? "border-primary bg-primary text-primary-foreground shadow-line"
+                      : "bg-panel text-foreground hover:border-primary/40 hover:bg-primary/5",
+                  )}
+                  key={mode.id}
+                  onClick={() => changeMode(mode.id)}
+                  type="button"
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <div className="rounded-xl border bg-muted/20 px-3 py-2 text-xs text-muted-foreground xl:max-w-xl">
+              <span className="font-semibold text-foreground">{activeModeInfo.label}:</span> {activeModeInfo.description}
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-2 border-b bg-background/60 p-3 md:grid-cols-2 2xl:grid-cols-6">
           <Select aria-label="Filter by project" value={filters.project} onChange={(event) => onFiltersChange({ ...filters, project: event.target.value })}>
             <option value="">All projects</option>
             {filterOptions.projects.map((project) => <option key={project} value={project}>{project}</option>)}
@@ -1174,7 +1934,7 @@ function EnterpriseMapViewer({
             </Button>
           </div>
         </div>
-        <div className="relative min-h-[480px] overflow-hidden" ref={mapContainerRef}>
+        <div className="relative h-[calc(100vh-250px)] min-h-[620px] overflow-hidden" ref={mapContainerRef}>
           <LeafletMap
             areaBounds={areaBounds}
             basemap={basemap}
@@ -1197,22 +1957,38 @@ function EnterpriseMapViewer({
             selectedFeature={selectedFeature}
           />
           <div className="pointer-events-none absolute inset-0 z-[1000]">
+            <div className="pointer-events-auto absolute left-4 top-4">
+              <Button className="shadow-elevated" onClick={toggleFullscreen} size="sm" variant="primary">
+                <Maximize2 aria-hidden="true" />
+                Full screen map
+              </Button>
+            </div>
             <div className="pointer-events-auto absolute bottom-4 left-4 rounded-xl border bg-panel/95 p-3 shadow-line">
               <p className="text-xs font-semibold">Legend</p>
               <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                <LegendItem color="bg-success" label="Healthy spatial evidence" />
-                <LegendItem color="bg-warning" label="Needs validation" />
-                <LegendItem color="bg-danger" label="Critical issue or gap" />
+                {legendStatusItems.map((item) => (
+                  <LegendItem color={item.color} key={item.label} label={`${item.label} (${item.count})`} />
+                ))}
+                <div className="my-1 border-t" />
+                {legendCategoryItems.slice(0, 6).map((item) => (
+                  <LegendItem color={item.color} key={item.label} label={`${item.label} (${item.count})`} />
+                ))}
                 {showBoundaryShapes ? <LegendItem color="border-2 border-primary bg-transparent" label="Project extent (observed boundary)" /> : null}
               </div>
             </div>
-            <div className="pointer-events-auto absolute right-4 top-4 max-w-56 rounded-xl border bg-panel/95 p-3 text-xs shadow-line">
+            <div className="pointer-events-auto absolute right-4 top-4 max-w-64 rounded-xl border bg-panel/95 p-3 text-xs shadow-line">
               <p className="font-semibold">Draw / select area</p>
               {areaBounds ? (
                 <>
                   <p className="mt-1 text-muted-foreground">
                     {features.length} feature{features.length === 1 ? "" : "s"} inside the drawn area.
                   </p>
+                  <p className="mt-1 text-muted-foreground">
+                    Target: {areaAssignmentSummary.targetCount.toLocaleString()} record{areaAssignmentSummary.targetCount === 1 ? "" : "s"} · {areaAssignmentSummary.entityIds.length} entity/facility link{areaAssignmentSummary.entityIds.length === 1 ? "" : "s"}
+                  </p>
+                  <Button className="mt-2 w-full" disabled={!features.length} onClick={onCreateAreaAssignment} size="sm" variant="primary">
+                    Create assignment from area
+                  </Button>
                   <Button className="mt-2 w-full" onClick={() => onAreaBoundsChange(null)} size="sm" variant="secondary">
                     Clear area filter
                   </Button>
@@ -1237,22 +2013,43 @@ function EnterpriseMapViewer({
                     <p className="font-semibold">Boundary sketch</p>
                     <p className="mt-1 text-muted-foreground">
                       {boundaryDrawMode === "polygon"
-                        ? `${boundaryDrawPoints.length} point${boundaryDrawPoints.length === 1 ? "" : "s"} placed. Add at least 3 points.`
+                        ? `${boundaryDrawPoints.length} point${boundaryDrawPoints.length === 1 ? "" : "s"} placed. Click the zoomed map to add points.`
                         : boundaryDrawMode === "rectangle"
                           ? "Drag on the map to sketch a rectangle boundary."
-                          : "Sketch a project boundary and export it as GeoJSON."}
+                          : boundaryDrawPoints.length
+                            ? `${boundaryDrawPoints.length} point${boundaryDrawPoints.length === 1 ? "" : "s"} saved. Pan, zoom, or resume drawing.`
+                            : "Zoom or fullscreen the map first, then place polygon points."}
                     </p>
                     <div className="mt-2 grid gap-2">
                       {boundaryDrawMode ? (
                         <>
                           {boundaryDrawMode === "polygon" ? (
-                            <Button disabled={boundaryDrawPoints.length < 3} onClick={onFinishBoundaryDraw} size="sm" variant="primary">
-                              <FileJson aria-hidden="true" />
-                              Finish polygon
-                            </Button>
+                            <>
+                              <Button onClick={onPauseBoundaryDraw} size="sm" variant="secondary">
+                                Pause to zoom/pan
+                              </Button>
+                              <Button disabled={boundaryDrawPoints.length < 3} onClick={onFinishBoundaryDraw} size="sm" variant="primary">
+                                <FileJson aria-hidden="true" />
+                                Finish polygon
+                              </Button>
+                            </>
                           ) : null}
                           <Button onClick={onCancelBoundaryDraw} size="sm" variant="secondary">
-                            Cancel boundary
+                            Clear boundary
+                          </Button>
+                        </>
+                      ) : boundaryDrawPoints.length ? (
+                        <>
+                          <Button onClick={() => onStartBoundaryDraw("polygon")} size="sm" variant="primary">
+                            <PenLine aria-hidden="true" />
+                            Resume polygon
+                          </Button>
+                          <Button disabled={boundaryDrawPoints.length < 3} onClick={onFinishBoundaryDraw} size="sm" variant="secondary">
+                            <FileJson aria-hidden="true" />
+                            Finish polygon
+                          </Button>
+                          <Button onClick={onCancelBoundaryDraw} size="sm" variant="secondary">
+                            Clear boundary
                           </Button>
                         </>
                       ) : (
@@ -1272,51 +2069,155 @@ function EnterpriseMapViewer({
                 </>
               )}
             </div>
+            {selectedFeature ? (
+              <MapInspectorCard
+                feature={selectedFeature}
+                onOpenFeatureSource={onOpenFeatureSource}
+                privacyVisibility={privacyVisibility}
+              />
+            ) : null}
           </div>
         </div>
       </div>
 
-      <aside className="rounded-xl border bg-panel p-3 shadow-line">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Results summary</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Popup details and companion map context.</p>
-          </div>
-          <Filter aria-hidden="true" className="text-primary" size={18} />
-        </div>
-        {selectedFeature ? (
-          <div className="mt-4 space-y-3">
-            <div className="rounded-xl border bg-background/70 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium">{selectedFeature.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{selectedFeature.project}</p>
-                </div>
-                <Badge tone={statusTone(selectedFeature.status)}>{selectedFeature.status}</Badge>
-              </div>
+      <aside className="grid gap-3 lg:grid-cols-2">
+        <section className="rounded-xl border bg-panel p-3 shadow-line">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">GIS controls</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Turn layers on/off and adjust visibility.</p>
             </div>
-            <Signal label="Location" value={selectedFeature.location} />
-            <Signal label="Coordinates" value={`${maskCoordinate(selectedFeature.latitude, privacyVisibility)}, ${maskCoordinate(selectedFeature.longitude, privacyVisibility)}`} tone={privacyVisibility === "Aggregated" ? "warning" : "accent"} />
-            <Signal label="GPS accuracy" value={`${selectedFeature.gpsAccuracy}m`} tone={selectedFeature.gpsAccuracy <= 30 ? "success" : "warning"} />
-            <Signal label="Quality score" value={`${selectedFeature.qualityScore}%`} tone={coverageTone(selectedFeature.qualityScore)} />
-            <Button className="w-full" onClick={() => onOpenFeatureSource(selectedFeature)} size="sm" variant="secondary">
-              Open source module
-            </Button>
+            <Layers aria-hidden="true" className="text-primary" size={18} />
+          </div>
+          <div className="mt-3 max-h-[360px] space-y-3 overflow-y-auto pr-1 product-scrollbar">
+            {groupedLayers.map((group) => (
+              <section className="rounded-xl border bg-background/60 p-2.5" key={group.label}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold">{group.label}</p>
+                  <Badge tone="neutral">{group.layers.length}</Badge>
+                </div>
+                <div className="space-y-2">
+                  {group.layers.map((layer) => (
+                    <div className={cn("rounded-lg border bg-panel p-2 transition", layerVisibility[layer.id] === false && "opacity-60")} key={layer.id}>
+                      <label className="flex cursor-pointer items-start gap-2">
+                        <input
+                          checked={layerVisibility[layer.id] !== false}
+                          className="mt-1 accent-primary"
+                          onChange={(event) => onLayerVisibilityChange(layer.id, event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{layer.name}</span>
+                          <span className="mt-1 block text-xs text-muted-foreground">{layer.geometryType} · {layer.featureCount.toLocaleString()} features</span>
+                        </span>
+                        <Badge tone={visibilityTone(layer.visibility)}>{layer.visibility}</Badge>
+                      </label>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">Opacity</span>
+                        <input
+                          aria-label={`${layer.name} opacity`}
+                          className="min-w-0 flex-1 accent-primary"
+                          max={100}
+                          min={20}
+                          onChange={(event) => onLayerOpacityChange(layer.id, Number(event.target.value))}
+                          type="range"
+                          value={layerOpacity[layer.id] ?? 100}
+                        />
+                        <button className="text-xs font-medium text-primary hover:underline" onClick={() => setMetadataLayer(layer)} type="button">
+                          Details
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border bg-panel p-3 shadow-line">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">Workspace settings</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Privacy, mode guidance, and map readiness.</p>
+            </div>
+            <Filter aria-hidden="true" className="text-primary" size={18} />
+          </div>
+          <div className="mt-3 grid gap-2">
             <div className="rounded-xl border bg-background/70 p-3">
-              <p className="text-xs font-semibold">Popup details</p>
-              <div className="mt-2 space-y-2">
-                {Object.entries(selectedFeature.popup).map(([label, value]) => (
-                  <div className="flex justify-between gap-3 text-xs" key={label}>
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium">{value}</span>
-                  </div>
+              <p className="text-sm font-semibold">Boundary workflow</p>
+              <div className="mt-3 grid gap-2">
+                <WorkflowStep complete={drawnBoundaries.length > 0 || boundaryShapes.length > 0} label="Draw or upload boundary" />
+                <WorkflowStep complete={boundaryShapes.length > 0} label="Compare with GPS evidence" />
+                <WorkflowStep complete={false} label="Validate geometry and overlaps" />
+                <WorkflowStep complete={false} label="Approve as official boundary" />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Sketched boundaries can be exported as GeoJSON now. Official approval and overlap validation require the backend GIS registry.
+              </p>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Export readiness</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Checks privacy, visible records, and spatial quality before download.</p>
+                </div>
+                <Badge tone={readiness.tone}>{readiness.score}% · {readiness.label}</Badge>
+              </div>
+              <div className="mt-3 grid gap-2">
+                <Signal label="Visible export records" value={features.length.toLocaleString()} tone={features.length ? "success" : "danger"} />
+                <Signal label="Sensitive records" value={sensitiveFeatureCount.toLocaleString()} tone={sensitiveFeatureCount ? "warning" : "success"} />
+                <Signal label="Spatial issues" value={qualityIssueCount.toLocaleString()} tone={qualityIssueCount ? "warning" : "success"} />
+              </div>
+              {[...readiness.blockers, ...readiness.recommendations].length ? (
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  {[...readiness.blockers, ...readiness.recommendations].map((item) => (
+                    <p key={item}>• {item}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-xl border bg-background/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Saved views</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Open common GIS views or save the current filters.</p>
+                </div>
+                <Badge tone="accent">{savedViews.length}</Badge>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {savedViews.map((view) => (
+                  <Button key={view.id} onClick={() => applySavedView(view)} size="sm" variant={view.createdAt === "preset" ? "secondary" : "primary"}>
+                    {view.name}
+                  </Button>
                 ))}
               </div>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  aria-label="Saved map view name"
+                  onChange={(event) => setSaveViewName(event.target.value)}
+                  placeholder="Name this view"
+                  value={saveViewName}
+                />
+                <Button disabled={!saveViewName.trim()} onClick={saveCurrentView} size="sm" variant="secondary">
+                  Save
+                </Button>
+              </div>
             </div>
+            <Signal label="Active mode" value={activeModeInfo.label} tone="accent" />
+            <Signal
+              label="Location visibility"
+              value={privacyVisibility === "Aggregated" ? "Coordinates masked" : "Internal exact view"}
+              tone={privacyVisibility === "Aggregated" ? "warning" : "success"}
+            />
+            <Signal label="Visible records" value={features.length.toLocaleString()} />
+            {selectedFeature ? (
+              <Signal label="Selected source" value={featureSource(selectedFeature)} tone="neutral" />
+            ) : (
+              <EmptyMini label="Click a map point to inspect its source, quality, and next action." />
+            )}
           </div>
-        ) : (
-          <EmptyMini label="Select a point, layer, or boundary to inspect details." />
-        )}
+        </section>
       </aside>
       <LayerDetailsModal
         layer={metadataLayer}
@@ -1325,6 +2226,53 @@ function EnterpriseMapViewer({
         }}
       />
     </section>
+  );
+}
+
+function MapInspectorCard({
+  feature,
+  onOpenFeatureSource,
+  privacyVisibility,
+}: {
+  feature: MapFeatureRecord;
+  onOpenFeatureSource: (feature: MapFeatureRecord) => void;
+  privacyVisibility: LayerVisibility;
+}) {
+  return (
+    <aside className="pointer-events-auto absolute bottom-4 right-4 max-h-[52%] w-[min(360px,calc(100%-2rem))] overflow-y-auto rounded-2xl border bg-panel/95 p-3 shadow-elevated backdrop-blur product-scrollbar">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{feature.label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{feature.category} · {feature.project}</p>
+        </div>
+        <Badge tone={statusTone(feature.status)}>{feature.status}</Badge>
+      </div>
+      <div className="mt-3 grid gap-2">
+        <Signal label="Location" value={feature.location} />
+        <Signal
+          label="Coordinates"
+          value={`${maskCoordinate(feature.latitude, privacyVisibility)}, ${maskCoordinate(feature.longitude, privacyVisibility)}`}
+          tone={privacyVisibility === "Aggregated" ? "warning" : "accent"}
+        />
+        <Signal label="GPS accuracy" value={`${feature.gpsAccuracy}m`} tone={feature.gpsAccuracy <= 30 ? "success" : "warning"} />
+        <Signal label="Quality score" value={`${feature.qualityScore}%`} tone={coverageTone(feature.qualityScore)} />
+        <Signal label="Source" value={featureSource(feature)} />
+      </div>
+      <div className="mt-3 rounded-xl border bg-background/70 p-3">
+        <p className="text-xs font-semibold">Record details</p>
+        <div className="mt-2 space-y-2">
+          {Object.entries(feature.popup).map(([label, value]) => (
+            <div className="flex justify-between gap-3 text-xs" key={label}>
+              <span className="text-muted-foreground">{label}</span>
+              <span className="text-right font-medium">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <Button className="mt-3 w-full" onClick={() => onOpenFeatureSource(feature)} size="sm" variant="primary">
+        Open source module
+      </Button>
+    </aside>
   );
 }
 
@@ -1387,6 +2335,8 @@ function SectionContent({
     );
   }
   if (activeSection === "coverage-maps") return <CoverageWorkspace coverage={coverage} features={mapFeatures} preview={preview} privacyVisibility={privacyVisibility} projectDataCoverage={projectDataCoverage} />;
+  if (activeSection === "field-officer-maps") return <FieldOfficerMapWorkspace features={mapFeatures} onFeatureSelect={onFeatureSelect} privacyVisibility={privacyVisibility} />;
+  if (activeSection === "facility-maps") return <FacilityMapWorkspace features={mapFeatures} onFeatureSelect={onFeatureSelect} privacyVisibility={privacyVisibility} />;
   if (activeSection === "indicator-maps") return <IndicatorWorkspace indicatorGeography={indicatorGeography} onOpenIndicators={onOpenIndicators} />;
   if (activeSection === "data-quality-maps") {
     return <SpatialQualityWorkspace features={mapFeatures} issues={spatialIssues} onFeatureSelect={onFeatureSelect} onOpenDataQuality={onOpenDataQuality} />;
@@ -1500,8 +2450,11 @@ function layerCategory(layer: MapLayerRecord): MapFeatureRecord["category"] | nu
   const match = layer.id.match(/^live-layer-(.+)$/);
   if (!match) return null;
   const category = match[1];
-  const normalized = category.charAt(0).toUpperCase() + category.slice(1);
-  if (["Project", "Submission", "Beneficiary", "Facility", "Coverage", "Indicator", "Quality"].includes(normalized)) {
+  const normalized = category
+    .split(/[\s-]+/u)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  if (["Project", "Submission", "Beneficiary", "Facility", "Coverage", "Indicator", "Quality", "Assignment", "Field Officer"].includes(normalized)) {
     return normalized as MapFeatureRecord["category"];
   }
   return null;
@@ -1526,6 +2479,10 @@ function LayersTable({
   const tableLayers = useMemo(() => [...uploadedLayers, ...layers], [layers, uploadedLayers]);
   const sourceCategory = sourceLayer ? layerCategory(sourceLayer) : null;
   const sourceFeatures = sourceCategory ? features.filter((feature) => feature.category === sourceCategory) : [];
+  const healthyLayers = tableLayers.filter((layer) => layer.status === "Healthy");
+  const reviewLayers = tableLayers.filter((layer) => layer.status !== "Healthy");
+  const restrictedLayers = tableLayers.filter((layer) => layer.visibility === "Restricted" || layer.visibility === "Aggregated");
+  const totalFeatures = tableLayers.reduce((sum, layer) => sum + layer.featureCount, 0);
   function registerLayerUpload(event: ChangeEvent<HTMLInputElement>): void {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
@@ -1588,6 +2545,34 @@ function LayersTable({
         route="/mapping/layers"
         title="Map Layers"
       />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Signal label="Registered layers" value={tableLayers.length.toLocaleString()} tone={tableLayers.length ? "success" : "warning"} />
+        <Signal label="Healthy layers" value={healthyLayers.length.toLocaleString()} tone={healthyLayers.length ? "success" : "warning"} />
+        <Signal label="Needs review" value={reviewLayers.length.toLocaleString()} tone={reviewLayers.length ? "warning" : "success"} />
+        <Signal label="Layer features" value={totalFeatures.toLocaleString()} tone="accent" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Layer governance">
+          <Signal label="Restricted or aggregated" value={`${restrictedLayers.length} layer(s)`} tone={restrictedLayers.length ? "warning" : "success"} />
+          <Signal label="Uploaded pending files" value={`${uploadedLayers.length} layer(s)`} tone={uploadedLayers.length ? "warning" : "neutral"} />
+          <Signal label="Live data layers" value={`${layers.length} layer(s)`} tone={layers.length ? "success" : "warning"} />
+          <div className="rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Recommended action</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Review restricted layers before export, inspect source records for warning layers, and validate uploaded GIS files before using them for official reporting.
+            </p>
+          </div>
+        </Panel>
+        <Panel title="Upload readiness">
+          <WorkflowStep complete={uploadedLayers.length > 0 || layers.length > 0} label="Layer registered" />
+          <WorkflowStep complete={sourceLayer !== null} label="Source records inspected" />
+          <WorkflowStep complete={reviewLayers.length === 0 && tableLayers.length > 0} label="No warning/critical layer status" />
+          <WorkflowStep complete={false} label="Backend GIS validation approved" />
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Files selected here are registered for the workspace. Formal geometry validation, version approval, and audit persistence require the GIS backend registry.
+          </p>
+        </Panel>
+      </div>
       <DataTable columns={columns} emptyLabel="No live GPS records yet. Layers appear after submissions, entities, or selected GIS files include coordinates." rows={tableLayers} searchLabel="Search layers, owners, sources" title="Spatial layer registry" />
       <DataTable
         columns={sourceColumns}
@@ -1802,6 +2787,23 @@ function CoverageWorkspace({
 }) {
   const [selectedProject, setSelectedProject] = useState("");
   const sourceFeatures = selectedProject ? features.filter((feature) => feature.project === selectedProject) : [];
+  const previewCoverageTotals = useMemo(
+    () => ({
+      covered: coverage.filter((item) => item.gapType === "Covered").length,
+      noData: coverage.filter((item) => item.gapType === "No-data").length,
+      overSampled: coverage.filter((item) => item.gapType === "Over-sampled").length,
+      underCovered: coverage.filter((item) => item.gapType === "Under-covered").length,
+    }),
+    [coverage],
+  );
+  const priorityCoverage = useMemo(
+    () =>
+      [...coverage].sort((left, right) => {
+        const severityScore = (item: CoverageRecord) => (item.gapType === "No-data" ? 3 : item.gapType === "Under-covered" ? 2 : item.gapType === "Over-sampled" ? 1 : 0);
+        return severityScore(right) - severityScore(left) || left.coveragePercent - right.coveragePercent;
+      }),
+    [coverage],
+  );
   const columns: TableColumn<MapFeatureRecord>[] = [
     { key: "label", header: "Coverage record", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
     { key: "category", header: "Type", value: (row) => row.category, render: (row) => row.category },
@@ -1814,9 +2816,16 @@ function CoverageWorkspace({
   if (!preview) {
     const projectsWithData = projectDataCoverage.filter((item) => item.hasData);
     const noDataProjects = projectDataCoverage.filter((item) => !item.hasData);
+    const weakCoverageProjects = projectDataCoverage.filter((item) => item.hasData && item.status !== "Healthy");
     const totalRecords = projectDataCoverage.reduce((sum, item) => sum + item.recordCount, 0);
     return (
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="xl:col-span-2 grid gap-3 md:grid-cols-4">
+          <Signal label="Located records" value={totalRecords.toLocaleString()} tone="accent" />
+          <Signal label="Projects with data" value={projectsWithData.length.toLocaleString()} tone={projectsWithData.length ? "success" : "warning"} />
+          <Signal label="No GPS evidence" value={noDataProjects.length.toLocaleString()} tone={noDataProjects.length ? "danger" : "success"} />
+          <Signal label="Needs attention" value={weakCoverageProjects.length.toLocaleString()} tone={weakCoverageProjects.length ? "warning" : "success"} />
+        </div>
         <Panel title="Data coverage by project">
           <p className="mb-3 text-xs text-muted-foreground">
             Geographic evidence captured per project from approved submissions and located entities. Target-based coverage gaps populate once coverage targets and boundary geometry are configured.
@@ -1860,6 +2869,12 @@ function CoverageWorkspace({
           <Signal label="Projects with no GPS evidence" value={`${noDataProjects.length} project(s)`} tone={noDataProjects.length ? "danger" : "success"} />
           <Signal label="Total located records" value={`${totalRecords.toLocaleString()} record(s)`} tone="accent" />
           <Signal label="Target-based gap analysis" value="Requires coverage targets (roadmap)" tone="neutral" />
+          <div className="rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Next supervisor action</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Review projects with no GPS evidence first, then create map-area assignments for weak coverage projects once targets are configured.
+            </p>
+          </div>
         </Panel>
         <div className="xl:col-span-2">
           <DataTable
@@ -1876,9 +2891,15 @@ function CoverageWorkspace({
   }
   return (
     <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+      <div className="xl:col-span-2 grid gap-3 md:grid-cols-4">
+        <Signal label="Covered" value={previewCoverageTotals.covered} tone="success" />
+        <Signal label="Under-covered" value={previewCoverageTotals.underCovered} tone="warning" />
+        <Signal label="No-data" value={previewCoverageTotals.noData} tone="danger" />
+        <Signal label="Over-sampled" value={previewCoverageTotals.overSampled} tone={previewCoverageTotals.overSampled ? "warning" : "success"} />
+      </div>
       <Panel title="Coverage Summary">
         <div className="space-y-3">
-          {coverage.map((item) => (
+          {priorityCoverage.map((item) => (
             <div className="rounded-xl border bg-background/70 p-3" key={item.id}>
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{item.location}</p>
@@ -1888,6 +2909,14 @@ function CoverageWorkspace({
                 <div className={cn("h-full rounded-full", item.coveragePercent >= 80 ? "bg-success" : item.coveragePercent >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${item.coveragePercent}%` }} />
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{item.actual} of {item.target} target records · {item.coveragePercent}% coverage</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button onClick={() => setSelectedProject(item.project)} size="sm" variant="secondary">
+                  View records
+                </Button>
+                <Button onClick={() => setSelectedProject(item.project)} size="sm" variant={item.status === "Healthy" ? "secondary" : "primary"}>
+                  Plan follow-up
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -1897,7 +2926,196 @@ function CoverageWorkspace({
         <Signal label="Under-covered communities" value="2 locations" tone="warning" />
         <Signal label="No-data areas" value="1 critical gap" tone="danger" />
         <Signal label="Over-sampled areas" value="None detected" tone="success" />
+        <div className="rounded-xl border bg-background/70 p-3">
+          <p className="text-sm font-semibold">Recommended action</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Prioritize no-data areas, then under-covered locations. Use Assign Work mode to draw the affected area and create a supervisor assignment.
+          </p>
+        </div>
       </Panel>
+      <div className="xl:col-span-2">
+        <DataTable
+          columns={columns}
+          emptyDescription="Click View records on a coverage area to inspect matching mapped evidence."
+          emptyLabel="No coverage project selected"
+          rows={sourceFeatures}
+          searchLabel="Search coverage records"
+          title={selectedProject ? `${selectedProject} mapped evidence` : "Coverage evidence"}
+        />
+      </div>
+    </section>
+  );
+}
+
+function FieldOfficerMapWorkspace({
+  features,
+  onFeatureSelect,
+  privacyVisibility,
+}: {
+  features: MapFeatureRecord[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
+  privacyVisibility: LayerVisibility;
+}) {
+  const officers = features.filter((feature) => feature.category === "Field Officer");
+  const assignments = features.filter((feature) => feature.category === "Assignment");
+  const healthyOfficers = officers.filter((feature) => feature.status === "Healthy");
+  const needsAttention = officers.filter((feature) => feature.status !== "Healthy");
+  const columns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "Field Officer", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "location", header: "Last Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "source", header: "Source", value: (row) => featureSource(row), render: (row) => featureSource(row) },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "status", header: "Sync Status", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "quality", header: "Signal", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
+    { key: "action", header: "Action", align: "right", render: (row) => <Button onClick={() => onFeatureSelect(row)} size="sm" variant="secondary">Inspect</Button> },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        description="Supervisor view of field officer mobile sync locations, device activity, and assignment coverage signals."
+        route="/mapping/field-officer-maps"
+        title="Field Officer Maps"
+      />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Signal label="Located officers" value={officers.length.toLocaleString()} tone={officers.length ? "success" : "warning"} />
+        <Signal label="Healthy sync" value={healthyOfficers.length.toLocaleString()} tone={healthyOfficers.length ? "success" : "warning"} />
+        <Signal label="Needs attention" value={needsAttention.length.toLocaleString()} tone={needsAttention.length ? "warning" : "success"} />
+        <Signal label="Mapped assignments" value={assignments.length.toLocaleString()} tone={assignments.length ? "accent" : "neutral"} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Supervisor action queue">
+          {needsAttention.length ? (
+            <div className="space-y-2">
+              {needsAttention.map((officer) => (
+                <button
+                  className="w-full rounded-xl border bg-background/70 p-3 text-left transition hover:border-primary/40 hover:bg-primary/5"
+                  key={officer.id}
+                  onClick={() => onFeatureSelect(officer)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{officer.label}</p>
+                    <Badge tone={statusTone(officer.status)}>{officer.status}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{officer.location} · {featureSource(officer)}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyMini label="All located field officers have healthy recent sync signals." />
+          )}
+        </Panel>
+        <Panel title="Operational interpretation">
+          <Signal label="Mobile evidence" value="Last sync GPS and device signals" tone="accent" />
+          <Signal label="Assignment context" value={`${assignments.length} mapped assignment point(s)`} tone={assignments.length ? "success" : "neutral"} />
+          <Signal label="Privacy" value={privacyVisibility === "Aggregated" ? "Coordinates masked" : "Internal exact view"} tone={privacyVisibility === "Aggregated" ? "warning" : "success"} />
+          <div className="rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Recommended action</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Check officers with stale sync or missing device signals before approving location-sensitive submissions. Use assignment layers to compare where work was planned against where mobile activity happened.
+            </p>
+          </div>
+        </Panel>
+      </div>
+      <DataTable
+        columns={columns}
+        emptyDescription="Field officer points appear once the mobile app sends last sync GPS/device metadata."
+        emptyLabel="No field officer activity points"
+        rows={officers}
+        searchLabel="Search officers, locations, supervisors"
+        title="Field officer activity"
+      />
+    </section>
+  );
+}
+
+function FacilityMapWorkspace({
+  features,
+  onFeatureSelect,
+  privacyVisibility,
+}: {
+  features: MapFeatureRecord[];
+  onFeatureSelect: (feature: MapFeatureRecord) => void;
+  privacyVisibility: LayerVisibility;
+}) {
+  const facilities = features.filter((feature) => feature.category === "Facility");
+  const healthy = facilities.filter((feature) => feature.status === "Healthy");
+  const needsReview = facilities.filter((feature) => feature.status !== "Healthy");
+  const facilityTypes = Array.from(
+    facilities.reduce((types, facility) => {
+      const type = typeof facility.popup["Facility type"] === "string"
+        ? facility.popup["Facility type"]
+        : typeof facility.popup.Type === "string"
+          ? facility.popup.Type
+          : "Facility";
+      types.set(type, (types.get(type) ?? 0) + Math.max(1, facility.count));
+      return types;
+    }, new globalThis.Map<string, number>()),
+  ).sort((left, right) => right[1] - left[1]);
+  const columns: TableColumn<MapFeatureRecord>[] = [
+    { key: "label", header: "Facility / Site", value: (row) => row.label, render: (row) => <span className="font-medium">{row.label}</span> },
+    { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "coordinates", header: "Coordinates", value: (row) => `${row.latitude},${row.longitude}`, render: (row) => `${maskCoordinate(row.latitude, privacyVisibility)}, ${maskCoordinate(row.longitude, privacyVisibility)}` },
+    { key: "status", header: "Readiness", value: (row) => row.status, render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: "quality", header: "Signal", align: "right", value: (row) => String(row.qualityScore), render: (row) => <Badge tone={coverageTone(row.qualityScore)}>{row.qualityScore}%</Badge> },
+    { key: "action", header: "Action", align: "right", render: (row) => <Button onClick={() => onFeatureSelect(row)} size="sm" variant="secondary">Inspect</Button> },
+  ];
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader
+        description="Operational view of schools, clinics, water points, warehouses, stores, assets, and other service sites linked to project geography."
+        route="/mapping/facility-maps"
+        title="Facility Maps"
+      />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Signal label="Mapped facilities" value={facilities.length.toLocaleString()} tone={facilities.length ? "success" : "warning"} />
+        <Signal label="Healthy sites" value={healthy.length.toLocaleString()} tone={healthy.length ? "success" : "warning"} />
+        <Signal label="Needs review" value={needsReview.length.toLocaleString()} tone={needsReview.length ? "warning" : "success"} />
+        <Signal label="Service types" value={facilityTypes.length.toLocaleString()} tone="accent" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Service type mix">
+          {facilityTypes.length ? (
+            <div className="space-y-2">
+              {facilityTypes.map(([type, count]) => (
+                <div className="rounded-xl border bg-background/70 p-3" key={type}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{type}</p>
+                    <Badge tone="accent">{count.toLocaleString()}</Badge>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(8, Math.min(100, (count / Math.max(1, facilities.length)) * 100))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyMini label="No mapped facilities yet. Facility records appear once entities or reference layers include GPS coordinates." />
+          )}
+        </Panel>
+        <Panel title="Facility operations">
+          <Signal label="Reference source" value="Entity registry and facility layers" tone="accent" />
+          <Signal label="Privacy" value={privacyVisibility === "Aggregated" ? "Coordinates masked" : "Internal exact view"} tone={privacyVisibility === "Aggregated" ? "warning" : "success"} />
+          <Signal label="Review queue" value={`${needsReview.length} site(s)`} tone={needsReview.length ? "warning" : "success"} />
+          <div className="rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Recommended action</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Use this view to confirm service site coordinates, identify missing facility coverage, and link field assignments to the nearest school, clinic, warehouse, water point, or asset.
+            </p>
+          </div>
+        </Panel>
+      </div>
+      <DataTable
+        columns={columns}
+        emptyDescription="Facilities appear when entity categories such as schools, clinics, water points, warehouses, stores, or assets have GPS coordinates."
+        emptyLabel="No facility points"
+        rows={facilities}
+        searchLabel="Search facilities, projects, locations"
+        title="Facility and service-site records"
+      />
     </section>
   );
 }
@@ -1918,6 +3136,19 @@ function IndicatorWorkspace({
     );
   }
 
+  const onTrack = indicatorGeography.filter((item) => item.achievementPercent >= 80);
+  const watchList = indicatorGeography.filter((item) => item.achievementPercent >= 50 && item.achievementPercent < 80);
+  const offTrack = indicatorGeography.filter((item) => item.achievementPercent < 50);
+  const priorityIndicators = [...indicatorGeography].sort((left, right) => left.achievementPercent - right.achievementPercent);
+  const columns: TableColumn<IndicatorGeography>[] = [
+    { key: "indicator", header: "Indicator", value: (row) => row.indicator, render: (row) => <span className="font-medium">{row.indicator}</span> },
+    { key: "project", header: "Project", value: (row) => row.project, render: (row) => row.project },
+    { key: "location", header: "Location", value: (row) => row.location, render: (row) => row.location },
+    { key: "period", header: "Period", value: (row) => row.period, render: (row) => row.period },
+    { key: "achievement", header: "Achievement", align: "right", value: (row) => String(row.achievementPercent), render: (row) => <Badge tone={coverageTone(row.achievementPercent)}>{row.achievementPercent}%</Badge> },
+    { key: "action", header: "Action", align: "right", render: () => <Button onClick={onOpenIndicators} size="sm" variant="secondary">Review</Button> },
+  ];
+
   return (
     <section className="space-y-4">
       <SectionHeader
@@ -1926,6 +3157,41 @@ function IndicatorWorkspace({
         route="/mapping/indicator-maps"
         title="Indicator Maps"
       />
+      <div className="grid gap-3 md:grid-cols-4">
+        <Signal label="Mapped indicators" value={indicatorGeography.length.toLocaleString()} tone="accent" />
+        <Signal label="On track" value={onTrack.length.toLocaleString()} tone={onTrack.length ? "success" : "neutral"} />
+        <Signal label="Watch list" value={watchList.length.toLocaleString()} tone={watchList.length ? "warning" : "success"} />
+        <Signal label="Off track" value={offTrack.length.toLocaleString()} tone={offTrack.length ? "danger" : "success"} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Priority hotspots">
+          <div className="space-y-2">
+            {priorityIndicators.slice(0, 4).map((item) => (
+              <div className="rounded-xl border bg-background/70 p-3" key={item.id}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{item.indicator}</p>
+                  <Badge tone={coverageTone(item.achievementPercent)}>{item.achievementPercent}%</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.project} · {item.location}</p>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", item.achievementPercent >= 80 ? "bg-success" : item.achievementPercent >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.max(4, item.achievementPercent)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="Performance interpretation">
+          <Signal label="Geographic signal" value="Project GPS extent + indicator result" tone="accent" />
+          <Signal label="Review priority" value={offTrack.length ? `${offTrack.length} off-track result(s)` : "No critical indicator hotspots"} tone={offTrack.length ? "danger" : "success"} />
+          <Signal label="Decision use" value="Target follow-up locations" tone="neutral" />
+          <div className="rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Recommended action</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Start with off-track indicators, inspect the project location, then assign follow-up collection or verification where performance is weakest.
+            </p>
+          </div>
+        </Panel>
+      </div>
       <div className="grid gap-4 xl:grid-cols-3">
         {indicatorGeography.map((item) => (
           <article className="rounded-xl border bg-panel p-3 shadow-line" key={item.id}>
@@ -1944,6 +3210,13 @@ function IndicatorWorkspace({
           </article>
         ))}
       </div>
+      <DataTable
+        columns={columns}
+        emptyLabel="No mapped indicators"
+        rows={priorityIndicators}
+        searchLabel="Search indicators, projects, locations"
+        title="Indicator geography ranking"
+      />
     </section>
   );
 }
@@ -1962,6 +3235,24 @@ function SpatialQualityWorkspace({
   const criticalIssues = issues.filter((issue) => issue.severity === "Critical").length;
   const highIssues = issues.filter((issue) => issue.severity === "High").length;
   const mediumIssues = issues.filter((issue) => issue.severity === "Medium").length;
+  const priorityIssues = useMemo(
+    () =>
+      [...issues].sort((left, right) => {
+        const score = (severity: SpatialQualityIssue["severity"]) => (severity === "Critical" ? 4 : severity === "High" ? 3 : severity === "Medium" ? 2 : 1);
+        return score(right.severity) - score(left.severity);
+      }),
+    [issues],
+  );
+  const issueTypes = useMemo(
+    () =>
+      Array.from(
+        issues.reduce((groups, issue) => {
+          groups.set(issue.issueType, (groups.get(issue.issueType) ?? 0) + 1);
+          return groups;
+        }, new globalThis.Map<string, number>()),
+      ).sort((left, right) => right[1] - left[1]),
+    [issues],
+  );
   const featureById = useMemo(() => new globalThis.Map(features.map((feature) => [feature.id, feature])), [features]);
   const columns: TableColumn<SpatialQualityIssue>[] = [
     {
@@ -2005,7 +3296,58 @@ function SpatialQualityWorkspace({
         <Signal label="High" value={highIssues.toLocaleString()} tone={highIssues ? "warning" : "success"} />
         <Signal label="Medium" value={mediumIssues.toLocaleString()} tone={mediumIssues ? "accent" : "success"} />
       </div>
-      <DataTable columns={columns} emptyLabel="No spatial quality issues detected" rows={issues} searchLabel="Search issue, submission, enumerator, location" title="Spatial quality issue table" />
+      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <Panel title="Triage priority">
+          {priorityIssues.length ? (
+            <div className="space-y-2">
+              {priorityIssues.slice(0, 5).map((issue) => {
+                const feature = issue.sourceFeatureId ? featureById.get(issue.sourceFeatureId) : undefined;
+                return (
+                  <div className="rounded-xl border bg-background/70 p-3" key={issue.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{issue.issueType}</p>
+                      <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{issue.project} · {issue.location}</p>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{issue.recommendedAction}</p>
+                    <Button disabled={!feature} onClick={() => feature ? onFeatureSelect(feature) : undefined} className="mt-3" size="sm" variant="secondary">
+                      Inspect source
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyMini label="No spatial quality issues detected in this map view." />
+          )}
+        </Panel>
+        <Panel title="Issue patterns">
+          {issueTypes.length ? (
+            <div className="space-y-2">
+              {issueTypes.map(([issueType, count]) => (
+                <div className="rounded-xl border bg-background/70 p-3" key={issueType}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{issueType}</p>
+                    <Badge tone="warning">{count}</Badge>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-warning" style={{ width: `${Math.max(8, Math.min(100, (count / Math.max(1, issues.length)) * 100))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyMini label="No repeated issue pattern detected." />
+          )}
+          <div className="mt-3 rounded-xl border bg-background/70 p-3">
+            <p className="text-sm font-semibold">Recommended workflow</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Inspect critical issues first, open the source module, return or correct records where needed, then approve only records with acceptable GPS and entity evidence.
+            </p>
+          </div>
+        </Panel>
+      </div>
+      <DataTable columns={columns} emptyLabel="No spatial quality issues detected" rows={priorityIssues} searchLabel="Search issue, submission, enumerator, location" title="Spatial quality issue table" />
     </section>
   );
 }
@@ -2045,6 +3387,17 @@ function Signal({ label, tone = "neutral", value }: { label: string; tone?: Badg
     <div className="flex items-center justify-between gap-3 rounded-xl border bg-background/70 px-3 py-2">
       <span className="text-sm text-muted-foreground">{label}</span>
       <Badge tone={tone}>{value}</Badge>
+    </div>
+  );
+}
+
+function WorkflowStep({ complete, label }: { complete: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className={cn("flex h-5 w-5 items-center justify-center rounded-full border", complete ? "border-success bg-success text-success-foreground" : "border-muted-foreground/30 bg-muted/30 text-muted-foreground")}>
+        {complete ? <CheckCircle2 aria-hidden="true" size={12} /> : null}
+      </span>
+      <span className={complete ? "font-medium text-foreground" : "text-muted-foreground"}>{label}</span>
     </div>
   );
 }

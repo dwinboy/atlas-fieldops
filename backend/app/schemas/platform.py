@@ -244,6 +244,10 @@ class PlatformBackupPolicyUpdate(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class PlatformBackupRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class PlatformReleaseRead(BaseModel):
     environment: str
     backend_version: str = "local"
