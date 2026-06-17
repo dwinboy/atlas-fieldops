@@ -43,5 +43,5 @@ export const mobileAppConfig: MobileAppConfig = {
   apiVersion: "v1",
   requestTimeoutMs: 30000,
   syncBatchSize: 25,
-  appVersion: runtimeEnv.EXPO_PUBLIC_APP_VERSION ?? "1.0.0-test",
+  appVersion: runtimeEnv.EXPO_PUBLIC_APP_VERSION ?? "1.0.0",
 };

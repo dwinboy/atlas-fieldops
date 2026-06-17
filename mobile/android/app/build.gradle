@@ -115,7 +115,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
-        versionName "1.0.0-test"
+        versionName "1.0.0"
     }
     signingConfigs {
         debug {
@@ -125,22 +125,27 @@ android {
             keyPassword 'android'
         }
         release {
-            // EAS managed credentials: EAS injects key.properties into the android/ directory.
-            // Local builds fall back to the debug keystore (sufficient for testing).
+            // EAS managed credentials inject key.properties into android/.
+            // Local Play builds can use either key.properties or ATLAS_ANDROID_* env vars.
             def keyPropsFile = rootProject.file('key.properties')
+            def envStoreFile = System.getenv('ATLAS_ANDROID_KEYSTORE') ?: System.getenv('EAS_BUILD_ANDROID_KEYSTORE_PATH')
             if (keyPropsFile.exists()) {
                 def keyProps = new Properties()
                 keyProps.load(new FileInputStream(keyPropsFile))
-                storeFile file(keyProps['storeFile'])
+                storeFile rootProject.file(keyProps['storeFile'])
                 storePassword keyProps['storePassword']
                 keyAlias keyProps['keyAlias']
                 keyPassword keyProps['keyPassword']
+            } else if (envStoreFile) {
+                storeFile file(envStoreFile)
+                storePassword System.getenv('ATLAS_ANDROID_KEYSTORE_PASSWORD') ?: System.getenv('EAS_BUILD_ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ATLAS_ANDROID_KEY_ALIAS') ?: System.getenv('EAS_BUILD_ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ATLAS_ANDROID_KEY_PASSWORD') ?: System.getenv('EAS_BUILD_ANDROID_KEY_PASSWORD')
             } else {
-                // Local development fallback
-                storeFile file('debug.keystore')
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
+                def releaseTaskRequested = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+                if (releaseTaskRequested) {
+                    throw new GradleException('Release signing is not configured. Use EAS production credentials or create android/key.properties from key.properties.example.')
+                }
             }
         }
     }

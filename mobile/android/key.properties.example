@@ -1,0 +1,8 @@
+# Copy this file to android/key.properties for a local Play Store release build.
+# Do not commit android/key.properties or the keystore file.
+#
+# The storeFile path is relative to the android/ directory.
+storeFile=upload-keystore.jks
+storePassword=change-me
+keyAlias=upload
+keyPassword=change-me

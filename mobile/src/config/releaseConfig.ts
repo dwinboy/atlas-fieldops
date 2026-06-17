@@ -28,8 +28,8 @@ export const androidReleaseConfig: AndroidReleaseConfig = {
   loggingLevel: "info",
   appName: "Atlas FieldOps",
   packageName: "com.atlasfieldops.mobile",
-  appIconPath: "mobile/assets/icon.png",
-  splashScreenPath: "mobile/assets/splash.png",
+  appIconPath: "mobile/assets/atlas-fieldops-logo.png",
+  splashScreenPath: "mobile/assets/atlas-fieldops-logo.png",
   permissions: [
     "android.permission.INTERNET",
     "android.permission.ACCESS_NETWORK_STATE",
