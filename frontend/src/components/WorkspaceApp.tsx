@@ -173,6 +173,20 @@ export function WorkspaceApp() {
   }, [isPlatformRoute, principalQuery.data]);
 
   useEffect(() => {
+    if (
+      !principalQuery.data?.support_mode ||
+      !isPlatformRoute ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    const targetView = getDefaultWorkspaceView(principalQuery.data);
+    const targetRoute = getNavigationItemByView(targetView)?.route ?? "/dashboard";
+    window.history.replaceState(null, "", targetRoute);
+    setActiveView(targetView);
+  }, [isPlatformRoute, principalQuery.data, setActiveView]);
+
+  useEffect(() => {
     if (!routeView) {
       return;
     }

@@ -829,6 +829,13 @@ export function PlatformConsole({
     },
   });
 
+  const isDangerActionPending =
+    statusMutation.isPending ||
+    supportMutation.isPending ||
+    userSecurityMutation.isPending ||
+    featureFlagMutation.isPending ||
+    backupRequestMutation.isPending;
+
   const releaseMutation = useMutation({
     mutationFn: () => updatePlatformRelease(token ?? "", releaseDraft),
     onSuccess: async () => {
@@ -2164,14 +2171,21 @@ export function PlatformConsole({
             />
           </label>
           <div className="flex justify-end gap-2">
-            <Button onClick={() => setDangerAction(null)} type="button" variant="secondary">Cancel</Button>
             <Button
-              disabled={!dangerReason.trim() || statusMutation.isPending || supportMutation.isPending || userSecurityMutation.isPending || featureFlagMutation.isPending || backupRequestMutation.isPending}
+              disabled={isDangerActionPending}
+              onClick={() => setDangerAction(null)}
+              type="button"
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!dangerReason.trim() || isDangerActionPending}
               onClick={confirmDangerousAction}
               type="button"
               variant="danger"
             >
-              Confirm action
+              {isDangerActionPending ? "Confirming…" : "Confirm action"}
             </Button>
           </div>
         </div>

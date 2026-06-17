@@ -246,6 +246,9 @@ export function DataTable<T>({
                     columnIndex === 0 &&
                       !selection &&
                       "sticky left-0 z-10 border-r border-border/60 bg-muted/45 backdrop-blur",
+                    columnIndex === columns.length - 1 &&
+                      columns.length > 1 &&
+                      "sticky right-0 z-10 border-l border-border/60 bg-muted/45 backdrop-blur",
                   )}
                 >
                   {column.value || column.sortValue ? (
@@ -328,6 +331,12 @@ export function DataTable<T>({
                         !selection &&
                         cn(
                           "sticky left-0 z-[5] border-r border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
+                          active && "bg-primary/10",
+                        ),
+                      columnIndex === columns.length - 1 &&
+                        columns.length > 1 &&
+                        cn(
+                          "sticky right-0 z-[5] border-l border-border/60 bg-panel transition-colors group-hover:bg-muted/35",
                           active && "bg-primary/10",
                         ),
                     )}
