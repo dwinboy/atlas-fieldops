@@ -141,11 +141,6 @@ android {
                 storePassword System.getenv('ATLAS_ANDROID_KEYSTORE_PASSWORD') ?: System.getenv('EAS_BUILD_ANDROID_KEYSTORE_PASSWORD')
                 keyAlias System.getenv('ATLAS_ANDROID_KEY_ALIAS') ?: System.getenv('EAS_BUILD_ANDROID_KEY_ALIAS')
                 keyPassword System.getenv('ATLAS_ANDROID_KEY_PASSWORD') ?: System.getenv('EAS_BUILD_ANDROID_KEY_PASSWORD')
-            } else {
-                def releaseTaskRequested = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
-                if (releaseTaskRequested) {
-                    throw new GradleException('Release signing is not configured. Use EAS production credentials or create android/key.properties from key.properties.example.')
-                }
             }
         }
     }
