@@ -4582,20 +4582,20 @@ function buildPublishAssistantAdvice({
       actionLabel: "Open governance review",
       fix:
         currentStatus === "Review"
-          ? "Review the readiness list, complete technical and sector certification, add approval notes, then click Approve Form."
-          : "Move the form through Testing and Review first. After the technical and sector checks are complete, approve the form before publishing.",
+          ? "Approval is recommended before rollout, but it is not a hard blocker once readiness is at least 60% and the hard blockers are resolved. Add approval notes when your organization requires formal sign-off."
+          : "Move the form through Testing and Review when your organization requires formal governance. Publishing can still proceed once the minimum readiness rule is met.",
       id: "lifecycle-not-approved",
       item: checklist.find((item) => item.id === "lifecycle-approved") ?? null,
       jumpTo: "controls",
-      label: `Form is ${currentStatus}, not Approved`,
+      label: `Form is ${currentStatus}, not formally Approved`,
       mneTip:
-        `Expert recommendation: do not publish until a technical reviewer and sector reviewer have checked the form purpose, ${entityLabelLower} rules, consent where needed, workflow, data quality, and mobile readiness.`,
+        `Expert recommendation: publish urgent field tools once the essentials are ready, then complete technical reviewer, sector reviewer, consent, workflow, data quality, and mobile readiness checks as governance follow-up.`,
       platformAction:
-        "Manager decision needed: the platform can open Governance controls, but a responsible reviewer must approve the form.",
-      severity: "Required",
+        "Manager decision needed: the platform can open Governance controls, but formal approval is optional unless your organization policy requires it.",
+      severity: "Warning",
       targetControlStep: "governance",
       why:
-        "Publishing creates the official field-ready version. Atlas FieldOps only enables that action after the form lifecycle reaches Approved.",
+        "Publishing creates the official field-ready version. Atlas FieldOps now allows publishing at 60% readiness while keeping approval visible for governance discipline.",
     });
   }
 
@@ -7227,29 +7227,18 @@ export function FormCreationWorkspace({
                 Submit for Review
               </Button>
             ) : null}
-            {stage === "review" && controlsDraft.lifecycleStatus !== "approved" ? (
+            {stage === "review" ? (
               <>
-                <Button
-                  disabled={!approvalAction.canApprove}
-                  onClick={approveForPublish}
-                  size="sm"
-                  variant="primary"
-                >
-                  {approvalAction.label}
-                </Button>
-                {!approvalAction.canApprove ? (
+                {controlsDraft.lifecycleStatus !== "approved" ? (
                   <Button
-                    onClick={() => setPublishHelpOpen(true)}
+                    disabled={!approvalAction.canApprove}
+                    onClick={approveForPublish}
                     size="sm"
                     variant="secondary"
                   >
-                    Why can&apos;t I approve?
+                    {approvalAction.label}
                   </Button>
                 ) : null}
-              </>
-            ) : null}
-            {stage === "review" && controlsDraft.lifecycleStatus === "approved" ? (
-              <>
                 <Button
                   disabled={publishDisabled}
                   onClick={publishDraft}
@@ -8133,8 +8122,8 @@ export function FormCreationWorkspace({
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Move the form through testing, review, and approval before
-                    publishing. The question builder remains unchanged.
+                    Testing and approval are recommended governance steps.
+                    Publishing is allowed once the minimum readiness rule passes.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -10284,51 +10273,40 @@ export function FormCreationWorkspace({
         <section className="space-y-3">
           <StagePanel
             action={
-              controlsDraft.lifecycleStatus === "approved" ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={publishDisabled}
-                    onClick={publishDraft}
-                    variant="primary"
-                  >
-                    <Rocket aria-hidden="true" />
-                    {publishing ? "Publishing" : "Publish Form"}
-                  </Button>
-                  {publishDisabled && !publishing ? (
-                    <Button
-                      onClick={() => setPublishHelpOpen(true)}
-                      variant="secondary"
-                    >
-                      Why can&apos;t I publish?
-                    </Button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
+                {controlsDraft.lifecycleStatus !== "approved" ? (
                   <Button
                     disabled={!approvalAction.canApprove}
                     onClick={approveForPublish}
-                    variant="primary"
+                    variant="secondary"
                   >
                     {approvalAction.label}
                   </Button>
-                  {!approvalAction.canApprove ? (
-                    <Button
-                      onClick={() => setPublishHelpOpen(true)}
-                      variant="secondary"
-                    >
-                      Why can&apos;t I approve?
-                    </Button>
-                  ) : null}
-                </div>
-              )
+                ) : null}
+                <Button
+                  disabled={publishDisabled}
+                  onClick={publishDraft}
+                  variant="primary"
+                >
+                  <Rocket aria-hidden="true" />
+                  {publishing ? "Publishing" : "Publish Form"}
+                </Button>
+                {publishDisabled && !publishing ? (
+                  <Button
+                    onClick={() => setPublishHelpOpen(true)}
+                    variant="secondary"
+                  >
+                    Why can&apos;t I publish?
+                  </Button>
+                ) : null}
+              </div>
             }
             icon={ListChecks}
             route="/forms/:formId/review"
             title="Review Before Publish"
             lines={[
-              "Publishing is blocked when critical readiness checks fail.",
-              "Publishing creates an immutable published version and makes the form available for Field Operations assignments.",
+              `Publishing is allowed at ${MINIMUM_PUBLISH_READINESS_SCORE}% readiness when hard blockers are resolved.`,
+              "Approval remains available for organizations that require formal governance before rollout.",
             ]}
           />
           <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
@@ -10349,7 +10327,9 @@ export function FormCreationWorkspace({
               <p className="mt-2 text-sm text-muted-foreground">
                 {criticalFailures.length
                   ? "Publishing is blocked until critical failures are resolved. Warnings can be accepted by governance policy, but they remain visible in the audit history."
-                  : "Required checks are complete. Review warnings, then publish the governed field-ready version."}
+                  : readinessBelowPublishThreshold
+                    ? `Complete at least ${MINIMUM_PUBLISH_READINESS_SCORE}% readiness before publishing. Optional governance and advanced controls can be finished later.`
+                    : "This form can be published now. Review warnings if needed, then publish the field-ready version."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {criticalFailures.map((item) => (
@@ -10362,11 +10342,11 @@ export function FormCreationWorkspace({
                     Fix {item.label}
                   </button>
                 ))}
-                {!criticalFailures.length ? (
-                  <Badge tone={controlsDraft.lifecycleStatus === "approved" ? "success" : "warning"}>
+                {!criticalFailures.length && !readinessBelowPublishThreshold ? (
+                  <Badge tone="success">
                     {controlsDraft.lifecycleStatus === "approved"
                       ? "Approved and ready to publish"
-                      : "Ready for approval"}
+                      : "Ready to publish; approval optional"}
                   </Badge>
                 ) : null}
               </div>
