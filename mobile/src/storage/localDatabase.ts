@@ -210,6 +210,10 @@ export class LocalDatabase {
     this.persistSnapshot();
   }
 
+  clearAll(): void {
+    this.restoreSnapshot({});
+  }
+
   initialize(): { ready: true; collections: string[] } {
     return {
       ready: true,

@@ -461,7 +461,7 @@ async def test_auth_service_issues_role_scoped_token(monkeypatch: pytest.MonkeyP
     assert payload["organization_id"]
 
 
-async def test_auth_service_prefers_platform_identity_for_super_admin(
+async def test_auth_service_keeps_selected_tenant_context_for_super_admin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
@@ -494,11 +494,11 @@ async def test_auth_service_prefers_platform_identity_for_super_admin(
     )
 
     payload = decode_access_token(token_response.access_token)
-    assert payload["roles"] == ["super_admin"]
+    assert set(payload["roles"]) == {"owner", "super_admin"}
     assert payload["platform_admin"] is True
     assert payload["support_mode"] is False
-    assert payload["organization_slug"] == "atlas-platform"
-    assert payload["organization_name"] == "Atlas FieldOps Platform"
+    assert payload["organization_slug"] == "tenant-program"
+    assert payload["organization_name"] == "Tenant Program"
     assert payload["platform_organization_slug"] == "atlas-platform"
     assert payload["scope_type"] == "global"
 

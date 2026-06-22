@@ -88,6 +88,9 @@ export class AuthService {
       // Non-blocking: continue login even if device registration fails.
     }
 
+    // A fresh login must not inherit cached data from another account or
+    // organization on the same device.
+    this.database.clearAll();
     const syncPackage = await new BootstrapSyncService(this.database, this.apis).syncAssignedWork(token.accessToken);
     if (syncPackage.bootstrap.blockedState.blocked) {
       const message = syncPackage.bootstrap.blockedState.reason ?? "This mobile account is blocked. Contact your supervisor.";
@@ -142,7 +145,7 @@ export class AuthService {
   }
 
   async logout(): Promise<void> {
-    new AuditEventService(this.database).queue("mobile.logout");
+    this.database.clearAll();
     await this.store.clear();
   }
 }

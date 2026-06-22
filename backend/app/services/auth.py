@@ -79,18 +79,19 @@ class AuthService:
             raise AuthenticationError("Invalid credentials")
         platform_identity = await self.users.find_platform_admin_for_user(user.id)
         if platform_identity is not None:
-            platform_user, platform_organization, platform_membership, platform_role, platform_grants, platform_assignments = platform_identity
+            _platform_user, platform_organization, platform_membership, _platform_role, _platform_grants, _platform_assignments = platform_identity
             if not platform_organization.is_active or not platform_membership.is_active:
                 raise AuthenticationError("Inactive platform account")
-            user = platform_user
-            organization = platform_organization
-            membership = platform_membership
-            role = platform_role
-            grants = platform_grants
-            assignments = platform_assignments
         if not organization.is_active:
             raise AuthenticationError("Inactive account")
-        return self._issue_token_response(user, organization, role, grants, assignments)
+        return self._issue_token_response(
+            user,
+            organization,
+            role,
+            grants,
+            assignments,
+            platform_identity=platform_identity,
+        )
 
     async def login_with_mobile_qr(self, qr_token: str) -> TokenResponse:
         payload = self._decode_mobile_qr_token(qr_token)
@@ -222,9 +223,29 @@ class AuthService:
         role: Role,
         grants: list[UserAccessGrant],
         assignments: list[tuple[UserRoleAssignment, Role]],
+        *,
+        platform_identity: tuple[User, Organization, object, Role, list[UserAccessGrant], list[tuple[UserRoleAssignment, Role]]] | None = None,
     ) -> TokenResponse:
+        platform_role_names: set[str] = set()
+        platform_grants: list[UserAccessGrant] = []
+        platform_assignments: list[tuple[UserRoleAssignment, Role]] = []
+        if platform_identity is not None:
+            _platform_user, platform_organization, _platform_membership, platform_role, platform_grants, platform_assignments = platform_identity
+            platform_role_names = {
+                platform_role.name,
+                *(assignment_role.name for _assignment, assignment_role in platform_assignments),
+            }
+        else:
+            platform_organization = None
         assignment_roles = [assignment_role for _assignment, assignment_role in assignments]
-        role_names = sorted({role.name, *(assignment_role.name for assignment_role in assignment_roles)})
+        platform_assignment_roles = [assignment_role for _assignment, assignment_role in platform_assignments]
+        role_names = sorted(
+            {
+                role.name,
+                *platform_role_names,
+                *(assignment_role.name for assignment_role in assignment_roles),
+            }
+        )
         primary_assignment = assignments[0][0] if assignments else None
         primary_grant = grants[0] if grants else None
         default_scope = default_scope_for_roles(role_names)
@@ -247,12 +268,30 @@ class AuthService:
                 if isinstance(getattr(grant, "scope_type", None), str)
                 and grant.scope_type in ScopeType._value2member_map_
             ),
+            *(
+                ScopeType(assignment.scope_type)
+                for assignment, _assignment_role in platform_assignments
+                if isinstance(getattr(assignment, "scope_type", None), str)
+                and assignment.scope_type in ScopeType._value2member_map_
+            ),
+            *(
+                ScopeType(grant.scope_type)
+                for grant in platform_grants
+                if isinstance(getattr(grant, "scope_type", None), str)
+                and grant.scope_type in ScopeType._value2member_map_
+            ),
         ]
         scope_type = min(scope_candidates, key=lambda scope: SCOPE_ORDER.index(scope)).value
         is_platform_admin = any(canonical_role(role_name) == "super_admin" for role_name in role_names)
         stored_permissions = {
             normalized.value
-            for permission in ",".join([role.permissions or "", *(assignment_role.permissions or "" for assignment_role in assignment_roles)]).split(",")
+            for permission in ",".join(
+                [
+                    role.permissions or "",
+                    *(assignment_role.permissions or "" for assignment_role in assignment_roles),
+                    *(assignment_role.permissions or "" for assignment_role in platform_assignment_roles),
+                ]
+            ).split(",")
             if (normalized := normalize_permission(permission.strip())) is not None
         }
         effective_permissions = sorted({permission.value for permission in permissions_for_roles(role_names)} | stored_permissions)
@@ -260,12 +299,16 @@ class AuthService:
             {
                 *(grant.geography_id for grant in grants if grant.geography_id),
                 *(assignment.geography_id for assignment, _assignment_role in assignments if assignment.geography_id),
+                *(grant.geography_id for grant in platform_grants if grant.geography_id),
+                *(assignment.geography_id for assignment, _assignment_role in platform_assignments if assignment.geography_id),
             }
         )
         project_ids = sorted(
             {
                 *(grant.project_id for grant in grants if grant.project_id),
                 *(assignment.project_id for assignment, _assignment_role in assignments if assignment.project_id),
+                *(grant.project_id for grant in platform_grants if grant.project_id),
+                *(assignment.project_id for assignment, _assignment_role in platform_assignments if assignment.project_id),
             }
         )
         organization_unit_ids = sorted(
@@ -273,6 +316,9 @@ class AuthService:
                 *(str(grant.organization_unit_id) for grant in grants if grant.organization_unit_id),
                 *(str(assignment.organization_unit_id) for assignment, _assignment_role in assignments if assignment.organization_unit_id),
                 *(str(assignment.team_id) for assignment, _assignment_role in assignments if assignment.team_id),
+                *(str(grant.organization_unit_id) for grant in platform_grants if grant.organization_unit_id),
+                *(str(assignment.organization_unit_id) for assignment, _assignment_role in platform_assignments if assignment.organization_unit_id),
+                *(str(assignment.team_id) for assignment, _assignment_role in platform_assignments if assignment.team_id),
             }
         )
         role_assignments = [
@@ -297,8 +343,8 @@ class AuthService:
             organization_slug=organization.slug,
             organization_name=organization.name,
             platform_admin=is_platform_admin,
-            platform_organization_id=str(organization.id) if is_platform_admin else None,
-            platform_organization_slug=organization.slug if is_platform_admin else None,
+            platform_organization_id=str(platform_organization.id) if is_platform_admin and platform_organization is not None else None,
+            platform_organization_slug=platform_organization.slug if is_platform_admin and platform_organization is not None else None,
             scope_type=scope_type,
             permissions=effective_permissions,
             geography_ids=geography_ids,
