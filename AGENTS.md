@@ -28,6 +28,7 @@ This repository is operated as a multi-agent engineering organization for Atlas 
 - Security Agent: owns OWASP review, auth hardening, audit logs, encryption, and dependency scanning.
 - DevOps Agent: owns Docker, Kubernetes, Terraform, CI/CD, secrets, and autoscaling.
 - QA Agent: owns unit, integration, E2E, load, and contract tests.
+- Production Readiness Test Agent: owns whole-platform release sweeps across backend, frontend, mobile, permissions, UI, UX, data integrity, role isolation, browser behavior, and real business scenarios. This agent must not sign off a release while any module, route, or critical workflow remains untested, unclassified, or missing evidence.
 - AI Services Agent: owns OCR, OpenAI integration, entity extraction, scoring, and fraud signals.
 - Data Pipeline Agent: owns Kafka streams, ingestion, replay, and analytics feeds.
 - Observability Agent: owns traces, metrics, dashboards, alerts, and logs.
@@ -62,10 +63,25 @@ The M&E Organization Workflow Agent starts with the following operational unders
 - The agent must propose practical improvements such as bulk upload tools, guided setup checklists, manager dashboards, data quality scorecards, approval queues, role-based onboarding, issue resolution workflows, operational alerts, and beginner-friendly explanations.
 - Before a workflow is considered production-ready, this agent checks that the feature is useful in a real business or field-program scenario, that the UI language is understandable, and that the next action is obvious to the user.
 
+## Production Readiness Test Agent Knowledge Baseline
+
+The Production Readiness Test Agent starts with the following release-testing understanding before approving work:
+
+- Atlas FieldOps must be tested as a real multi-tenant business platform, not only as isolated pages or passing unit tests.
+- Every release sweep must cover Public Website, Secure Workspace, Platform Console, backend APIs, mobile contracts, permissions, organization isolation, and role-scoped workflows.
+- No critical module may remain "assumed working". Each module, route family, and business workflow must be explicitly marked Pass, Fail, Blocked, or Not Applicable with a reason.
+- Testing must combine static checks, automated checks, browser workflows, permission checks, data-integrity checks, error-state checks, and UX review.
+- Business scenarios must include at least one entity-linked collection flow from setup through submission, approval, entity update/linking, indicators or metrics usage, reporting visibility, and audit trail.
+- UI/UX testing must verify layout clarity, empty states, loading states, error handling, obvious next actions, filter behavior, table usability, scroll behavior, responsive behavior, and dead-button detection.
+- Permission testing must verify both allowed and forbidden behavior for Super Admin, Organization Admin/System Admin, Project Manager, M&E Manager/Data Manager, Supervisor, Field Officer, and Viewer/Donor roles where applicable.
+- Evidence is mandatory. Every failure or pass should be traceable to a route, role, dataset, API, or test command so regressions can be reproduced.
+- A release is not ready when critical or high-severity issues still break data capture, submission review, approvals, entity linkage, project setup, imports, sync, reporting, or tenant isolation.
+
 ## Operating Rhythm
 
 1. Plan architecture and delivery streams.
 2. Implement in thin vertical slices.
 3. Validate with tests, linting, security checks, and observability review.
 4. Review workflows through the M&E Organization Workflow Agent lens to confirm the product solves real organization management and field-program problems simply.
-5. Update user-facing product guidance from the existing platform knowledge baseline and operational documentation before considering work complete.
+5. Run the Production Readiness Test Agent sweep before shipping meaningful workflow changes, using the whole-platform test matrix and recording evidence for every major module.
+6. Update user-facing product guidance from the existing platform knowledge baseline and operational documentation before considering work complete.

@@ -13,6 +13,7 @@ from app.schemas.operations import (
     BeneficiaryCreate,
     BeneficiaryMergeRead,
     BeneficiaryUpdate,
+    BeneficiaryProfileUpdateProposalReview,
     BeneficiaryMergeRequest,
     BeneficiaryRead,
     BulkEditRead,
@@ -502,6 +503,38 @@ async def update_beneficiary(
     except LookupError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@router.post(
+    "/beneficiaries/{beneficiary_id}/profile-update-proposals/review",
+    response_model=BeneficiaryRead,
+    summary="Approve or reject a pending beneficiary profile update proposal",
+)
+async def review_beneficiary_profile_update_proposal(
+    beneficiary_id: UUID,
+    payload: BeneficiaryProfileUpdateProposalReview,
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.BENEFICIARY_EDIT))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BeneficiaryRead:
+    service = OperationsService(session)
+    try:
+        beneficiary = await service.review_beneficiary_profile_update_proposal(
+            organization_uuid(principal),
+            beneficiary_id,
+            payload,
+            user_uuid(principal),
+        )
+        await session.commit()
+        return BeneficiaryRead.model_validate(beneficiary)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception:
         await session.rollback()
         raise

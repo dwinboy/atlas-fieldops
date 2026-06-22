@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { previewProjects } from "@/modules/projects/data";
+import { previewProjects, projectSectionFromPath } from "@/modules/projects/data";
 import { computeProjectSummary, filterProjects, healthTone, projectCodeFromName } from "@/modules/projects/utils";
 
 describe("projects utilities", () => {
@@ -30,5 +30,12 @@ describe("projects utilities", () => {
     expect(
       previewProjects.filter((project) => !project.sector_id).map((project) => project.name),
     ).toEqual([]);
+  });
+
+  it("maps project routes to the correct workspace section", () => {
+    expect(projectSectionFromPath("/projects")).toBe("dashboard");
+    expect(projectSectionFromPath("/projects/all")).toBe("all");
+    expect(projectSectionFromPath("/projects/active")).toBe("active");
+    expect(projectSectionFromPath("/projects/templates")).toBe("templates");
   });
 });

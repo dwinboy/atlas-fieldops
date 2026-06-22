@@ -2724,8 +2724,31 @@ export type SurveyTeamMemberRead = {
   is_active: boolean;
 };
 
+const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
+function normalizeLocalApiUrl(apiUrl: string): string {
+  if (typeof window === "undefined") {
+    return apiUrl;
+  }
+  try {
+    const parsed = new URL(apiUrl);
+    const browserHostname = window.location.hostname;
+    if (
+      LOCAL_DEV_HOSTS.has(parsed.hostname) &&
+      LOCAL_DEV_HOSTS.has(browserHostname) &&
+      parsed.hostname !== browserHostname
+    ) {
+      parsed.hostname = browserHostname;
+      return parsed.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    return apiUrl;
+  }
+  return apiUrl;
+}
+
 export function resolveApiBaseUrl(candidate: string | undefined): string {
-  const apiUrl = candidate?.trim().replace(/\/+$/, "");
+  const apiUrl = normalizeLocalApiUrl(candidate?.trim().replace(/\/+$/, "") ?? "");
   if (!apiUrl) {
     throw new Error("NEXT_PUBLIC_API_URL is required");
   }
@@ -3948,6 +3971,12 @@ export type BeneficiaryUpdate = {
   longitude?: number | null;
 };
 
+export type BeneficiaryProfileUpdateProposalReview = {
+  submission_id: string;
+  action: "approve" | "reject";
+  comment: string;
+};
+
 export async function updateBeneficiary(
   token: string,
   beneficiaryId: string,
@@ -3955,6 +3984,18 @@ export async function updateBeneficiary(
 ): Promise<BeneficiaryRead> {
   return request<BeneficiaryRead>(`/operations/beneficiaries/${beneficiaryId}`, {
     method: "PATCH",
+    token,
+    bodyJson: payload,
+  });
+}
+
+export async function reviewBeneficiaryProfileUpdateProposal(
+  token: string,
+  beneficiaryId: string,
+  payload: BeneficiaryProfileUpdateProposalReview,
+): Promise<BeneficiaryRead> {
+  return request<BeneficiaryRead>(`/operations/beneficiaries/${beneficiaryId}/profile-update-proposals/review`, {
+    method: "POST",
     token,
     bodyJson: payload,
   });

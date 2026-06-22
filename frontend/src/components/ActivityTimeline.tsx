@@ -2,10 +2,12 @@
 
 import { ArrowUpRight, CheckCircle2, Clock3, Filter, GitBranch, ShieldAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getNavigationItemByView } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
@@ -18,6 +20,7 @@ type ActivityEvent = {
   time: string;
   tone: ActivityTone;
   view: WorkspaceView;
+  route?: string;
   actionLabel: string;
   nextStep: string;
 };
@@ -30,6 +33,7 @@ const events: ActivityEvent[] = [
     time: "2m ago",
     tone: "success",
     view: "submissions",
+    route: "/submissions/pending-review",
     actionLabel: "Review clean data",
     nextStep: "Open the review queue, approve the clean submissions first, and leave reviewer notes for anything that needs correction."
   },
@@ -40,6 +44,7 @@ const events: ActivityEvent[] = [
     time: "11m ago",
     tone: "warning",
     view: "data",
+    route: "/data-quality/duplicates",
     actionLabel: "Resolve duplicate event",
     nextStep: "Open data tools, compare the suspected duplicate records, and decide whether to merge, correct, or reject the new record."
   },
@@ -50,6 +55,7 @@ const events: ActivityEvent[] = [
     time: "32m ago",
     tone: "neutral",
     view: "workflows",
+    route: "/governance/approvals",
     actionLabel: "Open approvals",
     nextStep: "Open approvals and confirm the regional manager route, escalation rule, and expected response time before teams use it."
   },
@@ -60,14 +66,21 @@ const events: ActivityEvent[] = [
     time: "48m ago",
     tone: "success",
     view: "connectivity",
+    route: "/field-operations/field-monitoring",
     actionLabel: "Check sync health",
     nextStep: "Open sync health to confirm retry queues, weak-network devices, and compressed upload settings before sending field teams back out."
   }
 ];
 
+export function activityRouteForEvent(event: Pick<ActivityEvent, "route" | "view">): string | null {
+  return event.route ?? getNavigationItemByView(event.view)?.route ?? null;
+}
+
 export function ActivityTimeline() {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [selectedEvent, setSelectedEvent] = useState<ActivityEvent>(events[0]);
+  const pathname = usePathname();
+  const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setLastActionResult = useWorkspaceStore((state) => state.setLastActionResult);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -84,6 +97,10 @@ export function ActivityTimeline() {
     setLastActionResult(event.nextStep);
     pushToast({ title: event.title, description: event.nextStep, tone: event.tone });
     setActiveView(event.view);
+    const route = activityRouteForEvent(event);
+    if (route && route !== pathname) {
+      router.push(route);
+    }
   }
 
   return (

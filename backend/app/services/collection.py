@@ -111,6 +111,46 @@ def _as_dict(value: object) -> dict[str, Any]:
 def _as_list(value: object) -> list[Any]:
     return value if isinstance(value, list) else []
 
+
+def _normalize_submission_frequency(value: object) -> str:
+    if not isinstance(value, str):
+        return "unlimited"
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return {
+        "once": "once_ever",
+        "single": "once_ever",
+        "once_ever": "once_ever",
+        "per_project": "once_per_project",
+        "once_per_project": "once_per_project",
+        "yearly": "once_per_year",
+        "annual": "once_per_year",
+        "once_per_year": "once_per_year",
+        "seasonal": "once_per_season",
+        "once_per_season": "once_per_season",
+        "quarterly": "once_per_quarter",
+        "once_per_quarter": "once_per_quarter",
+        "monthly": "once_per_month",
+        "once_per_month": "once_per_month",
+        "per_event": "once_per_event",
+        "once_per_event": "once_per_event",
+        "unlimited": "unlimited",
+    }.get(normalized, "unlimited")
+
+
+def _derive_frequency_period(rule: str, submitted_at: datetime, captured_at: datetime) -> str | None:
+    effective_at = submitted_at.astimezone(UTC) if submitted_at.tzinfo is not None else submitted_at.replace(tzinfo=UTC)
+    if rule == "once_per_year":
+        return f"{effective_at.year}"
+    if rule == "once_per_quarter":
+        quarter = ((effective_at.month - 1) // 3) + 1
+        return f"{effective_at.year}-Q{quarter}"
+    if rule == "once_per_month":
+        return f"{effective_at.year}-{effective_at.month:02d}"
+    if rule == "once_per_season":
+        captured = captured_at.astimezone(UTC) if captured_at.tzinfo is not None else captured_at.replace(tzinfo=UTC)
+        return f"{captured.year}-S{((captured.month - 1) // 3) + 1}"
+    return None
+
 class CollectionNotFoundError(Exception):
     pass
 
@@ -149,6 +189,7 @@ def xls_type(field_type: str, options: list[dict[str, object]], name: str) -> st
         "multiselect": "select_multiple",
         "radio": "select_one",
         "checkbox": "select_multiple",
+        "consent": "acknowledge",
         "ranking": "rank",
         "likert": "select_one likert",
         "matrix_single": "table-list",
@@ -553,6 +594,18 @@ def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object
                 issues.append(_field_issue(field, f"{label} requires GPS evidence for this record."))
             if _is_blank(value):
                 continue
+
+            if field.type == "consent":
+                consent_given = value is True or str(value).strip().lower() in {"true", "yes", "y", "1", "consent", "given"}
+                if bool(rules.get("blockIfFalse")) and not consent_given:
+                    consent_message = rules.get("message")
+                    issues.append(
+                        _field_issue(
+                            field,
+                            str(consent_message) if consent_message else f"{label} must confirm consent before submission.",
+                        )
+                    )
+                    continue
 
             if field.type in {"number", "decimal", "currency", "nps", "rating"}:
                 number = _parse_number(value)
@@ -1986,8 +2039,6 @@ class SubmissionService:
             organization_id=organization_id,
             client_submission_id=payload.client_submission_id,
         )
-        if existing is not None:
-            return existing
         form_version = await self.forms.get_version(
             organization_id=organization_id,
             form_id=payload.form_id,
@@ -2006,16 +2057,29 @@ class SubmissionService:
             raise CollectionNotFoundError("Survey not found for the selected project")
         controls_json = form.controls_json or {}
         entity_controls = self._entity_controls(controls_json)
-        frequency_rule = str(entity_controls.get("submission_frequency") or "unlimited")
+        frequency_rule = _normalize_submission_frequency(entity_controls.get("submission_frequency") or "unlimited")
+        effective_frequency_period = payload.frequency_period or _derive_frequency_period(
+            frequency_rule,
+            payload.submitted_at,
+            payload.captured_at,
+        )
+        can_resubmit_existing = (
+            existing is not None
+            and existing.field_officer_id == officer.id
+            and existing.status in {"correction_requested", "rejected"}
+        )
+        if existing is not None and not can_resubmit_existing:
+            return existing
         if payload.entity_id is not None and frequency_rule != "unlimited":
             conflict = await self.submissions.find_conflicting_submission_for_frequency(
                 organization_id=organization_id,
                 entity_id=payload.entity_id,
                 form_id=payload.form_id,
                 frequency_rule=frequency_rule,
-                frequency_period=payload.frequency_period,
+                frequency_period=effective_frequency_period,
                 event_id=payload.event_id,
                 project_id=payload.project_id,
+                exclude_submission_id=existing.id if can_resubmit_existing and existing is not None else None,
             )
             if conflict is not None:
                 label = self.ENTITY_FREQUENCY_LABELS.get(frequency_rule, frequency_rule)
@@ -2050,6 +2114,16 @@ class SubmissionService:
                 submission_payload["_duplicate_submission_signal"] = duplicate_submission
                 submission_payload["_quality_status"] = "needs_review"
                 submission_payload["_review_required"] = True
+        if can_resubmit_existing and existing is not None:
+            return await self._resubmit_existing_submission(
+                organization_id=organization_id,
+                actor_user_id=actor_user_id,
+                submission=existing,
+                payload=payload,
+                form_version_id=form_version.id,
+                payload_json=submission_payload,
+                frequency_period=effective_frequency_period,
+            )
         submission = await self.submissions.create(
             organization_id=organization_id,
             project_id=payload.project_id,
@@ -2060,7 +2134,7 @@ class SubmissionService:
             entity_type=payload.entity_type,
             assignment_id=payload.assignment_id,
             supervisor_id=payload.supervisor_id,
-            frequency_period=payload.frequency_period,
+            frequency_period=effective_frequency_period,
             event_id=payload.event_id,
             field_officer_id=officer.id,
             actor_user_id=actor_user_id,
@@ -2122,6 +2196,73 @@ class SubmissionService:
             validation_issues=validation_issues,
         )
         await self._sync_repeat_rows(organization_id=organization_id, submission=submission, schema=schema)
+        return submission
+
+    async def _resubmit_existing_submission(
+        self,
+        *,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        submission: Submission,
+        payload: SubmissionCreate,
+        form_version_id: UUID,
+        payload_json: dict[str, Any],
+        frequency_period: str | None,
+    ) -> Submission:
+        previous_status = submission.status
+        submission.project_id = payload.project_id
+        submission.survey_id = payload.survey_id
+        submission.form_id = payload.form_id
+        submission.form_version_id = form_version_id
+        submission.entity_id = payload.entity_id
+        submission.entity_type = payload.entity_type
+        submission.assignment_id = payload.assignment_id
+        submission.supervisor_id = payload.supervisor_id
+        submission.frequency_period = frequency_period
+        submission.event_id = payload.event_id
+        submission.payload_json = payload_json
+        submission.device_id = payload.device.device_id
+        submission.captured_at = payload.captured_at
+        submission.submitted_at = payload.submitted_at
+        submission.sync_received_at = datetime.now(UTC)
+        submission.offline_created = payload.offline_created
+        submission.latitude = payload.location.latitude
+        submission.longitude = payload.location.longitude
+        submission.altitude = payload.location.altitude
+        submission.accuracy = payload.location.accuracy
+        submission.location_captured_at = payload.location.timestamp
+        submission.status = "resubmitted"
+        submission.approved_by_user_id = None
+        submission.approved_at = None
+        submission.server_sequence += 1
+        await self.submissions.add_version(
+            submission=submission,
+            actor_user_id=actor_user_id,
+            reason="returned submission corrected and resubmitted from mobile",
+        )
+        await self.submissions.add_status_history(
+            organization_id=organization_id,
+            submission_id=submission.id,
+            actor_user_id=actor_user_id,
+            from_status=previous_status,
+            to_status="resubmitted",
+            comment="Returned submission corrected and resubmitted from mobile.",
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action="submission.resubmitted",
+            resource_type="submission",
+            resource_id=str(submission.id),
+            metadata={
+                "client_submission_id": submission.client_submission_id,
+                "previous_status": previous_status,
+                "project_id": str(payload.project_id),
+                "survey_id": str(payload.survey_id),
+                "form_id": str(payload.form_id),
+            },
+        )
+        await self.session.flush()
         return submission
 
     async def validate_entity_frequency(
@@ -2693,7 +2834,7 @@ class SubmissionService:
             imported_at=submission.imported_at,
             imported_by_user_id=submission.imported_by_user_id,
             uploaded_by_name=uploader.full_name if uploader else None,
-            source_system=submission.source_system,
+            source_system=self._source_label(submission),
             source_record_id=submission.source_record_id,
             missing_fields=missing_fields,
             missing_field_keys=missing_field_keys,
@@ -2854,6 +2995,16 @@ class SubmissionService:
                 rows=rows,
             )
 
+    @staticmethod
+    def _source_label(submission: Submission) -> str:
+        if submission.is_imported:
+            return "Imported"
+        if submission.source_system:
+            return submission.source_system
+        if submission.offline_created:
+            return "Mobile"
+        return "Web Entry"
+
     async def list_submissions(
         self,
         *,
@@ -2993,6 +3144,7 @@ class SubmissionService:
                     update={
                         "payload_json": payload_json,
                         "redacted_fields": redacted_fields,
+                        "source_system": self._source_label(submission),
                         "beneficiary_code": beneficiary_codes.get(submission.entity_id)
                         if submission.entity_id
                         else None,
@@ -4250,7 +4402,15 @@ class SubmissionService:
         return None
 
     def _entity_display_name(self, values: dict[str, object]) -> str | None:
-        full_name = self._string_value(values, "full_name", "farmer_name", "beneficiary_name", "respondent", "name")
+        full_name = self._string_value(
+            values,
+            "full_name",
+            "entity_name",
+            "farmer_name",
+            "beneficiary_name",
+            "respondent",
+            "name",
+        )
         if full_name:
             return full_name
         parts = [

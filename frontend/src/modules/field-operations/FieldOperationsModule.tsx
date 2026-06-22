@@ -19,10 +19,10 @@ import {
   UserPlus,
   UsersRound,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -86,6 +86,8 @@ import {
 } from "@/modules/beneficiaries/data";
 import { formatEntityDate } from "@/modules/beneficiaries/utils";
 import {
+  fieldOperationsAssignmentRoute,
+  fieldOperationsSectionFromPath,
   fieldOperationsSections,
   previewActivities,
   previewAssignments,
@@ -103,6 +105,8 @@ import {
   type SupervisorProfile,
   type WorkPlan,
 } from "@/modules/field-operations/data";
+import { previewForms } from "@/modules/forms/data";
+import { previewProjects } from "@/modules/projects/data";
 import {
   computeFieldOperationsSummary,
   deriveFieldActivities,
@@ -128,6 +132,10 @@ type ModalMode =
   | "work-plan"
   | "target"
   | null;
+
+export function fieldOperationsMappingRoute(): string {
+  return "/mapping";
+}
 
 const defaultAssignmentDraft: Omit<FieldAssignment, "id" | "completedCount"> = {
   assignedEntityIds: [],
@@ -185,13 +193,6 @@ const defaultTargetDraft: Omit<OperationalTarget, "achieved" | "id"> = {
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
-}
-
-function initialFieldOperationsSection(): FieldOperationsSection {
-  if (typeof window === "undefined") return "dashboard";
-  const path = window.location.pathname;
-  const section = fieldOperationsSections.find((item) => path.endsWith(item.route));
-  return section?.id ?? "dashboard";
 }
 
 function splitList(value: string): string[] {
@@ -1065,10 +1066,13 @@ export function FieldOperationsModule({
   principal,
   token,
 }: FieldOperationsModuleProps) {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const preview = isPreview(token);
+  const requestedFormId = searchParams.get("formId") ?? "";
   const [activeSection, setActiveSection] =
-    useState<FieldOperationsSection>("dashboard");
+    useState<FieldOperationsSection>(() => fieldOperationsSectionFromPath(pathname));
   const [assignments, setAssignments] =
     useState<FieldAssignment[]>(() => (preview ? previewAssignments : []));
   const [workPlans, setWorkPlans] = useState<WorkPlan[]>(() => (preview ? previewWorkPlans : []));
@@ -1100,7 +1104,6 @@ export function FieldOperationsModule({
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localProjects = useWorkspaceStore((state) => state.localProjects);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const upsertLocalAssignment = useWorkspaceStore(
     (state) => state.upsertLocalAssignment,
   );
@@ -1124,8 +1127,17 @@ export function FieldOperationsModule({
   const canViewOperationalReports = preview || hasAnyPermission(["operations.reports.view", "operations.activities.manage"]);
 
   useEffect(() => {
-    setActiveSection(initialFieldOperationsSection());
-  }, []);
+    const routeSection = fieldOperationsSectionFromPath(pathname);
+    if (routeSection !== activeSection) {
+      setActiveSection(routeSection);
+    }
+  }, [activeSection, pathname]);
+
+  function selectSection(section: FieldOperationsSection): void {
+    setActiveSection(section);
+    const route = fieldOperationsSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
 
   const officersQuery = useQuery({
     queryKey: ["field-officers", token],
@@ -1298,7 +1310,7 @@ export function FieldOperationsModule({
   const selectedOfficerProfile = preview ? previewOfficerProfile : officerProfileQuery.data;
 
   const openOfficerProfile = (officerId: string) => {
-    setActiveSection("field-officers");
+    selectSection("field-officers");
     setSelectedOfficerId(officerId);
     setProfileTemporaryPassword(null);
     window.setTimeout(() => {
@@ -1310,14 +1322,14 @@ export function FieldOperationsModule({
   };
   const availableProjects = useMemo(() => {
     const byId = new Map<string, (typeof localProjects)[number]>();
-    for (const project of (preview ? localProjects : (projectsQuery.data ?? []))) {
+    for (const project of (preview ? (localProjects.length ? localProjects : previewProjects) : (projectsQuery.data ?? []))) {
       byId.set(project.id, project);
     }
     return Array.from(byId.values());
   }, [localProjects, preview, projectsQuery.data]);
   const availableForms = useMemo(() => {
     const byId = new Map<string, (typeof localForms)[number]>();
-    for (const form of (preview ? localForms : [])) {
+    for (const form of (preview ? (localForms.length ? localForms : previewForms) : [])) {
       byId.set(form.id, form);
     }
     for (const form of formsQuery.data ?? []) {
@@ -1561,6 +1573,75 @@ export function FieldOperationsModule({
     },
     [assignmentDraft.project, assignments, availableForms, availableProjects],
   );
+
+  const buildAssignmentDraft = useCallback(
+    (preferredFormId?: string): Omit<FieldAssignment, "id" | "completedCount"> => {
+      const preferredForm = preferredFormId
+        ? availableForms.find((form) => form.id === preferredFormId)
+        : undefined;
+      const latestForm =
+        preferredForm ??
+        availableForms.find(
+          (form) => String(form.status).toLowerCase() === "published",
+        );
+      const latestProject = latestForm
+        ? availableProjects.find(
+            (project) =>
+              project.id === latestForm.project_id ||
+              project.name === latestForm.project_name,
+          )
+        : availableProjects[0];
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+      return {
+        ...defaultAssignmentDraft,
+        endDate: nextWeek.toISOString().slice(0, 10),
+        form: latestForm?.name ?? formOptions[0] ?? "",
+        location: latestProject?.region ?? latestProject?.country ?? "",
+        name: latestForm ? `${latestForm.name} field collection` : "",
+        project:
+          latestForm?.project_name ??
+          latestProject?.name ??
+          projectOptions[0] ??
+          "",
+        startDate: today.toISOString().slice(0, 10),
+        supervisor: supervisors[0]?.name ?? "",
+        targetCount: 100,
+      };
+    },
+    [availableForms, availableProjects, formOptions, projectOptions, supervisors],
+  );
+
+  useEffect(() => {
+    if (!requestedFormId || assignmentEditingId) return;
+    const requestedForm = availableForms.find((form) => form.id === requestedFormId);
+    if (!requestedForm) return;
+    if (activeSection !== "assignments") {
+      setActiveSection("assignments");
+    }
+    if (modalMode === "assignment" && assignmentDraft.form === requestedForm.name) {
+      return;
+    }
+    setAssignmentEditingId(null);
+    setAssignmentDraft(buildAssignmentDraft(requestedFormId));
+    setModalMode("assignment");
+    const route = fieldOperationsAssignmentRoute(requestedFormId);
+    if (route !== `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`) {
+      router.replace(route, { scroll: false });
+    }
+  }, [
+    activeSection,
+    assignmentDraft.form,
+    assignmentEditingId,
+    availableForms,
+    buildAssignmentDraft,
+    modalMode,
+    pathname,
+    requestedFormId,
+    router,
+    searchParams,
+  ]);
 
   function projectTeamMembers(
     project: string,
@@ -2439,34 +2520,7 @@ export function FieldOperationsModule({
       setModalMode("assignment");
       return;
     }
-    const latestForm = availableForms.find(
-      (form) => String(form.status).toLowerCase() === "published",
-    );
-    const latestProject = latestForm
-      ? availableProjects.find(
-          (project) =>
-            project.id === latestForm.project_id ||
-            project.name === latestForm.project_name,
-        )
-      : availableProjects[0];
-    const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    setAssignmentDraft({
-      ...defaultAssignmentDraft,
-      endDate: nextWeek.toISOString().slice(0, 10),
-      form: latestForm?.name ?? formOptions[0] ?? "",
-      location: latestProject?.region ?? latestProject?.country ?? "",
-      name: latestForm ? `${latestForm.name} field collection` : "",
-      project:
-        latestForm?.project_name ??
-        latestProject?.name ??
-        projectOptions[0] ??
-        "",
-      startDate: today.toISOString().slice(0, 10),
-      supervisor: supervisors[0]?.name ?? "",
-      targetCount: 100,
-    });
+    setAssignmentDraft(buildAssignmentDraft());
     setAssignmentEditingId(null);
     setModalMode("assignment");
   }
@@ -2617,7 +2671,7 @@ export function FieldOperationsModule({
               <Plus aria-hidden="true" />
               Create assignment
             </Button>
-            <Button onClick={() => setActiveView("map")} variant="secondary">
+            <Button onClick={() => router.push(fieldOperationsMappingRoute())} variant="secondary">
               <MapPinned aria-hidden="true" />
               Open mapping
             </Button>
@@ -2656,7 +2710,7 @@ export function FieldOperationsModule({
                   : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => selectSection(section.id)}
               type="button"
             >
               {section.label}
@@ -2674,21 +2728,21 @@ export function FieldOperationsModule({
                 <MetricCard
                   icon={<UsersRound aria-hidden="true" />}
                   label="Assigned Field Officers"
-                  onClick={() => setActiveSection("field-officers")}
+                  onClick={() => selectSection("field-officers")}
                   tone="success"
                   value={summary.assignedFieldOfficers}
                 />
                 <MetricCard
                   icon={<ShieldCheck aria-hidden="true" />}
                   label="Active Supervisors"
-                  onClick={() => setActiveSection("supervisors")}
+                  onClick={() => selectSection("supervisors")}
                   tone="success"
                   value={summary.activeSupervisors}
                 />
                 <MetricCard
                   icon={<Route aria-hidden="true" />}
                   label="Team Productivity"
-                  onClick={() => setActiveSection("field-officers")}
+                  onClick={() => selectSection("field-officers")}
                   tone="success"
                   value={`${summary.teamProductivity}%`}
                 />
@@ -2701,28 +2755,28 @@ export function FieldOperationsModule({
                 <MetricCard
                   icon={<ClipboardList aria-hidden="true" />}
                   label="Active Assignments"
-                  onClick={() => setActiveSection("assignments")}
+                  onClick={() => selectSection("assignments")}
                   tone="success"
                   value={summary.activeAssignments}
                 />
                 <MetricCard
                   icon={<Target aria-hidden="true" />}
                   label="Assignment Completion"
-                  onClick={() => setActiveSection("assignments")}
+                  onClick={() => selectSection("assignments")}
                   tone="warning"
                   value={`${summary.assignmentCompletionRate}%`}
                 />
                 <MetricCard
                   icon={<AlertTriangle aria-hidden="true" />}
                   label="Overdue Assignments"
-                  onClick={() => setActiveSection("assignments")}
+                  onClick={() => selectSection("assignments")}
                   tone={summary.overdueAssignments ? "danger" : "success"}
                   value={summary.overdueAssignments}
                 />
                 <MetricCard
                   icon={<CalendarDays aria-hidden="true" />}
                   label="Upcoming Deadlines"
-                  onClick={() => setActiveSection("work-plans")}
+                  onClick={() => selectSection("work-plans")}
                   tone={summary.upcomingDeadlines ? "warning" : "success"}
                   value={summary.upcomingDeadlines}
                 />
@@ -2735,21 +2789,21 @@ export function FieldOperationsModule({
                 <MetricCard
                   icon={<CalendarDays aria-hidden="true" />}
                   label="Operational Activities"
-                  onClick={() => setActiveSection("visit-requests")}
+                  onClick={() => selectSection("visit-requests")}
                   tone={visitRequests.filter((visit) => visit.status === "pending").length ? "warning" : "success"}
                   value={visitRequests.length}
                 />
                 <MetricCard
                   icon={<MapPinned aria-hidden="true" />}
                   label="Coverage Progress"
-                  onClick={() => setActiveSection("field-monitoring")}
+                  onClick={() => selectSection("field-monitoring")}
                   tone={summary.coverageProgress >= 70 ? "success" : "warning"}
                   value={`${summary.coverageProgress}%`}
                 />
                 <MetricCard
                   icon={<RadioTower aria-hidden="true" />}
                   label="Daily Collection Progress"
-                  onClick={() => setActiveSection("field-monitoring")}
+                  onClick={() => selectSection("field-monitoring")}
                   tone="success"
                   value={`${summary.dailyCollectionProgress}%`}
                 />
@@ -2822,7 +2876,7 @@ export function FieldOperationsModule({
                 </div>
                 <Button
                   className="mt-5"
-                  onClick={() => setActiveView("map")}
+                  onClick={() => router.push(fieldOperationsMappingRoute())}
                   variant="secondary"
                 >
                   <MapPinned aria-hidden="true" />

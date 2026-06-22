@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -51,9 +51,11 @@ from app.services.collection import (
     SubmissionService,
     form_schema_compatibility,
     form_schema_to_xlsform,
+    validate_submission_payload,
 )
 from app.schemas.operations import (
     BeneficiaryUpdate,
+    BeneficiaryProfileUpdateProposalReview,
     FieldVisitCheckIn,
     FieldVisitRequestCreate,
     FieldVisitRequestReview,
@@ -114,6 +116,50 @@ def test_form_schema_accepts_offline_supported_field_types() -> None:
     assert payload.project_id == project_id
     assert payload.survey_id == survey_id
     assert payload.publish is True
+
+
+def test_form_schema_normalizes_sector_starter_aliases_and_consent() -> None:
+    payload = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Starter aliases",
+            "slug": "starter-aliases",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {"id": "consent", "type": "consent", "label": "Consent captured", "required": True},
+                            {"id": "entity_name", "type": "short_text", "label": "Entity name"},
+                            {"id": "notes", "type": "long_text", "label": "Notes"},
+                            {"id": "photo", "type": "image_upload", "label": "Photo"},
+                        ],
+                    }
+                ]
+            },
+        }
+    )
+
+    assert [field.type for field in payload.form_schema.sections[0].fields] == [
+        "consent",
+        "text",
+        "textarea",
+        "photo",
+    ]
+
+
+def test_form_controls_accept_legacy_profile_update_labels() -> None:
+    controls = FormControlsSettings.model_validate(
+        {
+            "entity_controls": {
+                "profile_update_mode": "Require review for name, phone, village, and GPS changes",
+            }
+        }
+    )
+
+    assert controls.entity_controls.profile_update_mode == "with_supervisor_approval"
 
 
 def test_form_schema_accepts_operational_lifecycle_form_types() -> None:
@@ -413,6 +459,13 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
                         "title": "Main",
                         "fields": [
                             {
+                                "id": "consent",
+                                "type": "consent",
+                                "label": "Consent captured",
+                                "required": True,
+                                "validation": {"blockIfFalse": True, "message": "Consent is required before continuing."},
+                            },
+                            {
                                 "id": "crop_status",
                                 "type": "select",
                                 "label": "Crop status",
@@ -432,11 +485,44 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
     compatibility = form_schema_compatibility(form_id=form_id, version=1, schema=schema)
 
     assert workbook.settings.form_title == "Farm monitoring"
+    assert "acknowledge" in {row.type for row in workbook.survey}
     assert "select_one crop_status" in {row.type for row in workbook.survey}
     assert {choice.name for choice in workbook.choices} == {"healthy", "needs_support"}
     assert compatibility.xlsform_ready is True
     assert compatibility.has_gps is True
     assert compatibility.media_field_count == 1
+
+
+def test_validate_submission_payload_blocks_false_consent() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Consent check",
+            "slug": "consent-check",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "consent",
+                                "type": "consent",
+                                "label": "Consent captured",
+                                "required": True,
+                                "validation": {"blockIfFalse": True, "message": "Consent is required before continuing."},
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(schema=schema, payload={"consent": False}, location_accuracy=None)
+
+    assert issues == ["Consent is required before continuing."]
 
 
 @pytest.mark.asyncio
@@ -732,7 +818,7 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
                                 "id": "identity",
                                 "title": "Identity",
                                 "fields": [
-                                    {"id": "q_name", "variable_name": "farmer_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "q_name", "variable_name": "entity_name", "type": "text", "label": "Farmer Name", "required": True},
                                     {"id": "q_phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
                                     {"id": "q_village", "variable_name": "village", "type": "text", "label": "Village"},
                                 ],
@@ -766,7 +852,7 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
                 form_version_id=str(version_id),
                 entity_type="Farmer",
                 responses=[
-                    {"questionId": "q_name", "variableName": "farmer_name", "value": "Mobile Farmer", "updatedAt": now},
+                    {"questionId": "q_name", "variableName": "entity_name", "value": "Mobile Farmer", "updatedAt": now},
                     {"questionId": "q_phone", "variableName": "phone", "value": "677000002", "updatedAt": now},
                     {"questionId": "q_village", "variableName": "village", "value": "Bafut", "updatedAt": now},
                 ],
@@ -787,10 +873,13 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
         )
         assert len(submissions) == 1
         submission = submissions[0]
-        assert submission.payload_json["farmer_name"] == "Mobile Farmer"
+        assert submission.source_system == "Mobile"
+        assert submission.payload_json["entity_name"] == "Mobile Farmer"
         assert submission.payload_json["_mobile_responses"][0]["questionId"] == "q_name"
         assert submission.offline_created is True
         assert submission.field_officer_id == officer_id
+        assert submission.source_system == "Mobile"
+        assert submission.source_submission_id == "mobile-draft-001"
 
         await SubmissionService(session).review_submission(
             organization_id=organization_id,
@@ -804,6 +893,184 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
         assert beneficiary.beneficiary_uid.startswith("FRM-")
         assert beneficiary.display_name == "Mobile Farmer"
         assert beneficiary.project_id == project_id
+        refreshed_submission = await session.get(Submission, submission.id)
+        assert refreshed_submission is not None
+        assert refreshed_submission.entity_id == beneficiary.id
+
+
+@pytest.mark.asyncio
+async def test_mobile_returned_submission_can_be_corrected_and_resubmitted() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Correction Org", slug="correction-org"),
+                User(id=field_user_id, email="field@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Correction Project", slug="correction-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Correction Registration",
+                    code="COR-REG",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Correction Farmer Registration",
+                    slug="correction-farmer-registration",
+                    status="published",
+                    current_version=1,
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Farmer",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "q_name", "variable_name": "entity_name", "type": "text", "label": "Farmer Name", "required": True},
+                                    {"id": "q_phone", "variable_name": "phone", "type": "phone", "label": "Phone"},
+                                    {"id": "q_village", "variable_name": "village", "type": "text", "label": "Village"},
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field@example.org",
+            full_name="Field Officer",
+            organization_slug="correction-org",
+            organization_name="Correction Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        first_upload = await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-correction-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Farmer",
+                responses=[
+                    {"questionId": "q_name", "variableName": "entity_name", "value": "Correction Farmer", "updatedAt": now},
+                    {"questionId": "q_phone", "variableName": "phone", "value": "677000100", "updatedAt": now},
+                    {"questionId": "q_village", "variableName": "village", "value": "Bafut", "updatedAt": now},
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                device_id="android-correction-test",
+                app_version="1.0.0-test",
+                created_at=now,
+                submitted_at=now,
+            ),
+        )
+        assert first_upload.status == "synced"
+
+        submission = (await session.execute(select(Submission).where(Submission.client_submission_id == "mobile-correction-001"))).scalar_one()
+        submission_id = submission.id
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission.id,
+            payload=SubmissionReviewAction(action="request_correction", comment="Fix the phone number before approval."),
+        )
+        await session.commit()
+
+        returned = await MobileService(session).returned_submissions(principal)
+        assert len(returned) == 1
+        assert returned[0].id == "mobile-correction-001"
+        assert returned[0].review_comments == "Fix the phone number before approval."
+
+        corrected_at = now + timedelta(minutes=15)
+        second_upload = await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-correction-001",
+                project_id=str(project_id),
+                form_id=str(form_id),
+                form_version_id=str(version_id),
+                entity_type="Farmer",
+                responses=[
+                    {"questionId": "q_name", "variableName": "entity_name", "value": "Correction Farmer", "updatedAt": corrected_at},
+                    {"questionId": "q_phone", "variableName": "phone", "value": "677000200", "updatedAt": corrected_at},
+                    {"questionId": "q_village", "variableName": "village", "value": "Bafut", "updatedAt": corrected_at},
+                ],
+                location={"latitude": 5.9005, "longitude": 10.1005, "accuracy": 6, "timestamp": corrected_at},
+                device_id="android-correction-test",
+                app_version="1.0.0-test",
+                created_at=corrected_at,
+                submitted_at=corrected_at,
+            ),
+        )
+        assert second_upload.status == "synced"
+        assert second_upload.server_submission_id == str(submission_id)
+
+        refreshed = await session.get(Submission, submission_id)
+        assert refreshed is not None
+        assert refreshed.status == "resubmitted"
+        assert refreshed.payload_json["phone"] == "677000200"
+        assert refreshed.review_comments == "Fix the phone number before approval."
+
+        await SubmissionService(session).review_submission(
+            organization_id=organization_id,
+            actor_user_id=manager_user_id,
+            submission_id=submission_id,
+            payload=SubmissionReviewAction(action="approve", comment="Corrected and approved."),
+        )
+        await session.commit()
+
+        beneficiary = (await session.execute(select(Beneficiary))).scalar_one()
+        assert beneficiary.display_name == "Correction Farmer"
+        assert beneficiary.phone_number == "677000200"
+
+        approved_submission = await session.get(Submission, submission_id)
+        assert approved_submission is not None
+        assert approved_submission.status == "approved"
+        assert approved_submission.entity_id == beneficiary.id
 
 
 async def _seed_dedup_environment(controls_json: dict[str, object]) -> dict[str, object]:
@@ -1002,6 +1269,63 @@ async def test_create_submission_enforces_once_ever_frequency() -> None:
                 payload=_dedup_submission_payload(
                     env, client_submission_id="freq-101", payload={"farmer_name": "Repeat Farmer"}, entity_id=beneficiary.id
                 ),
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_submission_derives_month_frequency_period_when_missing() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {"submission_frequency": "monthly"}})
+    session: object = env["session"]
+    async with session:
+        beneficiary = Beneficiary(
+            id=uuid4(),
+            organization_id=env["organization_id"],
+            project_id=env["project_id"],
+            beneficiary_uid="FRM-FREQ3",
+            beneficiary_type="Farmer",
+            display_name="Monthly Farmer",
+        )
+        session.add(beneficiary)
+        await session.commit()
+
+        service = SubmissionService(session)
+        first_payload = _dedup_submission_payload(
+            env,
+            client_submission_id="freq-month-001",
+            payload={"farmer_name": "Monthly Farmer"},
+            entity_id=beneficiary.id,
+        )
+        first_payload = first_payload.model_copy(
+            update={
+                "submitted_at": datetime(2026, 6, 4, 10, 0, tzinfo=UTC),
+                "captured_at": datetime(2026, 6, 4, 9, 55, tzinfo=UTC),
+            }
+        )
+        first = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=first_payload,
+        )
+        await session.commit()
+        assert first.frequency_period == "2026-06"
+
+        second_payload = _dedup_submission_payload(
+            env,
+            client_submission_id="freq-month-002",
+            payload={"farmer_name": "Monthly Farmer"},
+            entity_id=beneficiary.id,
+        )
+        second_payload = second_payload.model_copy(
+            update={
+                "submitted_at": datetime(2026, 6, 18, 15, 0, tzinfo=UTC),
+                "captured_at": datetime(2026, 6, 18, 14, 45, tzinfo=UTC),
+            }
+        )
+        with pytest.raises(CollectionConflictError):
+            await service.create_submission(
+                organization_id=env["organization_id"],
+                actor_user_id=env["field_user_id"],
+                payload=second_payload,
             )
 
 
@@ -1902,6 +2226,242 @@ async def test_beneficiary_update_corrects_profile_with_audited_reason() -> None
         assert [log.action for log in logs] == ["beneficiary.updated"]
         assert "Household relocated" in logs[0].metadata_json
         assert "enrollment_status" in logs[0].metadata_json
+
+
+@pytest.mark.asyncio
+async def test_profile_update_proposal_review_applies_lineage_and_resolves_signal() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        submission_id = uuid4()
+        form_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Proposal Org", slug="proposal-org"),
+                User(id=actor_user_id, email="proposal-manager@example.org", full_name="Proposal Manager", password_hash="x"),
+            ]
+        )
+        beneficiary = Beneficiary(
+            organization_id=organization_id,
+            project_id=uuid4(),
+            beneficiary_uid="FRM-2026-000010",
+            beneficiary_type="Farmer",
+            display_name="Alice Nfor",
+            phone_number="+237 600 000 010",
+            profile_json={
+                "profileUpdateProposals": [
+                    {
+                        "submissionId": str(submission_id),
+                        "clientSubmissionId": "mob-followup-001",
+                        "status": "pending_review",
+                        "changes": {
+                            "phone_number": {
+                                "current": "+237 600 000 010",
+                                "proposed": "+237 600 000 099",
+                            }
+                        },
+                    }
+                ]
+            },
+        )
+        session.add(beneficiary)
+        await session.flush()
+
+        session.add(
+            Submission(
+                id=submission_id,
+                organization_id=organization_id,
+                project_id=beneficiary.project_id,
+                form_id=form_id,
+                form_version_id=uuid4(),
+                field_officer_id=officer_id,
+                entity_id=beneficiary.id,
+                client_submission_id="mob-followup-001",
+                status="approved",
+                payload_json={"phone_number": "+237 600 000 099"},
+                device_id="android-test",
+                captured_at=now,
+                submitted_at=now,
+                approved_at=now,
+                sync_received_at=now,
+                latitude=5.96,
+                longitude=10.16,
+                location_captured_at=now,
+            )
+        )
+        session.add(
+            DataQualitySignal(
+                organization_id=organization_id,
+                submission_id=submission_id,
+                beneficiary_id=beneficiary.id,
+                signal_type="profile_conflict",
+                severity="medium",
+                confidence=0.88,
+                summary="Submitted phone conflicts with official profile.",
+                status="open",
+                evidence_json={"statusHistory": []},
+            )
+        )
+        await session.commit()
+
+        service = OperationsService(session)
+        updated = await service.review_beneficiary_profile_update_proposal(
+            organization_id,
+            beneficiary.id,
+            BeneficiaryProfileUpdateProposalReview(
+                submission_id=submission_id,
+                action="approve",
+                comment="Verified during follow-up review.",
+            ),
+            actor_user_id,
+        )
+        await session.commit()
+
+        assert updated.phone_number == "+237 600 000 099"
+        lineage = updated.profile_json["fieldLineage"]["phone_number"]
+        assert lineage["sourceSubmissionId"] == str(submission_id)
+        assert lineage["sourceClientSubmissionId"] == "mob-followup-001"
+
+        proposal = updated.profile_json["profileUpdateProposals"][0]
+        assert proposal["status"] == "approved"
+        assert proposal["reviewComment"] == "Verified during follow-up review."
+        assert proposal["appliedFields"] == ["phone_number"]
+
+        signal = (await session.execute(select(DataQualitySignal))).scalar_one()
+        assert signal.status == "resolved"
+        assert signal.evidence_json["statusHistory"][-1]["proposalAction"] == "approve"
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "beneficiary",
+            )
+        )
+        logs = list(audit_result.scalars())
+        assert [log.action for log in logs] == ["beneficiary.profile_update_proposal_approved"]
+
+
+@pytest.mark.asyncio
+async def test_profile_update_proposal_reject_keeps_official_value_and_resolves_signal() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        actor_user_id = uuid4()
+        submission_id = uuid4()
+        form_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Proposal Reject Org", slug="proposal-reject-org"),
+                User(id=actor_user_id, email="proposal-reviewer@example.org", full_name="Proposal Reviewer", password_hash="x"),
+            ]
+        )
+        beneficiary = Beneficiary(
+            organization_id=organization_id,
+            project_id=uuid4(),
+            beneficiary_uid="FRM-2026-000011",
+            beneficiary_type="Farmer",
+            display_name="Binta Taku",
+            phone_number="+237 600 000 011",
+            profile_json={
+                "profileUpdateProposals": [
+                    {
+                        "submissionId": str(submission_id),
+                        "clientSubmissionId": "mob-followup-002",
+                        "status": "pending_review",
+                        "changes": {
+                            "phone_number": {
+                                "current": "+237 600 000 011",
+                                "proposed": "+237 600 000 199",
+                            }
+                        },
+                    }
+                ]
+            },
+        )
+        session.add(beneficiary)
+        await session.flush()
+
+        session.add(
+            Submission(
+                id=submission_id,
+                organization_id=organization_id,
+                project_id=beneficiary.project_id,
+                form_id=form_id,
+                form_version_id=uuid4(),
+                field_officer_id=officer_id,
+                entity_id=beneficiary.id,
+                client_submission_id="mob-followup-002",
+                status="approved",
+                payload_json={"phone_number": "+237 600 000 199"},
+                device_id="android-test",
+                captured_at=now,
+                submitted_at=now,
+                approved_at=now,
+                sync_received_at=now,
+                latitude=5.96,
+                longitude=10.16,
+                location_captured_at=now,
+            )
+        )
+        session.add(
+            DataQualitySignal(
+                organization_id=organization_id,
+                submission_id=submission_id,
+                beneficiary_id=beneficiary.id,
+                signal_type="profile_conflict",
+                severity="medium",
+                confidence=0.82,
+                summary="Submitted phone conflicts with official profile.",
+                status="open",
+                evidence_json={"statusHistory": []},
+            )
+        )
+        await session.commit()
+
+        service = OperationsService(session)
+        updated = await service.review_beneficiary_profile_update_proposal(
+            organization_id,
+            beneficiary.id,
+            BeneficiaryProfileUpdateProposalReview(
+                submission_id=submission_id,
+                action="reject",
+                comment="Rejected after confirming the official contact number is still valid.",
+            ),
+            actor_user_id,
+        )
+        await session.commit()
+
+        assert updated.phone_number == "+237 600 000 011"
+        proposal = updated.profile_json["profileUpdateProposals"][0]
+        assert proposal["status"] == "rejected"
+        assert proposal["reviewComment"] == "Rejected after confirming the official contact number is still valid."
+        assert "appliedFields" not in proposal
+
+        signal = (await session.execute(select(DataQualitySignal))).scalar_one()
+        assert signal.status == "resolved"
+        assert signal.evidence_json["statusHistory"][-1]["proposalAction"] == "reject"
+
+        audit_result = await session.execute(
+            select(AuditLog).where(
+                AuditLog.organization_id == organization_id,
+                AuditLog.resource_type == "beneficiary",
+            )
+        )
+        logs = list(audit_result.scalars())
+        assert [log.action for log in logs] == ["beneficiary.profile_update_proposal_rejected"]
 
 
 @pytest.mark.asyncio

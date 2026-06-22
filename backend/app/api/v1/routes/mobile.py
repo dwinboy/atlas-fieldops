@@ -33,7 +33,7 @@ from app.schemas.mobile import (
     MobileVersionPolicyRead,
 )
 from app.schemas.operations import FieldVisitCheckIn, FieldVisitCheckOut, FieldVisitRequestCreate, FieldVisitRequestRead, MediaEvidenceCreate, MediaEvidenceRead
-from app.services.collection import CollectionNotFoundError
+from app.services.collection import CollectionConflictError, CollectionNotFoundError
 from app.services.mobile import MobileService
 from app.services.operations import OperationsService
 
@@ -155,7 +155,7 @@ async def mobile_reference_data(
     summary="Get returned mobile submissions",
 )
 async def mobile_returned_submissions(
-    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SUBMISSION_READ))],
+    principal: Annotated[CurrentPrincipal, Depends(require_permission(Permission.SYNC_MOBILE))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[MobileSubmissionRead]:
     return await MobileService(session).returned_submissions(principal)
@@ -386,6 +386,9 @@ async def mobile_submission_upload(
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CollectionConflictError as exc:
         await session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception:

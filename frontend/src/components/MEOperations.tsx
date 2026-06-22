@@ -23,6 +23,7 @@ import {
   UploadCloud,
   UsersRound
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -98,6 +99,25 @@ type DataInteroperabilityCenterProps = {
 type TokenAwareProps = {
   token?: string | null;
 };
+
+export function meOperationsRouteForView(view: WorkspaceView): string {
+  switch (view) {
+    case "organizations":
+      return "/users-teams";
+    case "programs":
+      return "/projects";
+    case "data":
+      return "/administration/imports-migration";
+    case "forms":
+      return "/forms";
+    case "indicators":
+      return "/indicators";
+    case "officers":
+      return "/field-operations";
+    default:
+      return "/app";
+  }
+}
 
 function PageHeader({
   eyebrow,
@@ -204,7 +224,7 @@ function ActionButton({
   variant?: "primary" | "secondary" | "ghost";
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const router = useRouter();
   const [resultVisible, setResultVisible] = useState(false);
 
   function handleAction(): void {
@@ -243,7 +263,7 @@ function ActionButton({
               <p className="text-sm font-semibold text-foreground">{title}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
               {nextView ? (
-                <Button className="mt-3" onClick={() => setActiveView(nextView)} size="sm" type="button" variant="secondary">
+                <Button className="mt-3" onClick={() => router.push(meOperationsRouteForView(nextView))} size="sm" type="button" variant="secondary">
                   {nextLabel ?? "Open next step"}
                   <ArrowUpRight aria-hidden="true" />
                 </Button>

@@ -18,8 +18,9 @@ import {
   Stamp,
   UsersRound,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { GovernanceCommandCenter } from "@/components/GovernanceCommandCenter";
@@ -53,6 +54,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  governanceSectionFromPath,
   governanceSections,
   previewApprovals,
   previewAuditEvents,
@@ -253,7 +255,9 @@ function buildAuditEvents({
 }
 
 export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
-  const [activeSection, setActiveSection] = useState<GovernanceSection>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<GovernanceSection>(() => governanceSectionFromPath(pathname));
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
@@ -282,6 +286,19 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
     anonymizeOnExport: true,
   });
   const canCreateGovernance = canManageGovernance && enabled;
+
+  useEffect(() => {
+    const routeSection = governanceSectionFromPath(pathname);
+    if (routeSection !== activeSection) {
+      setActiveSection(routeSection);
+    }
+  }, [activeSection, pathname]);
+
+  function selectSection(section: GovernanceSection): void {
+    setActiveSection(section);
+    const route = governanceSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
 
   const policyMutation = useMutation({
     mutationFn: () =>
@@ -543,7 +560,7 @@ export function GovernanceModule({ principal, token }: GovernanceModuleProps) {
                 activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => selectSection(section.id)}
               type="button"
             >
               {section.label}

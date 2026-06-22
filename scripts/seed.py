@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.core.permissions import ScopeType
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.session import AsyncSessionLocal
 from app.models.collection import Project
 from app.models.operations import Beneficiary, CaseRecord, DonorReport, MonitoringIndicator
@@ -168,6 +168,10 @@ async def seed_super_admin() -> None:
                 user_id=user.id,
                 scope_type=ScopeType.GLOBAL,
             )
+        else:
+            user, _organization, _membership, _role, _grants, _assignments = existing_identity
+            if not verify_password(admin_password, user.password_hash):
+                user.password_hash = hash_password(admin_password)
 
         await seed_operational_demo_data(session, organization.id)
         await session.commit()

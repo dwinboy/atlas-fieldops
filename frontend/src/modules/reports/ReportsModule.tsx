@@ -142,6 +142,17 @@ type ReportDetailTab = "Overview" | "Data Sources" | "Filters" | "Visualizations
 
 const detailTabs: ReportDetailTab[] = ["Overview", "Data Sources", "Filters", "Visualizations", "Schedules", "Exports", "History", "Audit Trail"];
 
+export function reportWorkspaceBoundaryRoute(target: "governance" | "indicators" | "submissions"): string {
+  switch (target) {
+    case "indicators":
+      return "/indicators";
+    case "submissions":
+      return "/submissions";
+    case "governance":
+      return "/governance";
+  }
+}
+
 const visualizationIcons: Record<VisualizationType, LucideIcon> = {
   "Area Chart": LineChart,
   "Bar Chart": BarChart3,
@@ -440,7 +451,6 @@ export function ReportsModule({ token }: ReportsModuleProps) {
   const [actionResult, setActionResult] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState(emptyReportDraft);
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
   const preview = isPreview(token);
@@ -717,13 +727,13 @@ export function ReportsModule({ token }: ReportsModuleProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveView("indicators")} type="button" variant="secondary">
+            <Button onClick={() => router.push(reportWorkspaceBoundaryRoute("indicators"))} type="button" variant="secondary">
               <BarChart3 aria-hidden="true" /> Indicators
             </Button>
-            <Button onClick={() => setActiveView("submissions")} type="button" variant="secondary">
+            <Button onClick={() => router.push(reportWorkspaceBoundaryRoute("submissions"))} type="button" variant="secondary">
               <FileSpreadsheet aria-hidden="true" /> Submissions
             </Button>
-            <Button onClick={() => setActiveView("governance")} type="button" variant="secondary">
+            <Button onClick={() => router.push(reportWorkspaceBoundaryRoute("governance"))} type="button" variant="secondary">
               <ShieldCheck aria-hidden="true" /> Governance
             </Button>
           </div>

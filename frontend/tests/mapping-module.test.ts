@@ -6,6 +6,7 @@ import {
   previewMapLayers,
 } from "@/modules/mapping/data";
 import type { IndicatorRead } from "@/lib/api";
+import { mappingFeatureSourceRoute, mappingWorkspaceRouteForTarget } from "@/modules/mapping/MappingModule";
 import {
   applyMapFeatureFilters,
   computeMappingSummary,
@@ -22,6 +23,15 @@ import {
 } from "@/modules/mapping/utils";
 
 describe("Mapping module helpers", () => {
+  it("routes mapping cross-module actions to their owning workspaces", () => {
+    expect(mappingWorkspaceRouteForTarget("submissions")).toBe("/submissions");
+    expect(mappingWorkspaceRouteForTarget("indicators")).toBe("/indicators");
+    expect(mappingWorkspaceRouteForTarget("data-quality")).toBe("/data-quality");
+    expect(mappingFeatureSourceRoute(previewMapFeatures.find((feature) => feature.category === "Submission") ?? previewMapFeatures[0])).toBe("/submissions");
+    expect(mappingFeatureSourceRoute(previewMapFeatures.find((feature) => feature.category === "Indicator") ?? previewMapFeatures[0])).toBe("/indicators");
+    expect(mappingFeatureSourceRoute(previewMapFeatures.find((feature) => feature.category === "Quality") ?? previewMapFeatures[0])).toBe("/data-quality");
+  });
+
   it("computes dashboard spatial activity from layers, boundaries, and map features", () => {
     const summary = computeMappingSummary({
       boundaries: previewBoundaries,

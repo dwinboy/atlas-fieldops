@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  governanceSectionFromPath,
   previewApprovals,
   previewConsentRecords,
   previewExports,
@@ -55,5 +56,12 @@ describe("Governance module helpers", () => {
     expect(severityTone("Partially Compliant")).toBe("warning");
     expect(severityTone("Approved")).toBe("success");
     expect(toneFromHealth("Needs Attention")).toBe("warning");
+  });
+
+  it("maps governance routes to the correct workspace section", () => {
+    expect(governanceSectionFromPath("/governance")).toBe("dashboard");
+    expect(governanceSectionFromPath("/governance/policies")).toBe("policies");
+    expect(governanceSectionFromPath("/governance/retention-rules")).toBe("retention-rules");
+    expect(governanceSectionFromPath("/governance/consent-management")).toBe("consent-management");
   });
 });

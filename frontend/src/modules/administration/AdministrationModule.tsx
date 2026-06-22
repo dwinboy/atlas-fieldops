@@ -81,6 +81,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import {
+  administrationSectionFromPath,
   administrationPages,
   initialApiKeys,
   initialBackupJobs,
@@ -646,7 +647,7 @@ export function AdministrationModule({
   const pathname = usePathname();
   const router = useRouter();
   const [activeSection, setActiveSection] =
-    useState<AdministrationSection>("dashboard");
+    useState<AdministrationSection>(() => administrationSectionFromPath(pathname ?? "/administration") ?? "dashboard");
   const [mobileArea, setMobileArea] = useState<MobileManagementArea>("devices");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [locations, setLocations] = useState(initialLocations);
@@ -792,7 +793,7 @@ export function AdministrationModule({
       }
       return;
     }
-    const nextSection = administrationPages.find((page) => page.route === normalizedPath)?.id;
+    const nextSection = administrationSectionFromPath(normalizedPath);
     if (nextSection && nextSection !== activeSection) {
       setActiveSection(nextSection);
     }

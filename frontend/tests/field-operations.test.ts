@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { fieldOperationsMappingRoute } from "@/modules/field-operations/FieldOperationsModule";
 import {
+  fieldOperationsAssignmentRoute,
+  fieldOperationsSectionFromPath,
   previewAssignments,
   previewOfficers,
   previewOperationsSummary,
@@ -15,6 +18,17 @@ import {
 } from "@/modules/field-operations/utils";
 
 describe("Field Operations module helpers", () => {
+  it("routes field operations mapping actions to the mapping workspace", () => {
+    expect(fieldOperationsMappingRoute()).toBe("/mapping");
+  });
+
+  it("builds assignment routes with optional form preselection", () => {
+    expect(fieldOperationsAssignmentRoute()).toBe("/field-operations/assignments");
+    expect(fieldOperationsAssignmentRoute("form-123")).toBe(
+      "/field-operations/assignments?formId=form-123",
+    );
+  });
+
   it("computes operational dashboard metrics from assignments, officers, supervisors, targets, and sync health", () => {
     const summary = computeFieldOperationsSummary({
       assignments: previewAssignments,
@@ -42,5 +56,12 @@ describe("Field Operations module helpers", () => {
     expect(statusTone("Overdue")).toBe("danger");
     expect(priorityTone("Urgent")).toBe("danger");
     expect(priorityTone("Normal")).toBe("accent");
+  });
+
+  it("maps field operations routes to the correct workspace section", () => {
+    expect(fieldOperationsSectionFromPath("/field-operations")).toBe("dashboard");
+    expect(fieldOperationsSectionFromPath("/field-operations/assignments")).toBe("assignments");
+    expect(fieldOperationsSectionFromPath("/field-operations/field-officers")).toBe("field-officers");
+    expect(fieldOperationsSectionFromPath("/field-operations/operational-activities")).toBe("visit-requests");
   });
 });

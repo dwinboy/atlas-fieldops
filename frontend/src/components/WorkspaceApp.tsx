@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { LifeBuoy, Megaphone, RotateCcw } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -57,11 +57,12 @@ import { SubmissionsModule } from "@/modules/submissions/SubmissionsModule";
 import { UsersTeamsModule } from "@/modules/users-teams/UsersTeamsModule";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
-function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
+export function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/app/help") return "help";
   if (path === "/app") return null;
   if (path === "/dashboard") return "dashboard";
+  if (path.startsWith("/surveys")) return "surveys";
   if (path.startsWith("/projects")) return "programs";
   if (path.startsWith("/forms")) return "forms";
   if (path.startsWith("/field-operations")) return "officers";
@@ -77,10 +78,15 @@ function viewFromWorkspacePath(pathname: string): WorkspaceView | null {
   return null;
 }
 
+export function workspaceAppRouteForView(view: WorkspaceView): string | null {
+  return getNavigationItemByView(view)?.route ?? null;
+}
+
 export function WorkspaceApp() {
   const [token, setToken] = useState<string | null | undefined>(undefined);
   const activeView = useWorkspaceStore((state) => state.activeView);
   const pathname = usePathname();
+  const router = useRouter();
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const theme = useWorkspaceStore((state) => state.theme);
@@ -289,6 +295,14 @@ export function WorkspaceApp() {
     );
   }
 
+  function openWorkspaceShortcut(view: WorkspaceView): void {
+    setActiveView(view);
+    const route = workspaceAppRouteForView(view);
+    if (route && route !== pathname) {
+      router.push(route);
+    }
+  }
+
   if (isPlatformConsoleMode) {
     return (
       <>
@@ -372,12 +386,12 @@ export function WorkspaceApp() {
         {
           label: "Open field teams",
           description: "Manage assignments and field execution.",
-          onClick: () => setActiveView("officers"),
+          onClick: () => openWorkspaceShortcut("officers"),
         },
         {
           label: "Audit trail",
           description: "Review immutable governance events.",
-          onClick: () => setActiveView("governance"),
+          onClick: () => openWorkspaceShortcut("governance"),
         },
       ],
       false,

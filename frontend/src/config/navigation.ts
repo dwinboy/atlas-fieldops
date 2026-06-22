@@ -506,7 +506,7 @@ const legacyItems: NavigationItem[] = [
     hint: "Project survey activity",
     description:
       "Legacy survey management workspace. Canonically belongs under Projects and Forms.",
-    route: "/projects/all",
+    route: "/surveys",
     domain: "OPERATIONS",
     icon: ClipboardCheck,
     tone: "monitor",

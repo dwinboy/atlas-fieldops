@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class FormStatus(StrEnum):
@@ -76,6 +76,21 @@ SURVEY_TYPES = {
     "market_survey",
     "health_survey",
     "custom",
+}
+
+
+FORM_FIELD_TYPE_ALIASES: dict[str, str] = {
+    "short_text": "text",
+    "long_text": "textarea",
+    "boolean": "checkbox",
+    "single_select": "select",
+    "multi_select": "multiselect",
+    "file_upload": "file",
+    "image_upload": "photo",
+    "gps_location": "gps",
+    "qr_code": "qr",
+    "radio_button": "radio",
+    "calculated_field": "calculated",
 }
 
 
@@ -230,6 +245,12 @@ class FormField(BaseModel):
     options: list[dict[str, Any]] = Field(default_factory=list)
     calculation: str | None = None
 
+    @model_validator(mode="after")
+    def normalize_type_aliases(self) -> "FormField":
+        normalized = self.type.strip().lower().replace("-", "_").replace(" ", "_")
+        self.type = FORM_FIELD_TYPE_ALIASES.get(normalized, normalized)
+        return self
+
 
 class FormSection(BaseModel):
     id: str = Field(min_length=1, max_length=120)
@@ -259,6 +280,7 @@ class FormSchema(BaseModel):
             "multiselect",
             "radio",
             "checkbox",
+            "consent",
             "ranking",
             "likert",
             "matrix_single",
@@ -467,6 +489,49 @@ class FormEntityControlSettings(BaseModel):
     lock_prefilled_fields: bool = True
     editable_with_reason: bool = True
     profile_update_mode: str = Field(default="with_supervisor_approval", pattern=r"^(never|after_submission|with_supervisor_approval)$")
+
+    @field_validator("profile_update_mode", mode="before")
+    @classmethod
+    def normalize_profile_update_mode(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {"never", "after_submission", "with_supervisor_approval"}:
+            return normalized
+        if "never" in normalized or "history only" in normalized:
+            return "never"
+        if "after submission" in normalized or "auto update" in normalized or "automatic" in normalized:
+            return "after_submission"
+        if "review" in normalized or "supervisor approval" in normalized or "approval" in normalized:
+            return "with_supervisor_approval"
+        return value
+
+    @field_validator("submission_frequency", mode="before")
+    @classmethod
+    def normalize_submission_frequency(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "once": "once_ever",
+            "single": "once_ever",
+            "once_ever": "once_ever",
+            "per_project": "once_per_project",
+            "once_per_project": "once_per_project",
+            "yearly": "once_per_year",
+            "annual": "once_per_year",
+            "once_per_year": "once_per_year",
+            "seasonal": "once_per_season",
+            "once_per_season": "once_per_season",
+            "quarterly": "once_per_quarter",
+            "once_per_quarter": "once_per_quarter",
+            "monthly": "once_per_month",
+            "once_per_month": "once_per_month",
+            "per_event": "once_per_event",
+            "once_per_event": "once_per_event",
+            "unlimited": "unlimited",
+        }
+        return aliases.get(normalized, value)
 
 
 class FormControlsSettings(BaseModel):

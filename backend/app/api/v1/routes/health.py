@@ -1,3 +1,5 @@
+from typing import Awaitable, cast
+
 from fastapi import APIRouter
 from sqlalchemy import text
 
@@ -15,7 +17,7 @@ async def health() -> dict[str, str]:
 @router.get("/ready", summary="Service readiness")
 async def ready() -> dict[str, str]:
     redis = get_redis_client()
-    await redis.ping()
+    await cast(Awaitable[bool], redis.ping())
     async with AsyncSessionLocal() as session:
         await session.execute(text("SELECT 1"))
     return {"status": "ready"}

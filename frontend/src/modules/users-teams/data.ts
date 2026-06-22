@@ -12,16 +12,25 @@ import type {
 } from "@/lib/api";
 
 export const usersTeamsSections = [
-  { id: "dashboard", label: "Overview" },
-  { id: "users", label: "Users" },
-  { id: "roles", label: "Roles" },
-  { id: "teams", label: "Teams" },
-  { id: "organizations", label: "Organizations" },
-  { id: "permissions", label: "Permissions" },
-  { id: "activity-logs", label: "Activity Logs" },
+  { id: "dashboard", label: "Overview", route: "/users-teams" },
+  { id: "users", label: "Users", route: "/users-teams/users" },
+  { id: "roles", label: "Roles", route: "/users-teams/roles" },
+  { id: "teams", label: "Teams", route: "/users-teams/teams" },
+  { id: "organizations", label: "Organizations", route: "/users-teams/organizations" },
+  { id: "permissions", label: "Permissions", route: "/users-teams/permissions" },
+  { id: "activity-logs", label: "Activity Logs", route: "/users-teams/activity-logs" },
 ] as const;
 
 export type UsersTeamsSection = (typeof usersTeamsSections)[number]["id"];
+
+export function usersTeamsSectionFromPath(pathname: string): UsersTeamsSection {
+  const path = pathname.replace(/\/+$/, "") || "/users-teams";
+  if (/^\/users-teams\/role-profiles\/[^/]+$/.test(path)) {
+    return "users";
+  }
+  const match = usersTeamsSections.find((section) => section.route !== "/users-teams" && path.startsWith(section.route));
+  return match?.id ?? "dashboard";
+}
 
 export const previewUsers: UserRead[] = [
   {

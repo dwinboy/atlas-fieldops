@@ -68,6 +68,7 @@ import { previewEntities } from "@/modules/beneficiaries/data";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
 import {
   projectSections,
+  projectSectionFromPath,
   projectTabs,
   previewDetail,
   previewProjects,
@@ -1035,7 +1036,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [activeSection, setActiveSection] =
-    useState<ProjectSection>("dashboard");
+    useState<ProjectSection>(() => projectSectionFromPath(pathname));
   const [activeTab, setActiveTab] = useState<ProjectTab>("Overview");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
@@ -1161,6 +1162,12 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
     });
   }, [filterCountry, filterDateFrom, filterDateTo, filterOwner, filterRegion, filterStatus, visibleProjects]);
 
+  function selectSection(section: ProjectSection): void {
+    setActiveSection(section);
+    const route = projectSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
+
   useEffect(() => {
     const normalizedPath = pathname?.replace(/\/+$/, "") || "";
     if (normalizedPath === "/projects/create") {
@@ -1174,11 +1181,17 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
       return;
     }
     const match = pathname?.match(/^\/projects\/([^/]+)\/data-import\/?$/);
-    if (!match?.[1]) return;
-    setSelectedProjectId(match[1]);
-    setActiveSection("all");
-    setActiveTab("Settings");
-  }, [pathname]);
+    if (match?.[1]) {
+      setSelectedProjectId(match[1]);
+      setActiveSection("all");
+      setActiveTab("Settings");
+      return;
+    }
+    const nextSection = projectSectionFromPath(normalizedPath);
+    if (nextSection !== activeSection) {
+      setActiveSection(nextSection);
+    }
+  }, [activeSection, pathname]);
 
   const createProjectMutation = useMutation({
     mutationFn: () =>
@@ -1625,7 +1638,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
                   : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => selectSection(section.id)}
               type="button"
             >
               {section.label}

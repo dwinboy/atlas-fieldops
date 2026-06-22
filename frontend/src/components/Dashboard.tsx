@@ -24,6 +24,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
 import { ActivityTimeline } from "@/components/ActivityTimeline";
@@ -55,6 +56,7 @@ import {
   getDashboardQualityScore,
   getFormPerformanceTotals,
 } from "@/lib/dashboard";
+import { getNavigationItemByView } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import { previewEntities } from "@/modules/beneficiaries/data";
 import { previewForms } from "@/modules/forms/data";
@@ -82,6 +84,7 @@ type ManagementStep = {
   title: string;
   description: string;
   view: WorkspaceView;
+  route?: string;
   action: string;
   complete: boolean;
   icon: typeof Plus;
@@ -91,6 +94,7 @@ type RoleAction = {
   label: string;
   result: string;
   view: WorkspaceView;
+  route?: string;
 };
 
 type RoleGuidance = {
@@ -106,6 +110,7 @@ type QualityWorkflowStep = {
   title: string;
   description: string;
   view: WorkspaceView;
+  route?: string;
   action: string;
   icon: typeof Plus;
 };
@@ -117,6 +122,10 @@ type DashboardAlert = {
   value: string;
   view: WorkspaceView;
 };
+
+export function workspaceRouteForView(view: WorkspaceView): string | null {
+  return getNavigationItemByView(view)?.route ?? null;
+}
 
 function openPreviewQualityFlagCount(submission: unknown): number {
   const flags =
@@ -300,6 +309,7 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
         {
           label: "Open data tools",
           view: "data",
+          route: "/data-quality",
           result:
             "Opening Data tools so you can import, validate, deduplicate, and export governed datasets.",
         },
@@ -365,6 +375,8 @@ function getRoleGuidance(principal?: CurrentPrincipal | null): RoleGuidance {
 }
 
 export function Dashboard({ token, principal }: DashboardProps) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [dashboardResult, setDashboardResult] = useState("");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [learnOpenOverride, setLearnOpenOverride] = useState<boolean | null>(
@@ -598,6 +610,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       description:
         "Bring entities, regions, officers, metrics, or historical records into the system.",
       view: "data",
+      route: "/administration/imports-migration",
       action: "Open Data tools",
       complete: Boolean(effectiveSummary?.beneficiaries),
       icon: DatabaseZap,
@@ -717,6 +730,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       answer:
         "Use Data tools to preview imports, fix row issues, detect duplicates, and export clean records.",
       view: "data" as WorkspaceView,
+      route: "/data-quality",
     },
     {
       question: "What needs action today?",
@@ -739,6 +753,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       description:
         "Watch quality flags, sync gaps, duplicate records, and incomplete imports before managers report figures.",
       view: "data",
+      route: "/data-quality",
       action: "Open quality tools",
       icon: DatabaseZap,
     },
@@ -764,6 +779,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     hint: string;
     result: string;
     view: WorkspaceView;
+    route?: string;
     icon: typeof Plus;
   }[] = [
     {
@@ -796,6 +812,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       result:
         "Opening data tools. Upload a file, save mappings, fix validation issues, and apply clean records to the registry.",
       view: "data",
+      route: "/administration/imports-migration",
       icon: UploadCloud,
     },
     {
@@ -1173,11 +1190,15 @@ export function Dashboard({ token, principal }: DashboardProps) {
     (item) => item.count > 0,
   );
 
-  function openView(action: {
-    label: string;
-    result: string;
-    view: WorkspaceView;
-  }): void {
+  function navigateToView(view: WorkspaceView, routeOverride?: string): void {
+    setActiveView(view);
+    const route = routeOverride ?? workspaceRouteForView(view);
+    if (route && route !== pathname) {
+      router.push(route);
+    }
+  }
+
+  function openView(action: RoleAction): void {
     setDashboardResult(action.result);
     setLastActionResult(action.result);
     pushToast({
@@ -1185,7 +1206,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       description: action.result,
       tone: "success",
     });
-    setActiveView(action.view);
+    navigateToView(action.view, action.route);
   }
 
   function handleAttention(
@@ -1196,7 +1217,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
     setDashboardResult(result);
     setLastActionResult(result);
     pushToast({ title: item, description: result, tone: "warning" });
-    setActiveView(view);
+    navigateToView(view);
   }
 
   function openSetupStep(step: ManagementStep): void {
@@ -1208,7 +1229,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       description: result,
       tone: step.complete ? "success" : "neutral",
     });
-    setActiveView(step.view);
+    navigateToView(step.view, step.route);
   }
 
   function openQualityStep(step: QualityWorkflowStep): void {
@@ -1220,7 +1241,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
       description: result,
       tone: "neutral",
     });
-    setActiveView(step.view);
+    navigateToView(step.view, step.route);
   }
 
   return (
@@ -2032,14 +2053,14 @@ export function Dashboard({ token, principal }: DashboardProps) {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  onClick={() => setActiveView("surveys")}
+                  onClick={() => navigateToView("surveys")}
                   type="button"
                   variant="secondary"
                 >
                   Create survey
                 </Button>
                 <Button
-                  onClick={() => setActiveView("forms")}
+                  onClick={() => navigateToView("forms")}
                   type="button"
                   variant="primary"
                 >
@@ -2413,7 +2434,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </h2>
           </div>
           <Button
-            onClick={() => setActiveView("help")}
+            onClick={() => navigateToView("help")}
             type="button"
             variant="secondary"
           >
@@ -2426,7 +2447,7 @@ export function Dashboard({ token, principal }: DashboardProps) {
             <button
               className="rounded-xl border bg-background/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
               key={item.question}
-              onClick={() => setActiveView(item.view)}
+              onClick={() => navigateToView(item.view, item.route)}
               type="button"
             >
               <p className="text-sm font-semibold">{item.question}</p>
@@ -2633,21 +2654,23 @@ export function Dashboard({ token, principal }: DashboardProps) {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
-                onClick={() => setActiveView("organizations")}
+                onClick={() => navigateToView("organizations")}
                 type="button"
                 variant="secondary"
               >
                 Invite users
               </Button>
               <Button
-                onClick={() => setActiveView("data")}
+                onClick={() =>
+                  navigateToView("data", "/administration/imports-migration")
+                }
                 type="button"
                 variant="secondary"
               >
                 Import data
               </Button>
               <Button
-                onClick={() => setActiveView("forms")}
+                onClick={() => navigateToView("forms")}
                 type="button"
                 variant="primary"
               >

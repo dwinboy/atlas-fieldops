@@ -231,6 +231,9 @@ export class DataCollectionSessionService {
       const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
       return `${now.getUTCFullYear()}-Q${quarter}`;
     }
+    if (rule === "OncePerMonthPerEntity") {
+      return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    }
     return null;
   }
 }

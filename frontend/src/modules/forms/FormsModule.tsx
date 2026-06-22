@@ -40,9 +40,11 @@ import { Input, Select } from "@/components/ui/input";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
 import { ApiError, archiveForm, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { fieldOperationsAssignmentRoute } from "@/modules/field-operations/data";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
 import {
   formDetailTabs,
+  formsSectionFromPath,
   formsSections,
   normalizeBackendForm,
   previewForms,
@@ -68,6 +70,31 @@ type FormsModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
+
+export function formsTemplateBuilderRoute(): string {
+  return "/forms/create";
+}
+
+export function formsWorkspaceBoundaryRoute(
+  target: "data-quality" | "mapping" | "submissions",
+): string {
+  switch (target) {
+    case "data-quality":
+      return "/data-quality";
+    case "mapping":
+      return "/mapping";
+    case "submissions":
+      return "/submissions";
+  }
+}
+
+export function canAssignForm(form: Pick<FormListItem, "status">): boolean {
+  return form.status === "published";
+}
+
+export function formEditActionLabel(form: Pick<FormListItem, "status">): string {
+  return form.status === "published" ? "New Version" : "Edit";
+}
 
 function isPreview(token: string | null): boolean {
   return !token || token === "preview-token";
@@ -179,22 +206,32 @@ type FormGridQuestion = {
   section: string;
 };
 
-function isImportedSubmission(submission: SubmissionRead | SubmissionRecord): boolean {
+const IMPORT_SOURCE_SYSTEMS = new Set([
+  "form spreadsheet upload",
+  "uploaded",
+  "imported",
+  "historical import",
+  "migration import",
+]);
+
+export function isImportedSubmission(submission: SubmissionRead | SubmissionRecord): boolean {
+  const sourceSystem = (submission.source_system ?? "").trim().toLowerCase();
   return Boolean(
-    submission.is_imported ||
+      submission.is_imported ||
       submission.import_batch_id ||
       submission.imported_at ||
-      submission.source_system,
+      IMPORT_SOURCE_SYSTEMS.has(sourceSystem),
   );
 }
 
-function submissionSourceLabel(submission: SubmissionRead | SubmissionRecord): string {
+export function submissionSourceLabel(submission: SubmissionRead | SubmissionRecord): string {
   if (submission.offline_created) return "Mobile";
   if (isImportedSubmission(submission)) {
     const sourceSystem = (submission.source_system ?? "").toLowerCase();
-    if (sourceSystem && sourceSystem !== "form spreadsheet upload") return "Imported";
+    if (sourceSystem.includes("import")) return "Imported";
     return "Uploaded";
   }
+  if ((submission.source_system ?? "").toLowerCase() === "web entry") return "Web Entry";
   return "Field Submitted";
 }
 
@@ -653,7 +690,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [activeSection, setActiveSection] = useState<FormsSection>("dashboard");
+  const [activeSection, setActiveSection] = useState<FormsSection>(() => formsSectionFromPath(pathname ?? "/forms") ?? "dashboard");
   const [activeTab, setActiveTab] = useState<FormDetailTab>("Overview");
   const [selectedFormId, setSelectedFormId] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
@@ -661,7 +698,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
   const [duplicateSourceFormId, setDuplicateSourceFormId] = useState<string | null>(null);
   const localForms = useWorkspaceStore((state) => state.localForms);
   const localSubmissions = useWorkspaceStore((state) => state.localSubmissions);
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageForms = hasAnyPermission(principal, [
@@ -807,18 +844,16 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
 
   useEffect(() => {
     const normalizedPath = (pathname ?? "").replace(/\/+$/, "");
-    const sectionFromPath = formsSections.find((section) => section.route === normalizedPath);
-    if (sectionFromPath) {
+    const routeSection = formsSectionFromPath(normalizedPath);
+    if (routeSection) {
       setSelectedFormId(null);
-      setActiveSection(sectionFromPath.id);
+      if (routeSection !== activeSection) {
+        setActiveSection(routeSection);
+      }
     }
-  }, [pathname]);
+  }, [activeSection, pathname]);
 
   function openForm(form: FormListItem, tab: FormDetailTab = "Overview"): void {
-    if (["all", "published", "archived"].includes(activeSection)) {
-      router.push(`/forms/${form.id}/data`);
-      return;
-    }
     setSelectedFormId(form.id);
     setActiveTab(tab);
   }
@@ -944,10 +979,15 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           <Button onClick={() => openForm(form)} size="sm" variant="secondary">
             View data
           </Button>
-          {form.status === "published" ? (
+          {canAssignForm(form) ? (
             <Button onClick={() => openFormData(form.id, "source=uploaded")} size="sm" variant="secondary">
               <UploadCloud aria-hidden="true" />
               Upload
+            </Button>
+          ) : null}
+          {canAssignForm(form) ? (
+            <Button disabled={!canManageForms} onClick={() => router.push(fieldOperationsAssignmentRoute(form.id))} size="sm" variant="secondary">
+              Assign
             </Button>
           ) : null}
           <Button
@@ -955,7 +995,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
             size="sm"
             variant="ghost"
           >
-            Edit
+            {formEditActionLabel(form)}
           </Button>
         </div>
       ),
@@ -1090,9 +1130,9 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
           onOpenBuilder={() => {
             openFormBuilder(selectedForm);
           }}
-          onOpenDataQuality={() => setActiveView("dataQuality")}
-          onOpenMapping={() => setActiveView("map")}
-          onOpenSubmissions={() => setActiveView("submissions")}
+          onOpenDataQuality={() => router.push(formsWorkspaceBoundaryRoute("data-quality"))}
+          onOpenMapping={() => router.push(formsWorkspaceBoundaryRoute("mapping"))}
+          onOpenSubmissions={() => router.push(formsWorkspaceBoundaryRoute("submissions"))}
           submissions={formSubmissionsFor(formSubmissions, selectedForm.id)}
           tab={activeTab}
           setTab={setActiveTab}
@@ -1155,8 +1195,7 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
               canManageForms={canManageForms}
               forms={filteredForms}
               onAssign={(form) => {
-                setActiveView("officers");
-                router.push(`/field-operations?formId=${encodeURIComponent(form.id)}`);
+                router.push(fieldOperationsAssignmentRoute(form.id));
               }}
               onDuplicate={(form) => {
                 setBuilderFormId(null);
@@ -1178,8 +1217,11 @@ export function FormsModule({ principal, token }: FormsModuleProps) {
       {!selectedForm && activeSection === "templates" ? (
         <TemplatesSection
           onOpenBuilder={() => {
-            setBuilderFormId(null);
-            setCreationOpen(true);
+            router.push(formsTemplateBuilderRoute());
+          }}
+          onUseTemplate={(templateId) => {
+            setPendingTemplateId(templateId);
+            router.push(formsTemplateBuilderRoute());
           }}
           projectSectors={(projectsQuery.data ?? [])
             .map((project) => project.sector_name)
@@ -3254,10 +3296,12 @@ function FormComparisonPanel({ form }: { form: FormListItem }) {
 
 function TemplatesSection({
   onOpenBuilder,
+  onUseTemplate,
   projectSectors,
   templates,
 }: {
   onOpenBuilder: () => void;
+  onUseTemplate: (templateId: string) => void;
   projectSectors: string[];
   templates: typeof previewTemplates;
 }) {
@@ -3325,7 +3369,7 @@ function TemplatesSection({
             </div>
             <Button
               className="mt-4 w-full"
-              onClick={onOpenBuilder}
+              onClick={() => onUseTemplate(template.id)}
               variant="secondary"
             >
               <Copy aria-hidden="true" />

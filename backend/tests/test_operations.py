@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.core.permissions import Permission, permissions_for_roles
 from app.models.operations import MonitoringIndicator
+from app.schemas.collection import FormEntityControlSettings
 from app.schemas.operations import BeneficiaryCreate, CaseCreate, DataRouteCreate, DonorReportCreate, ExportJobCreate, ImportJobCreate, ImportPreviewRequest, IndicatorCreate, MediaEvidenceCreate, PublicCollectionLinkCreate
 from app.schemas.operations import EcosystemEdge, EcosystemNode, OperationalEventCreate, ProjectBudgetLineRead
 from app.services.operations import (
@@ -25,6 +26,7 @@ from app.services.operations import (
 
 def test_me_permissions_are_role_scoped() -> None:
     admin_permissions = permissions_for_roles(["organization_admin"])
+    me_manager_permissions = permissions_for_roles(["me_manager"])
     officer_permissions = permissions_for_roles(["field_officer"])
 
     assert Permission.BENEFICIARY_MANAGE in admin_permissions
@@ -32,8 +34,22 @@ def test_me_permissions_are_role_scoped() -> None:
     assert Permission.REPORT_MANAGE in admin_permissions
     assert Permission.DATA_IMPORT in admin_permissions
     assert Permission.DATA_BULK_EDIT in admin_permissions
+    assert Permission.BENEFICIARY_EDIT in me_manager_permissions
+    assert Permission.SUBMISSION_APPROVE in me_manager_permissions
     assert Permission.BENEFICIARY_READ in officer_permissions
+    assert Permission.SUBMISSION_READ not in officer_permissions
+    assert Permission.SUBMISSION_CREATE in officer_permissions
     assert Permission.REPORT_MANAGE not in officer_permissions
+
+
+def test_form_entity_controls_normalize_legacy_submission_frequency_labels() -> None:
+    monthly = FormEntityControlSettings.model_validate({"submission_frequency": "monthly"})
+    yearly = FormEntityControlSettings.model_validate({"submission_frequency": "yearly"})
+    seasonal = FormEntityControlSettings.model_validate({"submission_frequency": "seasonal"})
+
+    assert monthly.submission_frequency == "once_per_month"
+    assert yearly.submission_frequency == "once_per_year"
+    assert seasonal.submission_frequency == "once_per_season"
 
 
 def test_beneficiary_requires_complete_location_pair() -> None:

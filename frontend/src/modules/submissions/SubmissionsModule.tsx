@@ -30,7 +30,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -55,6 +55,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  submissionSectionFromPath,
   submissionDetailTabs,
   submissionSections,
   type SubmissionDetailTab,
@@ -81,6 +82,36 @@ type SubmissionsModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
+
+export function submissionsWorkspaceBoundaryRoute(
+  target: "data-quality" | "forms" | "mapping",
+): string {
+  switch (target) {
+    case "data-quality":
+      return "/data-quality";
+    case "forms":
+      return "/forms";
+    case "mapping":
+      return "/mapping";
+  }
+}
+
+const DATA_EXPLORER_MAIN_VIEW = "__main__";
+
+export function submissionsDataExplorerRoute(
+  formId: string,
+  view: string = DATA_EXPLORER_MAIN_VIEW,
+): string {
+  const params = new URLSearchParams();
+  if (formId) {
+    params.set("form", formId);
+  }
+  if (view && view !== DATA_EXPLORER_MAIN_VIEW) {
+    params.set("view", view);
+  }
+  const query = params.toString();
+  return query ? `/submissions/data?${query}` : "/submissions/data";
+}
 
 type ReviewAction =
   | "approve"
@@ -380,9 +411,10 @@ export function SubmissionsModule({
   token,
 }: SubmissionsModuleProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [activeSection, setActiveSection] =
-    useState<SubmissionSection>("dashboard");
+    useState<SubmissionSection>(() => submissionSectionFromPath(pathname ?? "/submissions") ?? "dashboard");
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<
     string | null
   >(null);
@@ -466,9 +498,9 @@ export function SubmissionsModule({
   ]);
 
   useEffect(() => {
-    const slug = pathname.split("/").filter(Boolean).at(1);
-    if (slug && submissionSections.some((section) => section.id === slug)) {
-      setActiveSection(slug as SubmissionSection);
+    const routeSection = submissionSectionFromPath(pathname ?? "/submissions");
+    if (routeSection && routeSection !== activeSection) {
+      setActiveSection(routeSection);
     }
     const submissionId = searchParams.get("submissionId");
     const tab = searchParams.get("tab");
@@ -476,7 +508,16 @@ export function SubmissionsModule({
     if (tab && submissionDetailTabs.includes(tab as SubmissionDetailTab)) {
       setActiveDetailTab(tab as SubmissionDetailTab);
     }
-  }, [pathname, searchParams]);
+  }, [activeSection, pathname, searchParams]);
+
+  function openSubmissionSection(section: SubmissionSection): void {
+    setSelectedSubmissionId(null);
+    setActiveSection(section);
+    const route = submissionSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) {
+      router.push(route);
+    }
+  }
 
   useEffect(() => {
     if (!localSubmissions.length) return;
@@ -1085,7 +1126,7 @@ export function SubmissionsModule({
             <Button
               onClick={() => {
                 setPendingMapFeatureId(`submission-${submission.id}`);
-                setActiveView("map");
+                router.push(submissionsWorkspaceBoundaryRoute("mapping"));
               }}
               size="sm"
               variant="ghost"
@@ -1128,7 +1169,7 @@ export function SubmissionsModule({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
-              onClick={() => setActiveSection("pending-review")}
+              onClick={() => openSubmissionSection("pending-review")}
               variant="primary"
             >
               <ClipboardCheck aria-hidden="true" />
@@ -1157,10 +1198,7 @@ export function SubmissionsModule({
                   : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => {
-                setSelectedSubmissionId(null);
-                setActiveSection(section.id);
-              }}
+              onClick={() => openSubmissionSection(section.id)}
               type="button"
             >
               {section.label}
@@ -1191,9 +1229,9 @@ export function SubmissionsModule({
 
       {!selectedSubmission && activeSection === "dashboard" ? (
         <SubmissionsDashboard
-          onOpenQuality={() => setActiveView("dataQuality")}
+          onOpenQuality={() => router.push(submissionsWorkspaceBoundaryRoute("data-quality"))}
           onOpenSubmission={openSubmission}
-          onOpenWorkflow={() => setActiveSection("pending-review")}
+          onOpenWorkflow={() => openSubmissionSection("pending-review")}
           submissions={submissions}
           summary={summary}
         />
@@ -1360,7 +1398,7 @@ export function SubmissionsModule({
               !visibleSubmissions.length
                 ? {
                     label: "Open Forms",
-                    onClick: () => setActiveView("forms"),
+                    onClick: () => router.push(submissionsWorkspaceBoundaryRoute("forms")),
                   }
                 : undefined
             }
@@ -2442,8 +2480,6 @@ function ResponsesTab({
   );
 }
 
-const DATA_EXPLORER_MAIN_VIEW = "__main__";
-
 function DataExplorerSection({
   forms,
   onOpenSubmission,
@@ -2457,8 +2493,13 @@ function DataExplorerSection({
   submissions: SubmissionRecord[];
   token: string | null;
 }) {
-  const [selectedFormId, setSelectedFormId] = useState("");
-  const [activeView, setActiveView] = useState(DATA_EXPLORER_MAIN_VIEW);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedFormId = searchParams.get("form") ?? "";
+  const requestedView = searchParams.get("view") ?? DATA_EXPLORER_MAIN_VIEW;
+  const [selectedFormId, setSelectedFormId] = useState(requestedFormId);
+  const [activeView, setActiveView] = useState(requestedView);
   const dataExplorerForms = useMemo(() => {
     if (forms.length) return forms;
     const byId = new Map<string, Pick<DataFormRead, "id" | "name">>();
@@ -2475,14 +2516,26 @@ function DataExplorerSection({
   }, [forms, submissions]);
 
   useEffect(() => {
-    if (!selectedFormId && dataExplorerForms.length) {
+    if (!dataExplorerForms.length) return;
+    if (requestedFormId) {
+      const requestedFormExists = dataExplorerForms.some(
+        (form) => form.id === requestedFormId,
+      );
+      if (requestedFormExists && selectedFormId !== requestedFormId) {
+        setSelectedFormId(requestedFormId);
+        return;
+      }
+    }
+    if (!selectedFormId) {
       setSelectedFormId(dataExplorerForms[0].id);
     }
-  }, [dataExplorerForms, selectedFormId]);
+  }, [dataExplorerForms, requestedFormId, selectedFormId]);
 
   useEffect(() => {
-    setActiveView(DATA_EXPLORER_MAIN_VIEW);
-  }, [selectedFormId]);
+    if (activeView !== requestedView) {
+      setActiveView(requestedView);
+    }
+  }, [activeView, requestedView]);
 
   const formSchemaQuery = useQuery({
     queryKey: ["submissions-module", "data-explorer-schema", token, selectedFormId],
@@ -2543,6 +2596,13 @@ function DataExplorerSection({
 
   const activeRepeatGroup = repeatGroups.find((group) => group.id === activeView) ?? null;
 
+  useEffect(() => {
+    if (!selectedFormId || activeView === DATA_EXPLORER_MAIN_VIEW) return;
+    if (repeatGroups.some((group) => group.id === activeView)) return;
+    setActiveView(DATA_EXPLORER_MAIN_VIEW);
+    router.replace(submissionsDataExplorerRoute(selectedFormId), { scroll: false });
+  }, [activeView, repeatGroups, router, selectedFormId]);
+
   const repeatRows = useMemo(
     () => (formRepeatRowsQuery.data ?? []).filter((row) => row.field_id === activeView),
     [formRepeatRowsQuery.data, activeView],
@@ -2592,11 +2652,29 @@ function DataExplorerSection({
       ? !formRows.length || !fieldColumns.length
       : !repeatRows.length || !repeatColumns.length;
 
+  function updateExplorerRoute(nextFormId: string, nextView: string): void {
+    const route = submissionsDataExplorerRoute(nextFormId, nextView);
+    if (route !== `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`) {
+      router.replace(route, { scroll: false });
+    }
+  }
+
+  function handleFormChange(nextFormId: string): void {
+    setSelectedFormId(nextFormId);
+    setActiveView(DATA_EXPLORER_MAIN_VIEW);
+    updateExplorerRoute(nextFormId, DATA_EXPLORER_MAIN_VIEW);
+  }
+
+  function handleViewChange(nextView: string): void {
+    setActiveView(nextView);
+    updateExplorerRoute(selectedFormId, nextView);
+  }
+
   return (
     <Panel
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <Select onChange={(event) => setSelectedFormId(event.target.value)} value={selectedFormId}>
+          <Select onChange={(event) => handleFormChange(event.target.value)} value={selectedFormId}>
             <option value="">Select a form</option>
             {dataExplorerForms.map((form) => (
               <option key={form.id} value={form.id}>
@@ -2633,7 +2711,7 @@ function DataExplorerSection({
                     ? "border-primary bg-primary text-primary-foreground"
                     : "bg-panel hover:bg-muted",
                 )}
-                onClick={() => setActiveView(DATA_EXPLORER_MAIN_VIEW)}
+                onClick={() => handleViewChange(DATA_EXPLORER_MAIN_VIEW)}
                 role="tab"
                 type="button"
               >
@@ -2649,7 +2727,7 @@ function DataExplorerSection({
                       : "bg-panel hover:bg-muted",
                   )}
                   key={group.id}
-                  onClick={() => setActiveView(group.id)}
+                  onClick={() => handleViewChange(group.id)}
                   role="tab"
                   type="button"
                 >

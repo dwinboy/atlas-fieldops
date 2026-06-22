@@ -7,6 +7,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import SCOPE_ORDER
+from app.core.permissions import ScopeType
 from app.core.permissions import canonical_role
 from app.core.permissions import default_scope_for_roles
 from app.core.permissions import normalize_permission
@@ -225,13 +227,28 @@ class AuthService:
         role_names = sorted({role.name, *(assignment_role.name for assignment_role in assignment_roles)})
         primary_assignment = assignments[0][0] if assignments else None
         primary_grant = grants[0] if grants else None
-        scope_type = (
-            primary_assignment.scope_type
-            if primary_assignment is not None
-            else primary_grant.scope_type
-            if primary_grant is not None
-            else default_scope_for_roles(role_names).value
-        )
+        default_scope = default_scope_for_roles(role_names)
+        scope_candidates = [
+            default_scope,
+            *(
+                ScopeType(scope)
+                for scope in [getattr(primary_assignment, "scope_type", None), getattr(primary_grant, "scope_type", None)]
+                if isinstance(scope, str) and scope in ScopeType._value2member_map_
+            ),
+            *(
+                ScopeType(assignment.scope_type)
+                for assignment, _assignment_role in assignments
+                if isinstance(getattr(assignment, "scope_type", None), str)
+                and assignment.scope_type in ScopeType._value2member_map_
+            ),
+            *(
+                ScopeType(grant.scope_type)
+                for grant in grants
+                if isinstance(getattr(grant, "scope_type", None), str)
+                and grant.scope_type in ScopeType._value2member_map_
+            ),
+        ]
+        scope_type = min(scope_candidates, key=lambda scope: SCOPE_ORDER.index(scope)).value
         is_platform_admin = any(canonical_role(role_name) == "super_admin" for role_name in role_names)
         stored_permissions = {
             normalized.value

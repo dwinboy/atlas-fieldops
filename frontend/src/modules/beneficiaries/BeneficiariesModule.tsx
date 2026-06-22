@@ -24,7 +24,7 @@ import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import {
   createBeneficiary,
@@ -37,7 +37,9 @@ import {
   listProjects,
   listSubmissions,
   mergeBeneficiaries,
+  reviewBeneficiaryProfileUpdateProposal,
   type BeneficiaryCreate,
+  type BeneficiaryProfileUpdateProposalReview,
   type CurrentPrincipal,
   type FieldOfficerRead,
   type EntityCategoryRead,
@@ -45,6 +47,7 @@ import {
   type SubmissionRead,
 } from "@/lib/api";
 import {
+  beneficiariesViewFromPath,
   entityTypes,
   mapBeneficiaryRead,
   previewEntities,
@@ -69,6 +72,10 @@ type BeneficiariesModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
 };
+
+export function beneficiariesMappingRoute(): string {
+  return "/mapping";
+}
 
 function statusTone(status: EntityStatus | BeneficiaryEntity["duplicateStatus"]) {
   return canonicalStatusTone(status);
@@ -165,6 +172,7 @@ export function BeneficiariesModule({
   const [registerDraft, setRegisterDraft] = useState<EntityRegistrationDraft>(emptyRegistrationDraft);
   const [editOpen, setEditOpen] = useState(false);
   const [editEntityId, setEditEntityId] = useState<string | null>(null);
+  const [proposalReviewOpen, setProposalReviewOpen] = useState(false);
   const [editDraft, setEditDraft] = useState({
     community: "",
     displayName: "",
@@ -174,6 +182,19 @@ export function BeneficiariesModule({
     region: "",
     status: "Active" as EntityStatus,
   });
+  const [proposalReviewDraft, setProposalReviewDraft] = useState<{
+    action: BeneficiaryProfileUpdateProposalReview["action"];
+    beneficiaryId: string;
+    entityName: string;
+    comment: string;
+    submissionId: string;
+  }>({
+    action: "approve",
+    beneficiaryId: "",
+    entityName: "",
+    comment: "",
+    submissionId: "",
+  });
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const router = useRouter();
@@ -182,8 +203,9 @@ export function BeneficiariesModule({
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
-  const isImportRoute =
-    (pathname ?? "").replace(/\/+$/, "") === "/beneficiaries/import";
+  const routeView = beneficiariesViewFromPath(pathname ?? "/beneficiaries");
+  const isImportRoute = routeView === "import";
+  const isDuplicatesRoute = routeView === "duplicates";
   const entitiesQuery = useQuery({
     enabled: Boolean(token && !preview),
     queryFn: () => listBeneficiaries(token ?? ""),
@@ -281,6 +303,16 @@ export function BeneficiariesModule({
       ),
     [entities, entityTypeFilter, projectFilter],
   );
+  const visibleEntities = useMemo(
+    () =>
+      isDuplicatesRoute
+        ? filteredEntities.filter(
+            (entity) =>
+              entity.duplicateStatus !== "Clear" || entity.qualityFlags > 0,
+          )
+        : filteredEntities,
+    [filteredEntities, isDuplicatesRoute],
+  );
   const managerAccess = canManage(principal);
   const projectOptions = useMemo(() => {
     if (preview) {
@@ -366,6 +398,43 @@ export function BeneficiariesModule({
       });
     },
   });
+  const proposalReviewMutation = useMutation({
+    mutationFn: ({
+      beneficiaryId,
+      payload,
+    }: {
+      beneficiaryId: string;
+      payload: BeneficiaryProfileUpdateProposalReview;
+    }) => reviewBeneficiaryProfileUpdateProposal(token ?? "", beneficiaryId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["beneficiaries", token] }),
+        queryClient.invalidateQueries({ queryKey: ["beneficiaries", "linked-submissions", token] }),
+        queryClient.invalidateQueries({ queryKey: ["data-quality", token] }),
+      ]);
+      const actionLabel = proposalReviewDraft.action === "approve" ? "approved" : "rejected";
+      setProposalReviewOpen(false);
+      setProposalReviewDraft({
+        action: "approve",
+        beneficiaryId: "",
+        entityName: "",
+        comment: "",
+        submissionId: "",
+      });
+      pushToast({
+        title: `Profile update ${actionLabel}`,
+        description: `The proposed profile changes for ${proposalReviewDraft.entityName} were ${actionLabel}.`,
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Review action failed",
+        description: error instanceof Error ? error.message : "The profile update proposal could not be reviewed.",
+        tone: "danger",
+      });
+    },
+  });
   const summaryCards: {
     icon: LucideIcon;
     label: string;
@@ -377,7 +446,7 @@ export function BeneficiariesModule({
     {
       icon: Smartphone,
       label: "Pending Profile Updates",
-      value: filteredEntities.reduce((total, entity) => total + profileUpdateProposals(entity).length, 0),
+      value: filteredEntities.reduce((total, entity) => total + pendingProfileUpdateProposals(entity).length, 0),
     },
   ];
 
@@ -444,6 +513,57 @@ export function BeneficiariesModule({
       projectName: firstProject?.name ?? "",
     });
     setRegisterOpen(true);
+  }
+
+  function openProposalReview(
+    entity: BeneficiaryEntity,
+    proposal: ProfileUpdateProposal,
+    action: BeneficiaryProfileUpdateProposalReview["action"],
+  ): void {
+    const submissionId = proposal.submissionId ?? "";
+    if (!submissionId) {
+      pushToast({
+        title: "Review unavailable",
+        description: "This proposal is missing the submission link needed for approval or rejection.",
+        tone: "warning",
+      });
+      return;
+    }
+    setProposalReviewDraft({
+      action,
+      beneficiaryId: entity.id,
+      entityName: entity.fullName,
+      comment: "",
+      submissionId,
+    });
+    setProposalReviewOpen(true);
+  }
+
+  function submitProposalReview(): void {
+    if (preview || !token || !managerAccess) {
+      pushToast({
+        title: "Review unavailable",
+        description: "Sign in with entity management permission to review profile updates.",
+        tone: "warning",
+      });
+      return;
+    }
+    if (proposalReviewDraft.comment.trim().length < 3) {
+      pushToast({
+        title: "Comment required",
+        description: "Add a short review note before continuing.",
+        tone: "warning",
+      });
+      return;
+    }
+    proposalReviewMutation.mutate({
+      beneficiaryId: proposalReviewDraft.beneficiaryId,
+      payload: {
+        action: proposalReviewDraft.action,
+        comment: proposalReviewDraft.comment.trim(),
+        submission_id: proposalReviewDraft.submissionId,
+      },
+    });
   }
 
   function submitRegistration(): void {
@@ -562,6 +682,11 @@ export function BeneficiariesModule({
     );
   }
 
+  const panelEntity =
+    selectedEntity && visibleEntities.some((entity) => entity.id === selectedEntity.id)
+      ? selectedEntity
+      : (visibleEntities[0] ?? null);
+
   const columns: TableColumn<BeneficiaryEntity>[] = [
     {
       header: "Entity",
@@ -642,7 +767,7 @@ export function BeneficiariesModule({
           <Button
             onClick={() => {
               setPendingMapFeatureId(`beneficiary-${entity.id}`);
-              setActiveView("map");
+              router.push(beneficiariesMappingRoute());
             }}
             size="sm"
             variant="ghost"
@@ -661,6 +786,7 @@ export function BeneficiariesModule({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="collect">OPERATIONS</Badge>
+              {isDuplicatesRoute ? <Badge tone="warning">Duplicate review</Badge> : null}
               <Badge tone={duplicates.length ? "warning" : "success"}>
                 {duplicates.length
                   ? `${duplicates.length} duplicate signals`
@@ -679,6 +805,14 @@ export function BeneficiariesModule({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {isDuplicatesRoute ? (
+              <Button
+                onClick={() => openWorkspace("beneficiaries", "/beneficiaries")}
+                variant="secondary"
+              >
+                Back to registry
+              </Button>
+            ) : null}
             <Button
               disabled={!managerAccess}
               onClick={() => openWorkspace("beneficiaries", "/beneficiaries/import")}
@@ -786,21 +920,36 @@ export function BeneficiariesModule({
                 }
               : undefined
           }
-          emptyDescription="Import entities from CSV or Excel into a project, or register them through a published mobile form."
-          emptyLabel="No entity records match this view"
-          rows={filteredEntities}
+          emptyDescription={
+            isDuplicatesRoute
+              ? "Duplicate candidates appear here after matching entity IDs, names, phones, household references, or location signals."
+              : "Import entities from CSV or Excel into a project, or register them through a published mobile form."
+          }
+          emptyLabel={
+            isDuplicatesRoute
+              ? "No duplicate entity records match this view"
+              : "No entity records match this view"
+          }
+          rows={visibleEntities}
           searchLabel="Search entity ID, name, phone, project, location"
-          title={entitiesQuery.isFetching ? "Registry syncing" : "Entity registry"}
+          title={
+            entitiesQuery.isFetching
+              ? "Registry syncing"
+              : isDuplicatesRoute
+                ? "Duplicate review queue"
+                : "Entity registry"
+          }
         />
         <EntitySidePanel
           duplicates={duplicates}
-          entity={selectedEntity ?? filteredEntities[0] ?? null}
+          entity={panelEntity}
           onEdit={openEditEntity}
           linkedSubmissions={
-            submissionsByEntity.get((selectedEntity ?? filteredEntities[0])?.id ?? "") ?? []
+            submissionsByEntity.get(panelEntity?.id ?? "") ?? []
           }
           managerAccess={managerAccess}
           onMerge={openMergeReview}
+          onReviewProposal={openProposalReview}
         />
       </div>
       <MergeBeneficiariesModal
@@ -893,6 +1042,61 @@ export function BeneficiariesModule({
           </Button>
         </div>
       </Modal>
+      <Modal
+        contentClassName="max-w-lg"
+        description="Review a submission-driven profile change and record your decision for the audit trail."
+        onOpenChange={(open) => {
+          setProposalReviewOpen(open);
+          if (!open) {
+            setProposalReviewDraft({
+              action: "approve",
+              beneficiaryId: "",
+              entityName: "",
+              comment: "",
+              submissionId: "",
+            });
+          }
+        }}
+        open={proposalReviewOpen}
+        title={proposalReviewDraft.action === "approve" ? "Approve profile update" : "Reject profile update"}
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-background p-3 text-sm">
+            <p className="font-medium">{proposalReviewDraft.entityName || "Selected entity"}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Submission {proposalReviewDraft.submissionId || "not linked"}
+            </p>
+          </div>
+          <label className="block text-sm font-medium">
+            Review comment
+            <Textarea
+              className="mt-2"
+              placeholder={
+                proposalReviewDraft.action === "approve"
+                  ? "Explain why the profile change should become the official value."
+                  : "Explain why the proposed change should be rejected."
+              }
+              rows={4}
+              value={proposalReviewDraft.comment}
+              onChange={(event) => setProposalReviewDraft((current) => ({ ...current, comment: event.target.value }))}
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setProposalReviewOpen(false)} variant="secondary">Cancel</Button>
+          <Button
+            disabled={!managerAccess || preview || proposalReviewMutation.isPending || proposalReviewDraft.comment.trim().length < 3}
+            onClick={submitProposalReview}
+            variant="primary"
+          >
+            {proposalReviewMutation.isPending
+              ? "Saving…"
+              : proposalReviewDraft.action === "approve"
+                ? "Approve update"
+                : "Reject update"}
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -904,6 +1108,7 @@ function EntitySidePanel({
   managerAccess,
   onEdit,
   onMerge,
+  onReviewProposal,
 }: {
   duplicates: BeneficiaryEntity[];
   entity: BeneficiaryEntity | null;
@@ -911,6 +1116,11 @@ function EntitySidePanel({
   managerAccess: boolean;
   onEdit: (entity: BeneficiaryEntity) => void;
   onMerge: (duplicate?: BeneficiaryEntity) => void;
+  onReviewProposal: (
+    entity: BeneficiaryEntity,
+    proposal: ProfileUpdateProposal,
+    action: BeneficiaryProfileUpdateProposalReview["action"],
+  ) => void;
 }) {
   const [activeTab, setActiveTab] = useState<
     "Overview" | "Profile" | "Forms & Records" | "Timeline"
@@ -956,7 +1166,7 @@ function EntitySidePanel({
             icon={GitBranch}
             label="Pending updates"
             onClick={() => setActiveTab("Profile")}
-            value={profileUpdateProposals(entity).length}
+            value={pendingProfileUpdateProposals(entity).length}
           />
         </div>
         <div className="mt-4 flex gap-1 overflow-x-auto product-scrollbar">
@@ -978,7 +1188,9 @@ function EntitySidePanel({
         {activeTab === "Overview" ? (
           <BeneficiaryOverview entity={entity} linkedSubmissions={linkedSubmissions} />
         ) : null}
-        {activeTab === "Profile" ? <BeneficiaryProfile entity={entity} /> : null}
+        {activeTab === "Profile" ? (
+          <BeneficiaryProfile entity={entity} managerAccess={managerAccess} onReviewProposal={onReviewProposal} />
+        ) : null}
         {activeTab === "Forms & Records" ? (
           <BeneficiaryRecords linkedSubmissions={linkedSubmissions} />
         ) : null}
@@ -1076,7 +1288,19 @@ function BeneficiaryOverview({
   );
 }
 
-function BeneficiaryProfile({ entity }: { entity: BeneficiaryEntity }) {
+function BeneficiaryProfile({
+  entity,
+  managerAccess,
+  onReviewProposal,
+}: {
+  entity: BeneficiaryEntity;
+  managerAccess: boolean;
+  onReviewProposal: (
+    entity: BeneficiaryEntity,
+    proposal: ProfileUpdateProposal,
+    action: BeneficiaryProfileUpdateProposalReview["action"],
+  ) => void;
+}) {
   const lineage = fieldLineage(entity);
   const proposals = profileUpdateProposals(entity);
   const customProfileRows = Object.entries(entity.profileJson ?? {})
@@ -1143,12 +1367,55 @@ function BeneficiaryProfile({ entity }: { entity: BeneficiaryEntity }) {
       })}
       {proposals.length ? (
         <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
-          <p className="text-sm font-semibold">Profile update proposals</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">Profile update proposals</p>
+            <Badge tone="warning">{proposals.length}</Badge>
+          </div>
           <div className="mt-2 space-y-2">
             {proposals.slice(0, 3).map((proposal, index) => (
-              <p className="text-xs leading-5 text-muted-foreground" key={index}>
-                {proposal.clientSubmissionId ?? proposal.submissionId ?? "Submission"} proposed {Object.keys(proposal.changes ?? {}).length} profile change(s). Review in Data Quality reconciliation.
-              </p>
+              <div className="rounded-lg border border-warning/20 bg-background/80 p-3" key={`${proposal.submissionId ?? proposal.clientSubmissionId ?? "proposal"}-${index}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">
+                      {proposal.clientSubmissionId ?? proposal.submissionId ?? "Submission"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {Object.keys(proposal.changes ?? {}).length} proposed profile change(s)
+                    </p>
+                  </div>
+                  <Badge tone={proposal.status === "approved" ? "success" : proposal.status === "rejected" ? "danger" : "warning"}>
+                    {proposal.status?.replaceAll("_", " ") ?? "pending review"}
+                  </Badge>
+                </div>
+                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {Object.entries(proposal.changes ?? {}).map(([field, change]) => (
+                    <p key={field}>
+                      <span className="font-medium text-foreground">{humanizeProfileKey(field)}:</span>{" "}
+                      {formatProposalChange(change)}
+                    </p>
+                  ))}
+                </div>
+                {proposal.reviewComment ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Review note: {proposal.reviewComment}
+                  </p>
+                ) : null}
+                {proposal.reviewedAt ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Reviewed {formatEntityDate(proposal.reviewedAt)}
+                  </p>
+                ) : null}
+                {proposal.status === "pending_review" ? (
+                  <div className="mt-3 flex gap-2">
+                    <Button disabled={!managerAccess} onClick={() => onReviewProposal(entity, proposal, "approve")} size="sm" variant="primary">
+                      Approve
+                    </Button>
+                    <Button disabled={!managerAccess} onClick={() => onReviewProposal(entity, proposal, "reject")} size="sm" variant="secondary">
+                      Reject
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         </div>
@@ -1277,15 +1544,33 @@ function formatProfileValue(value: unknown): string {
   return String(value ?? "Not recorded");
 }
 
-function profileUpdateProposals(entity: BeneficiaryEntity): {
+type ProfileUpdateProposal = {
   changes?: Record<string, unknown>;
   clientSubmissionId?: string;
+  reviewComment?: string;
+  reviewedAt?: string;
   submissionId?: string;
-}[] {
+  status?: string;
+};
+
+function profileUpdateProposals(entity: BeneficiaryEntity): ProfileUpdateProposal[] {
   const value = entity.profileJson.profileUpdateProposals;
   return Array.isArray(value)
-    ? value.filter((item): item is { changes?: Record<string, unknown>; clientSubmissionId?: string; submissionId?: string } => Boolean(item) && typeof item === "object")
+    ? value.filter((item): item is ProfileUpdateProposal => Boolean(item) && typeof item === "object")
     : [];
+}
+
+function pendingProfileUpdateProposals(entity: BeneficiaryEntity): ProfileUpdateProposal[] {
+  return profileUpdateProposals(entity).filter((proposal) => (proposal.status ?? "pending_review") === "pending_review");
+}
+
+function formatProposalChange(change: unknown): string {
+  if (!change || typeof change !== "object" || Array.isArray(change)) return formatProfileValue(change);
+  const record = change as Record<string, unknown>;
+  const current = record.current;
+  const proposed = record.proposed;
+  if (current === undefined && proposed === undefined) return formatProfileValue(change);
+  return `${formatProfileValue(current)} -> ${formatProfileValue(proposed)}`;
 }
 
 function submissionSourceLabel(submission: SubmissionRead): string {

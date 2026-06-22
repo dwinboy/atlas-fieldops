@@ -16,10 +16,12 @@ import {
   Wand2,
   X
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getNavigationItemByView } from "@/config/navigation";
 import { Input, Select } from "@/components/ui/input";
 import {
   duplicateFormTemplate,
@@ -31,7 +33,18 @@ import {
 } from "@/lib/api";
 import { formTemplateCategories, formTemplates, type FormTemplateCard } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
-import { useWorkspaceStore } from "@/stores/workspace";
+import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
+
+type TemplateNavigationAction = {
+  view: WorkspaceView;
+  route?: string;
+};
+
+export function templateRouteForAction(
+  action: TemplateNavigationAction,
+): string | null {
+  return action.route ?? getNavigationItemByView(action.view)?.route ?? null;
+}
 
 function categoryCount(category: string) {
   if (category === "Recommended") {
@@ -239,6 +252,8 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
   const [selectedProjectId, setSelectedProjectId] = useState(previewTemplateProjects[0]?.id ?? "");
   const [selectedSurveyId, setSelectedSurveyId] = useState(previewTemplateSurveys[0]?.id ?? "");
   const [templateResult, setTemplateResult] = useState("");
+  const pathname = usePathname();
+  const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -279,9 +294,18 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         description: `${form.name} is now a backend draft form.`,
         tone: "success"
       });
-      setActiveView("forms");
+      openTemplateAction({ route: "/forms/draft", view: "forms" });
     }
   });
+
+  function openTemplateAction(action: TemplateNavigationAction): void {
+    const route = templateRouteForAction(action);
+    if (route && route !== pathname) {
+      router.push(route);
+      return;
+    }
+    setActiveView(action.view);
+  }
 
   const visibleTemplates = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -307,7 +331,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
         description: "Create or select a survey before copying this template.",
         tone: "warning"
       });
-      setActiveView("surveys");
+      openTemplateAction({ route: "/surveys", view: "surveys" });
       return;
     }
     if (token && !isPreview) {
@@ -322,7 +346,7 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
       description: `${template.name} is ready for quick edits in the form builder.`,
       tone: "success"
     });
-    setActiveView("forms");
+    openTemplateAction({ route: "/forms/create", view: "forms" });
   }
 
   function suggestTemplate() {
@@ -409,7 +433,12 @@ export function FormTemplateLibrary({ token }: { token: string | null }) {
                 )}
               </Select>
             </label>
-            <Button className="md:self-end" onClick={() => setActiveView("surveys")} type="button" variant="secondary">
+            <Button
+              className="md:self-end"
+              onClick={() => openTemplateAction({ route: "/surveys", view: "surveys" })}
+              type="button"
+              variant="secondary"
+            >
               <ClipboardCheck aria-hidden="true" />
               Manage surveys
             </Button>

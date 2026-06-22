@@ -80,8 +80,9 @@ import {
   previewTeams,
   previewUnits,
   previewUsers,
-  usersTeamsSections,
   type UsersTeamsSection,
+  usersTeamsSectionFromPath,
+  usersTeamsSections,
 } from "@/modules/users-teams/data";
 import {
   computeSummaryFromRecords,
@@ -340,7 +341,9 @@ function profilesForUser(user: UserRead | null): UserOperationalProfileRead[] {
 }
 
 export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
-  const [activeSection, setActiveSection] = useState<UsersTeamsSection>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<UsersTeamsSection>(() => usersTeamsSectionFromPath(pathname));
   const [rolesView, setRolesView] = useState<RolesTabView>("list");
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedRoleProfileUserId, setSelectedRoleProfileUserId] = useState<string | null>(null);
@@ -357,8 +360,6 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const queryClient = useQueryClient();
-  const pathname = usePathname();
-  const router = useRouter();
   const preview = isPreview(token);
   const enabled = Boolean(token && !preview);
   const canManageUsers = hasAnyPermission(principal, ["users.create", "users.manage"]);
@@ -427,10 +428,26 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   useEffect(() => {
     const path = pathname.replace(/\/+$/, "");
     const match = path.match(/^\/users-teams\/role-profiles\/([^/]+)$/);
-    if (!match) return;
-    setActiveSection("users");
-    setSelectedRoleProfileUserId(decodeURIComponent(match[1]));
-  }, [pathname]);
+    if (match) {
+      if (activeSection !== "users") {
+        setActiveSection("users");
+      }
+      const nextUserId = decodeURIComponent(match[1]);
+      if (selectedRoleProfileUserId !== nextUserId) {
+        setSelectedRoleProfileUserId(nextUserId);
+        setSelectedRoleProfileType(null);
+      }
+      return;
+    }
+    if (selectedRoleProfileUserId) {
+      setSelectedRoleProfileUserId(null);
+      setSelectedRoleProfileType(null);
+    }
+    const nextSection = usersTeamsSectionFromPath(path);
+    if (nextSection !== activeSection) {
+      setActiveSection(nextSection);
+    }
+  }, [activeSection, pathname, selectedRoleProfileUserId]);
 
   useEffect(() => {
     if (modalMode !== "user" || !roleOptions.length) return;
@@ -454,7 +471,17 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
   function closeRoleProfile(): void {
     setSelectedRoleProfileUserId(null);
     setSelectedRoleProfileType(null);
-    router.push("/users-teams");
+    router.push("/users-teams/users");
+  }
+
+  function selectSection(section: UsersTeamsSection): void {
+    setActiveSection(section);
+    setSelectedRoleProfileUserId(null);
+    setSelectedRoleProfileType(null);
+    const route = usersTeamsSections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) {
+      router.push(route);
+    }
   }
 
   const invalidateUsersTeams = async () => {
@@ -935,7 +962,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
                 activeSection === section.id ? "border-primary bg-primary text-primary-foreground" : "bg-panel hover:bg-muted",
               )}
               key={section.id}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => selectSection(section.id)}
               type="button"
             >
               {section.label}
@@ -975,7 +1002,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
           summary={summary}
           teams={teams}
           users={users}
-          onOpenSection={setActiveSection}
+          onOpenSection={selectSection}
         />
       ) : null}
 
@@ -1058,7 +1085,7 @@ export function UsersTeamsModule({ principal, token }: UsersTeamsModuleProps) {
 
       {!selectedRoleProfileUser && activeSection === "organizations" ? (
         <OrganizationsSection
-          onOpenSection={setActiveSection}
+          onOpenSection={selectSection}
           organizationName={organizationQuery.data?.name ?? principal?.organization_name ?? "Organization workspace"}
           profiles={profiles}
           summary={summary}

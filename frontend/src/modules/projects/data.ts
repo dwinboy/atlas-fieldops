@@ -11,6 +11,11 @@ export const projectSections = [
 
 export type ProjectSection = (typeof projectSections)[number]["id"];
 
+export function projectSectionFromPath(pathname: string): ProjectSection {
+  const match = projectSections.find((section) => section.route !== "/projects" && pathname.startsWith(section.route));
+  return match?.id ?? "dashboard";
+}
+
 export const projectTabs = [
   "Overview",
   "Entities",

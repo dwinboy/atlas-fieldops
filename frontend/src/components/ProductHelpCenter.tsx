@@ -17,10 +17,18 @@ import {
   UsersRound,
   Wifi,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getNavigationItemByView } from "@/config/navigation";
 import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
+
+type HelpAction = {
+  label: string;
+  view: WorkspaceView;
+  route?: string;
+};
 
 type HelpTopic = {
   id: string;
@@ -36,7 +44,7 @@ type HelpTopic = {
   goodPractice: string[];
   avoid: string[];
   result: string;
-  nextActions: { label: string; view: WorkspaceView }[];
+  nextActions: HelpAction[];
 };
 
 const onboardingPath = [
@@ -136,7 +144,7 @@ const helpTopics: HelpTopic[] = [
       "Users know where to go next and the platform stays clean, predictable, and easier to support.",
     nextActions: [
       { label: "Open Dashboard", view: "dashboard" },
-      { label: "Build forms", view: "forms" },
+      { label: "Build forms", view: "forms", route: "/forms/create" },
     ],
   },
   {
@@ -1188,11 +1196,19 @@ const topicLinks = helpTopics.map((topic, index) => ({
   number: index + 1,
 }));
 
+export function helpRouteForAction(
+  action: Pick<HelpAction, "route" | "view">,
+): string | null {
+  return action.route ?? getNavigationItemByView(action.view)?.route ?? null;
+}
+
 function TopicActionButtons({
   actions,
 }: {
   actions: HelpTopic["nextActions"];
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
 
   return (
@@ -1202,7 +1218,13 @@ function TopicActionButtons({
           key={action.label}
           size="sm"
           variant="secondary"
-          onClick={() => setActiveView(action.view)}
+          onClick={() => {
+            setActiveView(action.view);
+            const route = helpRouteForAction(action);
+            if (route && route !== pathname) {
+              router.push(route);
+            }
+          }}
           type="button"
         >
           {action.label}
@@ -1213,7 +1235,17 @@ function TopicActionButtons({
 }
 
 export function ProductHelpCenter() {
+  const pathname = usePathname();
+  const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+
+  function openHelpAction(action: Pick<HelpAction, "route" | "view">): void {
+    setActiveView(action.view);
+    const route = helpRouteForAction(action);
+    if (route && route !== pathname) {
+      router.push(route);
+    }
+  }
 
   return (
     <section aria-labelledby="help-title" className="space-y-6">
@@ -1238,7 +1270,7 @@ export function ProductHelpCenter() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
-              onClick={() => setActiveView("dashboard")}
+              onClick={() => openHelpAction({ view: "dashboard" })}
               type="button"
             >
               Open Dashboard
@@ -1246,7 +1278,9 @@ export function ProductHelpCenter() {
             </Button>
             <Button
               variant="primary"
-              onClick={() => setActiveView("forms")}
+              onClick={() =>
+                openHelpAction({ route: "/forms/create", view: "forms" })
+              }
               type="button"
             >
               Open form builder
@@ -1382,7 +1416,7 @@ export function ProductHelpCenter() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setActiveView(topic.view)}
+                    onClick={() => openHelpAction({ view: topic.view })}
                     type="button"
                   >
                     Open workspace

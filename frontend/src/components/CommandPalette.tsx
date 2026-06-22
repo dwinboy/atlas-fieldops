@@ -12,6 +12,10 @@ import { Input } from "@/components/ui/input";
 import type { CurrentPrincipal } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspace";
 
+export function commandPaletteEmptyStateHelpRoute(): string {
+  return "/app/help";
+}
+
 export function CommandPalette({ principal }: { principal?: CurrentPrincipal | null }) {
   const router = useRouter();
   const commandOpen = useWorkspaceStore((state) => state.commandOpen);
@@ -118,7 +122,7 @@ export function CommandPalette({ principal }: { principal?: CurrentPrincipal | n
               onClick={() => {
                 const result = "Opening the help guide. Start with the beginner workflow that matches your task, then follow the steps and next actions.";
                 setActiveView("help");
-                router.push("/app");
+                router.push(commandPaletteEmptyStateHelpRoute());
                 setLastActionResult(result);
                 setCommandOpen(false);
                 setQuery("");

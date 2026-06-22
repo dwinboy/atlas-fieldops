@@ -116,6 +116,12 @@ class BeneficiaryUpdate(BaseModel):
         return self
 
 
+class BeneficiaryProfileUpdateProposalReview(BaseModel):
+    submission_id: UUID
+    action: Literal["approve", "reject"]
+    comment: str = Field(min_length=2, max_length=1000)
+
+
 class BeneficiaryRead(BaseModel):
     id: UUID
     project_id: UUID | None

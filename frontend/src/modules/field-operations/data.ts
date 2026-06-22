@@ -118,6 +118,20 @@ export const fieldOperationsSections: {
   { id: "field-monitoring", label: "Field Monitoring", route: "/field-operations/field-monitoring", description: "Monitor live activity, assignment progress, GPS status, sync health, quality alerts, and map readiness." },
 ];
 
+export function fieldOperationsSectionFromPath(pathname: string): FieldOperationsSection {
+  const match = fieldOperationsSections.find((section) => section.route !== "/field-operations" && pathname.startsWith(section.route));
+  return match?.id ?? "dashboard";
+}
+
+export function fieldOperationsAssignmentRoute(formId?: string): string {
+  const params = new URLSearchParams();
+  if (formId) {
+    params.set("formId", formId);
+  }
+  const query = params.toString();
+  return query ? `/field-operations/assignments?${query}` : "/field-operations/assignments";
+}
+
 export const previewOfficers: FieldOfficerRead[] = [
   {
     device_id: "android-field-7781",

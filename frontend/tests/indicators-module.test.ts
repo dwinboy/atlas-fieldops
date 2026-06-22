@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { indicatorReportsRoute } from "@/modules/indicators/IndicatorsModule";
 import { previewIndicators, previewTargets } from "@/modules/indicators/data";
 import {
   calculateIndicatorResult,
@@ -13,6 +14,10 @@ import {
 } from "@/modules/indicators/utils";
 
 describe("Indicators module helpers", () => {
+  it("routes indicator reporting actions to the reports workspace", () => {
+    expect(indicatorReportsRoute()).toBe("/reports");
+  });
+
   it("computes the M&E indicator overview metrics", () => {
     const summary = computeIndicatorSummary(previewIndicators);
 

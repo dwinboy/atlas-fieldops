@@ -1,5 +1,6 @@
 export const canonicalRoutes = {
   dashboard: ["/dashboard"],
+  surveys: ["/surveys"],
   projects: [
     "/projects",
     "/projects/all",

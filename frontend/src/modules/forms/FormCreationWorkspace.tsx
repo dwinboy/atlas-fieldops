@@ -52,6 +52,7 @@ import {
   type FormControlsSettings,
   type EntityCategoryRead,
   type ProjectListItemRead,
+  type SurveyCreate,
   type TeamRead,
 } from "@/lib/api";
 import {
@@ -228,6 +229,7 @@ type FormControlsDraft = {
   syncRequirement: "manual_allowed" | "daily_required" | "before_new_assignment";
   technicalReviewerName: string;
   testingRequirement: "preview_only" | "test_submission" | "pilot_assignment";
+  testingCompletedAt: string;
   finalApproverName: string;
   approvalDate: string;
   approvalNotes: string;
@@ -263,6 +265,7 @@ type PublishQuickFixId =
   | "add_media_question"
   | "apply_profile_mapping"
   | "baseline_defaults"
+  | "duplicate_review_defaults"
   | "evidence_defaults"
   | "fix_broken_logic"
   | "fix_question_variables"
@@ -822,6 +825,23 @@ const starterTemplates: StarterTemplate[] = [
   },
   {
     description:
+      "Capture feedback, complaints, safeguarding notes, consent, and follow-up routing in a governed response workflow.",
+    fields: [
+      { label: "Consent confirmed", required: true, type: "radio" },
+      { label: "Feedback date", required: true, type: "date" },
+      { label: "Feedback type", required: true, type: "select" },
+      { label: "Satisfaction rating", type: "rating" },
+      { label: "Issue or feedback details", required: true, type: "textarea" },
+      { label: "Follow-up requested", required: true, type: "radio" },
+      { label: "Contact phone", type: "phone" },
+    ],
+    formType: "Feedback",
+    id: "beneficiary-feedback",
+    name: "Beneficiary Feedback",
+    sectorIds: ["custom", "humanitarian", "protection", "governance", "health", "education", "livelihoods"],
+  },
+  {
+    description:
       "Count stock, products, supplies, assets, or warehouse items with variance notes and evidence.",
     fields: [
       { label: "Item code", required: true, type: "text" },
@@ -836,6 +856,24 @@ const starterTemplates: StarterTemplate[] = [
     id: "inventory-count",
     name: "Inventory Count",
     sectorIds: ["retail", "inventory", "logistics", "manufacturing", "assets"],
+  },
+  {
+    description:
+      "Record route, shipment condition, receiver signature, delivery timing, location evidence, and delivery exceptions.",
+    fields: [
+      { label: "Delivery reference", required: true, type: "text" },
+      { label: "Delivery date", required: true, type: "date" },
+      { label: "Route or vehicle", required: true, type: "text" },
+      { label: "Receiver name", required: true, type: "text" },
+      { label: "Delivery condition", required: true, type: "radio" },
+      { label: "Receiver signature", type: "signature" },
+      { label: "Delivery GPS", required: true, type: "gps" },
+      { label: "Photo evidence", type: "photo" },
+    ],
+    formType: "Delivery Proof",
+    id: "delivery-proof",
+    name: "Delivery Proof and Route Check",
+    sectorIds: ["logistics", "retail", "inventory", "manufacturing", "assets"],
   },
   {
     description:
@@ -855,6 +893,352 @@ const starterTemplates: StarterTemplate[] = [
     sectorIds: ["health", "education", "wash", "logistics", "manufacturing", "audits", "inspections", "assets"],
   },
 ];
+
+const starterTemplateAliases: Record<string, string> = {
+  "tpl-baseline": "baseline",
+  "tpl-compliance-audit": "inspection-checklist",
+  "tpl-delivery-proof": "delivery-proof",
+  "tpl-feedback": "beneficiary-feedback",
+  "tpl-monitoring": "monitoring-visit",
+  "tpl-retail-stock": "inventory-count",
+};
+
+export function resolvePendingStarterTemplateId(
+  pendingTemplateId: string | null,
+): string | null {
+  if (!pendingTemplateId) return null;
+  const normalizedTemplateId =
+    starterTemplateAliases[pendingTemplateId] ?? pendingTemplateId;
+  return (
+    starterTemplates.find((template) => template.id === normalizedTemplateId)?.id ??
+    null
+  );
+}
+
+export function resolveStarterTemplateForSector(
+  selectedTemplateId: string | null,
+  sectorId: string,
+): string {
+  const resolvedSelectedTemplateId = resolvePendingStarterTemplateId(
+    selectedTemplateId,
+  );
+  if (resolvedSelectedTemplateId) return resolvedSelectedTemplateId;
+  const sectorTemplates = starterTemplates.filter((template) =>
+    template.sectorIds.includes(sectorId),
+  );
+  return (sectorTemplates[0] ?? starterTemplates[0])?.id ?? "";
+}
+
+export function lifecycleActionState(
+  lifecycleStatus: "draft" | "testing" | "review" | "approved" | "published" | "suspended" | "archived",
+  testingCompleted = false,
+): {
+  approveDisabled: boolean;
+  approveLabel: string;
+  reviewDisabled: boolean;
+  reviewLabel: string;
+  testingDisabled: boolean;
+  testingLabel: string;
+} {
+  const reviewBlockedUntilTested =
+    (lifecycleStatus === "draft" || lifecycleStatus === "testing") && !testingCompleted;
+  return {
+    approveDisabled: ["approved", "published", "archived"].includes(lifecycleStatus),
+    approveLabel:
+      lifecycleStatus === "approved" || lifecycleStatus === "published"
+        ? "Approved for Publish"
+        : "Approve for Publish",
+    reviewDisabled:
+      reviewBlockedUntilTested ||
+      ["review", "approved", "published", "archived"].includes(lifecycleStatus),
+    reviewLabel:
+      lifecycleStatus === "review"
+        ? "Under Review"
+        : lifecycleStatus === "approved" || lifecycleStatus === "published"
+          ? "Review complete"
+          : reviewBlockedUntilTested
+            ? "Complete Preview & Test"
+          : "Submit for Review",
+    testingDisabled: lifecycleStatus !== "draft",
+    testingLabel:
+      lifecycleStatus === "draft"
+        ? "Move to Testing"
+        : lifecycleStatus === "testing"
+          ? "In Testing"
+          : "Testing complete",
+  };
+}
+
+export function duplicateReviewDefaults(
+  current: Pick<
+    FormControlsDraft,
+    | "duplicateAction"
+    | "duplicateFields"
+    | "duplicateGpsDetection"
+    | "duplicateSeverity"
+    | "duplicateThreshold"
+  >,
+): Pick<
+  FormControlsDraft,
+  | "duplicateAction"
+  | "duplicateFields"
+  | "duplicateGpsDetection"
+  | "duplicateSeverity"
+  | "duplicateThreshold"
+> {
+  return {
+    duplicateAction: "review",
+    duplicateFields: current.duplicateFields.length
+      ? current.duplicateFields
+      : ["phone_number", "household_id", "full_name", "village"],
+    duplicateGpsDetection: true,
+    duplicateSeverity: "high",
+    duplicateThreshold: Math.max(current.duplicateThreshold, 85),
+  };
+}
+
+export function requiredQuestionsAdviceState(fieldCount: number): {
+  fix: string;
+  platformAction: string;
+  quickFixId?: PublishQuickFixId;
+  why: string;
+} {
+  if (fieldCount <= 0) {
+    return {
+      fix:
+        "Open Builder and add the core questions first. Once they exist, mark identity, date, location, consent, service, or activity questions as required.",
+      platformAction:
+        "Manager decision needed: the platform can open Builder, but it cannot mark required questions until at least one question exists.",
+      why:
+        "This form has no questions yet, so there is nothing the platform can safely mark as required. Add the data fields first, then review which ones must block incomplete submissions.",
+    };
+  }
+
+  return {
+    fix:
+      "Click Apply platform fix to mark detected consent, identity, date, location, service, and activity questions as required. Then review any sensitive questions manually.",
+    platformAction:
+      "The platform can mark obvious core questions as required and allow Don't know / Refused metadata for review.",
+    quickFixId: "mark_core_required",
+    why:
+      `None of the ${fieldCount} question${fieldCount === 1 ? "" : "s"} is required, so incomplete submissions could pass into review.`,
+  };
+}
+
+export function warningQuickFixForItemId(itemId: string): PublishQuickFixId | undefined {
+  if (itemId === "standard-questions") return "add_standard_questions";
+  if (itemId === "mapping-suggestions") return "apply_profile_mapping";
+  if (itemId === "mobile-complexity") return "mobile_readiness_defaults";
+  if (
+    [
+      "offline",
+      "mobile-package",
+      "reference-data",
+      "enumerator-quality",
+      "repeat-groups",
+      "field-integrity",
+      "back-checks",
+      "field-officer-training",
+    ].includes(itemId)
+  ) {
+    return "evidence_defaults";
+  }
+  if (["results-linkage", "dont-know-policy"].includes(itemId)) {
+    return "mne_context_defaults";
+  }
+  if (["export-governance", "privacy", "partner-sharing", "case-escalation"].includes(itemId)) {
+    return "governance_defaults";
+  }
+  return undefined;
+}
+
+export function quickSetupReviewDefaults(
+  current: Pick<
+    FormControlsDraft,
+    | "assignedFieldOfficerIds"
+    | "assignedTeamIds"
+    | "assignmentMode"
+    | "changeSummary"
+    | "lifecycleStatus"
+    | "profileMappings"
+    | "profileUpdateMode"
+    | "reviewComments"
+  >,
+  fields: FormField[],
+): Pick<
+  FormControlsDraft,
+  | "assignmentMode"
+  | "changeSummary"
+  | "lifecycleStatus"
+  | "profileMappings"
+  | "profileUpdateMode"
+  | "reviewComments"
+> {
+  const suggestedMappings = suggestedProfileMappingsFromFields(fields);
+  const profileMappings = {
+    ...current.profileMappings,
+    ...Object.fromEntries(
+      Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
+    ),
+  } as FormControlsDraft["profileMappings"];
+  const mappedCount = Object.values(profileMappings).filter(Boolean).length;
+  const needsAssignedOfficers =
+    current.assignmentMode === "assigned_only" &&
+    current.assignedFieldOfficerIds.length === 0 &&
+    current.assignedTeamIds.length === 0;
+
+  return {
+    assignmentMode: needsAssignedOfficers ? "project_team" : current.assignmentMode,
+    changeSummary: current.changeSummary.trim() || "Initial test-ready draft.",
+    lifecycleStatus: "testing",
+    profileMappings,
+    profileUpdateMode:
+      current.profileUpdateMode !== "never" && mappedCount < 2
+        ? "never"
+        : current.profileUpdateMode,
+    reviewComments:
+      current.reviewComments || "Prepared with recommended defaults and ready for Preview & Test.",
+  };
+}
+
+export function previewTestReviewDefaults(
+  current: Pick<FormControlsDraft, "reviewComments" | "testingCompletedAt">,
+  completedAt = new Date().toISOString(),
+): Pick<FormControlsDraft, "lifecycleStatus" | "reviewComments" | "testingCompletedAt"> {
+  return {
+    lifecycleStatus: "review",
+    reviewComments:
+      current.reviewComments || "Submitted for technical and sector review.",
+    testingCompletedAt: current.testingCompletedAt || completedAt,
+  };
+}
+
+export function approvalActionState(
+  lifecycleStatus: FormControlsDraft["lifecycleStatus"],
+  criticalFailureCount: number,
+  testingCompleted = true,
+): {
+  canApprove: boolean;
+  label: string;
+  message: string;
+} {
+  if (lifecycleStatus === "approved" || lifecycleStatus === "published") {
+    return {
+      canApprove: false,
+      label: "Approved for Publish",
+      message: "This form is already approved for publishing.",
+    };
+  }
+  if (lifecycleStatus === "draft" || lifecycleStatus === "testing") {
+    return {
+      canApprove: false,
+      label: "Submit for review first",
+      message:
+        "Move the form through testing and submit it for review before approving it for publishing.",
+    };
+  }
+  if (!testingCompleted) {
+    return {
+      canApprove: false,
+      label: "Complete Preview & Test",
+      message:
+        "Complete Preview & Test before approving this form for publishing.",
+    };
+  }
+  if (criticalFailureCount > 0) {
+    return {
+      canApprove: false,
+      label: "Resolve blockers before approval",
+      message:
+        "Resolve the required readiness blockers before approving this form for publishing.",
+    };
+  }
+  return {
+    canApprove: true,
+    label: "Approve Form",
+    message: "This form is ready for approval.",
+  };
+}
+
+export function activeLifecycleStepId(
+  stage: CreationStage,
+  lifecycleStatus: FormControlsDraft["lifecycleStatus"],
+  published: boolean,
+  criticalFailureCount: number,
+): "setup" | "builder" | "controls" | "test" | "review" | "approve" | "publish" {
+  if (published) return "publish";
+  if (stage === "setup" || stage === "start") return "setup";
+  if (stage === "builder") return "builder";
+  if (stage === "controls") return "controls";
+  if (stage === "preview") return "test";
+  if (lifecycleStatus === "approved") {
+    return criticalFailureCount > 0 ? "approve" : "publish";
+  }
+  return "review";
+}
+
+function requiredItemsComplete(
+  checklist: PublishReadinessItem[],
+  jumpTo: CreationStage,
+  excludedIds: string[] = [],
+): boolean {
+  const requiredItems = checklist.filter(
+    (item) => item.jumpTo === jumpTo && item.required && !excludedIds.includes(item.id),
+  );
+  return requiredItems.length > 0 && requiredItems.every((item) => item.complete);
+}
+
+export function testingReadinessComplete(
+  controls: Pick<FormControlsDraft, "testingCompletedAt" | "testingRequirement">,
+): boolean {
+  return Boolean(controls.testingRequirement && controls.testingCompletedAt);
+}
+
+export function assignmentReadinessState(
+  collectionMethod: CollectionMethod,
+  controls: Pick<
+    FormControlsDraft,
+    "assignedFieldOfficerIds" | "assignedTeamIds" | "assignmentMode"
+  >,
+): { complete: boolean; required: boolean } {
+  const mobileCollection = collectionMethod !== "web";
+  const assignedTargetSelected =
+    controls.assignedFieldOfficerIds.length > 0 || controls.assignedTeamIds.length > 0;
+  const assignedOnly = controls.assignmentMode === "assigned_only";
+  return {
+    complete: assignedOnly ? !mobileCollection || assignedTargetSelected : Boolean(controls.assignmentMode),
+    required: assignedOnly && mobileCollection,
+  };
+}
+
+export function approvalBlockingFailures(
+  checklist: PublishReadinessItem[],
+): PublishReadinessItem[] {
+  return checklist.filter(
+    (item) => item.required && !item.complete && item.id !== "lifecycle-approved",
+  );
+}
+
+export function lifecycleCompletionState(params: {
+  checklist: PublishReadinessItem[];
+  hasDraft: boolean;
+  lifecycleStatus: FormControlsDraft["lifecycleStatus"];
+  published: boolean;
+  testingCompletedAt: string;
+}): Record<(typeof lifecycleSteps)[number]["id"], boolean> {
+  const { checklist, hasDraft, lifecycleStatus, published, testingCompletedAt } = params;
+  return {
+    approve: lifecycleStatus === "approved" || published,
+    builder: hasDraft && requiredItemsComplete(checklist, "builder"),
+    controls:
+      hasDraft && requiredItemsComplete(checklist, "controls", ["lifecycle-approved"]),
+    publish: published,
+    review:
+      lifecycleStatus === "review" || lifecycleStatus === "approved" || published,
+    setup: requiredItemsComplete(checklist, "setup"),
+    test: Boolean(testingCompletedAt) || published,
+  };
+}
 
 const defaultControlsDraft: FormControlsDraft = {
   accessibilityMode: "standard",
@@ -962,6 +1346,7 @@ const defaultControlsDraft: FormControlsDraft = {
   syncRequirement: "daily_required",
   technicalReviewerName: "Technical Reviewer",
   testingRequirement: "test_submission",
+  testingCompletedAt: "",
   finalApproverName: "Operations Manager",
   approvalDate: "",
   approvalNotes: "",
@@ -1459,12 +1844,14 @@ function inferFieldType(header: string, values: string[]): FieldType {
   const samples = values.map((value) => value.trim()).filter(Boolean);
   if (label.includes("email")) return "email";
   if (label.includes("phone") || label.includes("mobile") || label.includes("contact")) return "phone";
+  if (/\b(id|code|sku|barcode|serial|account|reference|ref|identifier)\b/.test(label)) return "text";
   if (label.includes("gps") || label.includes("coordinate")) return "gps";
   if (label.includes("photo") || label.includes("image")) return "photo";
   if (label.includes("signature")) return "signature";
-  if (label.includes("date") || samples.every((value) => !Number.isNaN(Date.parse(value)))) return "date";
+  if (/\b(lat|latitude|lon|lng|longitude)\b/.test(label)) return "decimal";
   if (samples.length && samples.every((value) => /^-?\d+$/.test(value))) return "number";
   if (samples.length && samples.every((value) => /^-?\d+(\.\d+)?$/.test(value))) return "decimal";
+  if (label.includes("date") || (samples.length > 0 && samples.every((value) => !Number.isNaN(Date.parse(value))))) return "date";
   const normalized = new Set(samples.map((value) => value.toLowerCase()));
   if (normalized.size > 0 && normalized.size <= 8) {
     if ([...normalized].every((value) => ["yes", "no", "y", "n", "true", "false"].includes(value))) return "radio";
@@ -1472,6 +1859,38 @@ function inferFieldType(header: string, values: string[]): FieldType {
   }
   if (samples.some((value) => value.length > 100)) return "textarea";
   return "text";
+}
+
+export function uniqueSpreadsheetOptions(values: string[], limit = 20): string[] {
+  const seen = new Set<string>();
+  const options: string[] = [];
+  for (const value of values) {
+    const label = value.trim();
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    options.push(label);
+    if (options.length >= limit) break;
+  }
+  return options;
+}
+
+export function spreadsheetOptionsForType(type: FieldType, samples: string[]): string[] | undefined {
+  if (!["select", "radio", "dropdown", "multiselect"].includes(type)) return undefined;
+  if (type === "radio") {
+    const normalized = new Set(
+      samples.map((value) => value.trim().toLowerCase()).filter(Boolean),
+    );
+    if (
+      normalized.size > 0 &&
+      [...normalized].every((value) =>
+        ["yes", "no", "y", "n", "true", "false"].includes(value),
+      )
+    ) {
+      return ["Yes", "No"];
+    }
+  }
+  return uniqueSpreadsheetOptions(samples);
 }
 
 export function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: string[], sampleRows: string[][]): DynamicForm {
@@ -1490,15 +1909,19 @@ export function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: stri
       const samples = sampleRows.map((row) => row[index] ?? "");
       const type = inferFieldType(header, samples);
       const field = createField(type, section.id, page.id);
-      const options = ["select", "radio", "dropdown", "multiselect"].includes(type)
-        ? Array.from(new Set(samples.map((value) => value.trim()).filter(Boolean))).slice(0, 20)
-        : field.options;
+      const options = spreadsheetOptionsForType(type, samples) ?? field.options;
       return {
         ...field,
         hint: `Imported from spreadsheet column ${index + 1}.`,
         label: header,
         options: options?.length ? options : field.options,
         required: false,
+        validation:
+          /\b(lat|latitude)\b/i.test(header)
+            ? { ...field.validation, max: 90, min: -90 }
+            : /\b(lon|lng|longitude)\b/i.test(header)
+              ? { ...field.validation, max: 180, min: -180 }
+              : field.validation,
         variableName: uniqueVariableName(header, used, field.id),
       };
     });
@@ -2240,6 +2663,7 @@ function controlsDraftToApiControls(
       },
       testing: {
         requirement: controls.testingRequirement,
+        completed_at: controls.testingCompletedAt || null,
         preview_required: true,
         test_submission_required:
           controls.testingRequirement === "test_submission" ||
@@ -2792,6 +3216,10 @@ function controlsDraftFromApiControls(
       testing.requirement,
       defaultControlsDraft.testingRequirement,
     ) as FormControlsDraft["testingRequirement"],
+    testingCompletedAt: stringValue(
+      testing.completed_at,
+      defaultControlsDraft.testingCompletedAt,
+    ),
     finalApproverName: stringValue(
       certification.final_approver,
       defaultControlsDraft.finalApproverName,
@@ -2821,6 +3249,45 @@ function builderStatusFromListStatus(status: string): DynamicForm["status"] {
     return status;
   }
   return "draft";
+}
+
+export function backendFormTargetIdForSave(
+  initialForm: Pick<FormListItem, "id" | "status"> | null | undefined,
+  savedBackendFormId: string | null,
+): string | null {
+  if (savedBackendFormId) return savedBackendFormId;
+  if (initialForm?.status === "published") return null;
+  return initialForm?.id ?? null;
+}
+
+export function backendDraftNameForSave(
+  formName: string,
+  initialForm: Pick<FormListItem, "status" | "version"> | null | undefined,
+  _savedBackendFormId: string | null,
+): string {
+  if (initialForm?.status !== "published") return formName;
+  const revisionSuffix = `Draft revision v${(initialForm.version || 0) + 1}`;
+  return formName.endsWith(revisionSuffix)
+    ? formName
+    : `${formName} ${revisionSuffix}`;
+}
+
+export function surveyContextPayloadForForm(
+  setup: Pick<FormSetupDraft, "formName" | "formType">,
+  purpose: "draft" | "publish",
+): Pick<SurveyCreate, "custom_type_label" | "description" | "survey_type" | "target_population" | "title"> {
+  const formType = setup.formType.trim() || "Data collection";
+  const formName = setup.formName.trim() || `${formType} Form`;
+  return {
+    custom_type_label: formType,
+    description:
+      purpose === "draft"
+        ? `Auto-created workspace context for ${formType.toLowerCase()} draft forms.`
+        : `Auto-created workspace context for published ${formType.toLowerCase()} forms.`,
+    survey_type: "custom",
+    target_population: "Project records",
+    title: formName,
+  };
 }
 
 export function createEditableDraftFromListItem(
@@ -3154,7 +3621,7 @@ export function validateFormForPublish(
   const fields = form?.fields ?? [];
   const sections = form?.sections ?? [];
   const variableNames = fields
-    .map((field) => field.variableName?.trim())
+    .map((field) => (field.variableName?.trim() || variableNameFromLabel(field.label, field.id)).trim())
     .filter(Boolean) as string[];
   const uniqueVariableNames = new Set(variableNames);
   const hasGps = fields.some((field) =>
@@ -3206,6 +3673,10 @@ export function validateFormForPublish(
   const needsEntityMapping =
     controls.requiresEntity || controls.profileUpdateMode !== "never";
   const entityMappings = Object.values(controls.profileMappings).filter(Boolean);
+  const assignmentReadiness = assignmentReadinessState(
+    setup.collectionMethod,
+    controls,
+  );
 
   const item = ({
     category,
@@ -3744,10 +4215,7 @@ export function validateFormForPublish(
     }),
     item({
       category: "Assignment rules",
-      complete:
-        controls.assignmentMode === "assigned_only"
-          ? controls.assignedFieldOfficerIds.length > 0 || controls.assignedTeamIds.length > 0
-          : Boolean(controls.assignmentMode),
+      complete: assignmentReadiness.complete,
       description:
         mobileCollection
           ? "Mobile or web-and-mobile forms restricted to assigned users must select the field officers or teams who should receive the form."
@@ -3755,8 +4223,8 @@ export function validateFormForPublish(
       id: "assignment",
       jumpTo: "controls",
       label: "Field officer or team access configured",
-      required: controls.assignmentMode === "assigned_only" && mobileCollection,
-      warning: !(controls.assignmentMode === "assigned_only" && mobileCollection),
+      required: assignmentReadiness.required,
+      warning: !assignmentReadiness.required,
     }),
     item({
       category: "Offline readiness",
@@ -3831,12 +4299,12 @@ export function validateFormForPublish(
     }),
     item({
       category: "Testing",
-      complete: Boolean(controls.testingRequirement),
+      complete: testingReadinessComplete(controls),
       description:
-        "Choose whether preview, test submission, or pilot assignment is required before review and publish.",
+        "Run Preview & Test before review so the form is checked before approval and publishing.",
       id: "testing",
-      jumpTo: "controls",
-      label: "Testing requirement selected",
+      jumpTo: "preview",
+      label: "Preview testing completed",
       required: true,
     }),
     item({
@@ -3932,7 +4400,7 @@ export function validateFormForPublish(
           controls.approvalNotes.trim(),
       ),
       description:
-        "Technical reviewer, sector reviewer, final approver, and approval notes are required for enterprise form certification.",
+        "Technical reviewer, sector/business reviewer, final approver, and approval notes are required for enterprise form certification.",
       id: "certification",
       jumpTo: "controls",
       label: "Form certification completed",
@@ -4322,17 +4790,15 @@ function buildPublishAssistantAdvice({
         });
         break;
       case "required-questions":
+        const requiredQuestionsAdvice = requiredQuestionsAdviceState(fieldCount);
         advice.push({
           ...base,
-          fix:
-            "Click Apply platform fix to mark detected consent, identity, date, location, service, and activity questions as required. Then review any sensitive questions manually.",
+          fix: requiredQuestionsAdvice.fix,
           mneTip:
             "For sensitive questions, add choices such as Don't know or Refused instead of forcing inaccurate answers.",
-          platformAction:
-            "The platform can mark obvious core questions as required and allow Don't know / Refused metadata for review.",
-          quickFixId: "mark_core_required",
-          why:
-            `None of the ${fieldCount} question${fieldCount === 1 ? "" : "s"} is required, so incomplete submissions could pass into review.`,
+          platformAction: requiredQuestionsAdvice.platformAction,
+          quickFixId: requiredQuestionsAdvice.quickFixId,
+          why: requiredQuestionsAdvice.why,
         });
         break;
       case "logic":
@@ -4451,8 +4917,8 @@ function buildPublishAssistantAdvice({
             "For real programs, Require Review is often safer than automatic creation when phone, ID, or name + village are similar.",
           platformAction:
             "The platform can apply a strong duplicate-review setup using phone, household ID, name, village, and GPS-related checks.",
-          quickFixId: "registration_defaults",
-          targetControlStep: "beneficiaries",
+          quickFixId: "duplicate_review_defaults",
+          targetControlStep: "quality",
           why:
             `Duplicate prevention is not configured strongly enough, so approved registration or intake data could create multiple ${entityLabelLower} records for the same real-world record.`,
         });
@@ -4661,15 +5127,13 @@ function buildPublishAssistantAdvice({
         advice.push({
           ...base,
           fix:
-            "Use Apply platform fix to require a test submission before review. Use pilot assignment manually for high-risk, large, or new field workflows.",
+            "Open Preview & Test, complete a realistic test entry as a field user would, then submit the form for review.",
           mneTip:
             "Test the form before field rollout so skip logic, required fields, reference data, and mobile display problems are found early.",
           platformAction:
-            "The platform can require a test submission before review and approval.",
-          quickFixId: "governance_defaults",
-          targetControlStep: "governance",
+            "User action needed: the platform opens the Preview & Test step, then records completion when the form is submitted for review.",
           why:
-            "The form does not define what testing must happen before approval.",
+            "The form has not been tested yet, so approval and publishing should wait until a preview test is completed.",
         });
         break;
       case "lifecycle-approved":
@@ -4777,28 +5241,7 @@ function buildPublishAssistantAdvice({
     const warningQuickFix: PublishQuickFixId | undefined =
       item.id === "assignment" || item.id === "review-escalation"
         ? "access_defaults"
-        : item.id === "standard-questions"
-          ? "add_standard_questions"
-        : item.id === "mapping-suggestions"
-          ? "apply_profile_mapping"
-        : item.id === "mobile-complexity"
-          ? "mobile_readiness_defaults"
-              : [
-                  "offline",
-                  "mobile-package",
-                  "reference-data",
-                  "enumerator-quality",
-                  "repeat-groups",
-                  "field-integrity",
-                  "back-checks",
-                  "field-officer-training",
-                ].includes(item.id)
-          ? "evidence_defaults"
-          : ["results-linkage", "indicator-mapping", "dont-know-policy", "import-template"].includes(item.id)
-            ? "mne_context_defaults"
-            : ["export-governance", "privacy", "partner-sharing", "case-escalation"].includes(item.id)
-              ? "governance_defaults"
-              : undefined;
+        : warningQuickFixForItemId(item.id);
     advice.push({
       actionLabel: item.jumpTo === "builder" ? "Review in Builder" : "Review setting",
       fix: item.description,
@@ -4841,6 +5284,8 @@ export function FormCreationWorkspace({
   token,
 }: FormCreationWorkspaceProps) {
   const localProjects = useWorkspaceStore((state) => state.localProjects);
+  const pendingTemplateId = useWorkspaceStore((state) => state.pendingTemplateId);
+  const setPendingTemplateId = useWorkspaceStore((state) => state.setPendingTemplateId);
   const upsertLocalForm = useWorkspaceStore((state) => state.upsertLocalForm);
   const preview = !token || token === "preview-token";
   const projectsQuery = useQuery({
@@ -4950,7 +5395,7 @@ export function FormCreationWorkspace({
   );
   const [draftForm, setDraftForm] = useState<DynamicForm | null>(initialDraft);
   const [savedBackendFormId, setSavedBackendFormId] = useState<string | null>(
-    initialForm?.id ?? null,
+    backendFormTargetIdForSave(initialForm, null),
   );
   const [publishedForm, setPublishedForm] = useState<DynamicForm | null>(null);
   const [controlsDraft, setControlsDraft] =
@@ -5107,6 +5552,7 @@ export function FormCreationWorkspace({
   const criticalFailures = checklist.filter(
     (item) => item.required && !item.complete,
   );
+  const approvalFailures = approvalBlockingFailures(checklist);
   const publishDisabled =
     !draftForm || controlsDraft.lifecycleStatus !== "approved" || criticalFailures.length > 0 || publishing;
   const publishAssistantAdvice = useMemo(
@@ -5216,63 +5662,54 @@ export function FormCreationWorkspace({
         !controlsDraft.profileMappings[key as keyof FormControlsDraft["profileMappings"]],
     ).length;
   }, [controlsDraft.profileMappings, draftForm]);
-  const activeLifecycleId = publishedForm
-    ? "publish"
-    : stage === "setup" || stage === "start"
-      ? "setup"
-      : stage === "builder"
-        ? "builder"
-        : stage === "controls"
-          ? "controls"
-          : stage === "preview"
-            ? "test"
-            : controlsDraft.lifecycleStatus === "approved"
-              ? criticalFailures.length
-                ? "approve"
-                : "publish"
-              : controlsDraft.lifecycleStatus === "review"
-                ? "approve"
-                : "review";
+  const activeLifecycleId = activeLifecycleStepId(
+    stage,
+    controlsDraft.lifecycleStatus,
+    Boolean(publishedForm),
+    criticalFailures.length,
+  );
   const activeLifecycleIndex = lifecycleSteps.findIndex(
     (step) => step.id === activeLifecycleId,
   );
-  const lifecycleCompletion = {
-    approve: controlsDraft.lifecycleStatus === "approved" || Boolean(publishedForm),
-    builder: Boolean(draftForm && draftForm.fields.length > 0),
-    controls: readinessScore >= 70,
-    publish: Boolean(publishedForm),
-    review:
-      controlsDraft.lifecycleStatus === "review" ||
-      controlsDraft.lifecycleStatus === "approved" ||
-      Boolean(publishedForm),
-    setup: Boolean(setup.formName.trim()),
-    test:
-      controlsDraft.lifecycleStatus === "testing" ||
-      controlsDraft.lifecycleStatus === "review" ||
-      controlsDraft.lifecycleStatus === "approved" ||
-      Boolean(publishedForm),
-  } satisfies Record<(typeof lifecycleSteps)[number]["id"], boolean>;
+  const lifecycleCompletion = lifecycleCompletionState({
+    checklist,
+    hasDraft: Boolean(draftForm),
+    lifecycleStatus: controlsDraft.lifecycleStatus,
+    published: Boolean(publishedForm),
+    testingCompletedAt: controlsDraft.testingCompletedAt,
+  });
   const completedLifecycleCount = Object.values(lifecycleCompletion).filter(Boolean).length;
   const lifecycleProgressPercent = Math.round(
     (completedLifecycleCount / lifecycleSteps.length) * 100,
   );
   const nextControlStepConfig = controlSteps[activeControlStepIndex + 1];
+  const lifecycleActions = lifecycleActionState(
+    controlsDraft.lifecycleStatus,
+    Boolean(controlsDraft.testingCompletedAt),
+  );
+  const approvalAction = approvalActionState(
+    controlsDraft.lifecycleStatus,
+    approvalFailures.length,
+    Boolean(controlsDraft.testingCompletedAt),
+  );
   const nextActionHint =
     stage === "setup"
       ? "Next: choose how to start this form (blank, template, duplicate, or import)."
       : stage === "start"
         ? "Next: the Builder opens so you can add and arrange questions."
         : stage === "builder"
-          ? "Next: Controls sets who can collect this form, entity rules, and governance — or use Quick setup to apply recommended defaults and skip ahead to Review."
+          ? "Next: Controls sets who can collect this form, entity rules, and governance — or use Quick setup to apply recommended defaults and continue to Preview & Test."
           : stage === "controls"
             ? nextControlStepConfig
               ? `Next control step: "${nextControlStepConfig.label}" — ${nextControlStepConfig.mustDo}`
               : "Next: Preview & Test lets you try the form as a field officer would before requesting review."
             : stage === "preview"
               ? "Next: Submit for Review locks this draft for reviewer sign-off before approval and publishing."
-              : controlsDraft.lifecycleStatus !== "approved"
-                ? "Next: Approve this form to confirm it is ready, then publish it to field officers."
-                : "This version is approved. Publish makes it available to field officers immediately.";
+              : controlsDraft.lifecycleStatus === "approved"
+                ? "This version is approved. Publish makes it available to field officers immediately."
+                : criticalFailures.length > 0
+                  ? "Next: resolve the required review blockers, then approve the form for publishing."
+                  : "Next: approve this form to confirm it is ready, then publish it to field officers.";
 
   function updateSetup(patch: Partial<FormSetupDraft>): void {
     setSetup((current) => ({ ...current, ...patch }));
@@ -5669,6 +6106,11 @@ export function FormCreationWorkspace({
             resultArea: current.resultArea || setup.formType || "Program Monitoring",
           };
         }
+        case "duplicate_review_defaults":
+          return {
+            ...current,
+            ...duplicateReviewDefaults(current),
+          };
         case "registration_defaults":
           return {
             ...current,
@@ -5821,8 +6263,10 @@ export function FormCreationWorkspace({
         ? "access"
         : quickFixId === "mobile_readiness_defaults"
           ? "evidence"
+          : quickFixId === "duplicate_review_defaults"
+            ? "quality"
           : quickFixId === "evidence_defaults"
-          ? "quality"
+            ? "quality"
           : quickFixId === "governance_defaults"
             ? "governance"
             : quickFixId === "mne_context_defaults"
@@ -5882,11 +6326,14 @@ export function FormCreationWorkspace({
   }
 
   function approveForPublish(): void {
+    if (!approvalAction.canApprove) {
+      setPublishMessage(approvalAction.message);
+      setPublishHelpOpen(true);
+      return;
+    }
     updateControlsDraft({
       approvalDate:
         controlsDraft.approvalDate || new Date().toISOString().slice(0, 10),
-      approvalNotes:
-        controlsDraft.approvalNotes || "Reviewed and approved for publishing.",
       lifecycleStatus: "approved",
     });
   }
@@ -5897,35 +6344,14 @@ export function FormCreationWorkspace({
       return;
     }
     setControlsDraft((current) => {
-      const suggestedMappings = suggestedProfileMappingsFromFields(draftForm.fields);
-      const profileMappings = {
-        ...current.profileMappings,
-        ...Object.fromEntries(
-          Object.entries(suggestedMappings).filter(([, value]) => Boolean(value)),
-        ),
-      } as FormControlsDraft["profileMappings"];
-      const mappedCount = Object.values(profileMappings).filter(Boolean).length;
-      const needsAssignedOfficers =
-        current.assignmentMode === "assigned_only" &&
-        current.assignedFieldOfficerIds.length === 0 &&
-        current.assignedTeamIds.length === 0;
       return {
         ...current,
-        approvalDate: current.approvalDate || new Date().toISOString().slice(0, 10),
-        approvalNotes: current.approvalNotes || "Reviewed and approved for publishing.",
-        assignmentMode: needsAssignedOfficers ? "project_team" : current.assignmentMode,
-        changeSummary: current.changeSummary.trim() || "Initial published version.",
-        lifecycleStatus: "approved",
-        profileMappings,
-        profileUpdateMode:
-          current.profileUpdateMode !== "never" && mappedCount < 2
-            ? "never"
-            : current.profileUpdateMode,
+        ...quickSetupReviewDefaults(current, draftForm.fields),
       };
     });
-    setStage("review");
+    setStage("preview");
     setPublishMessage(
-      "Quick setup applied recommended defaults and approved the form. Review the checklist below, fix any remaining items, then publish.",
+      "Quick setup applied recommended defaults. Complete Preview & Test, then submit the form for review.",
     );
     window.setTimeout(() => {
       window.scrollTo({ behavior: "smooth", top: 0 });
@@ -5966,14 +6392,26 @@ export function FormCreationWorkspace({
   }, [existingForms, selectedDuplicateFormId]);
 
   useEffect(() => {
+    if (initialForm || initialDuplicateFormId || !pendingTemplateId) return;
+    const matchedTemplateId = resolvePendingStarterTemplateId(pendingTemplateId);
+    if (!matchedTemplateId) {
+      setPendingTemplateId(null);
+      return;
+    }
+    setStartMethod("template");
+    setSelectedTemplateId(matchedTemplateId);
+    setPendingTemplateId(null);
+  }, [initialDuplicateFormId, initialForm, pendingTemplateId, setPendingTemplateId]);
+
+  useEffect(() => {
     if (startMethod !== "template") return;
-    const selectedTemplate = starterTemplates.find(
-      (template) => template.id === selectedTemplateId,
+    const nextTemplateId = resolveStarterTemplateForSector(
+      selectedTemplateId,
+      sectorTerminology.sectorId,
     );
-    if (selectedTemplate?.sectorIds.includes(sectorTerminology.sectorId)) return;
-    setSelectedTemplateId(sectorTemplateOptions[0]?.id ?? "");
+    if (!nextTemplateId || nextTemplateId === selectedTemplateId) return;
+    setSelectedTemplateId(nextTemplateId);
   }, [
-    sectorTemplateOptions,
     sectorTerminology.sectorId,
     selectedTemplateId,
     startMethod,
@@ -6078,20 +6516,28 @@ export function FormCreationWorkspace({
   // Persist the current draft to the organization workspace (create on first
   // call, update afterwards). Shared by manual "Save draft" and auto-save.
   // Caller guarantees token, non-preview, and a selected project.
-  async function persistDraftToBackend(): Promise<{ ok: boolean; error?: string }> {
-    if (!draftForm || !token || preview || !selectedProjectId) {
+  async function persistDraftToBackend(
+    formToPersist: DynamicForm | null = draftForm,
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (!formToPersist || !token || preview || !selectedProjectId) {
       return { ok: false, error: "Sign in and select a project first." };
     }
     try {
-      const schema = toMobileSchema(draftForm) as Record<string, unknown>;
+      const schema = toMobileSchema(formToPersist) as Record<string, unknown>;
+      const backendDraftName = backendDraftNameForSave(
+        formToPersist.name,
+        initialForm,
+        savedBackendFormId,
+      );
+      const surveyContext = surveyContextPayloadForForm(setup, "draft");
       let saved;
       if (savedBackendFormId) {
         // Update path: no survey is created, so repeated auto-saves never spawn
         // orphan surveys.
         saved = await updateForm(token, savedBackendFormId, {
           description:
-            setup.description || draftForm.sections[0]?.description || null,
-          name: draftForm.name,
+            setup.description || formToPersist.sections[0]?.description || null,
+          name: backendDraftName,
           publish: false,
           schema,
         });
@@ -6100,27 +6546,28 @@ export function FormCreationWorkspace({
           selectedSurvey ??
           (await createSurvey(token, {
             code: `FORM-${Date.now().toString(36).toUpperCase()}`,
-            description: "Auto-created survey context for a project-linked draft form.",
+            description: surveyContext.description,
             geographic_scope: selectedProject?.region ?? null,
             project_id: selectedProjectId,
             status: "active",
-            survey_type: "monitoring",
-            target_population: "Project participants",
-            title: "General Data Collection",
+            survey_type: surveyContext.survey_type,
+            target_population: surveyContext.target_population,
+            title: surveyContext.title,
+            custom_type_label: surveyContext.custom_type_label,
           }));
         saved = await createForm(token, {
           description:
-            setup.description || draftForm.sections[0]?.description || null,
-          name: draftForm.name,
+            setup.description || formToPersist.sections[0]?.description || null,
+          name: backendDraftName,
           project_id: selectedProjectId,
           publish: false,
           schema,
-          slug: `${slugFromText(draftForm.name, "form")}-${Date.now().toString(36)}`,
+          slug: `${slugFromText(backendDraftName, "form")}-${Date.now().toString(36)}`,
           survey_id: survey.id,
         });
       }
       const savedDraft: DynamicForm = {
-        ...draftForm,
+        ...formToPersist,
         activeVersion: saved.status === "published" ? saved.current_version : 0,
         id: saved.id,
         status: "draft",
@@ -6202,15 +6649,20 @@ export function FormCreationWorkspace({
     const timer = window.setTimeout(async () => {
       autoSaveInFlightRef.current = true;
       setAutoSaveState("saving");
-      const result = await persistDraftToBackend();
-      if (result.ok) {
-        lastPersistedSignatureRef.current = draftSignature;
-        setAutoSaveState("saved");
-        setLastSavedAt(Date.now());
-      } else {
+      try {
+        const result = await persistDraftToBackend();
+        if (result.ok) {
+          lastPersistedSignatureRef.current = draftSignature;
+          setAutoSaveState("saved");
+          setLastSavedAt(Date.now());
+        } else {
+          setAutoSaveState("error");
+        }
+      } catch {
         setAutoSaveState("error");
+      } finally {
+        autoSaveInFlightRef.current = false;
       }
-      autoSaveInFlightRef.current = false;
     }, 1500);
     return () => window.clearTimeout(timer);
     // persistDraftToBackend is a stable closure over current state; signature drives saves.
@@ -6233,24 +6685,20 @@ export function FormCreationWorkspace({
       updatedAt: new Date().toISOString(),
     };
     handleBuilderFormChange(nextForm);
-    if (token && !preview && initialForm) {
+    if (token && !preview && selectedProjectId) {
       setControlsSaving(true);
-      try {
-        await updateFormControls(
-          token,
-          initialForm.id,
-          controlsDraftToApiControls(controlsDraft, nextForm),
-        );
+      const result = await persistDraftToBackend(nextForm);
+      if (result.ok) {
+        setAutoSaveState("saved");
+        setLastSavedAt(Date.now());
         setPublishMessage("Controls saved to the form. Continue to preview when ready.");
-      } catch (error) {
+      } else {
+        setAutoSaveState("error");
         setPublishMessage(
-          error instanceof Error
-            ? error.message
-            : "Controls could not be saved to the backend.",
+          `Controls saved in this browser, but not to the organization workspace: ${result.error ?? "Unknown error"}`,
         );
-      } finally {
-        setControlsSaving(false);
       }
+      setControlsSaving(false);
       return;
     }
     setPublishMessage("Controls saved for this draft. Continue to preview when ready.");
@@ -6305,20 +6753,22 @@ export function FormCreationWorkspace({
       setPublishing(true);
       setPublishMessage("");
       try {
+        const surveyContext = surveyContextPayloadForForm(setup, "publish");
         const survey =
           selectedSurvey ??
           (await createSurvey(token, {
             code: `FORM-${Date.now().toString(36).toUpperCase()}`,
-            description: "Auto-created survey context for a project-linked data collection form.",
+            description: surveyContext.description,
             geographic_scope: selectedProject?.region ?? null,
             project_id: selectedProjectId,
             status: "active",
-            survey_type: "monitoring",
-            target_population: "Project participants",
-            title: "General Data Collection",
+            survey_type: surveyContext.survey_type,
+            target_population: surveyContext.target_population,
+            title: surveyContext.title,
+            custom_type_label: surveyContext.custom_type_label,
           }));
         const schema = toMobileSchema(draftForm) as Record<string, unknown>;
-        const targetFormId = savedBackendFormId ?? initialForm?.id ?? null;
+        const targetFormId = backendFormTargetIdForSave(initialForm, savedBackendFormId);
         const saved = targetFormId
           ? await updateForm(token, targetFormId, {
               description:
@@ -6378,7 +6828,7 @@ export function FormCreationWorkspace({
           assignmentDelivery.deliveryErrors.length
             ? `${saved.name} was published, but ${assignmentDelivery.deliveryErrors.length} field officer assignment needs attention.`
             : controlsDraft.assignmentMode === "assigned_only"
-              ? `${saved.name} was published and sent to ${assignmentDelivery.deliveredOfficerCount} selected field officer${assignmentDelivery.deliveredOfficerCount === 1 ? "" : "s"}${controlsDraft.assignedTeamIds.length ? `, plus members of ${controlsDraft.assignedTeamIds.length} selected team${controlsDraft.assignedTeamIds.length === 1 ? "" : "s"}` : ""}.`
+              ? `${saved.name} was published and sent to ${assignmentDelivery.deliveredOfficerCount} selected field officer${assignmentDelivery.deliveredOfficerCount === 1 ? "" : "s"}${controlsDraft.assignedTeamIds.length ? `. ${controlsDraft.assignedTeamIds.length} selected team${controlsDraft.assignedTeamIds.length === 1 ? "" : "s"} will receive access through project/team sync rules.` : ""}`
               : `${saved.name} was published under ${selectedProject?.name ?? "the selected project"}.`,
         );
         setStage("review");
@@ -6694,7 +7144,7 @@ export function FormCreationWorkspace({
             {stage === "builder" ? (
               <>
                 <Button onClick={applyQuickSetup} size="sm" variant="secondary">
-                  Quick setup &amp; review
+                  Quick setup &amp; test
                 </Button>
                 <Button onClick={() => setStage("controls")} size="sm" variant="primary">
                   Next: Configure Controls
@@ -6723,12 +7173,7 @@ export function FormCreationWorkspace({
             {stage === "preview" ? (
               <Button
                 onClick={() => {
-                  updateControlsDraft({
-                    lifecycleStatus: "review",
-                    reviewComments:
-                      controlsDraft.reviewComments ||
-                      "Submitted for technical and sector review.",
-                  });
+                  updateControlsDraft(previewTestReviewDefaults(controlsDraft));
                   setStage("review");
                 }}
                 size="sm"
@@ -6738,9 +7183,25 @@ export function FormCreationWorkspace({
               </Button>
             ) : null}
             {stage === "review" && controlsDraft.lifecycleStatus !== "approved" ? (
-              <Button onClick={approveForPublish} size="sm" variant="primary">
-                Approve Form
-              </Button>
+              <>
+                <Button
+                  disabled={!approvalAction.canApprove}
+                  onClick={approveForPublish}
+                  size="sm"
+                  variant="primary"
+                >
+                  {approvalAction.label}
+                </Button>
+                {!approvalAction.canApprove ? (
+                  <Button
+                    onClick={() => setPublishHelpOpen(true)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Why can&apos;t I approve?
+                  </Button>
+                ) : null}
+              </>
             ) : null}
             {stage === "review" && controlsDraft.lifecycleStatus === "approved" ? (
               <>
@@ -7633,21 +8094,24 @@ export function FormCreationWorkspace({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    onClick={() =>
+                    disabled={lifecycleActions.testingDisabled}
+                    onClick={() => {
                       updateControlsDraft({
                         lifecycleStatus: "testing",
                         reviewComments:
                           controlsDraft.reviewComments ||
                           "Moved to testing for preview, logic, validation, and reference data checks.",
-                      })
-                    }
+                      });
+                      setStage("preview");
+                    }}
                     size="sm"
                     type="button"
                     variant="secondary"
                   >
-                    Move to Testing
+                    {lifecycleActions.testingLabel}
                   </Button>
                   <Button
+                    disabled={lifecycleActions.reviewDisabled}
                     onClick={() =>
                       updateControlsDraft({
                         lifecycleStatus: "review",
@@ -7660,26 +8124,27 @@ export function FormCreationWorkspace({
                     type="button"
                     variant="secondary"
                   >
-                    Submit for Review
+                    {lifecycleActions.reviewLabel}
                   </Button>
                   <Button
-                    onClick={() =>
-                      updateControlsDraft({
-                        approvalDate:
-                          controlsDraft.approvalDate ||
-                          new Date().toISOString().slice(0, 10),
-                        approvalNotes:
-                          controlsDraft.approvalNotes ||
-                          "Reviewed and approved for publishing.",
-                        lifecycleStatus: "approved",
-                      })
-                    }
+                    disabled={!approvalAction.canApprove}
+                    onClick={approveForPublish}
                     size="sm"
                     type="button"
                     variant="primary"
                   >
-                    Approve for Publish
+                    {approvalAction.label}
                   </Button>
+                  {!approvalAction.canApprove ? (
+                    <Button
+                      onClick={() => setPublishHelpOpen(true)}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Why can&apos;t I approve?
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -8221,7 +8686,7 @@ export function FormCreationWorkspace({
                     />
                   </label>
                   <label className="text-sm font-medium">
-                    M&amp;E reviewer
+                    Sector/business reviewer
                     <Input
                       className="mt-2"
                       onChange={(event) =>
@@ -8266,7 +8731,7 @@ export function FormCreationWorkspace({
                     />
                   </label>
                   <label className="text-sm font-medium">
-                    Approval notes
+                    Approval notes required before approval
                     <Textarea
                       className="mt-2"
                       onChange={(event) =>
@@ -9718,12 +10183,7 @@ export function FormCreationWorkspace({
             action={
               <Button
                 onClick={() => {
-                  updateControlsDraft({
-                    lifecycleStatus: "review",
-                    reviewComments:
-                      controlsDraft.reviewComments ||
-                      "Submitted for technical and sector review.",
-                  });
+                  updateControlsDraft(previewTestReviewDefaults(controlsDraft));
                   setStage("review");
                 }}
                 variant="primary"
@@ -9799,9 +10259,23 @@ export function FormCreationWorkspace({
                   ) : null}
                 </div>
               ) : (
-                <Button onClick={approveForPublish} variant="primary">
-                  Approve Form
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={!approvalAction.canApprove}
+                    onClick={approveForPublish}
+                    variant="primary"
+                  >
+                    {approvalAction.label}
+                  </Button>
+                  {!approvalAction.canApprove ? (
+                    <Button
+                      onClick={() => setPublishHelpOpen(true)}
+                      variant="secondary"
+                    >
+                      Why can&apos;t I approve?
+                    </Button>
+                  ) : null}
+                </div>
               )
             }
             icon={ListChecks}
@@ -9844,7 +10318,11 @@ export function FormCreationWorkspace({
                   </button>
                 ))}
                 {!criticalFailures.length ? (
-                  <Badge tone="success">Ready for publish approval</Badge>
+                  <Badge tone={controlsDraft.lifecycleStatus === "approved" ? "success" : "warning"}>
+                    {controlsDraft.lifecycleStatus === "approved"
+                      ? "Approved and ready to publish"
+                      : "Ready for approval"}
+                  </Badge>
                 ) : null}
               </div>
             </section>
@@ -10156,9 +10634,11 @@ export function FormCreationWorkspace({
             ) : null}
             {publishSuccessSummary.selectedTeamCount ? (
               <div className="rounded-lg border bg-background/70 p-3 text-sm text-muted-foreground">
-                Members of {publishSuccessSummary.selectedTeamCount} selected
-                team{publishSuccessSummary.selectedTeamCount === 1 ? "" : "s"}{" "}
-                will see this form the next time they sync the mobile app.
+                {publishSuccessSummary.selectedTeamCount} selected team
+                {publishSuccessSummary.selectedTeamCount === 1 ? "" : "s"}{" "}
+                will receive this form through project/team mobile sync rules.
+                Direct mobile assignment count above only includes individually
+                selected field officers.
               </div>
             ) : null}
             {!publishSuccessSummary.deliveryErrors.length && !publishSuccessSummary.selectedTeamCount ? (

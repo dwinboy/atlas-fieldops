@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_publisher
 from app.core.permissions import canonical_role
-from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project
+from app.models.collection import FieldOfficerProfile, OfficerAssignment, Project, Submission
 from app.models.operations import (
     Beneficiary,
     CaseRecord,
@@ -38,6 +38,7 @@ from app.repositories.operations import OperationsRepository
 from app.repositories.identity import IdentityRepository, OrganizationUnitRepository, RoleRepository
 from app.schemas.operations import (
     BeneficiaryCreate,
+    BeneficiaryProfileUpdateProposalReview,
     BeneficiaryMergeRead,
     BeneficiaryUpdate,
     BeneficiaryMergeRequest,
@@ -1964,6 +1965,152 @@ class OperationsService:
                 "beneficiary_uid": beneficiary.beneficiary_uid,
                 "changed_fields": changed,
                 "reason": payload.reason,
+            },
+        )
+        return beneficiary
+
+    async def review_beneficiary_profile_update_proposal(
+        self,
+        organization_id: UUID,
+        beneficiary_id: UUID,
+        payload: BeneficiaryProfileUpdateProposalReview,
+        actor_user_id: UUID | None = None,
+    ) -> Beneficiary:
+        beneficiary = await self.repository.get_beneficiary(
+            organization_id=organization_id,
+            beneficiary_id=beneficiary_id,
+        )
+        if beneficiary is None:
+            raise LookupError("Entity not found")
+
+        profile_json = dict(beneficiary.profile_json or {})
+        proposals = profile_json.get("profileUpdateProposals")
+        proposal_list = list(proposals) if isinstance(proposals, list) else []
+        proposal_index = next(
+            (
+                index
+                for index in range(len(proposal_list) - 1, -1, -1)
+                if isinstance(proposal_list[index], dict)
+                and str(proposal_list[index].get("submissionId") or "") == str(payload.submission_id)
+                and str(proposal_list[index].get("status") or "pending_review") == "pending_review"
+            ),
+            -1,
+        )
+        if proposal_index < 0:
+            raise LookupError("Profile update proposal not found.")
+
+        proposal = dict(cast(dict[str, object], proposal_list[proposal_index]))
+        changes = proposal.get("changes")
+        change_map = dict(changes) if isinstance(changes, dict) else {}
+        reviewed_at = datetime.now(UTC).isoformat()
+        applied_fields: list[str] = []
+
+        submission = await self.session.scalar(
+            select(Submission).where(
+                Submission.organization_id == organization_id,
+                Submission.id == payload.submission_id,
+                Submission.deleted_at.is_(None),
+            )
+        )
+        if payload.action == "approve":
+            proposed_values: dict[str, object] = {}
+            for field_name, change in change_map.items():
+                if not isinstance(change, dict):
+                    continue
+                proposed = change.get("proposed")
+                proposed_values[field_name] = proposed
+            latitude_value = proposed_values.get("latitude")
+            longitude_value = proposed_values.get("longitude")
+            if (latitude_value is None) != (longitude_value is None):
+                raise ValueError("Approve both latitude and longitude together for GPS profile updates.")
+            for field_name in (
+                "display_name",
+                "sex",
+                "birth_year",
+                "phone_number",
+                "region",
+                "district",
+                "community",
+                "enrollment_status",
+                "vulnerability_score",
+                "latitude",
+                "longitude",
+            ):
+                if field_name not in proposed_values:
+                    continue
+                setattr(beneficiary, field_name, proposed_values[field_name])
+                applied_fields.append(field_name)
+
+            lineage = dict(profile_json.get("fieldLineage") or {}) if isinstance(profile_json.get("fieldLineage"), dict) else {}
+            if submission is not None:
+                for field_name in applied_fields:
+                    lineage[field_name] = {
+                        "value": getattr(beneficiary, field_name),
+                        "approvalDate": submission.approved_at.isoformat() if submission.approved_at else reviewed_at,
+                        "sourceFormId": str(submission.form_id),
+                        "sourceUserId": str(submission.field_officer_id) if submission.field_officer_id else None,
+                        "approvedByUserId": str(actor_user_id) if actor_user_id else None,
+                        "sourceSubmissionId": str(submission.id),
+                        "sourceClientSubmissionId": submission.client_submission_id,
+                    }
+            profile_json["fieldLineage"] = lineage
+
+        proposal["status"] = "approved" if payload.action == "approve" else "rejected"
+        proposal["reviewedAt"] = reviewed_at
+        proposal["reviewedByUserId"] = str(actor_user_id) if actor_user_id else None
+        proposal["reviewComment"] = payload.comment
+        if applied_fields:
+            proposal["appliedFields"] = applied_fields
+        proposal_list[proposal_index] = proposal
+        profile_json["profileUpdateProposals"] = proposal_list
+        beneficiary.profile_json = profile_json
+        await self.session.flush()
+
+        if submission is not None:
+            signal = await self.session.scalar(
+                select(DataQualitySignal).where(
+                    DataQualitySignal.organization_id == organization_id,
+                    DataQualitySignal.submission_id == submission.id,
+                    DataQualitySignal.beneficiary_id == beneficiary.id,
+                    DataQualitySignal.signal_type == "profile_conflict",
+                )
+            )
+            if signal is not None:
+                evidence = dict(signal.evidence_json or {})
+                history = evidence.get("statusHistory")
+                signal.evidence_json = {
+                    **evidence,
+                    "statusHistory": [
+                        *(history if isinstance(history, list) else []),
+                        {
+                            "from": signal.status,
+                            "to": "resolved",
+                            "comment": payload.comment,
+                            "proposalAction": payload.action,
+                            "changedByUserId": str(actor_user_id) if actor_user_id else None,
+                            "changedAt": reviewed_at,
+                        },
+                    ],
+                }
+                signal.status = "resolved"
+                self.session.add(signal)
+
+        action_name = (
+            "beneficiary.profile_update_proposal_approved"
+            if payload.action == "approve"
+            else "beneficiary.profile_update_proposal_rejected"
+        )
+        await self.audit.append(
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            action=action_name,
+            resource_type="beneficiary",
+            resource_id=str(beneficiary.id),
+            metadata={
+                "beneficiary_uid": beneficiary.beneficiary_uid,
+                "submission_id": str(payload.submission_id),
+                "comment": payload.comment,
+                "applied_fields": applied_fields,
             },
         )
         return beneficiary

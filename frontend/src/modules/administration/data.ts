@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import type {
+  AdministrationSection,
   AdministrationPageConfig,
   ApiKeyRecord,
   BackupJob,
@@ -116,6 +117,12 @@ export const administrationPages: AdministrationPageConfig[] = [
     title: "Mobile Management",
   },
 ];
+
+export function administrationSectionFromPath(pathname: string): AdministrationSection | null {
+  const path = pathname.replace(/\/+$/, "") || "/administration";
+  const match = administrationPages.find((page) => page.route === path);
+  return match?.id ?? null;
+}
 
 export const initialLocations: LocationRecord[] = [];
 

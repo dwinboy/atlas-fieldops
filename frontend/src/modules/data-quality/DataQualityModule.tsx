@@ -23,28 +23,32 @@ import {
   UploadCloud,
   type LucideIcon,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/DataTable";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HelpHint } from "@/components/ui/help-hint";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import {
   bulkUpdateImportCleaningRows,
   confirmImportedFormDataRows,
   ApiError,
   listDataQualitySignals,
   listImportCleaningRows,
+  reviewBeneficiaryProfileUpdateProposal,
   updateDataQualitySignal,
+  type BeneficiaryProfileUpdateProposalReview,
   type CurrentPrincipal,
   type DataQualitySignalRead,
   type ImportCleaningRowRead,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  dataQualitySectionFromPath,
   dataQualitySections,
   previewDuplicateGroups as sampleDuplicateGroups,
   previewGpsIssues as sampleGpsIssues,
@@ -74,15 +78,42 @@ import {
   averageResolutionImpact,
   buildQualityInvestigationSummary,
   calculateQualityScore,
+  countReconciliationIssuesByFilter,
   computeQualityScoreFromIssues,
   computeQualitySummary,
+  filterProfileConflictsByFocus,
+  filterReconciliationIssues,
+  formatSignalEvidence,
   filterIssuesBySection,
+  issueAttentionNote,
+  type ProfileConflictDecisionFilter,
+  type ProfileConflictFocusFilter,
+  profileConflictChecklist,
+  profileConflictDecisionBlocker,
+  profileConflictDecisionState,
+  profileConflictFocusDescription,
+  preferredIssueDetailTab,
+  profileConflictReviewFocus,
+  profileConflictSensitiveFieldCount,
+  summarizeProfileConflictFocusDecisionStates,
+  sortProfileConflictIssuesForReview,
+  summarizeProfileConflictDecisionStates,
+  filterProfileConflictsByDecisionState,
+  profileFieldDecisionHint,
+  profileFieldSensitivity,
+  requiresProfileConflictDecision,
+  isProfileConflictIssue,
   nextInvestigationStatus,
+  profileConflictChangesFromEvidence,
   qualityCategory,
   rankByField,
   rankByIssueType,
+  rankIssuesForAttention,
+  summarizeProfileConflictFocus,
+  type ReconciliationFocusFilter,
   scoreTone,
   severityTone,
+  signalStatusHistoryFromEvidence,
   statusTone,
   toCsv,
 } from "@/modules/data-quality/utils";
@@ -91,6 +122,16 @@ import { useWorkspaceStore } from "@/stores/workspace";
 type DataQualityModuleProps = {
   principal?: CurrentPrincipal | null;
   token: string | null;
+};
+
+type ProposalReviewDraft = {
+  action: BeneficiaryProfileUpdateProposalReview["action"];
+  beneficiaryId: string;
+  beneficiaryUid: string;
+  changes: { current: string; field: string; proposed: string }[];
+  comment: string;
+  entityName: string;
+  submissionId: string;
 };
 
 type IssueDetailTab = "Overview" | "Related Submission" | "Investigation" | "Resolution" | "History" | "Audit Trail";
@@ -149,14 +190,19 @@ function signalStatus(value: string): QualityIssueStatus {
 }
 
 function qualityIssueFromSignal(signal: DataQualitySignalRead): QualityIssue {
-  const evidence = Object.entries(signal.evidence_json ?? {}).map(([key, value]) => `${titleCase(key)}: ${String(value)}`);
+  const evidenceJson = {
+    ...(signal.evidence_json ?? {}),
+    beneficiary_id: signal.beneficiary_id ?? "",
+    signal_type: signal.signal_type,
+    submission_id: signal.submission_id ?? "",
+  };
   return {
     assignedTo: "Unassigned",
     detectedAt: signal.created_at,
     description: signal.summary,
-    enumerator: "Unknown",
-    evidence: evidence.length ? evidence : [`Confidence: ${Math.round(signal.confidence * 100)}%`],
-    evidenceJson: signal.evidence_json,
+    enumerator: String(signal.evidence_json?.submitted_by_name ?? signal.evidence_json?.uploaded_by_name ?? "Unknown"),
+    evidence: formatSignalEvidence(evidenceJson, signal.confidence),
+    evidenceJson,
     form: String(signal.evidence_json?.form_name ?? "Unknown form"),
     id: signal.id,
     location: String(signal.evidence_json?.location ?? signal.evidence_json?.community ?? "Unknown location"),
@@ -185,12 +231,25 @@ function downloadCsv(filename: string, rows: Record<string, string | number | bo
 }
 
 export function DataQualityModule({ principal, token }: DataQualityModuleProps) {
+  const pathname = usePathname();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState<DataQualitySection>("dashboard");
+  const [activeSection, setActiveSection] = useState<DataQualitySection>(() => dataQualitySectionFromPath(pathname));
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [activeIssueTab, setActiveIssueTab] = useState<IssueDetailTab>("Overview");
   const [actionResult, setActionResult] = useState("");
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
+  const [reconciliationFilter, setReconciliationFilter] = useState<ReconciliationFocusFilter>("all");
+  const [profileConflictFocusFilter, setProfileConflictFocusFilter] = useState<ProfileConflictFocusFilter>("all");
+  const [profileConflictDecisionFilter, setProfileConflictDecisionFilter] = useState<ProfileConflictDecisionFilter>("all");
+  const [proposalReviewOpen, setProposalReviewOpen] = useState(false);
+  const [proposalReviewDraft, setProposalReviewDraft] = useState<ProposalReviewDraft>({
+    action: "approve",
+    beneficiaryId: "",
+    beneficiaryUid: "",
+    changes: [],
+    comment: "",
+    entityName: "",
+    submissionId: "",
+  });
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = !token || token === "preview-token";
   const qualitySignalsQuery = useQuery({
@@ -214,6 +273,46 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
     },
     onError: () => {
       pushToast({ title: "Could not update issue", description: "Check your permission to manage entity and data-quality records.", tone: "danger" });
+    },
+  });
+  const reviewProposalMutation = useMutation({
+    mutationFn: ({ beneficiaryId, payload }: { beneficiaryId: string; payload: BeneficiaryProfileUpdateProposalReview }) =>
+      reviewBeneficiaryProfileUpdateProposal(token ?? "", beneficiaryId, payload),
+    onSuccess: async (_beneficiary, variables) => {
+      await qualitySignalsQuery.refetch();
+      setProposalReviewOpen(false);
+      setProposalReviewDraft({
+        action: "approve",
+        beneficiaryId: "",
+        beneficiaryUid: "",
+        changes: [],
+        comment: "",
+        entityName: "",
+        submissionId: "",
+      });
+      setSelectedIssueId(null);
+      setActionResult(
+        variables.payload.action === "approve"
+          ? `Profile update approved for ${variables.payload.submission_id}. Official beneficiary fields were updated and the conflict left the queue.`
+          : `Profile update rejected for ${variables.payload.submission_id}. The official beneficiary profile stayed unchanged and the conflict left the queue.`,
+      );
+      pushToast({
+        title: variables.payload.action === "approve" ? "Profile update approved" : "Profile update rejected",
+        description: "The reconciliation decision was recorded in the beneficiary history and audit trail.",
+        tone: "success",
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Profile update decision failed",
+        description:
+          error instanceof ApiError && error.status === 403
+            ? "You need beneficiary edit permission to approve or reject submission-driven profile changes."
+            : error instanceof Error
+              ? error.message
+              : "The profile conflict decision could not be saved.",
+        tone: "danger",
+      });
     },
   });
   const qualityIssues = useMemo(
@@ -266,10 +365,33 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
 
   const bulkUpdateHandler = !preview && token ? bulkSignalUpdate : undefined;
 
+  useEffect(() => {
+    const routeSection = dataQualitySectionFromPath(pathname);
+    if (routeSection !== activeSection) {
+      setActiveSection(routeSection);
+      setSelectedIssueId(null);
+    }
+  }, [activeSection, pathname]);
+
+  function selectSection(section: DataQualitySection): void {
+    setActiveSection(section);
+    setSelectedIssueId(null);
+    const route = dataQualitySections.find((item) => item.id === section)?.route;
+    if (route && route !== pathname) router.push(route);
+  }
+
   function openIssue(issue: QualityIssue, tab: IssueDetailTab = "Overview"): void {
     setSelectedIssueId(issue.id);
     setActiveIssueTab(tab);
     setActionResult(buildQualityInvestigationSummary(issue));
+  }
+
+  function openProfileConflictQueue(focus: ProfileConflictFocusFilter = "all", decisionFilter: ProfileConflictDecisionFilter = "all"): void {
+    setSelectedIssueId(null);
+    setReconciliationFilter("profile_conflicts");
+    setProfileConflictFocusFilter(focus);
+    setProfileConflictDecisionFilter(decisionFilter);
+    selectSection("reconciliation");
   }
 
   function exportIssues(): void {
@@ -295,6 +417,40 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
     pushToast({ title: "Quality issues exported", description: "The data quality issue CSV is ready.", tone: "success" });
   }
 
+  function openProposalReview(issue: QualityIssue, action: BeneficiaryProfileUpdateProposalReview["action"]): void {
+    const beneficiaryId = typeof issue.evidenceJson?.beneficiary_id === "string" ? issue.evidenceJson.beneficiary_id : "";
+    if (!beneficiaryId || issue.submissionId === "Not linked") {
+      pushToast({
+        title: "Profile conflict details are incomplete",
+        description: "This signal is missing the linked beneficiary or submission needed for a decision.",
+        tone: "warning",
+      });
+      return;
+    }
+    setProposalReviewDraft({
+      action,
+      beneficiaryId,
+      beneficiaryUid: typeof issue.evidenceJson?.beneficiary_uid === "string" ? issue.evidenceJson.beneficiary_uid : "",
+      changes: profileConflictChangesFromEvidence(issue.evidenceJson),
+      comment: "",
+      entityName: issue.title,
+      submissionId: issue.submissionId,
+    });
+    setProposalReviewOpen(true);
+  }
+
+  function submitProposalReview(): void {
+    if (!proposalReviewDraft.beneficiaryId || !proposalReviewDraft.submissionId) return;
+    reviewProposalMutation.mutate({
+      beneficiaryId: proposalReviewDraft.beneficiaryId,
+      payload: {
+        action: proposalReviewDraft.action,
+        comment: proposalReviewDraft.comment.trim(),
+        submission_id: proposalReviewDraft.submissionId,
+      },
+    });
+  }
+
   return (
     <section className="space-y-3">
       <div className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -314,7 +470,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             <p className="mt-2 text-xs text-muted-foreground">Access context: {roleLabel}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveSection("rules")} type="button" variant="secondary">
+            <Button onClick={() => selectSection("rules")} type="button" variant="secondary">
               <ListChecks aria-hidden="true" /> Manage rules
             </Button>
             <Button onClick={exportIssues} type="button">
@@ -338,8 +494,11 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
                       )}
                       key={section.id}
                       onClick={() => {
-                        setActiveSection(section.id);
-                        setSelectedIssueId(null);
+                        if (section.id === "reconciliation") {
+                          setReconciliationFilter("all");
+                          setProfileConflictFocusFilter("all");
+                        }
+                        selectSection(section.id);
                       }}
                       type="button"
                     >
@@ -401,7 +560,7 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             <div>
               <h2 className="text-sm font-semibold">No open reconciliation signals</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                No open duplicate, profile conflict, GPS, missing data, validation, or risk signals are currently waiting for review.
+                No open duplicate, profile conflict, GPS, missing data, validation, or risk signals are currently waiting for action.
               </p>
             </div>
           </div>
@@ -414,8 +573,13 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           isUpdating={updateSignalMutation.isPending}
           issue={selectedIssue}
           onBack={() => setSelectedIssueId(null)}
-          onOpenGovernance={() => setActiveView("governance")}
-          onOpenMapping={() => setActiveView("map")}
+          onOpenApproveProposal={(issue) => openProposalReview(issue, "approve")}
+          onOpenBeneficiary={(beneficiaryId) => router.push(`/beneficiaries?beneficiaryId=${beneficiaryId}`)}
+          onOpenGovernance={() => router.push("/governance")}
+          onOpenMapping={() => router.push("/mapping")}
+          onOpenProfileConflictQueue={openProfileConflictQueue}
+          onOpenRejectProposal={(issue) => openProposalReview(issue, "reject")}
+          onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
           onUpdateStatus={(status, comment) => updateSignalMutation.mutate({ comment, signalId: selectedIssue.id, status })}
           selectedTab={activeIssueTab}
           setSelectedTab={setActiveIssueTab}
@@ -427,15 +591,32 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
           importCleaningRows={importCleaningRows}
           issues={qualityIssues}
           onOpenIssue={openIssue}
-          onOpenSection={setActiveSection}
+          onOpenProfileConflicts={() => openProfileConflictQueue("all")}
+          onOpenProfileConflictFocus={openProfileConflictQueue}
+          onOpenProfileConflictDecision={(decisionFilter) => openProfileConflictQueue("all", decisionFilter)}
+          onOpenProfileConflictFocusDecision={(focus, decisionFilter) => openProfileConflictQueue(focus, decisionFilter)}
+          onOpenSection={(section) => {
+            if (section === "reconciliation") {
+              setReconciliationFilter("all");
+              setProfileConflictFocusFilter("all");
+              setProfileConflictDecisionFilter("all");
+            }
+            selectSection(section);
+          }}
           scores={qualityScores}
           summary={summary}
         />
       ) : null}
-      {!selectedIssue && activeSection === "quality-dashboard" ? <QualityDashboard issues={qualityIssues} onOpenIssue={openIssue} scores={qualityScores} /> : null}
+      {!selectedIssue && activeSection === "quality-dashboard" ? (
+        <QualityDashboard
+          issues={qualityIssues}
+          onOpenIssue={(issue) => openIssue(issue, preferredIssueDetailTab(issue))}
+          scores={qualityScores}
+        />
+      ) : null}
       {!selectedIssue && activeSection === "duplicates" ? <DuplicatesSection groups={duplicateGroups} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "outliers" ? <OutliersSection outliers={outliers} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} onOpenMapping={() => setActiveView("map")} /> : null}
+      {!selectedIssue && activeSection === "gps-issues" ? <GPSIssuesSection gpsIssues={gpsIssues} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} onOpenMapping={() => router.push("/mapping")} /> : null}
       {!selectedIssue && activeSection === "import-cleaning" ? (
         <ImportCleaningSection
           isLoading={importCleaningQuery.isLoading}
@@ -473,16 +654,25 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
       {!selectedIssue && activeSection === "reconciliation" ? (
         <ReconciliationSection
           isUpdating={updateSignalMutation.isPending}
+          isReviewingProposal={reviewProposalMutation.isPending}
           issues={visibleIssues}
+          onChangeFilter={setReconciliationFilter}
+          onChangeProfileConflictDecision={setProfileConflictDecisionFilter}
+          onChangeProfileConflictFocus={setProfileConflictFocusFilter}
+          onOpenApproveProposal={(issue) => openProposalReview(issue, "approve")}
           onMarkResolved={(issue) => updateSignalMutation.mutate({ comment: "Reviewed from reconciliation queue.", signalId: issue.id, status: "resolved" })}
           onMarkUnderInvestigation={(issue) => updateSignalMutation.mutate({ comment: "Assigned for reconciliation investigation.", signalId: issue.id, status: "under_investigation" })}
           onOpenBeneficiary={(beneficiaryId) => router.push(`/beneficiaries?beneficiaryId=${beneficiaryId}`)}
-          onOpenIssue={openIssue}
+          onOpenIssue={(issue) => openIssue(issue, preferredIssueDetailTab(issue))}
+          onOpenRejectProposal={(issue) => openProposalReview(issue, "reject")}
           onOpenSubmission={(submissionId) => router.push(`/submissions/all?submissionId=${submissionId}`)}
+          selectedProfileConflictDecision={profileConflictDecisionFilter}
+          selectedProfileConflictFocus={profileConflictFocusFilter}
+          selectedFilter={reconciliationFilter}
         />
       ) : null}
       {!selectedIssue && activeSection === "validation-failures" ? <ValidationFailuresSection failures={validationFailures} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenIssue={openIssue} /> : null}
-      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenGovernance={() => setActiveView("governance")} onOpenIssue={openIssue} /> : null}
+      {!selectedIssue && activeSection === "risk-alerts" ? <RiskAlertsSection alerts={riskAlerts} issues={visibleIssues} onBulkUpdate={bulkUpdateHandler} onOpenGovernance={() => router.push("/governance")} onOpenIssue={openIssue} /> : null}
       {!selectedIssue && activeSection === "rules" ? <QualityRulesSection rules={qualityRules} /> : null}
 
       <section className="rounded-xl border bg-panel p-3.5 shadow-line">
@@ -494,18 +684,83 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setActiveView("submissions")} type="button" variant="secondary">
+            <Button onClick={() => router.push("/submissions")} type="button" variant="secondary">
               <ClipboardCheck aria-hidden="true" /> Submissions
             </Button>
-            <Button onClick={() => setActiveView("map")} type="button" variant="secondary">
+            <Button onClick={() => router.push("/mapping")} type="button" variant="secondary">
               <MapPinned aria-hidden="true" /> Mapping
             </Button>
-            <Button onClick={() => setActiveView("analytics")} type="button" variant="secondary">
+            <Button onClick={() => router.push("/reports")} type="button" variant="secondary">
               <BarChart3 aria-hidden="true" /> Reports
             </Button>
           </div>
         </div>
       </section>
+      <Modal
+        contentClassName="max-w-xl"
+        description="Approve or reject a submission-driven profile change without leaving the reconciliation queue."
+        onOpenChange={(open) => {
+          setProposalReviewOpen(open);
+          if (!open) {
+            setProposalReviewDraft({
+              action: "approve",
+              beneficiaryId: "",
+              beneficiaryUid: "",
+              changes: [],
+              comment: "",
+              entityName: "",
+              submissionId: "",
+            });
+          }
+        }}
+        open={proposalReviewOpen}
+        title={proposalReviewDraft.action === "approve" ? "Approve profile update" : "Reject profile update"}
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-background p-3 text-sm">
+            <p className="font-medium">{proposalReviewDraft.entityName || "Profile conflict decision"}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Beneficiary {proposalReviewDraft.beneficiaryUid || "linked record"} · Submission {proposalReviewDraft.submissionId || "not linked"}
+            </p>
+          </div>
+          {proposalReviewDraft.changes.length ? (
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Changed fields</p>
+              <div className="mt-2">
+                <ProfileChangeCards changes={proposalReviewDraft.changes} compact />
+              </div>
+            </div>
+          ) : null}
+          <label className="block text-sm font-medium">
+            Decision comment
+            <Textarea
+              className="mt-2"
+              placeholder={
+                proposalReviewDraft.action === "approve"
+                  ? "Explain why these beneficiary fields should become the official values."
+                  : "Explain why the proposed beneficiary changes should not replace the official profile."
+              }
+              rows={4}
+              value={proposalReviewDraft.comment}
+              onChange={(event) => setProposalReviewDraft((current) => ({ ...current, comment: event.target.value }))}
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button onClick={() => setProposalReviewOpen(false)} variant="secondary">Cancel</Button>
+          <Button
+            disabled={preview || reviewProposalMutation.isPending || proposalReviewDraft.comment.trim().length < 3}
+            onClick={submitProposalReview}
+            variant="primary"
+          >
+            {reviewProposalMutation.isPending
+              ? "Saving…"
+              : proposalReviewDraft.action === "approve"
+                ? "Approve update"
+                : "Reject update"}
+          </Button>
+        </div>
+      </Modal>
     </section>
   );
 }
@@ -513,36 +768,55 @@ export function DataQualityModule({ principal, token }: DataQualityModuleProps) 
 function QualityLanding({
   importCleaningRows,
   issues,
+  onOpenProfileConflictDecision,
+  onOpenProfileConflictFocusDecision,
   onOpenIssue,
+  onOpenProfileConflictFocus,
+  onOpenProfileConflicts,
   onOpenSection,
   scores,
   summary,
 }: {
   importCleaningRows: ImportCleaningRowRead[];
   issues: QualityIssue[];
-  onOpenIssue: (issue: QualityIssue) => void;
+  onOpenProfileConflictDecision: (decisionFilter: Exclude<ProfileConflictDecisionFilter, "all">) => void;
+  onOpenProfileConflictFocusDecision: (
+    focus: Exclude<ProfileConflictFocusFilter, "all">,
+    decisionFilter: Exclude<ProfileConflictDecisionFilter, "all">,
+  ) => void;
+  onOpenIssue: (issue: QualityIssue, tab?: IssueDetailTab) => void;
+  onOpenProfileConflictFocus: (focus: Exclude<ProfileConflictFocusFilter, "all">) => void;
+  onOpenProfileConflicts: () => void;
   onOpenSection: (section: DataQualitySection) => void;
   scores: Partial<Record<QualityScope, QualityScore>>;
   summary: ReturnType<typeof computeQualitySummary>;
 }) {
+  const prioritizedIssues = rankIssuesForAttention(issues);
+  const profileConflictPressure = summarizeProfileConflictFocus(issues);
+  const profileConflictFocusDecisionPressure = summarizeProfileConflictFocusDecisionStates(issues);
+  const profileConflictDecisionCounts = summarizeProfileConflictDecisionStates(issues);
+  const openIssueFromOverview = (issue: QualityIssue) => onOpenIssue(issue, preferredIssueDetailTab(issue));
   const cards = [
     { icon: Gauge, label: "Overall Data Quality Score", value: `${summary.overallScore}/100`, tone: scoreTone(summary.overallScore) },
     { icon: FileWarning, label: "Open Quality Issues", value: summary.openQualityIssues, tone: summary.openQualityIssues ? "warning" : "success" },
     { icon: AlertTriangle, label: "Critical Issues", value: summary.criticalIssues, tone: summary.criticalIssues ? "danger" : "success" },
-    { icon: GitCompare, label: "Duplicate Records", value: summary.duplicateRecords, tone: "warning" },
-    { icon: ClipboardCheck, label: "Reconciliation Queue", value: summary.reconciliationIssues, tone: summary.reconciliationIssues ? "warning" : "success" },
-    { icon: UploadCloud, label: "Import Rows to Clean", value: importCleaningRows.length, tone: importCleaningRows.length ? "warning" : "success" },
-    { icon: LocateFixed, label: "GPS Issues", value: summary.gpsIssues, tone: "danger" },
-    { icon: ShieldAlert, label: "Validation Failures", value: summary.validationFailures, tone: "warning" },
-    { icon: ClipboardCheck, label: "Missing Data Records", value: summary.missingDataRecords, tone: "danger" },
-    { icon: Sparkles, label: "High-Risk Submissions", value: summary.highRiskSubmissions, tone: "danger" },
+    { icon: GitCompare, label: "Duplicate Records", onClick: () => onOpenSection("duplicates"), value: summary.duplicateRecords, tone: "warning" },
+    { icon: ClipboardCheck, label: "Reconciliation Queue", onClick: () => onOpenSection("reconciliation"), value: summary.reconciliationIssues, tone: summary.reconciliationIssues ? "warning" : "success" },
+    { icon: ClipboardCheck, label: "Profile Conflicts Pending", onClick: onOpenProfileConflicts, value: summary.profileConflictsPending, tone: summary.profileConflictsPending ? "warning" : "success" },
+    { icon: ShieldCheck, label: "Ready Profile Conflicts", onClick: () => onOpenProfileConflictDecision("ready"), value: summary.profileConflictsReady, tone: summary.profileConflictsReady ? "success" : "neutral" },
+    { icon: ShieldAlert, label: "Blocked Profile Conflicts", onClick: () => onOpenProfileConflictDecision("blocked"), value: summary.profileConflictsBlocked, tone: summary.profileConflictsBlocked ? "warning" : "neutral" },
+    { icon: UploadCloud, label: "Import Rows to Clean", onClick: () => onOpenSection("import-cleaning"), value: importCleaningRows.length, tone: importCleaningRows.length ? "warning" : "success" },
+    { icon: LocateFixed, label: "GPS Issues", onClick: () => onOpenSection("gps-issues"), value: summary.gpsIssues, tone: "danger" },
+    { icon: ShieldAlert, label: "Validation Failures", onClick: () => onOpenSection("validation-failures"), value: summary.validationFailures, tone: "warning" },
+    { icon: ClipboardCheck, label: "Missing Data Records", onClick: () => onOpenSection("missing-data"), value: summary.missingDataRecords, tone: "danger" },
+    { icon: Sparkles, label: "High-Risk Submissions", onClick: () => onOpenSection("risk-alerts"), value: summary.highRiskSubmissions, tone: "danger" },
     { icon: CheckCircle2, label: "Resolved Issues", value: summary.resolvedIssues, tone: "success" },
-  ] satisfies { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number | string }[];
+  ] satisfies { icon: LucideIcon; label: string; onClick?: () => void; tone: BadgeProps["tone"]; value: number | string }[];
 
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => <MetricCard icon={card.icon} key={card.label} label={card.label} tone={card.tone} value={card.value} />)}
+        {cards.map((card) => <MetricCard icon={card.icon} key={card.label} label={card.label} onClick={card.onClick} tone={card.tone} value={card.value} />)}
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Panel action={<Button onClick={() => onOpenSection("quality-dashboard")} size="sm" variant="secondary">Open dashboard</Button>} title="Quality Trends">
@@ -559,23 +833,83 @@ function QualityLanding({
         </Panel>
         <Panel title="Open Investigations">
           <Timeline
-            records={issues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed").slice(0, 5).map((issue) => ({
+            records={prioritizedIssues.filter((issue) => issue.status !== "Resolved" && issue.status !== "Closed").slice(0, 5).map((issue) => ({
               badge: issue.severity,
               label: issue.title,
-              meta: `${issue.status} · ${issue.project} · ${issue.assignedTo}`,
-              onClick: () => onOpenIssue(issue),
+              meta: `${issue.status} · ${issue.project} · ${issue.assignedTo}${issueAttentionNote(issue) ? ` · ${issueAttentionNote(issue)}` : ""}`,
+              onClick: () => openIssueFromOverview(issue),
               tone: severityTone(issue.severity),
             }))}
           />
         </Panel>
       </div>
+      {profileConflictPressure.length ? (
+        <Panel title="Profile Conflict Pressure">
+          <div className="mb-3 grid gap-3 md:grid-cols-2">
+            <button className="rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5" onClick={() => onOpenProfileConflictDecision("ready")} type="button">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Ready for decision</p>
+                <Badge tone="success">{profileConflictDecisionCounts.ready}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Conflicts with enough beneficiary and submission context to approve or reject now.</p>
+            </button>
+            <button className="rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5" onClick={() => onOpenProfileConflictDecision("blocked")} type="button">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Blocked conflicts</p>
+                <Badge tone="warning">{profileConflictDecisionCounts.blocked}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Conflicts that still need missing beneficiary links or source submissions before decision.</p>
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {profileConflictFocusDecisionPressure.map((item) => (
+              <div className="rounded-xl border bg-background p-3" key={item.focus}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{item.focus} conflicts</p>
+                  <Badge tone={item.focus === "Identity" || item.focus === "Location" ? "warning" : "neutral"}>{item.count}</Badge>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">{profileConflictFocusDescription(item.focus)}</p>
+                <p className="mt-2 text-[11px] font-medium text-foreground">
+                  {item.ready ? `${item.ready} ready` : "0 ready"}
+                  {item.blocked ? ` · ${item.blocked} blocked` : ""}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button onClick={() => onOpenProfileConflictFocus(item.focus)} size="sm" type="button" variant="secondary">
+                    Open all conflicts
+                  </Button>
+                  {item.ready ? (
+                    <Button
+                      onClick={() => onOpenProfileConflictFocusDecision(item.focus, "ready")}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Open ready conflicts ({item.ready})
+                    </Button>
+                  ) : null}
+                  {item.blocked ? (
+                    <Button
+                      onClick={() => onOpenProfileConflictFocusDecision(item.focus, "blocked")}
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                    >
+                      Open blocked conflicts ({item.blocked})
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      ) : null}
       <div className="grid gap-5 xl:grid-cols-3">
         <RankingPanel title="Quality by Project" rows={rankByField(issues, "project")} />
         <RankingPanel title="Quality by Form" rows={rankByField(issues, "form")} />
         <RankingPanel title="Quality by Issue Type" rows={rankByIssueType(issues)} />
       </div>
       <Panel title="Top Quality Issues">
-        <IssueCards issues={issues.slice(0, 4)} onOpenIssue={onOpenIssue} />
+        <IssueCards issues={prioritizedIssues.slice(0, 4)} onOpenIssue={openIssueFromOverview} />
       </Panel>
     </div>
   );
@@ -583,6 +917,7 @@ function QualityLanding({
 
 function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void; scores: Partial<Record<QualityScope, QualityScore>> }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const prioritizedIssues = rankIssuesForAttention(issues.filter((issue) => issue.severity === "Critical" || issue.severity === "High"));
 
   function exportDashboard(): void {
     const severityRows = (["Critical", "High", "Medium", "Low"] as const).map((severity) => ({
@@ -646,7 +981,7 @@ function QualityDashboard({ issues, onOpenIssue, scores }: { issues: QualityIssu
         </div>
       </Panel>
       <Panel title="Issues Requiring Attention">
-        <IssueCards issues={issues.filter((issue) => issue.severity === "Critical" || issue.severity === "High")} onOpenIssue={onOpenIssue} />
+        <IssueCards issues={prioritizedIssues} onOpenIssue={onOpenIssue} />
       </Panel>
     </div>
   );
@@ -1054,23 +1389,152 @@ function evidenceText(issue: QualityIssue, key: string): string {
   return typeof value === "string" && value.trim() ? value : "";
 }
 
+function ProfileChangeCards({
+  changes,
+  columns = "grid-cols-1",
+  compact = false,
+}: {
+  changes: { current: string; field: string; proposed: string }[];
+  columns?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={cn("grid gap-2", columns)}>
+      {changes.map((change) => {
+        const sensitivity = profileFieldSensitivity(change.field);
+        return (
+          <div className={cn("rounded-md border bg-panel px-3 py-2 text-sm", compact ? "" : "md:min-h-28")} key={change.field}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium">{titleCase(change.field)}</p>
+              <Badge tone={sensitivity === "Sensitive" ? "warning" : "neutral"}>{sensitivity}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Current: {change.current}</p>
+            <p className="text-xs">Proposed: {change.proposed}</p>
+            <p className="mt-2 text-[11px] leading-5 text-muted-foreground">{profileFieldDecisionHint(change.field)}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReconciliationSection({
   isUpdating,
+  isReviewingProposal,
   issues,
+  onChangeFilter,
+  onChangeProfileConflictDecision,
+  onChangeProfileConflictFocus,
+  onOpenApproveProposal,
   onMarkResolved,
   onMarkUnderInvestigation,
   onOpenBeneficiary,
   onOpenIssue,
+  onOpenRejectProposal,
   onOpenSubmission,
+  selectedProfileConflictDecision,
+  selectedProfileConflictFocus,
+  selectedFilter,
 }: {
   isUpdating: boolean;
+  isReviewingProposal: boolean;
   issues: QualityIssue[];
+  onChangeFilter: (filter: ReconciliationFocusFilter) => void;
+  onChangeProfileConflictDecision: (filter: ProfileConflictDecisionFilter) => void;
+  onChangeProfileConflictFocus: (focus: ProfileConflictFocusFilter) => void;
+  onOpenApproveProposal: (issue: QualityIssue) => void;
   onMarkResolved: (issue: QualityIssue) => void;
   onMarkUnderInvestigation: (issue: QualityIssue) => void;
   onOpenBeneficiary: (beneficiaryId: string) => void;
   onOpenIssue: (issue: QualityIssue) => void;
+  onOpenRejectProposal: (issue: QualityIssue) => void;
   onOpenSubmission: (submissionId: string) => void;
+  selectedProfileConflictDecision: ProfileConflictDecisionFilter;
+  selectedProfileConflictFocus: ProfileConflictFocusFilter;
+  selectedFilter: ReconciliationFocusFilter;
 }) {
+  const reconciliationIssues = filterReconciliationIssues(issues, selectedFilter);
+  const profileConflictIssues = filterReconciliationIssues(issues, "profile_conflicts");
+  const decisionScopedProfileConflictIssues = filterProfileConflictsByDecisionState(profileConflictIssues, selectedProfileConflictDecision);
+  const profileConflictDecisionCounts = summarizeProfileConflictDecisionStates(profileConflictIssues);
+  const profileConflictFocusDecisionTotals = summarizeProfileConflictFocusDecisionStates(profileConflictIssues);
+  const filteredIssues =
+    selectedFilter === "profile_conflicts"
+      ? filterProfileConflictsByFocus(decisionScopedProfileConflictIssues, selectedProfileConflictFocus)
+      : reconciliationIssues;
+  const filterCounts = countReconciliationIssuesByFilter(issues);
+  const profileConflictFocusDecisionPressure = summarizeProfileConflictFocusDecisionStates(decisionScopedProfileConflictIssues);
+  const selectedFocusDecisionTotals =
+    selectedProfileConflictFocus === "all"
+      ? null
+      : profileConflictFocusDecisionTotals.find((item) => item.focus === selectedProfileConflictFocus) ?? null;
+  const readyDecisionCount = selectedFocusDecisionTotals?.ready ?? profileConflictDecisionCounts.ready;
+  const blockedDecisionCount = selectedFocusDecisionTotals?.blocked ?? profileConflictDecisionCounts.blocked;
+  const selectedFocusVisibleCount =
+    selectedProfileConflictDecision === "ready"
+      ? selectedFocusDecisionTotals?.ready ?? 0
+      : selectedProfileConflictDecision === "blocked"
+        ? selectedFocusDecisionTotals?.blocked ?? 0
+        : selectedFocusDecisionTotals?.count ?? 0;
+  const selectedDecisionVisibleCount =
+    selectedFilter === "profile_conflicts" && selectedProfileConflictDecision !== "all" ? filteredIssues.length : 0;
+  const selectedFocusVisibleCountLabel =
+    selectedFocusVisibleCount === 1 ? "1 conflict currently matches this queue." : `${selectedFocusVisibleCount} conflicts currently match this queue.`;
+  const selectedDecisionVisibleCountLabel =
+    selectedDecisionVisibleCount === 1 ? "1 conflict is currently in this queue." : `${selectedDecisionVisibleCount} conflicts are currently in this queue.`;
+  const readyDecisionCountLabel = readyDecisionCount === 1 ? "1 ready conflict" : `${readyDecisionCount} ready conflicts`;
+  const blockedDecisionCountLabel = blockedDecisionCount === 1 ? "1 blocked conflict" : `${blockedDecisionCount} blocked conflicts`;
+  const profileConflictFocusFilterOptions = profileConflictFocusDecisionTotals.map((item) => {
+    const scopedItem = profileConflictFocusDecisionPressure.find((candidate) => candidate.focus === item.focus);
+    const visibleCount =
+      selectedProfileConflictDecision === "ready"
+        ? scopedItem?.ready ?? 0
+        : selectedProfileConflictDecision === "blocked"
+          ? scopedItem?.blocked ?? 0
+          : item.count;
+    return {
+      ...item,
+      visibleCount,
+    };
+  });
+  const prioritizedIssues =
+    selectedFilter === "profile_conflicts"
+      ? sortProfileConflictIssuesForReview(filteredIssues)
+      : [...filteredIssues].sort((left, right) => {
+          const leftChanges = profileConflictChangesFromEvidence(left.evidenceJson);
+          const rightChanges = profileConflictChangesFromEvidence(right.evidenceJson);
+          const leftSensitive = leftChanges.filter((change) => profileFieldSensitivity(change.field) === "Sensitive").length;
+          const rightSensitive = rightChanges.filter((change) => profileFieldSensitivity(change.field) === "Sensitive").length;
+          return rightSensitive - leftSensitive;
+        });
+  const emptyTitle =
+    selectedFilter === "profile_conflicts"
+      ? selectedProfileConflictDecision === "ready"
+        ? selectedProfileConflictFocus === "all"
+          ? "No profile conflicts are ready for decision."
+          : `No ${selectedProfileConflictFocus.toLowerCase()} conflicts are ready for decision.`
+        : selectedProfileConflictDecision === "blocked"
+          ? selectedProfileConflictFocus === "all"
+            ? "No blocked profile conflicts need action."
+            : `No blocked ${selectedProfileConflictFocus.toLowerCase()} conflicts need action.`
+          : selectedProfileConflictFocus === "all"
+            ? "No profile conflicts need action."
+            : `No ${selectedProfileConflictFocus.toLowerCase()} conflicts need action.`
+      : "No other reconciliation items need action.";
+  const emptyDescription =
+    selectedFilter === "profile_conflicts"
+      ? selectedProfileConflictDecision === "ready"
+        ? selectedProfileConflictFocus === "all"
+          ? "Every profile conflict with enough beneficiary and submission context has already been decided."
+          : `${selectedProfileConflictFocus} conflicts with enough beneficiary and submission context have already been decided.`
+        : selectedProfileConflictDecision === "blocked"
+          ? selectedProfileConflictFocus === "all"
+            ? "No profile conflicts are currently waiting for missing beneficiary links or source submissions."
+            : `No ${selectedProfileConflictFocus.toLowerCase()} conflicts are currently waiting for missing beneficiary links or source submissions.`
+          : selectedProfileConflictFocus === "all"
+            ? "Submission-driven beneficiary profile changes have all been decided."
+            : `${selectedProfileConflictFocus} conflicts have all been cleared from the reconciliation queue.`
+      : "The remaining queue is made up of profile conflicts only.";
   return (
     <div className="space-y-3">
       <SectionHeader
@@ -1078,13 +1542,177 @@ function ReconciliationSection({
         route="/data-quality/reconciliation"
         title="Reconciliation Queue"
       />
+      <div className="flex flex-wrap gap-2">
+        {[
+          { label: "All reconciliation", value: "all" as const },
+          { label: "Profile conflicts", value: "profile_conflicts" as const },
+          { label: "Other reconciliation", value: "other_reconciliation" as const },
+        ].map((option) => (
+          <button
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-xs transition",
+              selectedFilter === option.value ? "border-primary/50 bg-primary/10 text-foreground" : "bg-background text-muted-foreground hover:text-foreground",
+            )}
+            key={option.value}
+            onClick={() => {
+              onChangeFilter(option.value);
+              if (option.value !== "profile_conflicts") {
+                onChangeProfileConflictFocus("all");
+                onChangeProfileConflictDecision("all");
+              }
+            }}
+            type="button"
+          >
+            {option.label} ({filterCounts[option.value]})
+          </button>
+        ))}
+      </div>
+      {selectedFilter === "profile_conflicts" && profileConflictFocusFilterOptions.length ? (
+        <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <button
+              className={cn(
+                "rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                selectedProfileConflictDecision === "ready" ? "border-primary/50 bg-primary/10" : "",
+              )}
+              onClick={() => onChangeProfileConflictDecision(selectedProfileConflictDecision === "ready" ? "all" : "ready")}
+              type="button"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Ready for decision</p>
+                <Badge tone="success">{readyDecisionCount}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {selectedProfileConflictFocus === "all"
+                  ? "Managers can approve or reject these now."
+                  : `${selectedProfileConflictFocus} conflicts that are ready for approval or rejection.`}
+              </p>
+              <p className="mt-2 text-[11px] font-medium text-foreground">{readyDecisionCountLabel}</p>
+            </button>
+            <button
+              className={cn(
+                "rounded-xl border bg-background p-3 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                selectedProfileConflictDecision === "blocked" ? "border-primary/50 bg-primary/10" : "",
+              )}
+              onClick={() => onChangeProfileConflictDecision(selectedProfileConflictDecision === "blocked" ? "all" : "blocked")}
+              type="button"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Blocked conflicts</p>
+                <Badge tone="warning">{blockedDecisionCount}</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {selectedProfileConflictFocus === "all"
+                  ? "These still need missing beneficiary or submission context."
+                  : `${selectedProfileConflictFocus} conflicts still missing beneficiary or submission context.`}
+              </p>
+              <p className="mt-2 text-[11px] font-medium text-foreground">{blockedDecisionCountLabel}</p>
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs transition",
+                selectedProfileConflictFocus === "all" ? "border-primary/50 bg-primary/10 text-foreground" : "bg-background text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => onChangeProfileConflictFocus("all")}
+              type="button"
+            >
+              {selectedProfileConflictDecision === "ready"
+                ? `All ready conflicts (${decisionScopedProfileConflictIssues.length})`
+                : selectedProfileConflictDecision === "blocked"
+                  ? `All blocked conflicts (${decisionScopedProfileConflictIssues.length})`
+                  : `All profile conflicts (${decisionScopedProfileConflictIssues.length})`}
+              {selectedProfileConflictDecision === "all" && (profileConflictDecisionCounts.ready || profileConflictDecisionCounts.blocked)
+                ? ` · ${profileConflictDecisionCounts.ready} ready${profileConflictDecisionCounts.blocked ? ` · ${profileConflictDecisionCounts.blocked} blocked` : ""}`
+                : ""}
+            </button>
+            {profileConflictFocusFilterOptions.map((item) => (
+              <button
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs transition",
+                  selectedProfileConflictFocus === item.focus ? "border-primary/50 bg-primary/10 text-foreground" : "bg-background text-muted-foreground hover:text-foreground",
+                )}
+                key={item.focus}
+                onClick={() => onChangeProfileConflictFocus(item.focus)}
+                type="button"
+              >
+                {selectedProfileConflictDecision === "ready"
+                  ? `${item.focus} ready conflicts (${item.visibleCount})`
+                  : selectedProfileConflictDecision === "blocked"
+                    ? `${item.focus} blocked conflicts (${item.visibleCount})`
+                    : `${item.focus} conflicts (${item.visibleCount})`}
+                {selectedProfileConflictDecision === "all" && (item.ready || item.blocked)
+                  ? ` · ${item.ready || 0} ready${item.blocked ? ` · ${item.blocked} blocked` : ""}`
+                  : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {selectedFilter === "profile_conflicts" && selectedProfileConflictFocus !== "all" ? (
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3">
+          <p className="text-sm font-semibold">
+            {selectedProfileConflictDecision === "ready"
+              ? `${selectedProfileConflictFocus} ready conflicts`
+              : selectedProfileConflictDecision === "blocked"
+                ? `${selectedProfileConflictFocus} blocked conflicts`
+                : `${selectedProfileConflictFocus} conflicts`}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {profileConflictFocusDescription(selectedProfileConflictFocus)}
+            {selectedProfileConflictDecision !== "all" ? ` ${selectedFocusVisibleCountLabel}` : ""}
+          </p>
+          {selectedFocusDecisionTotals ? (
+            <p className="mt-2 text-xs font-medium text-foreground">
+              {selectedFocusDecisionTotals.ready ? `${selectedFocusDecisionTotals.ready} ready` : "0 ready"}
+              {selectedFocusDecisionTotals.blocked ? ` · ${selectedFocusDecisionTotals.blocked} blocked` : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {selectedFilter === "profile_conflicts" && selectedProfileConflictDecision !== "all" ? (
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3">
+          <p className="text-sm font-semibold">
+            {selectedProfileConflictDecision === "ready" ? "Ready for decision" : "Blocked"}{" "}
+            {selectedProfileConflictFocus === "all" ? "profile conflicts" : `${selectedProfileConflictFocus.toLowerCase()} conflicts`}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {selectedProfileConflictDecision === "ready"
+              ? selectedProfileConflictFocus === "all"
+                ? `These conflicts have enough linked context for managers to approve or reject immediately. ${selectedDecisionVisibleCountLabel}`
+                : `These ${selectedProfileConflictFocus.toLowerCase()} conflicts have enough linked context for managers to approve or reject immediately. ${selectedDecisionVisibleCountLabel}`
+              : selectedProfileConflictFocus === "all"
+                ? `These conflicts still need missing beneficiary or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`
+                : `These ${selectedProfileConflictFocus.toLowerCase()} conflicts still need missing beneficiary or submission context before a final decision can be made. ${selectedDecisionVisibleCountLabel}`}
+          </p>
+        </div>
+      ) : null}
       <div className="grid gap-3">
-        {issues.map((issue) => {
+        {prioritizedIssues.map((issue) => {
           const candidateId = evidenceText(issue, "candidate_beneficiary_id");
           const candidateUid = evidenceText(issue, "candidate_beneficiary_uid") || evidenceText(issue, "beneficiary_uid");
           const matchedFields = Array.isArray(issue.evidenceJson?.matched_fields)
             ? issue.evidenceJson?.matched_fields.map(String).join(", ")
             : "";
+          const proposedChanges = profileConflictChangesFromEvidence(issue.evidenceJson);
+          const reviewFocus = profileConflictReviewFocus(proposedChanges.map((change) => change.field));
+          const sensitiveFieldCount = profileConflictSensitiveFieldCount(proposedChanges.map((change) => change.field));
+          const requiresDecision = requiresProfileConflictDecision(issue);
+          const decisionBlocker = profileConflictDecisionBlocker(issue);
+          const decisionState = profileConflictDecisionState(issue);
+          const canReviewProposal =
+            requiresDecision &&
+            Boolean(evidenceText(issue, "beneficiary_id")) &&
+            issue.submissionId !== "Not linked";
+          const reviewDetailsLabel =
+            requiresDecision && decisionBlocker
+              ? "Open blocker details"
+              : canReviewProposal
+                ? "Open update decision"
+                : requiresDecision
+                  ? "Open conflict decision"
+                  : "Open issue details";
           return (
             <article className="rounded-xl border bg-panel p-3.5 shadow-line" key={issue.id}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1093,6 +1721,7 @@ function ReconciliationSection({
                     <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
                     <Badge tone={statusTone(issue.status)}>{issue.status}</Badge>
                     <Badge tone="warning">{issue.type}</Badge>
+                    {decisionState ? <Badge tone={decisionState.tone}>{decisionState.label}</Badge> : null}
                   </div>
                   <h3 className="mt-2 font-semibold">{issue.title}</h3>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{issue.description}</p>
@@ -1102,10 +1731,31 @@ function ReconciliationSection({
                     <span>Matched: {matchedFields || "Not recorded"}</span>
                     <span>Recommended: {issue.recommendedAction}</span>
                   </div>
+                  {canReviewProposal ? (
+                    <div className="mt-3 rounded-lg border bg-background p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proposed profile changes</p>
+                        {reviewFocus.map((focus) => (
+                          <Badge key={focus} tone={focus === "Identity" || focus === "Location" ? "warning" : "neutral"}>
+                            {focus} conflict
+                          </Badge>
+                        ))}
+                        {sensitiveFieldCount ? <Badge tone="warning">{sensitiveFieldCount} sensitive</Badge> : null}
+                      </div>
+                      <div className="mt-2">
+                        <ProfileChangeCards changes={proposedChanges} columns="md:grid-cols-2" compact />
+                      </div>
+                    </div>
+                  ) : null}
+                  {requiresDecision && decisionBlocker ? (
+                    <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+                      {decisionBlocker}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Button onClick={() => onOpenIssue(issue)} size="sm" type="button" variant="secondary">
-                    Review details
+                    {reviewDetailsLabel}
                   </Button>
                   {issue.submissionId !== "Not linked" ? (
                     <Button onClick={() => onOpenSubmission(issue.submissionId)} size="sm" type="button" variant="secondary">
@@ -1120,9 +1770,25 @@ function ReconciliationSection({
                   <Button disabled={isUpdating} onClick={() => onMarkUnderInvestigation(issue)} size="sm" type="button" variant="secondary">
                     Investigate
                   </Button>
-                  <Button disabled={isUpdating} onClick={() => onMarkResolved(issue)} size="sm" type="button">
-                    Mark reviewed
-                  </Button>
+                  {canReviewProposal ? (
+                    <>
+                      <Button disabled={isReviewingProposal} onClick={() => onOpenRejectProposal(issue)} size="sm" type="button" variant="secondary">
+                        Reject update
+                      </Button>
+                      <Button disabled={isReviewingProposal} onClick={() => onOpenApproveProposal(issue)} size="sm" type="button">
+                        Approve update
+                      </Button>
+                    </>
+                  ) : null}
+                  {!requiresDecision ? (
+                    <Button disabled={isUpdating} onClick={() => onMarkResolved(issue)} size="sm" type="button">
+                      Mark resolved
+                    </Button>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-foreground">
+                      {decisionBlocker ?? (canReviewProposal ? "Approve or reject the proposed update" : "Open the conflict decision to finish reconciliation")}
+                    </span>
+                  )}
                 </div>
               </div>
             </article>
@@ -1131,7 +1797,12 @@ function ReconciliationSection({
         {!issues.length ? (
           <div className="rounded-xl border border-success/30 bg-success/10 p-4">
             <p className="text-sm font-semibold">No reconciliation items need action.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Approved submissions are linked or waiting in normal review queues.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Approved submissions are linked or waiting in their normal workflow queues.</p>
+          </div>
+        ) : !filteredIssues.length ? (
+          <div className="rounded-xl border border-success/30 bg-success/10 p-4">
+            <p className="text-sm font-semibold">{emptyTitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>
           </div>
         ) : null}
       </div>
@@ -1237,9 +1908,14 @@ function IssueDetail({
   auditEvents,
   isUpdating,
   issue,
+  onOpenApproveProposal,
+  onOpenBeneficiary,
   onBack,
   onOpenGovernance,
   onOpenMapping,
+  onOpenProfileConflictQueue,
+  onOpenRejectProposal,
+  onOpenSubmission,
   onUpdateStatus,
   selectedTab,
   setSelectedTab,
@@ -1247,13 +1923,63 @@ function IssueDetail({
   auditEvents: QualityAuditEvent[];
   isUpdating: boolean;
   issue: QualityIssue;
+  onOpenApproveProposal: (issue: QualityIssue) => void;
+  onOpenBeneficiary: (beneficiaryId: string) => void;
   onBack: () => void;
   onOpenGovernance: () => void;
   onOpenMapping: () => void;
+  onOpenProfileConflictQueue: (focus: ProfileConflictFocusFilter, decisionFilter?: ProfileConflictDecisionFilter) => void;
+  onOpenRejectProposal: (issue: QualityIssue) => void;
+  onOpenSubmission: (submissionId: string) => void;
   onUpdateStatus: (status: "assigned" | "under_investigation" | "resolved" | "closed", comment: string) => void;
   selectedTab: IssueDetailTab;
   setSelectedTab: (tab: IssueDetailTab) => void;
 }) {
+  const beneficiaryId = evidenceText(issue, "beneficiary_id");
+  const beneficiaryUid = evidenceText(issue, "beneficiary_uid");
+  const attentionNote = issueAttentionNote(issue);
+  const requiresDecision = requiresProfileConflictDecision(issue);
+  const decisionBlocker = profileConflictDecisionBlocker(issue);
+  const decisionState = profileConflictDecisionState(issue);
+  const canReviewProposal =
+    requiresDecision &&
+    Boolean(beneficiaryId) &&
+    issue.submissionId !== "Not linked";
+  const signalHistory = signalStatusHistoryFromEvidence(issue.evidenceJson);
+  const historyRecords = [
+    {
+      badge: "Detected",
+      label: issue.title,
+      meta: `${new Date(issue.detectedAt).toLocaleString()} · ${issue.assignedTo}`,
+      tone: statusTone("Detected" as QualityIssueStatus),
+    },
+    ...signalHistory.map((entry) => ({
+      badge: entry.proposalAction ? `${titleCase(entry.proposalAction)} update` : entry.to ? titleCase(entry.to) : "Conflict decision",
+      label: entry.comment || "Decision recorded",
+      meta: `${entry.changedAt ? new Date(entry.changedAt).toLocaleString() : "Time not recorded"} · ${entry.changedByUserId || "Decision maker not recorded"}${entry.from || entry.to ? ` · ${titleCase(entry.from || "open")} -> ${titleCase(entry.to || "resolved")}` : ""}`,
+      tone: statusTone(signalStatus(entry.to || "resolved")),
+    })),
+    {
+      badge: issue.status,
+      label: "Current workflow status",
+      meta: `Next step: ${nextInvestigationStatus(issue.status)}`,
+      tone: statusTone(issue.status),
+    },
+  ];
+  const auditTrailRecords = [
+    ...auditEvents.map((event) => ({
+      badge: event.action,
+      label: event.actor,
+      meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`,
+      tone: "governance" as const,
+    })),
+    ...signalHistory.map((entry) => ({
+      badge: entry.proposalAction ? `${titleCase(entry.proposalAction)} update` : "Conflict decision",
+      label: entry.changedByUserId || "Decision maker not recorded",
+      meta: `${entry.changedAt ? new Date(entry.changedAt).toLocaleString() : "Time not recorded"} · ${entry.comment || "No comment recorded"}`,
+      tone: "governance" as const,
+    })),
+  ];
   return (
     <section className="space-y-3 rounded-xl border bg-panel p-3.5 shadow-line">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1262,12 +1988,43 @@ function IssueDetail({
             <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
             <Badge tone={statusTone(issue.status)}>{issue.status}</Badge>
             <Badge tone="neutral">{issue.type}</Badge>
+            {decisionState ? <Badge tone={decisionState.tone}>{decisionState.label}</Badge> : null}
           </div>
           <h2 className="mt-3 text-xl font-semibold">{issue.title}</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{issue.description}</p>
+          {attentionNote ? (
+            <div className="mt-3 inline-flex max-w-3xl rounded-full border border-warning/30 bg-warning/10 px-3 py-1 text-xs font-medium text-foreground">
+              {attentionNote}
+            </div>
+          ) : null}
+          {decisionBlocker ? (
+            <div className="mt-3 max-w-3xl rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+              {decisionBlocker}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={onBack} type="button" variant="secondary">Back to Data Quality</Button>
+          {issue.submissionId !== "Not linked" ? (
+            <Button onClick={() => onOpenSubmission(issue.submissionId)} type="button" variant="secondary">
+              Open submission
+            </Button>
+          ) : null}
+          {beneficiaryId ? (
+            <Button onClick={() => onOpenBeneficiary(beneficiaryId)} type="button" variant="secondary">
+              Open {beneficiaryUid || "beneficiary"}
+            </Button>
+          ) : null}
+          {canReviewProposal ? (
+            <>
+              <Button onClick={() => onOpenRejectProposal(issue)} type="button" variant="secondary">
+                Reject update
+              </Button>
+              <Button onClick={() => onOpenApproveProposal(issue)} type="button">
+                Approve update
+              </Button>
+            </>
+          ) : null}
           <Button onClick={issue.type === "GPS Issue" ? onOpenMapping : onOpenGovernance} type="button">
             {issue.type === "GPS Issue" ? <MapPinned aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
             {issue.type === "GPS Issue" ? "Open map" : "Escalate"}
@@ -1287,26 +2044,75 @@ function IssueDetail({
         ))}
       </div>
       {selectedTab === "Overview" ? <IssueOverview issue={issue} /> : null}
-      {selectedTab === "Related Submission" ? <KeyValuePanel rows={[["Submission ID", issue.submissionId], ["Project", issue.project], ["Form", issue.form], ["Enumerator", issue.enumerator], ["Supervisor", issue.supervisor], ["Location", issue.location]]} title="Related Submission" /> : null}
+      {selectedTab === "Related Submission" ? <IssueRelatedSubmission issue={issue} /> : null}
       {selectedTab === "Investigation" ? (
         <InvestigationPanel
           isUpdating={isUpdating}
           issue={issue}
           onEscalate={issue.type === "GPS Issue" ? onOpenMapping : onOpenGovernance}
+          onDecisionBlocker={decisionBlocker}
+          onOpenResolution={requiresDecision ? () => setSelectedTab("Resolution") : undefined}
           onUpdateStatus={onUpdateStatus}
         />
       ) : null}
-      {selectedTab === "Resolution" ? <KeyValuePanel rows={[["Recommended action", issue.recommendedAction], ["Next status", nextInvestigationStatus(issue.status)], ["Score impact", `${issue.scoreImpact} points`], ["Assigned to", issue.assignedTo]]} title="Resolution" /> : null}
-      {selectedTab === "History" ? <Timeline records={[{ badge: "Detected", label: issue.title, meta: `${new Date(issue.detectedAt).toLocaleString()} · ${issue.assignedTo}`, tone: statusTone("Detected") }, { badge: issue.status, label: "Current workflow status", meta: `Next step: ${nextInvestigationStatus(issue.status)}`, tone: statusTone(issue.status) }]} /> : null}
-      {selectedTab === "Audit Trail" ? <Timeline records={auditEvents.map((event) => ({ badge: event.action, label: event.actor, meta: `${new Date(event.createdAt).toLocaleString()} · ${event.reason}`, tone: "governance" }))} /> : null}
+      {selectedTab === "Resolution" ? (
+        <IssueResolution
+          issue={issue}
+          onOpenApproveProposal={canReviewProposal ? () => onOpenApproveProposal(issue) : undefined}
+          onOpenProfileConflictQueue={onOpenProfileConflictQueue}
+          onOpenRejectProposal={canReviewProposal ? () => onOpenRejectProposal(issue) : undefined}
+          onOpenSubmission={issue.submissionId !== "Not linked" ? onOpenSubmission : undefined}
+        />
+      ) : null}
+      {selectedTab === "History" ? <Timeline records={historyRecords} /> : null}
+      {selectedTab === "Audit Trail" ? <Timeline records={auditTrailRecords} /> : null}
     </section>
   );
 }
 
 function IssueOverview({ issue }: { issue: QualityIssue }) {
+  const profileChanges = profileConflictChangesFromEvidence(issue.evidenceJson);
+  const beneficiaryUid = evidenceText(issue, "beneficiary_uid");
+  const clientSubmissionId = evidenceText(issue, "client_submission_id");
+  const reviewFocus = profileConflictReviewFocus(profileChanges.map((change) => change.field));
+  const sensitiveFieldCount = profileConflictSensitiveFieldCount(profileChanges.map((change) => change.field));
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-      <KeyValuePanel rows={[["Project", issue.project], ["Form", issue.form], ["Submission", issue.submissionId], ["Assigned to", issue.assignedTo], ["Detected", new Date(issue.detectedAt).toLocaleString()], ["Score impact", `${issue.scoreImpact} points`]]} title="Issue Summary" />
+      <div className="space-y-5">
+        <KeyValuePanel rows={[["Project", issue.project], ["Form", issue.form], ["Submission", issue.submissionId], ["Assigned to", issue.assignedTo], ["Detected", new Date(issue.detectedAt).toLocaleString()], ["Score impact", `${issue.scoreImpact} points`]]} title="Issue Summary" />
+        {profileChanges.length ? (
+          <Panel title="Profile Conflict Summary">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border bg-background p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Beneficiary</p>
+                <p className="mt-2 text-sm font-medium">{beneficiaryUid || "Linked beneficiary"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Submission {clientSubmissionId || issue.submissionId}</p>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Decision guidance</p>
+                  {reviewFocus.map((focus) => (
+                    <Badge key={focus} tone={focus === "Identity" || focus === "Location" ? "warning" : "neutral"}>
+                      {focus} conflict
+                    </Badge>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Approve only when the new submission values are verified and should become the official beneficiary profile. Reject when the submission is informative, incomplete, or should remain history only.
+                </p>
+                {sensitiveFieldCount ? (
+                  <p className="mt-2 text-xs font-medium text-foreground">
+                    {sensitiveFieldCount} sensitive field{sensitiveFieldCount === 1 ? "" : "s"} need direct verification before the official record changes.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              <ProfileChangeCards changes={profileChanges} />
+            </div>
+          </Panel>
+        ) : null}
+      </div>
       <Panel title="Evidence">
         <div className="space-y-2">
           {issue.evidence.map((item) => (
@@ -1318,25 +2124,211 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
   );
 }
 
+function IssueRelatedSubmission({ issue }: { issue: QualityIssue }) {
+  const beneficiaryUid = evidenceText(issue, "beneficiary_uid");
+  const clientSubmissionId = evidenceText(issue, "client_submission_id");
+  const decisionBlocker = profileConflictDecisionBlocker(issue);
+  const decisionState = profileConflictDecisionState(issue);
+  const source = evidenceText(issue, "source") || evidenceText(issue, "submission_source");
+  const matchedFields = Array.isArray(issue.evidenceJson?.matched_fields)
+    ? issue.evidenceJson?.matched_fields.map(String).join(", ")
+    : "";
+  const rows: [string, string][] = [
+    ["Submission ID", issue.submissionId],
+    ["Client Submission ID", clientSubmissionId || "Not recorded"],
+    ["Project", issue.project],
+    ["Form", issue.form],
+    ["Enumerator", issue.enumerator],
+    ["Supervisor", issue.supervisor],
+    ["Location", issue.location],
+    ["Source", source || "Not recorded"],
+  ];
+  if (beneficiaryUid) rows.push(["Beneficiary", beneficiaryUid]);
+  if (decisionState) rows.push(["Decision state", decisionState.label]);
+  if (decisionBlocker) rows.push(["Decision blocker", decisionBlocker]);
+  if (matchedFields) rows.push(["Matched Fields", matchedFields]);
+  return <KeyValuePanel rows={rows} title="Related Submission" />;
+}
+
+function IssueResolution({
+  issue,
+  onOpenApproveProposal,
+  onOpenProfileConflictQueue,
+  onOpenRejectProposal,
+  onOpenSubmission,
+}: {
+  issue: QualityIssue;
+  onOpenApproveProposal?: () => void;
+  onOpenProfileConflictQueue?: (focus: ProfileConflictFocusFilter, decisionFilter?: ProfileConflictDecisionFilter) => void;
+  onOpenRejectProposal?: () => void;
+  onOpenSubmission?: (submissionId: string) => void;
+}) {
+  const profileChanges = profileConflictChangesFromEvidence(issue.evidenceJson);
+  if (!profileChanges.length) {
+    return <KeyValuePanel rows={[["Recommended action", issue.recommendedAction], ["Next status", nextInvestigationStatus(issue.status)], ["Score impact", `${issue.scoreImpact} points`], ["Assigned to", issue.assignedTo]]} title="Resolution" />;
+  }
+
+  const fieldList = profileChanges.map((change) => titleCase(change.field)).join(", ");
+  const checklist = profileConflictChecklist(profileChanges.map((change) => change.field));
+  const reviewFocus = profileConflictReviewFocus(profileChanges.map((change) => change.field));
+  const sensitiveFieldCount = profileConflictSensitiveFieldCount(profileChanges.map((change) => change.field));
+  const similarQueueDecisionFilter =
+    profileConflictDecisionState(issue)?.label === "Ready for decision"
+      ? "ready"
+      : profileConflictDecisionState(issue)?.label === "Blocked"
+        ? "blocked"
+        : undefined;
+  const similarQueueTitle =
+    similarQueueDecisionFilter === "ready"
+      ? "Similar ready conflicts"
+      : similarQueueDecisionFilter === "blocked"
+        ? "Similar blocked conflicts"
+        : "Similar profile conflicts";
+  const similarQueueDescription =
+    similarQueueDecisionFilter === "ready"
+      ? "Jump back into the ready-to-decide queue with the same profile-conflict focus so related beneficiary approvals can be handled together."
+      : similarQueueDecisionFilter === "blocked"
+        ? "Jump back into the blocked queue with the same profile-conflict focus so missing beneficiary or submission context can be resolved together."
+        : "Jump back into the queue with the same profile-conflict focus so related beneficiary decisions can be handled together.";
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+      <KeyValuePanel
+        rows={[
+          ["Recommended action", issue.recommendedAction],
+          ["Decision state", profileConflictDecisionState(issue)?.label ?? "Not required"],
+          ["Fields affected", `${profileChanges.length}`],
+          ["Sensitive fields", `${sensitiveFieldCount}`],
+          ["Fields", fieldList],
+          ["Next status", nextInvestigationStatus(issue.status)],
+        ]}
+        title="Resolution"
+      />
+      <Panel title="Decision Impact">
+        <div className="space-y-3">
+          <div className="rounded-xl border bg-background p-3">
+            <p className="text-sm font-medium">Before approving</p>
+            <ul className="mt-2 space-y-2 text-sm leading-6 text-muted-foreground">
+              {checklist.map((item) => (
+                <li className="flex gap-2" key={item}>
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl border bg-background p-3">
+            <p className="text-sm font-medium">Approve update</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Atlas will replace the official beneficiary values for the listed fields, keep lineage to this approved submission, and remove the conflict from the reconciliation queue.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-background p-3">
+            <p className="text-sm font-medium">Reject update</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Atlas will keep the current official beneficiary profile unchanged, record the decision in audit history, and still preserve the submission as historical evidence.
+            </p>
+          </div>
+          {onOpenSubmission && issue.submissionId !== "Not linked" ? (
+            <div className="rounded-xl border bg-background p-3">
+              <p className="text-sm font-medium">Verify the original submission</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Open the source record to confirm the captured answers, timestamps, GPS evidence, and respondent details before you approve or reject the profile update.
+              </p>
+              <div className="mt-3">
+                <Button onClick={() => onOpenSubmission(issue.submissionId)} type="button" variant="secondary">
+                  Open source submission
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {requiresProfileConflictDecision(issue) && profileConflictDecisionBlocker(issue) ? (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+              {profileConflictDecisionBlocker(issue)}
+            </div>
+          ) : null}
+          {onOpenProfileConflictQueue ? (
+            <div className="rounded-xl border bg-background p-3">
+              <p className="text-sm font-medium">{similarQueueTitle}</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{similarQueueDescription}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button onClick={() => onOpenProfileConflictQueue("all", similarQueueDecisionFilter)} type="button" variant="secondary">
+                  {similarQueueDecisionFilter === "ready"
+                    ? "Open all ready conflicts"
+                    : similarQueueDecisionFilter === "blocked"
+                      ? "Open all blocked conflicts"
+                      : "Open all profile conflicts"}
+                </Button>
+                {reviewFocus.map((focus) => (
+                  <Button key={focus} onClick={() => onOpenProfileConflictQueue(focus, similarQueueDecisionFilter)} type="button" variant="secondary">
+                    {similarQueueDecisionFilter === "ready"
+                      ? `Open ${focus} ready conflicts`
+                      : similarQueueDecisionFilter === "blocked"
+                        ? `Open ${focus} blocked conflicts`
+                        : `Open ${focus} conflicts`}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {onOpenApproveProposal || onOpenRejectProposal ? (
+            <div className="flex flex-wrap justify-end gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              {onOpenRejectProposal ? (
+                <Button onClick={onOpenRejectProposal} type="button" variant="secondary">
+                  Reject update
+                </Button>
+              ) : null}
+              {onOpenApproveProposal ? (
+                <Button onClick={onOpenApproveProposal} type="button">
+                  Approve update
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 function InvestigationPanel({
   isUpdating,
   issue,
+  onDecisionBlocker,
   onEscalate,
+  onOpenResolution,
   onUpdateStatus,
 }: {
   isUpdating: boolean;
   issue: QualityIssue;
+  onDecisionBlocker?: string | null;
   onEscalate: () => void;
+  onOpenResolution?: () => void;
   onUpdateStatus: (status: "assigned" | "under_investigation" | "resolved" | "closed", comment: string) => void;
 }) {
   const pushToast = useWorkspaceStore((state) => state.pushToast);
+  const requiresDecision = requiresProfileConflictDecision(issue);
+  const canReviewProposal =
+    requiresDecision &&
+    Boolean(evidenceText(issue, "beneficiary_id")) &&
+    issue.submissionId !== "Not linked";
+  const resolutionActionLabel = onDecisionBlocker
+    ? "Open blocker details"
+    : canReviewProposal
+      ? "Open update decision"
+      : "Open conflict decision";
   const actions: { label: string; onClick: () => void }[] = [
     { label: "Assign investigator", onClick: () => onUpdateStatus("assigned", `Assigned ${issue.title} for investigation.`) },
     { label: "Add notes", onClick: () => pushToast({ description: "Investigation notes will be available in a future update.", title: "Notes aren't available yet", tone: "warning" }) },
     { label: "Add evidence", onClick: () => pushToast({ description: "Attaching evidence files will be available in a future update.", title: "Evidence uploads aren't available yet", tone: "warning" }) },
     { label: "Escalate", onClick: onEscalate },
-    { label: "Resolve", onClick: () => onUpdateStatus("resolved", `Resolved ${issue.title}.`) },
-    { label: "Close", onClick: () => onUpdateStatus("closed", `Closed ${issue.title}.`) },
+    ...(requiresDecision
+      ? onOpenResolution
+        ? [{ label: resolutionActionLabel, onClick: onOpenResolution }]
+        : []
+      : [
+          { label: "Resolve", onClick: () => onUpdateStatus("resolved", `Resolved ${issue.title}.`) },
+          { label: "Close", onClick: () => onUpdateStatus("closed", `Closed ${issue.title}.`) },
+        ]),
   ];
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
@@ -1350,6 +2342,11 @@ function InvestigationPanel({
         </div>
       </Panel>
       <Panel title="Investigation Actions">
+        {requiresDecision ? (
+          <div className="mb-3 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+            {onDecisionBlocker ?? "Profile conflicts that propose beneficiary field changes need an explicit approve or reject decision before they can leave the queue."}
+          </div>
+        ) : null}
         <div className="space-y-2">
           {actions.map((action) => (
             <button
@@ -1372,25 +2369,45 @@ function InvestigationPanel({
 function IssueCards({ issues, onOpenIssue }: { issues: QualityIssue[]; onOpenIssue: (issue: QualityIssue) => void }) {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      {issues.map((issue) => (
-        <button className="rounded-2xl border bg-background p-4 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5" key={issue.id} onClick={() => onOpenIssue(issue)} type="button">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold">{issue.title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{issue.project} · {issue.form}</p>
+      {issues.map((issue) => {
+        const attentionNote = issueAttentionNote(issue);
+        const decisionState = profileConflictDecisionState(issue);
+        return (
+          <button className="rounded-2xl border bg-background p-4 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5" key={issue.id} onClick={() => onOpenIssue(issue)} type="button">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">{issue.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{issue.project} · {issue.form}</p>
+                {attentionNote ? <p className="mt-2 text-[11px] font-medium text-foreground">{attentionNote}</p> : null}
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                {decisionState ? <Badge tone={decisionState.tone}>{decisionState.label}</Badge> : null}
+                <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
+              </div>
             </div>
-            <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">{issue.recommendedAction}</p>
-        </button>
-      ))}
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">{issue.recommendedAction}</p>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; label: string; tone: BadgeProps["tone"]; value: number | string }) {
-  return (
-    <article className="rounded-xl border bg-panel p-3 shadow-line">
+function MetricCard({
+  icon: Icon,
+  label,
+  onClick,
+  tone,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+  tone: BadgeProps["tone"];
+  value: number | string;
+}) {
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <span className="rounded-xl bg-primary/10 p-2 text-primary">
           <Icon aria-hidden="true" size={18} />
@@ -1399,8 +2416,16 @@ function MetricCard({ icon: Icon, label, tone, value }: { icon: LucideIcon; labe
       </div>
       <p className="mt-4 text-2xl font-semibold">{typeof value === "number" ? value.toLocaleString() : value}</p>
       <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </article>
+    </>
   );
+  if (onClick) {
+    return (
+      <button className="rounded-xl border bg-panel p-3 text-left shadow-line transition hover:border-primary/40 hover:bg-primary/5" onClick={onClick} type="button">
+        {content}
+      </button>
+    );
+  }
+  return <article className="rounded-xl border bg-panel p-3 shadow-line">{content}</article>;
 }
 
 function Panel({ action, children, title }: { action?: ReactNode; children: ReactNode; title: string }) {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  submissionsDataExplorerRoute,
+  submissionsWorkspaceBoundaryRoute,
+} from "@/modules/submissions/SubmissionsModule";
 import { previewSubmissions } from "@/modules/submissions/data";
 import {
   applyPreviewReviewAction,
@@ -13,6 +17,19 @@ import {
 } from "@/modules/submissions/utils";
 
 describe("Submissions module helpers", () => {
+  it("routes submissions boundary actions to owning workspaces", () => {
+    expect(submissionsWorkspaceBoundaryRoute("mapping")).toBe("/mapping");
+    expect(submissionsWorkspaceBoundaryRoute("data-quality")).toBe("/data-quality");
+    expect(submissionsWorkspaceBoundaryRoute("forms")).toBe("/forms");
+  });
+
+  it("builds data explorer routes for the selected form and repeat group", () => {
+    expect(submissionsDataExplorerRoute("form-1")).toBe("/submissions/data?form=form-1");
+    expect(submissionsDataExplorerRoute("form-1", "household_members")).toBe(
+      "/submissions/data?form=form-1&view=household_members",
+    );
+  });
+
   it("computes operational review summary metrics", () => {
     const summary = computeSubmissionsSummary(previewSubmissions);
 

@@ -138,6 +138,15 @@ export const defaultEntityControls: EntityControlSettings = {
   profileUpdateMode: "with_supervisor_approval",
 };
 
+export type BeneficiariesWorkspaceView = "registry" | "import" | "duplicates";
+
+export function beneficiariesViewFromPath(pathname: string): BeneficiariesWorkspaceView {
+  const path = pathname.replace(/\/+$/, "") || "/beneficiaries";
+  if (path === "/beneficiaries/import") return "import";
+  if (path === "/beneficiaries/duplicates") return "duplicates";
+  return "registry";
+}
+
 const now = Date.now();
 
 export const previewEntities: BeneficiaryEntity[] = [

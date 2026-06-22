@@ -36,6 +36,9 @@ export type QualitySummary = {
   missingDataRecords: number;
   openInvestigations: number;
   openQualityIssues: number;
+  profileConflictsBlocked: number;
+  profileConflictsPending: number;
+  profileConflictsReady: number;
   reconciliationIssues: number;
   overallScore: number;
   resolvedIssues: number;
@@ -155,6 +158,11 @@ export const dataQualitySections: {
   { id: "risk-alerts", label: "Risk Alerts", route: "/data-quality/risk-alerts", description: "Investigate suspicious patterns, fraud signals, manipulation, mass duplicates, and abnormal activity." },
   { id: "rules", label: "Quality Rules", route: "/data-quality/rules", description: "Manage reusable completeness, consistency, GPS, duplicate, outlier, timeliness, and custom rules." },
 ];
+
+export function dataQualitySectionFromPath(pathname: string): DataQualitySection {
+  const match = dataQualitySections.find((section) => section.route !== "/data-quality" && pathname.startsWith(section.route));
+  return match?.id ?? "dashboard";
+}
 
 const nowIso = new Date().toISOString();
 const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

@@ -7,6 +7,7 @@ import type {
   IntegrationRecord,
   LocationRecord,
 } from "@/modules/administration/types";
+import { administrationSectionFromPath } from "@/modules/administration/data";
 import {
   getAdministrationOverviewMetrics,
   statusTone,
@@ -118,5 +119,17 @@ describe("administration utilities", () => {
       ]),
     ).toBe('"code","label"\n"A1","North ""A"""');
   });
-});
 
+  it("maps administration routes to the correct section", () => {
+    expect(administrationSectionFromPath("/administration")).toBe("dashboard");
+    expect(administrationSectionFromPath("/administration/location-hierarchy")).toBe("location-hierarchy");
+    expect(administrationSectionFromPath("/administration/reference-data")).toBe("reference-data");
+    expect(administrationSectionFromPath("/administration/notification-settings")).toBe("notification-settings");
+    expect(administrationSectionFromPath("/administration/api-settings")).toBe("api-settings");
+    expect(administrationSectionFromPath("/administration/integrations")).toBe("integrations");
+    expect(administrationSectionFromPath("/administration/system-settings")).toBe("system-settings");
+    expect(administrationSectionFromPath("/administration/backup-recovery")).toBe("backup-recovery");
+    expect(administrationSectionFromPath("/administration/imports-migration")).toBe("imports-migration");
+    expect(administrationSectionFromPath("/administration/mobile")).toBe("mobile");
+  });
+});

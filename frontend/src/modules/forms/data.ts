@@ -80,6 +80,12 @@ export const formsSections: {
   { id: "governance-dashboard", label: "Governance", route: "/forms/governance-dashboard", description: "Forms missing approval, mappings, workflow, duplicate controls, version review, or recent use." },
 ];
 
+export function formsSectionFromPath(pathname: string): FormsSection | null {
+  const path = pathname.replace(/\/+$/, "") || "/forms";
+  const match = formsSections.find((section) => section.route === path);
+  return match?.id ?? null;
+}
+
 export const formDetailTabs: FormDetailTab[] = [
   "Overview",
   "Analytics",

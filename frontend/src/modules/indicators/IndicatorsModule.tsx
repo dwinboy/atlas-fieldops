@@ -90,6 +90,10 @@ type IndicatorsModuleProps = {
   token: string | null;
 };
 
+export function indicatorReportsRoute(): string {
+  return "/reports";
+}
+
 type FormulaOperation = "sum" | "average" | "count" | "percent" | "raw";
 
 type IndicatorDraft = {
@@ -361,7 +365,6 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
   const [indicatorDraft, setIndicatorDraft] = useState<IndicatorDraft>(defaultIndicatorDraft);
   const [localIndicators, setLocalIndicators] = useState<IndicatorRecord[]>([]);
   const queryClient = useQueryClient();
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const preview = isPreview(token);
   const canManageIndicators = hasAnyPermission(principal, ["indicators.manage"]);
@@ -675,7 +678,7 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
           indicators={indicators}
           onOpenAttention={() => selectIndicatorSection("library")}
           onOpenSection={selectIndicatorSection}
-          onOpenReports={() => setActiveView("analytics")}
+          onOpenReports={() => router.push(indicatorReportsRoute())}
           preview={preview}
           resultFramework={resultFramework}
           summary={summary}
@@ -724,9 +727,9 @@ export function IndicatorsModule({ principal, token }: IndicatorsModuleProps) {
       ) : null}
       {!selectedIndicator && activeSection === "reports" ? (
         preview ? (
-          <IndicatorReports onOpenReports={() => setActiveView("analytics")} reports={previewReports} />
+          <IndicatorReports onOpenReports={() => router.push(indicatorReportsRoute())} reports={previewReports} />
         ) : (
-          <IndicatorReportsOverview indicators={indicators} onOpenReports={() => setActiveView("analytics")} />
+          <IndicatorReportsOverview indicators={indicators} onOpenReports={() => router.push(indicatorReportsRoute())} />
         )
       ) : null}
       <CreateIndicatorModal

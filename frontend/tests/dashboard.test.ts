@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DataFormRead, SubmissionRead } from "@/lib/api";
+import { workspaceRouteForView } from "@/components/Dashboard";
 import {
   getActiveFormPerformance,
   getDashboardApprovalOverview,
@@ -179,5 +180,15 @@ describe("dashboard form activity", () => {
       locatedSubmissions: 3,
       totalSubmissions: 4,
     });
+  });
+
+  it("resolves dashboard workspace views to real routes", () => {
+    expect(workspaceRouteForView("forms")).toBe("/forms");
+    expect(workspaceRouteForView("submissions")).toBe("/submissions");
+    expect(workspaceRouteForView("organizations")).toBe("/users-teams");
+    expect(workspaceRouteForView("data")).toBe(
+      "/administration/reference-data",
+    );
+    expect(workspaceRouteForView("help")).toBe("/app/help");
   });
 });

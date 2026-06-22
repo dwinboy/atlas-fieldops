@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { previewAccessCatalog, previewRoles, previewTeams, previewUsers } from "@/modules/users-teams/data";
+import { previewAccessCatalog, previewRoles, previewTeams, previewUsers, usersTeamsSectionFromPath } from "@/modules/users-teams/data";
 import { computeSummaryFromRecords, groupPermissions, normalizeRoleLabel, statusTone } from "@/modules/users-teams/utils";
 
 describe("users-teams utilities", () => {
@@ -26,5 +26,15 @@ describe("users-teams utilities", () => {
     expect(statusTone("high_risk")).toBe("danger");
     expect(statusTone(true)).toBe("success");
   });
-});
 
+  it("maps users and teams routes to the correct workspace section", () => {
+    expect(usersTeamsSectionFromPath("/users-teams")).toBe("dashboard");
+    expect(usersTeamsSectionFromPath("/users-teams/users")).toBe("users");
+    expect(usersTeamsSectionFromPath("/users-teams/roles")).toBe("roles");
+    expect(usersTeamsSectionFromPath("/users-teams/teams")).toBe("teams");
+    expect(usersTeamsSectionFromPath("/users-teams/organizations")).toBe("organizations");
+    expect(usersTeamsSectionFromPath("/users-teams/permissions")).toBe("permissions");
+    expect(usersTeamsSectionFromPath("/users-teams/activity-logs")).toBe("activity-logs");
+    expect(usersTeamsSectionFromPath("/users-teams/role-profiles/user-amina")).toBe("users");
+  });
+});

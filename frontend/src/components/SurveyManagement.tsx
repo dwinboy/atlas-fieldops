@@ -21,10 +21,12 @@ import {
   UploadCloud,
   UsersRound,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getNavigationItemByView } from "@/config/navigation";
 import { HelpHint } from "@/components/ui/help-hint";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import {
@@ -44,7 +46,7 @@ import {
   type XlsFormWorkbook,
 } from "@/lib/api";
 import { statusTone as canonicalStatusTone } from "@/lib/statusTones";
-import { useWorkspaceStore } from "@/stores/workspace";
+import { useWorkspaceStore, type WorkspaceView } from "@/stores/workspace";
 
 type SurveyManagementProps = {
   token: string | null;
@@ -60,6 +62,11 @@ type GovernanceRoleKey =
   | "correction_roles"
   | "upload_roles"
   | "export_roles";
+
+type SurveyNavigationAction = {
+  view: WorkspaceView;
+  route?: string;
+};
 
 const surveyTypes = [
   "baseline",
@@ -80,6 +87,12 @@ const surveyTypes = [
   "health_survey",
   "custom",
 ];
+
+export function surveyRouteForAction(
+  action: SurveyNavigationAction,
+): string | null {
+  return action.route ?? getNavigationItemByView(action.view)?.route ?? null;
+}
 
 const surveyRoleOptions: { role: string; label: string; description: string }[] = [
   { role: "survey_owner", label: "Survey Owner", description: "Owns survey settings, data rules, and final decisions." },
@@ -395,6 +408,8 @@ function buildExcelTemplateHtml(params: {
 
 export function SurveyManagement({ token }: SurveyManagementProps) {
   const isPreview = !token || token === "preview-token";
+  const pathname = usePathname();
+  const router = useRouter();
   const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
   const [selectedProjectId, setSelectedProjectId] = useState(previewProjects[0]?.id ?? "");
@@ -469,6 +484,15 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
     { id: "coverage", label: "Coverage", value: selectedSurvey?.geographic_scope ? "Set" : "Missing" },
     { id: "reports", label: "Reports", value: selectedSurvey?.status === "completed" ? "Ready" : "Draft" },
   ];
+
+  function openSurveyAction(action: SurveyNavigationAction): void {
+    const route = surveyRouteForAction(action);
+    if (route && route !== pathname) {
+      router.push(route);
+      return;
+    }
+    setActiveView(action.view);
+  }
 
   const projectOptions = useMemo(
     () => projects.map((project) => ({ id: project.id, label: project.name })),
@@ -699,7 +723,13 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
             <Plus aria-hidden="true" />
             {creatingSurvey ? "Close setup" : "New survey"}
           </Button>
-          <Button onClick={() => setActiveView("forms")} type="button" variant="primary">
+          <Button
+            onClick={() =>
+              openSurveyAction({ route: "/forms/create", view: "forms" })
+            }
+            type="button"
+            variant="primary"
+          >
             <ClipboardList aria-hidden="true" />
             Open form builder
           </Button>
@@ -925,7 +955,16 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 </p>
                 <Button
                   className="mt-4 w-full"
-                  onClick={() => setActiveView(selectedSurveyForms.length ? "submissions" : "forms")}
+                  onClick={() =>
+                    openSurveyAction(
+                      selectedSurveyForms.length
+                        ? {
+                            route: "/submissions/pending-review",
+                            view: "submissions",
+                          }
+                        : { route: "/forms/create", view: "forms" },
+                    )
+                  }
                   type="button"
                   variant="primary"
                 >
@@ -955,7 +994,13 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                   )}
                 </div>
               </div>
-              <Button onClick={() => setActiveView("forms")} type="button" variant="primary">
+              <Button
+                onClick={() =>
+                  openSurveyAction({ route: "/forms/create", view: "forms" })
+                }
+                type="button"
+                variant="primary"
+              >
                 <ClipboardList aria-hidden="true" />
                 Open form builder
               </Button>
@@ -1230,7 +1275,12 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                       />
                     </label>
                     <Button
-                      onClick={() => setActiveView("submissions")}
+                      onClick={() =>
+                        openSurveyAction({
+                          route: "/submissions/pending-review",
+                          view: "submissions",
+                        })
+                      }
                       type="button"
                       variant="primary"
                     >
@@ -1255,7 +1305,15 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 <h3 className="font-semibold">Survey team roles</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Assign only the people needed for this survey: owner, manager, supervisor, data quality officer, enumerator, and analyst.</p>
               </div>
-              <Button onClick={() => setActiveView("officers")} type="button">
+              <Button
+                onClick={() =>
+                  openSurveyAction({
+                    route: "/field-operations/field-officers",
+                    view: "officers",
+                  })
+                }
+                type="button"
+              >
                 <UsersRound aria-hidden="true" />
                 Manage team
               </Button>
@@ -1268,7 +1326,15 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 <h3 className="font-semibold">Data quality path</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Review GPS, duplicates, missing required fields, media evidence, and correction requests before survey results enter analytics.</p>
               </div>
-              <Button onClick={() => setActiveView("submissions")} type="button">
+              <Button
+                onClick={() =>
+                  openSurveyAction({
+                    route: "/submissions/pending-review",
+                    view: "submissions",
+                  })
+                }
+                type="button"
+              >
                 <FileCheck2 aria-hidden="true" />
                 Review data
               </Button>
@@ -1281,7 +1347,15 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 <h3 className="font-semibold">Coverage</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedSurvey?.geographic_scope || "Set geographic scope before field rollout so maps and coverage reports stay meaningful."}</p>
               </div>
-              <Button onClick={() => setActiveView("map")} type="button">
+              <Button
+                onClick={() =>
+                  openSurveyAction({
+                    route: "/mapping/coverage-maps",
+                    view: "map",
+                  })
+                }
+                type="button"
+              >
                 <MapPinned aria-hidden="true" />
                 Open map
               </Button>
@@ -1294,7 +1368,10 @@ export function SurveyManagement({ token }: SurveyManagementProps) {
                 <h3 className="font-semibold">Survey reports</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Prepare baseline, midline, endline, trend, comparison, and project impact reports only after survey data passes review.</p>
               </div>
-              <Button onClick={() => setActiveView("analytics")} type="button">
+              <Button
+                onClick={() => openSurveyAction({ view: "analytics" })}
+                type="button"
+              >
                 <BarChart3 aria-hidden="true" />
                 Open reports
               </Button>

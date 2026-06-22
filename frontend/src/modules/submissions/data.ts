@@ -113,6 +113,12 @@ export const submissionSections: {
   { id: "archived", label: "Archived", route: "/submissions/archived", description: "Read-only historical records retained for audit and compliance." },
 ];
 
+export function submissionSectionFromPath(pathname: string): SubmissionSection | null {
+  const path = pathname.replace(/\/+$/, "") || "/submissions";
+  const match = submissionSections.find((section) => section.route === path);
+  return match?.id ?? null;
+}
+
 export const submissionDetailTabs: SubmissionDetailTab[] = [
   "Overview",
   "Responses",

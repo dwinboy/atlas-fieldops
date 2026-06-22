@@ -95,6 +95,11 @@ export const governanceSections: {
   { id: "data-stewardship", label: "Data Stewardship", route: "/governance/data-stewardship", description: "Ownership and accountability for project, form, indicator, submission, and location data." },
 ];
 
+export function governanceSectionFromPath(pathname: string): GovernanceSection {
+  const match = governanceSections.find((section) => section.route !== "/governance" && pathname.startsWith(section.route));
+  return match?.id ?? "dashboard";
+}
+
 export const previewSummary: GovernanceSummary = {
   policies: 5,
   validation_rules: 8,

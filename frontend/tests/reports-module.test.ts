@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { reportWorkspaceBoundaryRoute } from "@/modules/reports/ReportsModule";
 import { previewDashboards, previewExportJobs, previewKpis, previewReports, previewScheduledReports } from "@/modules/reports/data";
 import {
   buildReportMetricsExport,
@@ -12,6 +13,12 @@ import {
 } from "@/modules/reports/utils";
 
 describe("Reports module helpers", () => {
+  it("routes boundary actions to the owning workspaces", () => {
+    expect(reportWorkspaceBoundaryRoute("indicators")).toBe("/indicators");
+    expect(reportWorkspaceBoundaryRoute("submissions")).toBe("/submissions");
+    expect(reportWorkspaceBoundaryRoute("governance")).toBe("/governance");
+  });
+
   it("computes the reporting hub metrics", () => {
     const summary = computeReportsSummary({
       dashboards: previewDashboards,

@@ -209,6 +209,17 @@ def test_organization_owner_can_manage_hierarchy_and_open_workforce_center() -> 
     assert "workforce" in menu_views_for_roles(["owner"])
 
 
+def test_me_manager_can_run_project_and_form_setup_workflows() -> None:
+    assert has_permission(["me_manager"], Permission.PROGRAM_CREATE)
+    assert has_permission(["me_manager"], Permission.PROGRAM_MANAGE)
+    assert has_permission(["me_manager"], Permission.FORM_CREATE)
+    assert has_permission(["me_manager"], Permission.FORM_EDIT)
+    assert has_permission(["me_manager"], Permission.FORM_PUBLISH)
+    assert has_permission(["me_manager"], Permission.SUBMISSION_REVIEW)
+    assert has_permission(["me_manager"], Permission.SUBMISSION_APPROVE)
+    assert has_permission(["me_manager"], Permission.SUBMISSION_REJECT)
+
+
 def test_role_scope_assignment_cannot_exceed_role_level() -> None:
     assert is_scope_allowed_for_role("me_manager", ScopeType.PROJECT)
     assert is_scope_allowed_for_role("me_manager", ScopeType.OWN)
@@ -542,6 +553,43 @@ async def test_auth_service_field_officer_token_can_use_mobile(monkeypatch: pyte
     assert "officers.view" in payload["permissions"]
     assert "forms.view" in payload["permissions"]
     assert "submissions.create" in payload["permissions"]
+
+
+async def test_auth_service_prefers_broadest_scope_across_stacked_roles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-with-at-least-32-characters")
+    password_hash = hash_password("correct horse battery staple")
+    assignment = SimpleNamespace(
+        id=uuid4(),
+        scope_type="own",
+        geography_id=None,
+        project_id=None,
+        organization_unit_id=None,
+        team_id=None,
+        is_active=True,
+    )
+    assignment_role = SimpleNamespace(name="field_officer", permissions="")
+    service = object.__new__(AuthService)
+    service.users = cast(
+        Any,
+        FakeUserRepository(
+            (
+                *build_identity(password_hash=password_hash, role_name="me_manager")[:5],
+                [(assignment, assignment_role)],
+            )
+        ),
+    )
+
+    token_response = await service.login(
+        email="user@example.com",
+        password="correct horse battery staple",
+        organization_slug="acme",
+    )
+
+    payload = decode_access_token(token_response.access_token)
+    assert set(payload["roles"]) == {"me_manager", "field_officer"}
+    assert payload["scope_type"] == "project"
 
 
 class FakeIdentityForUserCreation:

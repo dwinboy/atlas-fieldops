@@ -115,6 +115,34 @@ type MappingModuleProps = {
   token: string | null;
 };
 
+export function mappingWorkspaceRouteForTarget(
+  target: "beneficiaries" | "data-quality" | "field-operations" | "indicators" | "mapping" | "submissions",
+): string {
+  switch (target) {
+    case "beneficiaries":
+      return "/beneficiaries";
+    case "data-quality":
+      return "/data-quality";
+    case "field-operations":
+      return "/field-operations";
+    case "indicators":
+      return "/indicators";
+    case "submissions":
+      return "/submissions";
+    case "mapping":
+      return "/mapping";
+  }
+}
+
+export function mappingFeatureSourceRoute(feature: MapFeatureRecord): string {
+  if (feature.category === "Submission") return mappingWorkspaceRouteForTarget("submissions");
+  if (feature.category === "Beneficiary" || feature.category === "Facility") return mappingWorkspaceRouteForTarget("beneficiaries");
+  if (feature.category === "Quality") return mappingWorkspaceRouteForTarget("data-quality");
+  if (feature.category === "Indicator") return mappingWorkspaceRouteForTarget("indicators");
+  if (feature.category === "Assignment" || feature.category === "Field Officer") return mappingWorkspaceRouteForTarget("field-operations");
+  return mappingWorkspaceRouteForTarget("mapping");
+}
+
 type MapViewerProps = {
   activeSection: MappingSection;
   allFeatures: MapFeatureRecord[];
@@ -568,7 +596,6 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   const [assignmentDraft, setAssignmentDraft] = useState<MapAssignmentDraft | null>(null);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
   const preserveFeatureIdRef = useRef<string | null>(null);
-  const setActiveView = useWorkspaceStore((state) => state.setActiveView);
   const pendingMapFeatureId = useWorkspaceStore((state) => state.pendingMapFeatureId);
   const setPendingMapFeatureId = useWorkspaceStore((state) => state.setPendingMapFeatureId);
   const pushToast = useWorkspaceStore((state) => state.pushToast);
@@ -1219,12 +1246,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
   }
 
   function openFeatureSource(feature: MapFeatureRecord): void {
-    if (feature.category === "Submission") setActiveView("submissions");
-    else if (feature.category === "Beneficiary" || feature.category === "Facility") setActiveView("beneficiaries");
-    else if (feature.category === "Quality") setActiveView("dataQuality");
-    else if (feature.category === "Indicator") setActiveView("indicators");
-    else if (feature.category === "Assignment" || feature.category === "Field Officer") setActiveView("officers");
-    else setActiveView("map");
+    router.push(mappingFeatureSourceRoute(feature));
   }
 
   return (
@@ -1299,7 +1321,7 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
           latestSubmissionFeature={latestSubmissionFeature}
           onOpenQuality={() => setActiveSection("data-quality-maps")}
           onOpenSection={selectSection}
-          onOpenSubmissions={() => setActiveView("submissions")}
+          onOpenSubmissions={() => router.push(mappingWorkspaceRouteForTarget("submissions"))}
           preview={preview}
           summary={summary}
           terminology={terminology}
@@ -1360,9 +1382,9 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
             onDeleteDrawnBoundary={deleteDrawnBoundary}
             onExportDrawnBoundary={exportDrawnBoundary}
             onFeatureSelect={setSelectedFeature}
-            onOpenIndicators={() => setActiveView("indicators")}
+            onOpenIndicators={() => router.push(mappingWorkspaceRouteForTarget("indicators"))}
             projectDataCoverage={projectDataCoverage}
-            onOpenDataQuality={() => setActiveView("dataQuality")}
+            onOpenDataQuality={() => router.push(mappingWorkspaceRouteForTarget("data-quality"))}
             onViewProjectExtent={viewProjectExtentOnMap}
             preview={preview}
             privacyVisibility={privacyVisibility}

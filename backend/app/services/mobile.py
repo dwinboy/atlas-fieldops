@@ -71,6 +71,32 @@ def _as_dict(value: object) -> dict[str, Any]:
 def _as_list(value: object) -> list[Any]:
     return value if isinstance(value, list) else []
 
+
+def _normalize_submission_frequency(value: object) -> str:
+    if not isinstance(value, str):
+        return "unlimited"
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return {
+        "once": "once_ever",
+        "single": "once_ever",
+        "once_ever": "once_ever",
+        "per_project": "once_per_project",
+        "once_per_project": "once_per_project",
+        "yearly": "once_per_year",
+        "annual": "once_per_year",
+        "once_per_year": "once_per_year",
+        "seasonal": "once_per_season",
+        "once_per_season": "once_per_season",
+        "quarterly": "once_per_quarter",
+        "once_per_quarter": "once_per_quarter",
+        "monthly": "once_per_month",
+        "once_per_month": "once_per_month",
+        "per_event": "once_per_event",
+        "once_per_event": "once_per_event",
+        "unlimited": "unlimited",
+    }.get(normalized, "unlimited")
+ 
+
 def _form_status(value: str) -> str:
     return {
         "draft": "Draft",
@@ -656,7 +682,7 @@ def _polygon_question_ids(schema_json: dict[str, Any]) -> set[str]:
 def _entity_settings(controls_json: dict[str, Any]) -> dict[str, Any]:
     controls = controls_json or {}
     entity_controls = _as_dict(controls.get("entity_controls"))
-    frequency = str(entity_controls.get("submission_frequency") or "Unlimited")
+    frequency = _normalize_submission_frequency(entity_controls.get("submission_frequency") or "unlimited")
     frequency_map = {
         "once_ever": "OnceEverPerEntity",
         "once_per_project": "OncePerProjectPerEntity",
@@ -1545,6 +1571,8 @@ class MobileService:
             actor_user_id=UUID(principal.user_id),
             payload=submission_payload,
         )
+        submission.source_system = "Mobile"
+        submission.source_submission_id = payload.local_id
         await self._check_polygon_overlaps(
             organization_id=organization_id,
             submission=submission,

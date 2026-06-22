@@ -42,6 +42,14 @@ describe("api config", () => {
     expect(resolveApiBaseUrl("https://api.example.com")).toBe("https://api.example.com/api/v1");
   });
 
+  it("aligns localhost API URLs with the active local browser hostname", () => {
+    vi.stubGlobal("window", {
+      location: { hostname: "127.0.0.1" },
+    });
+
+    expect(resolveApiBaseUrl("http://localhost:8000/api/v1")).toBe("http://127.0.0.1:8000/api/v1");
+  });
+
   it("sends JSON login payloads", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ access_token: "abc", token_type: "bearer" })));
     vi.stubGlobal("fetch", fetchMock);
