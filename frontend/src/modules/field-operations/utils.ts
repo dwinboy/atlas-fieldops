@@ -178,3 +178,57 @@ export function toCsv(rows: Record<string, string | number | boolean | null | un
     ...rows.map((row) => headers.map((header) => escape(row[header])).join(",")),
   ].join("\n");
 }
+
+type AssignmentProjectOption = {
+  id: string;
+  name: string;
+  country?: string | null;
+  region?: string | null;
+};
+
+type AssignmentFormOption = {
+  id: string;
+  name: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  status?: string | null;
+};
+
+export function isPublishedFormStatus(status?: string | null): boolean {
+  return String(status ?? "").toLowerCase() === "published";
+}
+
+export function listAssignableProjects<TProject extends AssignmentProjectOption, TForm extends AssignmentFormOption>(
+  projects: TProject[],
+  forms: TForm[],
+): TProject[] {
+  const publishedForms = forms.filter((form) => isPublishedFormStatus(form.status));
+  const publishedProjectIds = new Set(
+    publishedForms
+      .map((form) => form.project_id)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const publishedProjectNames = new Set(
+    publishedForms
+      .map((form) => form.project_name)
+      .filter((value): value is string => Boolean(value)),
+  );
+  return projects.filter(
+    (project) =>
+      publishedProjectIds.has(project.id) || publishedProjectNames.has(project.name),
+  );
+}
+
+export function listAssignableForms<TProject extends Pick<AssignmentProjectOption, "id" | "name">, TForm extends AssignmentFormOption>(
+  forms: TForm[],
+  selectedProject?: TProject,
+): TForm[] {
+  return forms.filter((form) => {
+    if (!isPublishedFormStatus(form.status)) return false;
+    if (!selectedProject) return true;
+    return (
+      form.project_id === selectedProject.id ||
+      form.project_name === selectedProject.name
+    );
+  });
+}

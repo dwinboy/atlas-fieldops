@@ -111,13 +111,13 @@ export function formFillModel(database: LocalDatabase, draftLocalId: string): Fo
     return { title: form?.name ?? "Form draft", sectionTitle: "Form version missing", questionCount: 0, progressLabel: "0%", issues: [] };
   }
   const validation = new FormValidationService();
-  const progress = validation.progress(formVersion, draft);
+  const progress = validation.progress(formVersion, draft, database.referenceLists.list());
   return {
     title: form?.name ?? "Form draft",
     sectionTitle: formVersion.sections[0]?.title ?? "Questions",
     questionCount: progress.total,
     progressLabel: `${progress.percent}% complete`,
-    issues: validation.validateRequired(formVersion, draft),
+    issues: validation.validateRequired(formVersion, draft, database.referenceLists.list()),
   };
 }
 

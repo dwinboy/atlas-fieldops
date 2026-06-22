@@ -54,11 +54,48 @@ export function isCascadeBlocked(question: MobileQuestion, responses: Map<string
 }
 
 function parentCodeValue(value: unknown): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  if (Array.isArray(value)) return value.length > 0 ? String(value[0]) : null;
-  return String(value);
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const first = value.find((item) => String(item ?? "").trim().length > 0);
+    return first === undefined ? null : String(first).trim();
+  }
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function staticOptions(question: MobileQuestion): SimpleOption[] {
-  return question.options.map((option) => ({ id: option.id, label: option.label, value: option.value }));
+  if (question.options.length > 0) {
+    return question.options.map((option) => ({ id: option.id, label: option.label, value: option.value }));
+  }
+  return optionListFromUnknown(question.defaultValue, "options");
+}
+
+function optionListFromUnknown(
+  value: unknown,
+  fallbackKey: string,
+): SimpleOption[] {
+  const rawOptions = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && !Array.isArray(value)
+      ? Array.isArray((value as Record<string, unknown>).options)
+        ? (value as Record<string, unknown>).options as unknown[]
+        : []
+      : [];
+  return rawOptions.map((item, index) => {
+    if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+      const option = item as Record<string, unknown>;
+      const rawValue = option.value ?? option.id ?? option.name ?? option.label ?? `${fallbackKey}_${index + 1}`;
+      return {
+        id: String(option.id ?? rawValue),
+        label: String(option.label ?? option.name ?? option.text ?? rawValue),
+        value: String(rawValue),
+      };
+    }
+    const label = String(item || `${fallbackKey} ${index + 1}`);
+    return {
+      id: label,
+      label,
+      value: label,
+    };
+  });
 }

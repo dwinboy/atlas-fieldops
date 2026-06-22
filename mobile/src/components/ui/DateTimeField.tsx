@@ -64,17 +64,19 @@ export function DateTimeField({ mode, value, onChange }: DateTimeFieldProps) {
 
   return (
     <View style={{ gap: spacing.sm }}>
-      <Pressable style={styles.field} onPress={openPicker}>
-        <Icon size={18} color={colors.mutedForeground} />
-        <Text style={[styles.fieldText, !value ? styles.placeholder : null]}>
-          {value ? formatDisplay(value, mode) : placeholderFor(mode)}
-        </Text>
+      <View style={styles.field}>
+        <Pressable style={styles.fieldMain} onPress={openPicker}>
+          <Icon size={18} color={colors.mutedForeground} />
+          <Text style={[styles.fieldText, !value ? styles.placeholder : null]}>
+            {value ? formatDisplay(value, mode) : placeholderFor(mode)}
+          </Text>
+        </Pressable>
         {value ? (
-          <Pressable hitSlop={8} onPress={() => onChange("")}>
+          <Pressable hitSlop={8} onPress={() => onChange("")} style={styles.clearButton}>
             <X size={16} color={colors.mutedForeground} />
           </Pressable>
         ) : null}
-      </Pressable>
+      </View>
 
       <View style={styles.actionsRow}>
         <Pressable style={styles.actionButton} onPress={() => onChange(formatValue(new Date(), mode))}>
@@ -117,22 +119,46 @@ function pad2(value: number): string {
 }
 
 function parseValue(value: string, mode: DateTimeFieldMode): Date | null {
-  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
   if (mode === "time") {
-    const match = value.match(/^(\d{1,2}):(\d{2})$/);
+    const match = normalized.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
     if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!isValidTimeParts(hour, minute)) return null;
     const date = new Date();
-    date.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    date.setHours(hour, minute, 0, 0);
     return date;
   }
   if (mode === "date") {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/);
+    if (match) {
+      return buildStrictDate(Number(match[1]), Number(match[2]), Number(match[3]));
+    }
+    const slashMatch = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (!slashMatch) return null;
+    return buildStrictDate(Number(slashMatch[3]), Number(slashMatch[2]), Number(slashMatch[1]));
   }
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+  const isoMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z?$/);
+  if (isoMatch) {
+    return buildStrictDate(
+      Number(isoMatch[1]),
+      Number(isoMatch[2]),
+      Number(isoMatch[3]),
+      Number(isoMatch[4]),
+      Number(isoMatch[5]),
+    );
+  }
+  const slashMatch = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (!slashMatch) return null;
+  return buildStrictDate(
+    Number(slashMatch[3]),
+    Number(slashMatch[2]),
+    Number(slashMatch[1]),
+    Number(slashMatch[4]),
+    Number(slashMatch[5]),
+  );
 }
 
 function formatValue(date: Date, mode: DateTimeFieldMode): string {
@@ -171,27 +197,79 @@ function normalizeManualEntry(text: string, mode: DateTimeFieldMode): string {
 
   if (mode === "time") {
     const compact = normalized.match(/^(\d{1,2})(\d{2})$/);
-    if (compact) return `${pad2(Number(compact[1]))}:${compact[2]}`;
+    if (compact) {
+      const hour = Number(compact[1]);
+      const minute = Number(compact[2]);
+      if (isValidTimeParts(hour, minute)) {
+        return `${pad2(hour)}:${pad2(minute)}`;
+      }
+      return text;
+    }
     const withSeparator = normalized.match(/^(\d{1,2})[:.](\d{2})$/);
-    if (withSeparator) return `${pad2(Number(withSeparator[1]))}:${withSeparator[2]}`;
+    if (withSeparator) {
+      const hour = Number(withSeparator[1]);
+      const minute = Number(withSeparator[2]);
+      if (isValidTimeParts(hour, minute)) {
+        return `${pad2(hour)}:${pad2(minute)}`;
+      }
+      return text;
+    }
     return text;
   }
 
   const dateOnly = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (dateOnly) {
     const [, day, month, year] = dateOnly;
-    return `${year}-${pad2(Number(month))}-${pad2(Number(day))}`;
+    const normalizedDate = `${year}-${pad2(Number(month))}-${pad2(Number(day))}`;
+    return parseValue(normalizedDate, "date") ? normalizedDate : text;
   }
 
   if (mode === "datetime") {
     const dateWithTime = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})$/);
     if (dateWithTime) {
       const [, day, month, year, hour, minute] = dateWithTime;
-      return `${year}-${pad2(Number(month))}-${pad2(Number(day))} ${pad2(Number(hour))}:${minute}`;
+      const normalizedDateTime = `${year}-${pad2(Number(month))}-${pad2(Number(day))} ${pad2(Number(hour))}:${pad2(Number(minute))}`;
+      return parseValue(normalizedDateTime, "datetime") ? normalizedDateTime : text;
     }
   }
 
   return text;
+}
+
+function isValidTimeParts(hour: number, minute: number): boolean {
+  return Number.isInteger(hour) && Number.isInteger(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function buildStrictDate(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+): Date | null {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !isValidTimeParts(hour, minute) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute
+  ) {
+    return null;
+  }
+  return date;
 }
 
 const styles = StyleSheet.create({
@@ -221,9 +299,19 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     flexDirection: "row",
-    gap: spacing.sm,
     minHeight: 46,
     paddingHorizontal: spacing.md,
+  },
+  clearButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: spacing.sm,
+  },
+  fieldMain: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
   },
   fieldText: {
     ...typography.body,

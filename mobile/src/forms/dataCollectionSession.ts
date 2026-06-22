@@ -117,7 +117,10 @@ export class DataCollectionSessionService {
         throw new Error(permission.message ?? "This draft cannot be submitted under the current mobile rules.");
       }
     }
-    const issues = [...this.validation.validate(formVersion, draft), ...this.evaluateRiskIssues(draft, formVersion)];
+    const issues = [
+      ...this.validation.validate(formVersion, draft, this.database.referenceLists.list()),
+      ...this.evaluateRiskIssues(draft, formVersion),
+    ];
     if (issues.some((issue) => issue.severity === "Error")) {
       return { draft, issues, queued: false };
     }

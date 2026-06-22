@@ -132,6 +132,25 @@ def test_build_question_field_sends_integer_only_rule_to_mobile() -> None:
     assert "integerOnly:true" in {rule["value"] for rule in question["validationRules"] if rule["ruleType"] == "Custom"}
 
 
+def test_build_question_field_sends_block_false_consent_rule_to_mobile() -> None:
+    question = _build_question_field(
+        {
+            "id": "consent",
+            "label": "Consent captured",
+            "type": "consent",
+            "validation": {"blockIfFalse": True, "message": "Consent is required before continuing."},
+        },
+        field_id="consent",
+        section_id="main",
+        order=1,
+    )
+
+    rules = {rule["value"]: rule for rule in question["validationRules"] if rule["ruleType"] == "Custom"}
+
+    assert "blockIfFalse:true" in rules
+    assert rules["blockIfFalse:true"]["message"] == "Consent is required before continuing."
+
+
 def test_build_question_field_sends_media_rules_to_mobile() -> None:
     question = _build_question_field(
         {

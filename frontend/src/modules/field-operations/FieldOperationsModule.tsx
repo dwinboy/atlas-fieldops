@@ -113,6 +113,8 @@ import {
   deriveSupervisors,
   formatDate,
   formatTime,
+  listAssignableForms,
+  listAssignableProjects,
   priorityTone,
   progressPercent,
   statusTone,
@@ -1536,54 +1538,31 @@ export function FieldOperationsModule({
   });
   const projectOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          [
-            ...availableProjects.map((project) => project.name),
-            ...assignments.map((assignment) => assignment.project),
-            ...workPlans.map((plan) => plan.project),
-            ...targets.map((target) => target.project),
-          ].filter(Boolean),
-        ),
-      ),
-    [assignments, availableProjects, targets, workPlans],
+      listAssignableProjects(availableProjects, availableForms)
+        .map((project) => project.name)
+        .filter(Boolean),
+    [availableForms, availableProjects],
   );
   const formOptions = useMemo(
     () => {
       const selectedProject = availableProjects.find(
         (project) => project.name === assignmentDraft.project,
       );
-      return Array.from(
-        new Set(
-          [
-            ...availableForms
-              .filter((form) => {
-                const isPublished = String(form.status).toLowerCase() === "published";
-                const matchesProject =
-                  !selectedProject ||
-                  form.project_id === selectedProject.id ||
-                  form.project_name === selectedProject.name;
-                return isPublished && matchesProject;
-              })
-              .map((form) => form.name),
-            ...assignments.map((assignment) => assignment.form),
-          ].filter(Boolean),
-        ),
-      );
+      return listAssignableForms(availableForms, selectedProject)
+        .map((form) => form.name)
+        .filter(Boolean);
     },
-    [assignmentDraft.project, assignments, availableForms, availableProjects],
+    [assignmentDraft.project, availableForms, availableProjects],
   );
 
   const buildAssignmentDraft = useCallback(
     (preferredFormId?: string): Omit<FieldAssignment, "id" | "completedCount"> => {
       const preferredForm = preferredFormId
-        ? availableForms.find((form) => form.id === preferredFormId)
+        ? listAssignableForms(availableForms).find((form) => form.id === preferredFormId)
         : undefined;
       const latestForm =
         preferredForm ??
-        availableForms.find(
-          (form) => String(form.status).toLowerCase() === "published",
-        );
+        listAssignableForms(availableForms)[0];
       const latestProject = latestForm
         ? availableProjects.find(
             (project) =>
@@ -1612,6 +1591,41 @@ export function FieldOperationsModule({
     },
     [availableForms, availableProjects, formOptions, projectOptions, supervisors],
   );
+
+  useEffect(() => {
+    if (modalMode !== "assignment") return;
+    setAssignmentDraft((current) => {
+      const nextProjectName = projectOptions.includes(current.project)
+        ? current.project
+        : projectOptions[0] ?? "";
+      const nextProject = availableProjects.find(
+        (project) => project.name === nextProjectName,
+      );
+      const nextForms = listAssignableForms(availableForms, nextProject).map(
+        (form) => form.name,
+      );
+      const nextFormName = nextForms.includes(current.form)
+        ? current.form
+        : nextForms[0] ?? "";
+      const nextLocation =
+        nextProjectName !== current.project && nextProject
+          ? nextProject.region ?? nextProject.country ?? current.location
+          : current.location;
+      if (
+        nextProjectName === current.project &&
+        nextFormName === current.form &&
+        nextLocation === current.location
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        form: nextFormName,
+        location: nextLocation,
+        project: nextProjectName,
+      };
+    });
+  }, [availableForms, availableProjects, modalMode, projectOptions]);
 
   useEffect(() => {
     if (!requestedFormId || assignmentEditingId) return;
@@ -2354,12 +2368,9 @@ export function FieldOperationsModule({
     const selectedProject = availableProjects.find(
       (project) => project.name === assignmentDraft.project,
     );
-    const selectedForm = availableForms.find(
+    const selectedForm = listAssignableForms(availableForms, selectedProject).find(
       (form) =>
-        form.name === assignmentDraft.form &&
-        (!selectedProject ||
-          form.project_id === selectedProject.id ||
-          form.project_name === selectedProject.name),
+        form.name === assignmentDraft.form,
     );
     const selectedOfficers = officers.filter((officer) =>
       assignmentDraft.fieldOfficers.includes(officer.full_name),
@@ -2375,6 +2386,8 @@ export function FieldOperationsModule({
     }
     setAssignmentSaving(true);
     let assignmentId = `assignment-${Date.now()}`;
+    const deliveryErrors: string[] = [];
+    let deliveredOfficerCount = selectedOfficers.length;
     try {
       if (!preview && token && selectedProject && selectedForm) {
         const supervisorUser = (usersQuery.data ?? []).find(
@@ -2404,7 +2417,7 @@ export function FieldOperationsModule({
               ...workPayload,
             });
         assignmentId = savedWorkAssignment.id;
-        await Promise.all(
+        const deliveryResults = await Promise.allSettled(
           selectedOfficers.map((officer) =>
             createFieldOfficerAssignment(token, {
               officer_id: officer.id,
@@ -2415,6 +2428,16 @@ export function FieldOperationsModule({
             }),
           ),
         );
+        for (const [index, result] of deliveryResults.entries()) {
+          if (result.status === "fulfilled") continue;
+          const officerName = selectedOfficers[index]?.full_name ?? "Field officer";
+          const reason =
+            result.reason instanceof Error
+              ? result.reason.message
+              : "Mobile delivery failed.";
+          deliveryErrors.push(`${officerName}: ${reason}`);
+        }
+        deliveredOfficerCount = selectedOfficers.length - deliveryErrors.length;
         void workAssignmentsQuery.refetch();
       }
     } catch (error) {
@@ -2450,10 +2473,18 @@ export function FieldOperationsModule({
     setAssignmentEditingId(null);
     setModalMode(null);
     pushToast({
-      title: assignmentEditingId ? "Assignment updated" : "Assignment created",
+      title: deliveryErrors.length
+        ? assignmentEditingId
+          ? "Assignment updated with delivery issues"
+          : "Assignment created with delivery issues"
+        : assignmentEditingId
+          ? "Assignment updated"
+          : "Assignment created",
       description:
-        "Selected field officers will receive the published form on the next mobile sync.",
-      tone: "success",
+        deliveryErrors.length
+          ? `The assignment was saved. ${deliveredOfficerCount} of ${selectedOfficers.length} field officers received the mobile delivery. ${deliveryErrors.slice(0, 2).join(" ")}`
+          : "Selected field officers will receive the published form on the next mobile sync.",
+      tone: deliveryErrors.length ? "warning" : "success",
     });
     setAssignmentSaving(false);
   }
@@ -3540,6 +3571,9 @@ Password:          ${lastInviteCredentials.password}`}
                   <option value="">Create a project first</option>
                 )}
               </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Only projects with at least one published form can be assigned.
+              </p>
             </label>
             <label className="text-sm font-medium">
               Form
@@ -3563,6 +3597,9 @@ Password:          ${lastInviteCredentials.password}`}
                   <option value="">Create or publish a form first</option>
                 )}
               </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                This list updates to the published forms linked to the selected project.
+              </p>
             </label>
             <label className="text-sm font-medium">
               Supervisor

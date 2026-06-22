@@ -922,10 +922,11 @@ export function getCollectionCompatibility(form: DynamicForm) {
   const mediaFields = normalized.fields.filter((field) => mediaFieldTypes.includes(field.type));
   const hasRepeatGroups = fieldTypes.has("repeat_group");
   const hasGps = locationFieldTypes.some((fieldType) => fieldTypes.has(fieldType));
+  const hasCodeScan = fieldTypes.has("barcode") || fieldTypes.has("qr");
   return {
     offlineReady: true,
     xlsFormReady: normalized.fields.length > 0,
-    webFormReady: !fieldTypes.has("barcode"),
+    webFormReady: normalized.fields.length > 0,
     mobileAppReady: true,
     hasGps,
     hasRepeatGroups,
@@ -933,7 +934,8 @@ export function getCollectionCompatibility(form: DynamicForm) {
     warnings: [
       ...(normalized.fields.length === 0 ? ["Add at least one question before sharing or publishing."] : []),
       ...(mediaFields.length > 3 ? ["Large media-heavy forms need clear sync guidance for field officers."] : []),
-      ...(hasRepeatGroups ? ["Test repeat groups carefully before live mobile collection."] : [])
+      ...(hasRepeatGroups ? ["Test repeat groups carefully before live mobile collection."] : []),
+      ...(hasCodeScan ? ["Barcode and QR questions can still be collected on web with manual entry when camera scanning is unavailable."] : []),
     ]
   };
 }

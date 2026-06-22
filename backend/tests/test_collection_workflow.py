@@ -538,8 +538,41 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
     assert workbook.survey[[row.name for row in workbook.survey].index("member_photo")].type == "image"
     assert {choice.name for choice in workbook.choices} == {"healthy", "needs_support", "present", "absent"}
     assert compatibility.xlsform_ready is True
+    assert compatibility.web_form_ready is True
     assert compatibility.has_gps is True
     assert compatibility.media_field_count == 2
+
+
+def test_form_schema_compatibility_warns_for_barcode_manual_web_entry() -> None:
+    form_id = uuid4()
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Retail stock check",
+            "slug": "retail-stock-check",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {"id": "sku", "type": "barcode", "label": "SKU Barcode"},
+                            {"id": "shelf_qr", "type": "qr", "label": "Shelf QR"},
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    compatibility = form_schema_compatibility(form_id=form_id, version=1, schema=schema)
+
+    assert compatibility.web_form_ready is True
+    assert (
+        "Barcode and QR questions can still be collected on web with manual entry when camera scanning is unavailable."
+        in compatibility.warnings
+    )
 
 
 def test_validate_submission_payload_blocks_false_consent() -> None:
@@ -714,6 +747,45 @@ def test_validate_submission_payload_checks_required_matrix_rows_and_choices() -
     ]
 
 
+def test_validate_submission_payload_checks_grid_rows_and_choices() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Facility grid",
+            "slug": "facility-grid",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "service_grid",
+                                "type": "grid",
+                                "label": "Service Grid",
+                                "required": True,
+                                "matrix": {"rows": ["Power", "Water"], "columns": ["Available", "Missing"]},
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"service_grid": {"Power": "Broken"}},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Service Grid row Power must use approved matrix choices.",
+        "Service Grid row Water is required.",
+    ]
+
+
 def test_validate_submission_payload_applies_date_rules_only_when_configured() -> None:
     schema = DataFormCreate.model_validate(
         {
@@ -788,6 +860,36 @@ def test_validate_submission_payload_checks_integer_only_numbers() -> None:
     issues = validate_submission_payload(schema=schema, payload={"stock_count": "2.5"}, location_accuracy=None)
 
     assert issues == ["Stock Count must be a whole number."]
+
+
+def test_validate_submission_payload_checks_time_format() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Visit time",
+            "slug": "visit-time",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "visit_time",
+                                "type": "time",
+                                "label": "Visit Time",
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(schema=schema, payload={"visit_time": "25:75"}, location_accuracy=None)
+
+    assert issues == ["Visit Time must use 24-hour time such as 14:30."]
 
 
 def test_validate_submission_payload_checks_ranking_duplicates() -> None:

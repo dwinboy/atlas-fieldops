@@ -14,6 +14,7 @@ import { PolygonCapture } from "@/components/PolygonCapture";
 import { SignatureCapture, type SignatureResult } from "@/components/SignatureCapture";
 import { DateTimeField } from "@/components/ui";
 import type { FormValidationIssue } from "@/forms/formValidationService";
+import { evaluateQuestionLogicStates } from "@/forms/logicEngine";
 import { isCascadeBlocked, resolveQuestionOptions, type SimpleOption } from "@/forms/optionResolver";
 import type { GPSResult } from "@/hooks/useGPS";
 import type { PhotoResult } from "@/hooks/usePhotoCapture";
@@ -55,7 +56,7 @@ export function QuestionRenderer({
   allResponses,
   referenceLists,
 }: QuestionRendererProps) {
-  if (!visible) return null;
+  if (!visible || question.type === "Hidden") return null;
 
   const hasError = issues.some((i) => i.questionId === question.id && i.severity === "Error");
   const hasWarning = issues.some((i) => i.questionId === question.id && i.severity === "Warning");
@@ -92,7 +93,9 @@ export function QuestionRenderer({
       </View>
 
       {/* Input by type */}
-      {renderInput(question, value, answer, allResponses ?? new Map(), referenceLists ?? [])}
+      {question.readOnly && question.type !== "CalculatedField" && String(question.type) !== "Calculated"
+        ? renderReadOnlyValue(question, value)
+        : renderInput(question, value, answer, allResponses ?? new Map(), referenceLists ?? [])}
 
       {/* Validation messages */}
       {issues
@@ -184,27 +187,63 @@ function renderInput(
 
   // ── Consent ──────────────────────────────────────────────────────────────
   if (type === "Consent") {
+    const consentValue = value === true ? true : value === false ? false : null;
     return (
-      <Pressable
-        onPress={() => answer(value === true ? false : true)}
-        style={{
-          backgroundColor: value === true ? "#12332b" : "white",
-          borderColor: value === true ? "#12332b" : "#dbe7e2",
-          borderRadius: 12,
-          borderWidth: 1,
-          paddingVertical: 16,
-          paddingHorizontal: 20,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{
-          color: value === true ? "white" : "#12332b",
-          fontWeight: "800",
-          fontSize: 15,
-        }}>
-          {value === true ? "✓ Consent given" : "Tap to confirm consent"}
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {[
+            {
+              label: "Yes, consent given",
+              selected: consentValue === true,
+              activeBackground: "#12332b",
+              activeBorder: "#12332b",
+              activeText: "white",
+              inactiveText: "#12332b",
+              nextValue: consentValue === true ? null : true,
+            },
+            {
+              label: "No consent",
+              selected: consentValue === false,
+              activeBackground: "#fff1f2",
+              activeBorder: "#fda4af",
+              activeText: "#9f1239",
+              inactiveText: "#7f1d1d",
+              nextValue: consentValue === false ? null : false,
+            },
+          ].map((option) => (
+            <Pressable
+              key={option.label}
+              onPress={() => answer(option.nextValue)}
+              style={{
+                flex: 1,
+                backgroundColor: option.selected ? option.activeBackground : "white",
+                borderColor: option.selected ? option.activeBorder : "#dbe7e2",
+                borderRadius: 12,
+                borderWidth: 1,
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: option.selected ? option.activeText : option.inactiveText,
+                  fontWeight: "800",
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={{ color: "#6b7f77", fontSize: 12 }}>
+          {consentValue === null
+            ? "Choose whether consent was given before you continue."
+            : "Tap the selected option again to clear this answer."}
         </Text>
-      </Pressable>
+      </View>
     );
   }
 
@@ -219,6 +258,14 @@ function renderInput(
       );
     }
     const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
+    if (cascadeOptions.length === 0) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>No options available</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>This question does not have any approved choices right now. Sync again or ask your manager to update the form options.</Text>
+        </View>
+      );
+    }
     return (
       <View style={{ gap: 8 }}>
         {cascadeOptions.map((opt) => {
@@ -226,7 +273,7 @@ function renderInput(
           return (
             <Pressable
               key={opt.id}
-              onPress={() => answer(opt.value)}
+              onPress={() => answer(selected ? "" : opt.value)}
               style={{
                 borderColor: selected ? "#12332b" : "#dbe7e2",
                 borderRadius: 12,
@@ -271,6 +318,14 @@ function renderInput(
       );
     }
     const cascadeOptions = resolveQuestionOptions(question, allResponses, referenceLists);
+    if (cascadeOptions.length === 0) {
+      return (
+        <View style={emptySubCard}>
+          <Text style={{ color: "#49635a", fontWeight: "700" }}>No options available</Text>
+          <Text style={{ color: "#8aa79b", fontSize: 12 }}>This question does not have any approved choices right now. Sync again or ask your manager to update the form options.</Text>
+        </View>
+      );
+    }
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
       <View style={{ gap: 8 }}>
@@ -377,10 +432,9 @@ function renderInput(
   if (type === "Number" || type === "Decimal" || type === "Currency") {
     return (
       <TextInput
-        keyboardType="numeric"
+        keyboardType={numericKeyboardType(type)}
         onChangeText={(t) => {
-          const n = type === "Number" ? parseInt(t, 10) : parseFloat(t);
-          answer(Number.isNaN(n) ? t : n);
+          answer(coerceNumericInput(t, type));
         }}
         placeholder={type === "Currency" ? "0.00" : "0"}
         placeholderTextColor="#b0c5bc"
@@ -426,7 +480,7 @@ function renderInput(
 
   // ── Repeat group ─────────────────────────────────────────────────────────
   if (type === "RepeatGroup") {
-    return renderRepeatGroup(question, value, answer);
+    return renderRepeatGroup(question, value, answer, referenceLists);
   }
 
   // ── Matrix ───────────────────────────────────────────────────────────────
@@ -436,7 +490,7 @@ function renderInput(
 
   // ── Ranking ──────────────────────────────────────────────────────────────
   if (type === "Ranking") {
-    return renderRanking(question, value, answer);
+    return renderRanking(question, value, answer, allResponses, referenceLists);
   }
 
   // ── Rating (stars) ───────────────────────────────────────────────────────
@@ -467,7 +521,7 @@ function renderInput(
             return (
               <Pressable
                 key={score}
-                onPress={() => answer(score)}
+                onPress={() => answer(current === score ? null : score)}
                 style={{
                   alignItems: "center",
                   backgroundColor: selected ? "#12332b" : "white",
@@ -524,6 +578,23 @@ function textInputModeProps(inputMode: MobileQuestion["inputMode"]): {
     default:
       return {};
   }
+}
+
+function numericKeyboardType(type: MobileQuestionType): "number-pad" | "decimal-pad" {
+  return type === "Number" ? "number-pad" : "decimal-pad";
+}
+
+function coerceNumericInput(text: string, type: MobileQuestionType): string | number {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (type === "Number") {
+    return /^-?\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : text;
+  }
+
+  return /^-?(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmed) ? Number.parseFloat(trimmed) : text;
 }
 
 function QuestionControlHints({ question }: { question: MobileQuestion }) {
@@ -628,7 +699,64 @@ function renderEvidenceReference(
   );
 }
 
-function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
+function renderReadOnlyValue(question: MobileQuestion, value: unknown) {
+  return (
+    <View style={{
+      backgroundColor: "#f0f5f3",
+      borderColor: "#dbe7e2",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 14,
+      gap: 6,
+    }}>
+      <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700", textTransform: "uppercase" }}>
+        Read only
+      </Text>
+      <Text style={{ color: "#12332b", fontSize: 15, fontWeight: "700" }}>
+        {readOnlyDisplayValue(question, value)}
+      </Text>
+    </View>
+  );
+}
+
+function readOnlyDisplayValue(question: MobileQuestion, value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "No value";
+  }
+  if (question.type === "GPS" && isRecord(value)) {
+    const latitude = Number(value.latitude);
+    const longitude = Number(value.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    }
+  }
+  if (question.type === "Polygon" && isRecord(value) && Array.isArray(value.coordinates)) {
+    const ring = Array.isArray(value.coordinates[0]) ? value.coordinates[0] : [];
+    const vertexCount = Math.max(0, ring.length - 1);
+    return vertexCount > 0 ? `${vertexCount} boundary point(s) recorded` : "Boundary recorded";
+  }
+  if (["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) && isRecord(value)) {
+    const reference = value.reference ?? value.uri ?? value.localUri ?? value.fileName ?? value.name;
+    if (typeof reference === "string" && reference.trim().length > 0) {
+      return reference.trim();
+    }
+    return "Evidence captured";
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join(", ");
+  }
+  if (isRecord(value)) {
+    return Object.values(value).flatMap((item) => Array.isArray(item) ? item.map(String) : [String(item)]).join(", ");
+  }
+  return String(value);
+}
+
+function renderRepeatGroup(
+  question: MobileQuestion,
+  value: unknown,
+  answer: (v: unknown) => void,
+  referenceLists: MobileReferenceList[],
+) {
   const rows = asRecordArray(value);
   const fields = repeatFields(question);
   const maxRepeats = question.repeatSettings?.maxRepeats ?? null;
@@ -636,12 +764,18 @@ function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v:
   const canAdd = maxRepeats === null || rows.length < maxRepeats;
 
   function updateRow(rowIndex: number, fieldId: string, fieldValue: unknown) {
-    answer(rows.map((row, index) => index === rowIndex ? { ...row, [fieldId]: fieldValue } : row));
+    answer(
+      rows.map((row, index) =>
+        index === rowIndex
+          ? applyRepeatRowDerivedState(fields, { ...row, [fieldId]: fieldValue }, referenceLists)
+          : row,
+      ),
+    );
   }
 
   function addRow() {
     const blank = Object.fromEntries(fields.map((field) => [field.id, blankRepeatValue(field)]));
-    answer([...rows, blank]);
+    answer([...rows, applyRepeatRowDerivedState(fields, blank, referenceLists)]);
   }
 
   return (
@@ -658,6 +792,12 @@ function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v:
         </View>
       ) : rows.map((row, rowIndex) => (
         <View key={`row-${rowIndex + 1}`} style={repeatRowCard}>
+          {(() => {
+            const rowResponses = new Map(Object.entries(row));
+            const rowLogic = evaluateQuestionLogicStates(fields, rowResponses);
+            const visibleFields = fields.filter((field) => field.type !== "Hidden" && rowLogic[field.id]?.visible !== false);
+            return (
+              <>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ color: "#12332b", fontWeight: "800" }}>Row {rowIndex + 1}</Text>
             <Pressable
@@ -668,14 +808,23 @@ function renderRepeatGroup(question: MobileQuestion, value: unknown, answer: (v:
               <Text style={{ color: "#b42318", fontWeight: "700", fontSize: 12 }}>Remove</Text>
             </Pressable>
           </View>
-          {fields.map((field) => (
+          {visibleFields.map((field) => (
             <View key={field.id} style={{ gap: 4 }}>
               <Text style={{ color: "#49635a", fontSize: 12, fontWeight: "700" }}>
-                {field.label}{field.required ? " *" : ""}
+                {field.label}{rowLogic[field.id]?.required ? " *" : ""}
               </Text>
-              {renderRepeatFieldInput(field, row[field.id], (next) => updateRow(rowIndex, field.id, next))}
+              {renderRepeatFieldInput(
+                field,
+                row[field.id] ?? row[field.variableName],
+                (next) => updateRow(rowIndex, field.id, next),
+                row,
+                referenceLists,
+              )}
             </View>
           ))}
+              </>
+            );
+          })()}
         </View>
       ))}
       <Pressable
@@ -702,10 +851,11 @@ function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unkn
       const next = current.includes(columnValue)
         ? current.filter((item) => item !== columnValue)
         : [...current, columnValue];
-      answer({ ...matrix, [rowValue]: next });
+      answer(updateMatrixRowValue(matrix, rowValue, next.length > 0 ? next : undefined));
       return;
     }
-    answer({ ...matrix, [rowValue]: columnValue });
+    const current = String(matrix[rowValue] ?? "");
+    answer(updateMatrixRowValue(matrix, rowValue, current === columnValue ? undefined : columnValue));
   }
 
   return (
@@ -750,8 +900,43 @@ function renderMatrix(question: MobileQuestion, value: unknown, answer: (v: unkn
   );
 }
 
-function renderRanking(question: MobileQuestion, value: unknown, answer: (v: unknown) => void) {
-  const options = question.options.length ? question.options : optionListFromUnknown(question.defaultValue, "options");
+function updateMatrixRowValue(
+  matrix: Record<string, unknown>,
+  rowValue: string,
+  nextValue: unknown,
+): Record<string, unknown> {
+  if (nextValue === undefined) {
+    const nextMatrix = { ...matrix };
+    delete nextMatrix[rowValue];
+    return nextMatrix;
+  }
+  return { ...matrix, [rowValue]: nextValue };
+}
+
+function renderRanking(
+  question: MobileQuestion,
+  value: unknown,
+  answer: (v: unknown) => void,
+  allResponses: Map<string, unknown>,
+  referenceLists: MobileReferenceList[],
+) {
+  if (isCascadeBlocked(question, allResponses)) {
+    return (
+      <View style={emptySubCard}>
+        <Text style={{ color: "#49635a", fontWeight: "700" }}>Answer the related question above first</Text>
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>Ranking choices for this question depend on a previous answer.</Text>
+      </View>
+    );
+  }
+  const options = resolveQuestionOptions(question, allResponses, referenceLists);
+  if (options.length === 0) {
+    return (
+      <View style={emptySubCard}>
+        <Text style={{ color: "#49635a", fontWeight: "700" }}>No ranking choices available</Text>
+        <Text style={{ color: "#8aa79b", fontSize: 12 }}>This ranking question does not have any approved choices right now. Sync again or ask your manager to update the form options.</Text>
+      </View>
+    );
+  }
   const ranked = Array.isArray(value) ? value.map(String).filter((item) => options.some((option) => option.value === item)) : [];
   const remaining = options.filter((option) => !ranked.includes(option.value));
 
@@ -821,150 +1006,164 @@ function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
-function renderRepeatFieldInput(field: MobileQuestion, value: unknown, onChange: (v: unknown) => void) {
-  const { type } = field;
+function renderRepeatFieldInput(
+  field: MobileQuestion,
+  value: unknown,
+  onChange: (v: unknown) => void,
+  row: Record<string, unknown>,
+  referenceLists: MobileReferenceList[],
+) {
+  if (field.type === "Hidden") {
+    return null;
+  }
+  if (field.readOnly && field.type !== "CalculatedField" && String(field.type) !== "Calculated") {
+    return renderReadOnlyValue(field, value);
+  }
+  return renderInput(field, value, onChange, new Map(Object.entries(row)), referenceLists);
+}
 
-  if (type === "Number" || type === "Decimal" || type === "Currency") {
-    return (
-      <TextInput
-        keyboardType="numeric"
-        onChangeText={(t) => {
-          const n = type === "Number" ? parseInt(t, 10) : parseFloat(t);
-          onChange(Number.isNaN(n) ? t : n);
-        }}
-        placeholder={type === "Currency" ? "0.00" : "0"}
-        placeholderTextColor="#b0c5bc"
-        style={inputStyle}
-        value={String(value ?? "")}
-      />
-    );
+function applyRepeatRowDerivedState(
+  fields: MobileQuestion[],
+  row: Record<string, unknown>,
+  referenceLists: MobileReferenceList[],
+): Record<string, unknown> {
+  const nextRow = { ...row };
+  let updated = false;
+
+  while (true) {
+    const rowResponses = new Map(Object.entries(nextRow));
+    const rowLogic = evaluateQuestionLogicStates(fields, rowResponses);
+    let loopUpdated = false;
+
+    for (const field of fields) {
+      if (field.type === "CalculatedField" || String(field.type) === "Calculated") {
+        const calculated = rowLogic[field.id]?.calculatedValue ?? null;
+        const currentValue = nextRow[field.id] ?? nextRow[field.variableName];
+        if (calculated === null) {
+          if (hasRepeatFieldAnswer(currentValue, field.type)) {
+            setRepeatFieldValue(nextRow, field, blankRepeatValue(field));
+            loopUpdated = true;
+          }
+          continue;
+        }
+        if (currentValue !== calculated) {
+          setRepeatFieldValue(nextRow, field, calculated);
+          loopUpdated = true;
+        }
+        continue;
+      }
+
+      const currentValue = nextRow[field.id] ?? nextRow[field.variableName];
+      if (rowLogic[field.id]?.visible === false && hasRepeatFieldAnswer(currentValue, field.type)) {
+        setRepeatFieldValue(nextRow, field, blankRepeatValue(field));
+        loopUpdated = true;
+        continue;
+      }
+
+      if (!hasRepeatFieldAnswer(currentValue, field.type)) {
+        continue;
+      }
+
+      if (isCascadeBlocked(field, rowResponses)) {
+        setRepeatFieldValue(nextRow, field, blankRepeatValue(field));
+        loopUpdated = true;
+        continue;
+      }
+
+      const validOptions = resolveQuestionOptions(field, rowResponses, referenceLists);
+      if (!["SingleSelect", "Dropdown", "MultiSelect", "Ranking"].includes(field.type)) {
+        continue;
+      }
+      const validValues = new Set(validOptions.map((option) => option.value));
+      const stillValid = Array.isArray(currentValue)
+        ? currentValue.every((item) => validValues.has(String(item)))
+        : validValues.has(String(currentValue));
+      if (!stillValid) {
+        setRepeatFieldValue(nextRow, field, blankRepeatValue(field));
+        loopUpdated = true;
+      }
+    }
+
+    if (!loopUpdated) {
+      break;
+    }
+    updated = true;
   }
 
-  if (type === "LongText") {
-    return (
-      <TextInput
-        multiline
-        onChangeText={(t) => onChange(t)}
-        placeholder={`Enter ${field.label.toLowerCase()}`}
-        placeholderTextColor="#b0c5bc"
-        style={{ ...inputStyle, minHeight: 70, textAlignVertical: "top" }}
-        value={String(value ?? "")}
-      />
-    );
-  }
+  return updated ? nextRow : row;
+}
 
-  if (type === "Date" || type === "DateTime") {
-    return (
-      <DateTimeField
-        mode={type === "DateTime" ? "datetime" : "date"}
-        value={String(value ?? "")}
-        onChange={(next) => onChange(next)}
-      />
-    );
+function setRepeatFieldValue(row: Record<string, unknown>, field: MobileQuestion, value: unknown): void {
+  row[field.id] = value;
+  if (field.variableName && field.variableName !== field.id && field.variableName in row) {
+    row[field.variableName] = value;
   }
+}
 
-  if (type === "Time") {
-    return <DateTimeField mode="time" value={String(value ?? "")} onChange={(next) => onChange(next)} />;
+function hasRepeatFieldAnswer(value: unknown, questionType: MobileQuestion["type"]): boolean {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (questionType === "Matrix") {
+    return hasMeaningfulMatrixAnswers(value);
   }
-
-  if (type === "Consent") {
-    const checked = value === true;
-    return (
-      <Pressable
-        onPress={() => onChange(!checked)}
-        style={{
-          alignItems: "center",
-          backgroundColor: checked ? "#12332b" : "white",
-          borderColor: checked ? "#12332b" : "#dbe7e2",
-          borderRadius: 10,
-          borderWidth: 1,
-          paddingVertical: 10,
-        }}
-      >
-        <Text style={{ color: checked ? "white" : "#12332b", fontWeight: "700", fontSize: 13 }}>
-          {checked ? "✓ Yes" : "Tap to confirm"}
-        </Text>
-      </Pressable>
-    );
+  if (questionType === "GPS" && isRecord(value)) {
+    return Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude));
   }
-
-  if ((type === "SingleSelect" || type === "Dropdown" || type === "MultiSelect") && field.options.length > 0) {
-    const isMulti = type === "MultiSelect";
-    const selected = isMulti ? (Array.isArray(value) ? value.map(String) : []) : [String(value ?? "")];
-    return (
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-        {field.options.map((option) => {
-          const isSelected = selected.includes(option.value);
-          return (
-            <Pressable
-              key={option.id}
-              onPress={() => {
-                if (isMulti) {
-                  const next = isSelected
-                    ? selected.filter((item) => item !== option.value)
-                    : [...selected, option.value];
-                  onChange(next);
-                } else {
-                  onChange(option.value);
-                }
-              }}
-              style={{
-                backgroundColor: isSelected ? "#12332b" : "white",
-                borderColor: isSelected ? "#12332b" : "#dbe7e2",
-                borderRadius: 999,
-                borderWidth: 1,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-              }}
-            >
-              <Text style={{ color: isSelected ? "white" : "#12332b", fontSize: 12, fontWeight: "700" }}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
+  if (["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(questionType) && isRecord(value)) {
+    const reference = value.reference ?? value.uri ?? value.localUri;
+    return String(reference ?? "").trim().length > 0;
   }
+  return true;
+}
 
-  // ── Default: Text ─────────────────────────────────────────────────────────
-  return (
-    <TextInput
-      onChangeText={(t) => onChange(t)}
-      placeholder={`Enter ${field.label.toLowerCase()}`}
-      placeholderTextColor="#b0c5bc"
-      style={inputStyle}
-      value={String(value ?? "")}
-    />
-  );
+function hasMeaningfulMatrixAnswers(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).some((item) => {
+    if (item === null || item === undefined || item === "") {
+      return false;
+    }
+    if (Array.isArray(item)) {
+      return item.length > 0;
+    }
+    return true;
+  });
 }
 
 function blankRepeatValue(field: MobileQuestion): unknown {
-  if (field.type === "MultiSelect") return [];
-  if (field.type === "Consent") return false;
+  if (field.type === "MultiSelect" || field.type === "Ranking") return [];
+  if (field.type === "Matrix") return {};
+  if (field.type === "RepeatGroup") return [];
+  if (field.type === "Consent") return null;
+  if (
+    [
+      "GPS",
+      "Photo",
+      "Audio",
+      "Video",
+      "FileUpload",
+      "Signature",
+      "Barcode",
+      "QRCode",
+      "CalculatedField",
+      "Polygon",
+      "Hidden",
+    ].includes(field.type)
+  ) {
+    return null;
+  }
   return "";
 }
-
-const REPEAT_FIELD_TYPES = new Set<string>([
-  "Text",
-  "LongText",
-  "Number",
-  "Decimal",
-  "Currency",
-  "Date",
-  "Time",
-  "DateTime",
-  "SingleSelect",
-  "MultiSelect",
-  "Dropdown",
-  "Consent",
-]);
 
 function repeatFields(question: MobileQuestion): MobileQuestion[] {
   const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
   const rawFields = firstNonEmptyArray(metadata.fields, metadata.questions, metadata.children);
   if (rawFields.length > 0) {
     return rawFields.map((field, index) => normalizeRepeatField(field, question, index));
+  }
+  if (Array.isArray(question.defaultValue) && question.defaultValue.length > 0) {
+    return question.defaultValue.map((field, index) => normalizeRepeatField(field, question, index));
   }
   if (question.options.length > 0) {
     return question.options.map((option, index) => normalizeRepeatField(option, question, index));
@@ -980,7 +1179,14 @@ function firstNonEmptyArray(...lists: unknown[]): unknown[] {
 }
 
 function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: number): MobileQuestion {
-  if (isRecord(raw) && typeof raw.id === "string" && typeof raw.type === "string" && REPEAT_FIELD_TYPES.has(raw.type)) {
+  if (isRecord(raw) && typeof raw.id === "string" && typeof raw.type === "string") {
+    const referenceControls = isRecord(raw.referenceControls) ? raw.referenceControls : {};
+    const qualityControls = isRecord(raw.qualityControls) ? raw.qualityControls : {};
+    const privacyControls = isRecord(raw.privacyControls) ? raw.privacyControls : {};
+    const mobileControls = isRecord(raw.mobileControls) ? raw.mobileControls : {};
+    const governanceControls = isRecord(raw.governanceControls) ? raw.governanceControls : {};
+    const indicatorMapping = isRecord(raw.indicatorMapping) ? raw.indicatorMapping : {};
+    const beneficiaryMapping = isRecord(raw.beneficiaryMapping) ? raw.beneficiaryMapping : {};
     return {
       id: raw.id,
       sectionId: typeof raw.sectionId === "string" ? raw.sectionId : parent.id,
@@ -988,6 +1194,10 @@ function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: numbe
       label: String(raw.label ?? raw.id),
       helpText: typeof raw.helpText === "string" ? raw.helpText : null,
       type: raw.type as MobileQuestionType,
+      inputMode:
+        raw.inputMode === "phone" || raw.inputMode === "email" || raw.inputMode === "url"
+          ? raw.inputMode
+          : null,
       required: Boolean(raw.required),
       readOnly: Boolean(raw.readOnly),
       defaultValue: raw.defaultValue ?? null,
@@ -995,8 +1205,82 @@ function normalizeRepeatField(raw: unknown, parent: MobileQuestion, index: numbe
       validationRules: Array.isArray(raw.validationRules) ? (raw.validationRules as MobileValidationRule[]) : [],
       logicRules: Array.isArray(raw.logicRules) ? (raw.logicRules as MobileLogicRule[]) : [],
       referenceListId: typeof raw.referenceListId === "string" ? raw.referenceListId : null,
-      cascadingParentQuestionId: null,
+      cascadingParentQuestionId:
+        typeof raw.cascadingParentQuestionId === "string"
+          ? raw.cascadingParentQuestionId
+          : typeof referenceControls.parentQuestionId === "string"
+            ? referenceControls.parentQuestionId
+            : null,
       sensitive: Boolean(raw.sensitive),
+      metadataTags: Array.isArray(raw.metadataTags) ? raw.metadataTags.filter((tag): tag is string => typeof tag === "string") : undefined,
+      indicatorMapping: Object.keys(indicatorMapping).length > 0 ? {
+        indicatorId: typeof indicatorMapping.indicatorId === "string" ? indicatorMapping.indicatorId : null,
+        component: typeof indicatorMapping.component === "string" ? indicatorMapping.component : null,
+        unit: typeof indicatorMapping.unit === "string" ? indicatorMapping.unit : null,
+        reportingPeriod: typeof indicatorMapping.reportingPeriod === "string" ? indicatorMapping.reportingPeriod : null,
+        disaggregation: typeof indicatorMapping.disaggregation === "string" ? indicatorMapping.disaggregation : null,
+        donorTag: typeof indicatorMapping.donorTag === "string" ? indicatorMapping.donorTag : null,
+      } : undefined,
+      beneficiaryMapping: Object.keys(beneficiaryMapping).length > 0 ? {
+        profileImpact: typeof beneficiaryMapping.profileImpact === "string" ? beneficiaryMapping.profileImpact : null,
+        beneficiaryField: typeof beneficiaryMapping.beneficiaryField === "string" ? beneficiaryMapping.beneficiaryField : null,
+        profileUpdateRule: typeof beneficiaryMapping.profileUpdateRule === "string" ? beneficiaryMapping.profileUpdateRule : null,
+        duplicateKey: Boolean(beneficiaryMapping.duplicateKey),
+        sourceOfTruth: Boolean(beneficiaryMapping.sourceOfTruth),
+        lineageRequired: Boolean(beneficiaryMapping.lineageRequired),
+      } : undefined,
+      referenceControls: Object.keys(referenceControls).length > 0 ? {
+        referenceListId: typeof referenceControls.referenceListId === "string" ? referenceControls.referenceListId : null,
+        parentQuestionId: typeof referenceControls.parentQuestionId === "string" ? referenceControls.parentQuestionId : null,
+        newReferencePolicy: typeof referenceControls.newReferencePolicy === "string" ? referenceControls.newReferencePolicy : null,
+        offlineRequired: Boolean(referenceControls.offlineRequired),
+        searchable: Boolean(referenceControls.searchable),
+        versionLocked: Boolean(referenceControls.versionLocked),
+      } : undefined,
+      qualityControls: Object.keys(qualityControls).length > 0 ? {
+        captureTimestamp: Boolean(qualityControls.captureTimestamp),
+        captureGps: Boolean(qualityControls.captureGps),
+        photoEvidence: Boolean(qualityControls.photoEvidence),
+        backCheckCandidate: Boolean(qualityControls.backCheckCandidate),
+        staticGpsWarning: Boolean(qualityControls.staticGpsWarning),
+        fastInterviewWarning: Boolean(qualityControls.fastInterviewWarning),
+        minimumSeconds:
+          typeof qualityControls.minimumSeconds === "string" || typeof qualityControls.minimumSeconds === "number"
+            ? qualityControls.minimumSeconds
+            : null,
+        integrityAction: typeof qualityControls.integrityAction === "string" ? qualityControls.integrityAction : null,
+      } : undefined,
+      privacyControls: Object.keys(privacyControls).length > 0 ? {
+        sensitivity: typeof privacyControls.sensitivity === "string" ? privacyControls.sensitivity : null,
+        consentField: typeof privacyControls.consentField === "string" ? privacyControls.consentField : null,
+        maskOnScreen: Boolean(privacyControls.maskOnScreen),
+        maskOnExport: Boolean(privacyControls.maskOnExport),
+        encryptAtRest: Boolean(privacyControls.encryptAtRest),
+        hideAfterSubmit: Boolean(privacyControls.hideAfterSubmit),
+        screenshotRestricted: Boolean(privacyControls.screenshotRestricted),
+        consentRequired: Boolean(privacyControls.consentRequired),
+      } : undefined,
+      mobileControls: Object.keys(mobileControls).length > 0 ? {
+        displayMode: typeof mobileControls.displayMode === "string" ? mobileControls.displayMode : null,
+        blockedHelp: typeof mobileControls.blockedHelp === "string" ? mobileControls.blockedHelp : null,
+        offlineCompatible: Boolean(mobileControls.offlineCompatible),
+        lowBandwidth: Boolean(mobileControls.lowBandwidth),
+        prefillAllowed: Boolean(mobileControls.prefillAllowed),
+        saveDraftAfterAnswer: Boolean(mobileControls.saveDraftAfterAnswer),
+        reviewBeforeSubmit: Boolean(mobileControls.reviewBeforeSubmit),
+        syncPriority: Boolean(mobileControls.syncPriority),
+      } : undefined,
+      governanceControls: Object.keys(governanceControls).length > 0 ? {
+        editRule: typeof governanceControls.editRule === "string" ? governanceControls.editRule : null,
+        reviewerRole: typeof governanceControls.reviewerRole === "string" ? governanceControls.reviewerRole : null,
+        auditLabel: typeof governanceControls.auditLabel === "string" ? governanceControls.auditLabel : null,
+        changeReasonRequired: Boolean(governanceControls.changeReasonRequired),
+        approvedDataLock: Boolean(governanceControls.approvedDataLock),
+        reviewerCommentRequired: Boolean(governanceControls.reviewerCommentRequired),
+        includeInDataFreeze: Boolean(governanceControls.includeInDataFreeze),
+        qualityFlagVisible: Boolean(governanceControls.qualityFlagVisible),
+        sourceLineageVisible: Boolean(governanceControls.sourceLineageVisible),
+      } : undefined,
       repeatSettings: null,
       order: typeof raw.order === "number" ? raw.order : index + 1,
     };

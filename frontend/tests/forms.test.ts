@@ -398,6 +398,20 @@ describe("dynamic form helpers", () => {
     expect(compatibility.mediaCount).toBe(1);
   });
 
+  it("keeps barcode and qr forms web ready while warning about manual entry fallback", () => {
+    const form = addField(
+      addField(baseForm, createField("barcode", "main")),
+      createField("qr", "main"),
+    );
+
+    const compatibility = getCollectionCompatibility(form);
+
+    expect(compatibility.webFormReady).toBe(true);
+    expect(compatibility.warnings).toContain(
+      "Barcode and QR questions can still be collected on web with manual entry when camera scanning is unavailable.",
+    );
+  });
+
   it("supports enterprise survey field types in exports", () => {
     const form = addField(addField(baseForm, createField("matrix_single", "main")), createField("geofence", "main"));
     const workbook = toXlsFormWorkbook(form);

@@ -70,13 +70,13 @@ export default function FormFillScreen() {
   const allIssues: FormValidationIssue[] = useMemo(
     () =>
       draft && formVersion && (submitAttempted || reviewMode)
-        ? [...validationService.validate(formVersion, draft), ...dataCollection.evaluateRiskIssues(draft, formVersion)]
+        ? [...validationService.validate(formVersion, draft, localDatabase.referenceLists.list()), ...dataCollection.evaluateRiskIssues(draft, formVersion)]
         : [],
     [draft, formVersion, submitAttempted, reviewMode, refreshKey],
   );
 
   const progress = useMemo(
-    () => (draft && formVersion ? validationService.progress(formVersion, draft) : { answered: 0, total: 0, percent: 0 }),
+    () => (draft && formVersion ? validationService.progress(formVersion, draft, localDatabase.referenceLists.list()) : { answered: 0, total: 0, percent: 0 }),
     [draft, formVersion, refreshKey],
   );
 
@@ -131,8 +131,13 @@ export default function FormFillScreen() {
     for (const question of allQuestions) {
       if (question.type !== "CalculatedField" && String(question.type) !== "Calculated") continue;
       const calculated = logicState[question.id]?.calculatedValue ?? null;
-      if (calculated === null) continue;
       const current = draft.responses.find((r) => r.questionId === question.id)?.value;
+      if (calculated === null) {
+        if (!hasStoredAnswer(current, question.type)) continue;
+        dataCollection.answerQuestion(draftId, question.id, question.variableName, null);
+        didUpdate = true;
+        continue;
+      }
       if (calculated !== current) {
         dataCollection.answerQuestion(draftId, question.id, question.variableName, calculated);
         didUpdate = true;
@@ -145,14 +150,15 @@ export default function FormFillScreen() {
 
   function handleAnswer(questionId: string, variableName: string, value: unknown) {
     if (!draftId) return;
-    const updated = dataCollection.answerQuestion(draftId, questionId, variableName, value);
-    clearInvalidatedCascades(updated, questionId);
+    let updated = dataCollection.answerQuestion(draftId, questionId, variableName, value);
+    updated = clearInvalidatedCascades(updated, questionId);
+    updated = clearHiddenLogicAnswers(updated);
     setReviewMode(false);
     setRefreshKey((k) => k + 1);
   }
 
-  function clearInvalidatedCascades(draftState: MobileSubmission, changedQuestionId: string): void {
-    if (!draftId) return;
+  function clearInvalidatedCascades(draftState: MobileSubmission, changedQuestionId: string): MobileSubmission {
+    if (!draftId) return draftState;
     let current = draftState;
     let queue = [changedQuestionId];
 
@@ -164,9 +170,14 @@ export default function FormFillScreen() {
         const children = allQuestions.filter((q) => q.cascadingParentQuestionId === parentId);
         for (const child of children) {
           const childValue = responses.get(child.id);
-          if (childValue === undefined || childValue === null || childValue === "") continue;
+          if (!hasStoredAnswer(childValue, child.type)) continue;
           if (isCascadeBlocked(child, responses)) {
-            current = dataCollection.answerQuestion(draftId, child.id, child.variableName, "");
+            current = dataCollection.answerQuestion(
+              draftId,
+              child.id,
+              child.variableName,
+              emptyValueForQuestion(child.type),
+            );
             nextQueue.push(child.id);
             continue;
           }
@@ -176,13 +187,47 @@ export default function FormFillScreen() {
             ? childValue.every((item) => validValues.has(String(item)))
             : validValues.has(String(childValue));
           if (!stillValid) {
-            current = dataCollection.answerQuestion(draftId, child.id, child.variableName, "");
+            current = dataCollection.answerQuestion(
+              draftId,
+              child.id,
+              child.variableName,
+              emptyValueForQuestion(child.type),
+            );
             nextQueue.push(child.id);
           }
         }
       }
 
       queue = nextQueue;
+    }
+
+    return current;
+  }
+
+  function clearHiddenLogicAnswers(draftState: MobileSubmission): MobileSubmission {
+    if (!draftId || !formVersion) return draftState;
+    let current = draftState;
+
+    while (true) {
+      const hiddenQuestion = allQuestions.find((question) => {
+        if (question.type === "Hidden") return false;
+        const state = logicEngine.evaluate(formVersion, current)[question.id];
+        if (state?.visible !== false) return false;
+        const response = current.responses.find((item) => item.questionId === question.id);
+        return response !== undefined && hasStoredAnswer(response.value, question.type);
+      });
+
+      if (!hiddenQuestion) {
+        return current;
+      }
+
+      current = dataCollection.answerQuestion(
+        draftId,
+        hiddenQuestion.id,
+        hiddenQuestion.variableName,
+        emptyValueForQuestion(hiddenQuestion.type),
+      );
+      current = clearInvalidatedCascades(current, hiddenQuestion.id);
     }
   }
 
@@ -524,12 +569,13 @@ function buildReviewSummary(
 ) {
   const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
   const questions = formVersion.sections.flatMap((section) => section.questions);
-  const gpsQuestions = questions.filter((question) => question.type === "GPS" || question.qualityControls?.captureGps);
-  const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
-  const gpsCaptured = gpsQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
-  const mediaCaptured = mediaQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
-  const requiredGps = gpsQuestions.filter((question) => question.required || question.qualityControls?.captureGps).length;
-  const requiredMedia = mediaQuestions.filter((question) => question.required || question.qualityControls?.photoEvidence).length;
+  const questionValues = expandQuestionValues(questions, responses);
+  const gpsQuestions = questionValues.filter(({ question }) => question.type === "GPS" || question.qualityControls?.captureGps);
+  const mediaQuestions = questionValues.filter(({ question }) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
+  const gpsCaptured = gpsQuestions.filter(({ question, value }) => hasAnswer(value, question.type)).length;
+  const mediaCaptured = mediaQuestions.filter(({ question, value }) => hasAnswer(value, question.type)).length;
+  const requiredGps = gpsQuestions.filter(({ question }) => question.required || question.qualityControls?.captureGps).length;
+  const requiredMedia = mediaQuestions.filter(({ question }) => question.required || question.qualityControls?.photoEvidence).length;
   const errorCount = issues.filter((issue) => issue.severity === "Error").length;
   const warningCount = issues.filter((issue) => issue.severity === "Warning").length;
 
@@ -554,12 +600,12 @@ function buildReviewSummary(
       {
         label: "GPS evidence",
         value: gpsQuestions.length ? `${gpsCaptured} of ${gpsQuestions.length} GPS answer(s)` : "Not required",
-        tone: gpsQuestions.length && gpsCaptured < requiredGps ? "bad" as const : "ok" as const,
+        tone: gpsQuestions.length > 0 && gpsCaptured < requiredGps ? "bad" as const : "ok" as const,
       },
       {
         label: "Media evidence",
         value: mediaQuestions.length ? `${mediaCaptured} of ${mediaQuestions.length} evidence answer(s)` : "Not required",
-        tone: mediaQuestions.length && mediaCaptured < requiredMedia ? "bad" as const : "ok" as const,
+        tone: mediaQuestions.length > 0 && mediaCaptured < requiredMedia ? "bad" as const : "ok" as const,
       },
       {
         label: "Validation",
@@ -576,17 +622,111 @@ function buildReviewSummary(
 }
 
 function hasAnswer(value: unknown, questionType: MobileQuestion["type"]): boolean {
-  if (value === null || value === undefined || value === "") return false;
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return false;
   if (Array.isArray(value)) return value.length > 0;
   if (questionType === "GPS" && typeof value === "object") {
     const gps = value as { latitude?: unknown; longitude?: unknown };
     return Number.isFinite(Number(gps.latitude)) && Number.isFinite(Number(gps.longitude));
   }
-  if (["Audio", "FileUpload", "Signature"].includes(questionType) && typeof value === "object") {
+  if (questionType === "Matrix") {
+    return hasMeaningfulMatrixAnswers(value);
+  }
+  if (["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(questionType) && typeof value === "object") {
     const evidence = value as { reference?: unknown; uri?: unknown; localUri?: unknown };
     return String(evidence.reference ?? evidence.uri ?? evidence.localUri ?? "").trim().length > 0;
   }
   return true;
+}
+
+function hasStoredAnswer(value: unknown, questionType: MobileQuestion["type"]): boolean {
+  if (questionType === "Matrix") {
+    return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+  }
+  if (questionType === "Consent") {
+    return value === true || value === false;
+  }
+  return hasAnswer(value, questionType);
+}
+
+function emptyValueForQuestion(questionType: MobileQuestion["type"]): unknown {
+  switch (questionType) {
+    case "MultiSelect":
+    case "Ranking":
+    case "RepeatGroup":
+      return [];
+    case "Matrix":
+      return {};
+    case "Consent":
+    case "GPS":
+    case "Photo":
+    case "Audio":
+    case "Video":
+    case "FileUpload":
+    case "Signature":
+    case "Barcode":
+    case "QRCode":
+    case "CalculatedField":
+    case "Polygon":
+      return null;
+    default:
+      return "";
+  }
+}
+
+function hasMeaningfulMatrixAnswers(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).some((item) => {
+    if (item === null || item === undefined || item === "") {
+      return false;
+    }
+    if (Array.isArray(item)) {
+      return item.length > 0;
+    }
+    return true;
+  });
+}
+
+function expandQuestionValues(
+  questions: MobileQuestion[],
+  responses: Map<string, unknown>,
+): Array<{ question: MobileQuestion; value: unknown }> {
+  const expanded: Array<{ question: MobileQuestion; value: unknown }> = [];
+
+  for (const question of questions) {
+    const value = responses.get(question.id);
+    expanded.push({ question, value });
+    if (question.type !== "RepeatGroup") {
+      continue;
+    }
+    const rows = Array.isArray(value) ? value.filter((row): row is Record<string, unknown> => typeof row === "object" && row !== null && !Array.isArray(row)) : [];
+    const children = repeatGroupFields(question);
+    for (const row of rows) {
+      expanded.push(...expandQuestionValues(children, new Map(Object.entries(row))));
+    }
+  }
+
+  return expanded;
+}
+
+function repeatGroupFields(question: MobileQuestion): MobileQuestion[] {
+  if (Array.isArray(question.defaultValue) && question.defaultValue.length > 0) {
+    return question.defaultValue.filter(
+      (field): field is MobileQuestion =>
+        typeof field === "object" && field !== null && !Array.isArray(field) && typeof field.id === "string" && typeof field.type === "string",
+    );
+  }
+  const metadata =
+    question.defaultValue && typeof question.defaultValue === "object" && !Array.isArray(question.defaultValue)
+      ? question.defaultValue as Record<string, unknown>
+      : {};
+  const rawFields =
+    Array.isArray(metadata.fields) ? metadata.fields
+      : Array.isArray(metadata.questions) ? metadata.questions
+        : Array.isArray(metadata.children) ? metadata.children
+          : [];
+  return rawFields.filter((field): field is MobileQuestion => typeof field === "object" && field !== null && !Array.isArray(field) && typeof field.id === "string" && typeof field.type === "string");
 }
 
 function formatRelativeSave(iso: string): string {

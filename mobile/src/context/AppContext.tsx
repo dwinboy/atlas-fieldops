@@ -5,9 +5,8 @@ import { AuthService } from "@/auth/authService";
 import { ExpoSecureSessionStore } from "@/auth/expoSecureSessionStore.native";
 import type { MobileSession } from "@/auth/sessionStore";
 import { localDatabase } from "@/storage/localDatabase";
-import { BootstrapSyncService } from "@/sync/bootstrapSyncService";
 import { NetworkStatusService } from "@/sync/networkStatus";
-import { SyncEngine } from "@/sync/syncEngine";
+import { SyncEngine, type SyncMode } from "@/sync/syncEngine";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,9 +76,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  async function runSyncQueue() {
+  async function runSyncQueue(options?: {
+    mode?: SyncMode;
+    initialMessage?: string;
+    silent?: boolean;
+  }) {
     if (isSyncing) return;
     setIsSyncing(true);
+    if (options?.initialMessage) {
+      setLastSyncMessage(options.initialMessage);
+    }
     try {
       const engine = new SyncEngine(localDatabase, networkService, async () => {
         const current = await authService.currentSession();
@@ -88,13 +94,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
         return current?.accessToken ?? null;
       });
-      const result = await engine.syncNow("Automatic");
-      if (result.synced > 0 || result.failed > 0) {
-        setLastSyncMessage(result.message);
-        refresh();
+      const result = await engine.syncNow(options?.mode ?? "Automatic");
+      setLastSyncMessage(result.message);
+      refresh();
+      return result;
+    } catch (err) {
+      if (!options?.silent) {
+        setLastSyncMessage(err instanceof Error ? err.message : "Sync failed. Check your connection.");
       }
-    } catch {
-      // silent — background sync should not surface errors directly
+      return null;
     } finally {
       setIsSyncing(false);
     }
@@ -102,28 +110,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const syncWork = useCallback(async () => {
     if (!session?.accessToken) return;
-    setIsSyncing(true);
-    setLastSyncMessage("Syncing assigned work…");
-    try {
-      const svc = new BootstrapSyncService(localDatabase);
-      const pkg = await svc.syncAssignedWork(session.accessToken);
-      setSession({ ...session, bootstrap: pkg.bootstrap });
-      setLastSyncMessage(
-        `Sync complete: ${pkg.assignments.length} assignment(s), ${pkg.forms.length} form(s), ${pkg.entities.length} entity record(s), ${pkg.entityCategories.length} category setup(s).`,
-      );
-      refresh();
-    } catch (err) {
-      setLastSyncMessage(err instanceof Error ? err.message : "Sync failed. Check your connection.");
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [session, refresh]);
+    await runSyncQueue({
+      mode: "Manual",
+      initialMessage: "Syncing assigned work and uploading queued submissions…",
+    });
+  }, [session, isSyncing]);
 
   const syncQueue = useCallback(async () => {
     if (!session?.accessToken) return;
-    await runSyncQueue();
-    setLastSyncMessage(lastSyncMessage || "Queue sync complete.");
-  }, [session, lastSyncMessage]);
+    await runSyncQueue({
+      mode: "Manual",
+      initialMessage: "Uploading queued submissions and refreshing mobile data…",
+    });
+  }, [session, isSyncing]);
 
   const logout = useCallback(async () => {
     await authService.logout();

@@ -12,6 +12,8 @@ import {
 } from "@/modules/field-operations/data";
 import {
   computeFieldOperationsSummary,
+  listAssignableForms,
+  listAssignableProjects,
   priorityTone,
   progressPercent,
   statusTone,
@@ -63,5 +65,30 @@ describe("Field Operations module helpers", () => {
     expect(fieldOperationsSectionFromPath("/field-operations/assignments")).toBe("assignments");
     expect(fieldOperationsSectionFromPath("/field-operations/field-officers")).toBe("field-officers");
     expect(fieldOperationsSectionFromPath("/field-operations/operational-activities")).toBe("visit-requests");
+  });
+
+  it("only exposes projects that already have published forms ready for assignment", () => {
+    const projects = [
+      { id: "project-1", name: "Retail rollout", region: "North", country: "Cameroon" },
+      { id: "project-2", name: "Inactive setup", region: "South", country: "Cameroon" },
+    ];
+    const forms = [
+      { id: "form-1", name: "Store audit", project_id: "project-1", project_name: "Retail rollout", status: "published" },
+      { id: "form-2", name: "Draft only", project_id: "project-2", project_name: "Inactive setup", status: "draft" },
+    ];
+
+    expect(listAssignableProjects(projects, forms)).toEqual([projects[0]]);
+  });
+
+  it("only exposes published forms for the selected project", () => {
+    const selectedProject = { id: "project-1", name: "Retail rollout" };
+    const forms = [
+      { id: "form-1", name: "Store audit", project_id: "project-1", project_name: "Retail rollout", status: "published" },
+      { id: "form-2", name: "Stock count", project_id: "project-1", project_name: "Retail rollout", status: "published" },
+      { id: "form-3", name: "Supplier check", project_id: "project-2", project_name: "Distribution", status: "published" },
+      { id: "form-4", name: "Draft checklist", project_id: "project-1", project_name: "Retail rollout", status: "draft" },
+    ];
+
+    expect(listAssignableForms(forms, selectedProject)).toEqual([forms[0], forms[1]]);
   });
 });

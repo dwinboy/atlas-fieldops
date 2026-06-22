@@ -92,14 +92,14 @@ export default function SyncScreen() {
           <SectionHeader title="Upload submissions" />
           <View style={{ gap: spacing.sm }}>
             <ActionRow
-              label="Sync assigned work"
-              sub="Download latest assignments, forms, and entity records"
+              label="Full sync"
+              sub="Upload queued submissions and download the latest assignments, forms, and entity records"
               onPress={syncWork}
               loading={isSyncing}
               icon={Download}
             />
             <ActionRow
-              label="Upload queued submissions"
+              label="Retry queued uploads"
               sub={`${pending} pending · ${failed} failed`}
               onPress={syncQueue}
               loading={isSyncing}

@@ -18,20 +18,22 @@ export class FieldIntegrityService {
   ): MobileCollectionIntegrity {
     const questions = formVersion.sections.flatMap((section) => section.questions);
     const responses = new Map(draft.responses.map((response) => [response.questionId, response.value]));
+    const questionValues = expandQuestionValues(questions, responses);
     const startedAtMs = new Date(draft.createdAt).getTime();
     const reviewedAtMs = new Date(reviewedAt).getTime();
     const durationSeconds = Number.isFinite(startedAtMs) && Number.isFinite(reviewedAtMs)
       ? Math.max(0, Math.round((reviewedAtMs - startedAtMs) / 1000))
       : 0;
     const expectedMinimumSeconds = this.expectedMinimumSeconds(questions);
-    const gpsQuestions = questions.filter((question) => question.type === "GPS" || question.qualityControls?.captureGps);
-    const gpsValues = gpsQuestions.map((question) => responses.get(question.id)).filter(Boolean);
-    const firstGps = gpsValues.find((value) => typeof value === "object" && value !== null) as { accuracy?: unknown; latitude?: unknown; longitude?: unknown } | undefined;
+    const gpsQuestionValues = questionValues.filter(({ question }) => question.type === "GPS" || question.qualityControls?.captureGps);
+    const firstGps = gpsQuestionValues
+      .map(({ value }) => value)
+      .find((value) => typeof value === "object" && value !== null) as { accuracy?: unknown; latitude?: unknown; longitude?: unknown } | undefined;
     const gpsCaptured = Boolean(firstGps && Number.isFinite(Number(firstGps.latitude)) && Number.isFinite(Number(firstGps.longitude)));
     const gpsAccuracy = firstGps?.accuracy == null ? null : Number(firstGps.accuracy);
-    const mediaQuestions = questions.filter((question) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
-    const requiredMediaCount = mediaQuestions.filter((question) => question.required || question.qualityControls?.photoEvidence).length;
-    const mediaEvidenceCount = mediaQuestions.filter((question) => hasAnswer(responses.get(question.id), question.type)).length;
+    const mediaQuestionValues = questionValues.filter(({ question }) => ["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(question.type) || question.qualityControls?.photoEvidence);
+    const requiredMediaCount = mediaQuestionValues.filter(({ question }) => question.required || question.qualityControls?.photoEvidence).length;
+    const mediaEvidenceCount = mediaQuestionValues.filter(({ question, value }) => hasAnswer(value, question.type)).length;
     const signals: SignalInput[] = [];
 
     if (durationSeconds > 0 && durationSeconds < expectedMinimumSeconds) {
@@ -52,7 +54,7 @@ export class FieldIntegrityService {
       });
     }
 
-    const requiredGpsCount = gpsQuestions.filter((question) => question.required).length;
+    const requiredGpsCount = gpsQuestionValues.filter(({ question }) => question.required || question.qualityControls?.captureGps).length;
     if (requiredGpsCount > 0 && !gpsCaptured) {
       signals.push({
         code: "GPS_REQUIRED_MISSING",
@@ -71,7 +73,7 @@ export class FieldIntegrityService {
       });
     }
 
-    if (assignment?.locationIds?.length && !gpsCaptured && gpsQuestions.length > 0) {
+    if (assignment?.locationIds?.length && !gpsCaptured && gpsQuestionValues.length > 0) {
       signals.push({
         code: "ASSIGNED_LOCATION_NOT_VERIFIED",
         severity: "Warning",
@@ -80,7 +82,7 @@ export class FieldIntegrityService {
       });
     }
 
-    for (const question of questions) {
+    for (const { question, value } of questionValues) {
       const questionMinimum = Number(question.qualityControls?.minimumSeconds ?? 0);
       if (Number.isFinite(questionMinimum) && questionMinimum > 0 && durationSeconds > 0 && durationSeconds < questionMinimum) {
         signals.push({
@@ -90,7 +92,7 @@ export class FieldIntegrityService {
           evidence: { questionId: question.id, variableName: question.variableName, durationSeconds, questionMinimum },
         });
       }
-      if (question.privacyControls?.consentRequired && !hasAnswer(responses.get(question.id), question.type)) {
+      if (question.privacyControls?.consentRequired && !hasAnswer(value, question.type)) {
         signals.push({
           code: "CONSENT_REQUIRED_MISSING",
           severity: "Critical",
@@ -98,7 +100,7 @@ export class FieldIntegrityService {
           evidence: { questionId: question.id, variableName: question.variableName },
         });
       }
-      if (question.beneficiaryMapping?.duplicateKey && hasAnswer(responses.get(question.id), question.type)) {
+      if (question.beneficiaryMapping?.duplicateKey && hasAnswer(value, question.type)) {
         signals.push({
           code: "DUPLICATE_KEY_COLLECTED",
           severity: "Info",
@@ -117,7 +119,7 @@ export class FieldIntegrityService {
       });
     }
 
-    const repeated = repeatedAnswerSignal(draft, questions);
+    const repeated = repeatedAnswerSignal(questionValues);
     if (repeated) {
       signals.push(repeated);
     }
@@ -158,22 +160,23 @@ function hasAnswer(value: unknown, questionType: MobileQuestion["type"]): boolea
     const gps = value as { latitude?: unknown; longitude?: unknown };
     return Number.isFinite(Number(gps.latitude)) && Number.isFinite(Number(gps.longitude));
   }
-  if (["Audio", "FileUpload", "Signature"].includes(questionType) && typeof value === "object") {
+  if (["Photo", "Video", "Audio", "FileUpload", "Signature"].includes(questionType) && typeof value === "object") {
     const evidence = value as { reference?: unknown; uri?: unknown; localUri?: unknown };
     return String(evidence.reference ?? evidence.uri ?? evidence.localUri ?? "").trim().length > 0;
   }
   return true;
 }
 
-function repeatedAnswerSignal(draft: MobileSubmission, questions: MobileQuestion[]): SignalInput | null {
+function repeatedAnswerSignal(questionValues: Array<{ question: MobileQuestion; value: unknown }>): SignalInput | null {
   const eligibleIds = new Set(
-    questions
+    questionValues
+      .map(({ question }) => question)
       .filter((question) => ["Text", "LongText", "SingleSelect", "Dropdown"].includes(question.type))
       .map((question) => question.id),
   );
-  const values = draft.responses
-    .filter((response) => eligibleIds.has(response.questionId))
-    .map((response) => String(response.value ?? "").trim().toLowerCase())
+  const values = questionValues
+    .filter(({ question }) => eligibleIds.has(question.id))
+    .map(({ value }) => String(value ?? "").trim().toLowerCase())
     .filter((value) => value.length >= 2);
   if (values.length < 6) return null;
   const counts = new Map<string, number>();
@@ -186,6 +189,47 @@ function repeatedAnswerSignal(draft: MobileSubmission, questions: MobileQuestion
     message: "Many text/select answers are identical. Supervisor should verify this was not copied across questions.",
     evidence: { repeatedAnswer: answer, repeatedCount: count, checkedAnswers: values.length },
   };
+}
+
+function expandQuestionValues(
+  questions: MobileQuestion[],
+  responses: Map<string, unknown>,
+): Array<{ question: MobileQuestion; value: unknown }> {
+  const expanded: Array<{ question: MobileQuestion; value: unknown }> = [];
+
+  for (const question of questions) {
+    const value = responses.get(question.id);
+    if (question.type !== "RepeatGroup") {
+      expanded.push({ question, value });
+      continue;
+    }
+
+    expanded.push({ question, value });
+    const rows = Array.isArray(value) ? value.filter(isRecord) : [];
+    const childQuestions = repeatGroupFields(question);
+    for (const row of rows) {
+      const rowResponses = new Map(Object.entries(row));
+      expanded.push(...expandQuestionValues(childQuestions, rowResponses));
+    }
+  }
+
+  return expanded;
+}
+
+function repeatGroupFields(question: MobileQuestion): MobileQuestion[] {
+  const metadata = isRecord(question.defaultValue) ? question.defaultValue : {};
+  const rawFields = Array.isArray(metadata.fields)
+    ? metadata.fields
+    : Array.isArray(metadata.questions)
+      ? metadata.questions
+      : Array.isArray(metadata.children)
+        ? metadata.children
+        : [];
+  return rawFields.filter((field): field is MobileQuestion => isRecord(field) && typeof field.id === "string" && typeof field.type === "string");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatDuration(seconds: number): string {

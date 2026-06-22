@@ -362,6 +362,15 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Block",
                 }
             )
+        if field_type == "consent" and bool(validation.get("blockIfFalse")):
+            rules.append(
+                {
+                    "ruleType": "Custom",
+                    "value": "blockIfFalse:true",
+                    "message": str(validation.get("message") or blocked_help or "Consent is required before continuing."),
+                    "severity": "Block",
+                }
+            )
         if field_type in {"photo", "image", "signature", "audio", "video", "file"}:
             for source in ("allowedFileTypes", "maxFileSizeMb", "maxAttachmentCount"):
                 if source in validation:

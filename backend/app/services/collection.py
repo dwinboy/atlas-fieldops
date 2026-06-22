@@ -303,6 +303,7 @@ def form_schema_compatibility(*, form_id: UUID, version: int, schema: FormSchema
     fields = [field for section in schema.sections for field in collect_fields(section.fields)]
     field_types = {field.type for field in fields}
     media_count = sum(1 for field in fields if field.type in {"photo", "image", "signature", "audio", "video", "file"})
+    has_code_scan = "barcode" in field_types or "qr" in field_types
     warnings: list[str] = []
     if not fields:
         warnings.append("Add at least one question before publishing or sharing this form.")
@@ -310,12 +311,16 @@ def form_schema_compatibility(*, form_id: UUID, version: int, schema: FormSchema
         warnings.append("Media-heavy forms should include clear sync instructions for field officers.")
     if "repeat_group" in field_types or "repeatable_group" in field_types:
         warnings.append("Test repeat groups before deploying this form for offline collection.")
+    if has_code_scan:
+        warnings.append(
+            "Barcode and QR questions can still be collected on web with manual entry when camera scanning is unavailable."
+        )
     return FormCollectionCompatibility(
         form_id=form_id,
         version=version,
         offline_ready=True,
         xlsform_ready=bool(fields),
-        web_form_ready="barcode" not in field_types and "qr" not in field_types,
+        web_form_ready=bool(fields),
         mobile_app_ready=True,
         has_gps=bool({"gps", "geolocation", "map", "geofence"} & field_types),
         has_repeat_groups=bool({"repeat_group", "repeatable_group"} & field_types),
@@ -752,6 +757,10 @@ def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object
             if block_past and parsed.date() < now.date():
                 issues.append(_field_issue(field, f"{label} cannot be in the past."))
 
+        if field.type == "time":
+            if re.fullmatch(r"^([01]\d|2[0-3]):[0-5]\d$", str(value).strip()) is None:
+                issues.append(_field_issue(field, f"{label} must use 24-hour time such as 14:30."))
+
         if field.type in {"text", "textarea", "phone", "email", "url", "password", "barcode", "qr"}:
             text = str(value)
             if isinstance(rules.get("minLength"), int) and len(text) < int(rules["minLength"]):
@@ -782,7 +791,7 @@ def validate_submission_payload(*, schema: FormSchema, payload: dict[str, object
             if field.type == "ranking" and len({str(item) for item in values}) != len(values):
                 issues.append(_field_issue(field, f"{label} can rank each option only once."))
 
-        if field.type in {"matrix_single", "matrix_multi"} and isinstance(value, dict):
+        if field.type in {"matrix_single", "matrix_multi", "grid"} and isinstance(value, dict):
             matrix_rows = _matrix_rows(field)
             allowed_matrix_values = set(_matrix_columns(field))
             for matrix_row_label in matrix_rows:

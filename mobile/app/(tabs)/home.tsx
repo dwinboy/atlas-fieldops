@@ -90,7 +90,7 @@ export default function HomeScreen() {
               onPress={syncWork}
               style={{ flex: 1 }}
             >
-              {isSyncing ? "Syncing…" : "Sync work"}
+              {isSyncing ? "Syncing…" : "Full sync"}
             </Button>
             <Button
               variant="secondary"
@@ -98,7 +98,7 @@ export default function HomeScreen() {
               onPress={syncQueue}
               style={{ flex: 1 }}
             >
-              Upload queue
+              Retry queue
             </Button>
           </View>
           {failedCount > 0 && (
