@@ -876,7 +876,27 @@ function variableBaseFromQuestion(question: string): string {
   );
 }
 
-function labelPatchWithAutoVariable(
+export function normalizeVariableNameInput(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 64);
+  if (!normalized) return "";
+  return /^[a-z_]/.test(normalized) ? normalized : `q_${normalized}`.slice(0, 64);
+}
+
+function isValidVariableName(value: string | undefined): boolean {
+  return Boolean(value && /^[a-z_][a-z0-9_]{0,63}$/.test(value));
+}
+
+function escapedRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function labelPatchWithAutoVariable(
   field: FormField,
   nextLabel: string,
   existingNames: string[],
@@ -897,7 +917,7 @@ function labelPatchWithAutoVariable(
     currentVariable === idAutoVariable ||
     currentVariable === previousAutoVariable ||
     currentVariable === previousBaseVariable ||
-    currentVariable.startsWith(`${previousBaseVariable}_`);
+    new RegExp(`^${escapedRegExp(previousBaseVariable)}_\\d+$`).test(currentVariable);
   return {
     label: nextLabel,
     ...(shouldRegenerate
@@ -906,12 +926,74 @@ function labelPatchWithAutoVariable(
   };
 }
 
+const choiceTypesForSettings = new Set<FieldType>([
+  "select",
+  "dropdown",
+  "multiselect",
+  "radio",
+  "checkbox",
+  "ranking",
+  "likert",
+]);
+
+export function typeChangePatchForField(field: FormField, nextType: FieldType): Partial<FormField> {
+  const defaults = createField(nextType, field.sectionId, field.pageId);
+  const keepOptions =
+    choiceTypesForSettings.has(field.type) &&
+    choiceTypesForSettings.has(nextType) &&
+    Boolean(field.options?.length);
+  return {
+    type: nextType,
+    options: choiceTypesForSettings.has(nextType)
+      ? keepOptions
+        ? field.options
+        : defaults.options
+      : undefined,
+    validation: defaults.validation,
+    matrix: defaults.matrix,
+    repeat: defaults.repeat,
+    media: defaults.media,
+    gps: defaults.gps,
+    polygon: defaults.polygon,
+    calculation: defaults.calculation,
+    logic:
+      nextType === "calculated"
+        ? defaults.logic
+        : field.logic?.filter((rule) => rule.kind !== "calculation") ?? [],
+  };
+}
+
 function hasFieldTag(field: FormField, tag: string): boolean {
   return Boolean(field.appearance?.helpText?.includes(`[${tag}]`));
 }
 
-function cleanChoiceOptions(options: string[]): string[] {
+export function cleanChoiceOptions(options: string[]): string[] {
   return options.map((option) => option.trim()).filter(Boolean);
+}
+
+export function normalizeChoiceDraftOptions(options: string[]): string[] {
+  return options.length ? options : [""];
+}
+
+export function insertChoiceOptionDraft(options: string[], afterIndex: number, value = ""): string[] {
+  const nextOptions = [...options];
+  nextOptions.splice(afterIndex + 1, 0, value);
+  return nextOptions;
+}
+
+export function removeChoiceOptionDraft(options: string[], index: number): string[] {
+  return normalizeChoiceDraftOptions(options.filter((_, optionIndex) => optionIndex !== index));
+}
+
+export function pasteChoiceOptionLines(options: string[], index: number, pastedText: string): string[] | null {
+  const pastedLines = pastedText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (pastedLines.length <= 1) return null;
+  const nextOptions = [...options];
+  nextOptions.splice(index, 1, ...pastedLines);
+  return nextOptions;
 }
 
 function ChoiceOptionsEditor({
@@ -921,14 +1003,22 @@ function ChoiceOptionsEditor({
   onChange: (options: string[]) => void;
   options: string[];
 }) {
-  const [draftOptions, setDraftOptions] = useState<string[]>(
-    options.length ? options : [""],
-  );
+  const optionsSignature = options.join("\u0000");
+  const lastCommittedSignatureRef = useRef(optionsSignature);
+  const [draftOptions, setDraftOptions] = useState<string[]>(normalizeChoiceDraftOptions(options));
   const optionRefs = useRef<Array<HTMLInputElement | null>>([]);
 
+  useEffect(() => {
+    if (lastCommittedSignatureRef.current === optionsSignature) return;
+    lastCommittedSignatureRef.current = optionsSignature;
+    setDraftOptions(normalizeChoiceDraftOptions(options));
+  }, [options, optionsSignature]);
+
   function commit(nextOptions: string[]): void {
-    setDraftOptions(nextOptions.length ? nextOptions : [""]);
-    onChange(cleanChoiceOptions(nextOptions));
+    const cleaned = cleanChoiceOptions(nextOptions);
+    lastCommittedSignatureRef.current = cleaned.join("\u0000");
+    setDraftOptions(normalizeChoiceDraftOptions(nextOptions));
+    onChange(cleaned);
   }
 
   function focusOption(index: number): void {
@@ -942,15 +1032,12 @@ function ChoiceOptionsEditor({
   }
 
   function insertOption(afterIndex: number, value = ""): void {
-    const nextOptions = [...draftOptions];
-    nextOptions.splice(afterIndex + 1, 0, value);
-    commit(nextOptions);
+    commit(insertChoiceOptionDraft(draftOptions, afterIndex, value));
     focusOption(afterIndex + 1);
   }
 
   function removeOption(index: number): void {
-    const nextOptions = draftOptions.filter((_, optionIndex) => optionIndex !== index);
-    commit(nextOptions);
+    commit(removeChoiceOptionDraft(draftOptions, index));
     focusOption(Math.max(0, index - 1));
   }
 
@@ -976,17 +1063,15 @@ function ChoiceOptionsEditor({
               }
             }}
             onPaste={(event) => {
-              const pastedLines = event.clipboardData
-                .getData("text")
-                .split(/\r?\n/)
-                .map((line) => line.trim())
-                .filter(Boolean);
-              if (pastedLines.length <= 1) return;
+              const nextOptions = pasteChoiceOptionLines(
+                draftOptions,
+                index,
+                event.clipboardData.getData("text"),
+              );
+              if (!nextOptions) return;
               event.preventDefault();
-              const nextOptions = [...draftOptions];
-              nextOptions.splice(index, 1, ...pastedLines);
               commit(nextOptions);
-              focusOption(index + pastedLines.length - 1);
+              focusOption(index + nextOptions.length - draftOptions.length);
             }}
             placeholder={`Option ${index + 1}`}
             value={option}
@@ -2479,8 +2564,7 @@ function FieldPropertiesPanel({
             ["Label", field.label.trim().length > 0],
             [
               "Variable",
-              Boolean(field.variableName?.trim()) &&
-                !field.variableName?.includes(" "),
+              isValidVariableName(field.variableName?.trim()),
             ],
             ["Choices", !field.options || field.options.length >= 2],
             [
@@ -2533,7 +2617,7 @@ function FieldPropertiesPanel({
             <Input
               className="mt-2 font-mono"
               onChange={(event) =>
-                updateSelectedField({ variableName: event.target.value })
+                updateSelectedField({ variableName: normalizeVariableNameInput(event.target.value) })
               }
               value={field.variableName ?? field.id}
             />
@@ -2569,7 +2653,7 @@ function FieldPropertiesPanel({
             <Select
               className="mt-2"
               onChange={(event) =>
-                updateSelectedField({ type: event.target.value as FieldType })
+                updateSelectedField(typeChangePatchForField(field, event.target.value as FieldType))
               }
               value={field.type}
             >
@@ -10727,7 +10811,7 @@ export function DynamicForms({
                                           selectedForm,
                                           selectedField.id,
                                           {
-                                            variableName: event.target.value,
+                                            variableName: normalizeVariableNameInput(event.target.value),
                                           },
                                         ),
                                       )
@@ -13679,7 +13763,7 @@ export function DynamicForms({
                           onChange={(event) =>
                             updateSelectedForm(
                               updateField(selectedForm, selectedField.id, {
-                                type: event.target.value as FieldType,
+                                ...typeChangePatchForField(selectedField, event.target.value as FieldType),
                               }),
                             )
                           }
@@ -14460,7 +14544,7 @@ export function DynamicForms({
                           onChange={(event) =>
                             updateSelectedForm(
                               updateField(selectedForm, selectedField.id, {
-                                variableName: event.target.value,
+                                variableName: normalizeVariableNameInput(event.target.value),
                               }),
                             )
                           }

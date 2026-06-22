@@ -219,6 +219,34 @@ def test_form_schema_rejects_unsupported_field_types() -> None:
         )
 
 
+def test_form_schema_rejects_unsupported_repeat_child_types() -> None:
+    with pytest.raises(ValidationError, match="Unsupported field type"):
+        DataFormCreate.model_validate(
+            {
+                "project_id": uuid4(),
+                "survey_id": uuid4(),
+                "name": "Bad roster",
+                "slug": "bad-roster",
+                "schema": {
+                    "sections": [
+                        {
+                            "id": "main",
+                            "title": "Main",
+                            "fields": [
+                                {
+                                    "id": "household_members",
+                                    "type": "repeat_group",
+                                    "label": "Household members",
+                                    "children": [{"id": "unsafe", "type": "unsafe_plugin", "label": "Unsafe"}],
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        )
+
+
 def test_submission_requires_server_enforced_gps_and_device_metadata() -> None:
     now = datetime.now(UTC)
     project_id = uuid4()
@@ -474,6 +502,23 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
                             },
                             {"id": "site", "type": "gps", "label": "Site", "required": True, "validation": {"accuracyMax": 20}},
                             {"id": "proof", "type": "photo", "label": "Proof photo"},
+                            {
+                                "id": "household_members",
+                                "type": "repeat_group",
+                                "label": "Household members",
+                                "children": [
+                                    {
+                                        "id": "member_status",
+                                        "variable_name": "member_status",
+                                        "type": "select",
+                                        "label": "Member status",
+                                        "required": True,
+                                        "options": [{"label": "Present", "value": "present"}, {"label": "Absent", "value": "absent"}],
+                                    },
+                                    {"id": "member_location", "variable_name": "member_location", "type": "gps", "label": "Member location"},
+                                    {"id": "member_photo", "variable_name": "member_photo", "type": "photo", "label": "Member photo"},
+                                ],
+                            },
                         ],
                     }
                 ]
@@ -487,10 +532,14 @@ def test_form_schema_exports_xlsform_and_collection_compatibility() -> None:
     assert workbook.settings.form_title == "Farm monitoring"
     assert "acknowledge" in {row.type for row in workbook.survey}
     assert "select_one crop_status" in {row.type for row in workbook.survey}
-    assert {choice.name for choice in workbook.choices} == {"healthy", "needs_support"}
+    assert "begin_repeat" in {row.type for row in workbook.survey}
+    assert workbook.survey[[row.name for row in workbook.survey].index("member_status")].type == "select_one member_status"
+    assert workbook.survey[[row.name for row in workbook.survey].index("member_location")].type == "geopoint"
+    assert workbook.survey[[row.name for row in workbook.survey].index("member_photo")].type == "image"
+    assert {choice.name for choice in workbook.choices} == {"healthy", "needs_support", "present", "absent"}
     assert compatibility.xlsform_ready is True
     assert compatibility.has_gps is True
-    assert compatibility.media_field_count == 1
+    assert compatibility.media_field_count == 2
 
 
 def test_validate_submission_payload_blocks_false_consent() -> None:
@@ -523,6 +572,306 @@ def test_validate_submission_payload_blocks_false_consent() -> None:
     issues = validate_submission_payload(schema=schema, payload={"consent": False}, location_accuracy=None)
 
     assert issues == ["Consent is required before continuing."]
+
+
+def test_validate_submission_payload_checks_repeat_group_child_rows() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Household roster",
+            "slug": "household-roster",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "household_members",
+                                "variable_name": "household_members",
+                                "type": "repeat_group",
+                                "label": "Household Members",
+                                "children": [
+                                    {
+                                        "id": "member_name",
+                                        "variable_name": "member_name",
+                                        "type": "text",
+                                        "label": "Member Name",
+                                        "required": True,
+                                    },
+                                    {
+                                        "id": "member_age",
+                                        "variable_name": "member_age",
+                                        "type": "number",
+                                        "label": "Member Age",
+                                        "validation": {"min": 0, "max": 120},
+                                    },
+                                    {
+                                        "id": "member_status",
+                                        "variable_name": "member_status",
+                                        "type": "select",
+                                        "label": "Member Status",
+                                        "options": [{"label": "Present", "value": "present"}],
+                                    },
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"household_members": [{"member_name": "", "member_age": "not-a-number", "member_status": "away"}]},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Household Members row 1: Member Name is required.",
+        "Household Members row 1: Member Age must be a valid number.",
+        "Household Members row 1: Member Status must use one of the approved option values.",
+    ]
+
+
+def test_validate_submission_payload_checks_repeat_group_limits() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Household roster limits",
+            "slug": "household-roster-limits",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "household_members",
+                                "variable_name": "household_members",
+                                "type": "repeat_group",
+                                "label": "Household Members",
+                                "repeat": {"min": 1, "max": 2},
+                                "children": [{"id": "member_name", "type": "text", "label": "Member Name"}],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    too_few = validate_submission_payload(schema=schema, payload={"household_members": []}, location_accuracy=None)
+    too_many = validate_submission_payload(
+        schema=schema,
+        payload={"household_members": [{"member_name": "A"}, {"member_name": "B"}, {"member_name": "C"}]},
+        location_accuracy=None,
+    )
+
+    assert too_few == ["Household Members needs at least 1 row(s)."]
+    assert too_many == ["Household Members allows at most 2 row(s)."]
+
+
+def test_validate_submission_payload_checks_required_matrix_rows_and_choices() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Facility matrix",
+            "slug": "facility-matrix",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "service_matrix",
+                                "type": "matrix_single",
+                                "label": "Service Matrix",
+                                "required": True,
+                                "matrix": {"rows": ["Cleanliness", "Availability"], "columns": ["Good", "Poor"]},
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"service_matrix": {"Cleanliness": "Average"}},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Service Matrix row Cleanliness must use approved matrix choices.",
+        "Service Matrix row Availability is required.",
+    ]
+
+
+def test_validate_submission_payload_applies_date_rules_only_when_configured() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Date checks",
+            "slug": "date-checks",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {"id": "planned_visit", "type": "date", "label": "Planned Visit Date"},
+                            {
+                                "id": "interview_date",
+                                "type": "date",
+                                "label": "Interview Date",
+                                "validation": {"blockFutureDates": True},
+                            },
+                            {
+                                "id": "activity_date",
+                                "type": "date",
+                                "label": "Activity Date",
+                                "validation": {"minDate": "2026-01-01", "maxDate": "2026-12-31"},
+                            },
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"planned_visit": "2099-01-01", "interview_date": "2099-01-01", "activity_date": "2027-01-01"},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Interview Date cannot be in the future.",
+        "Activity Date must be on or before 2026-12-31.",
+    ]
+
+
+def test_validate_submission_payload_checks_integer_only_numbers() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Stock count",
+            "slug": "stock-count",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "stock_count",
+                                "type": "number",
+                                "label": "Stock Count",
+                                "validation": {"integerOnly": True, "min": 0},
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(schema=schema, payload={"stock_count": "2.5"}, location_accuracy=None)
+
+    assert issues == ["Stock Count must be a whole number."]
+
+
+def test_validate_submission_payload_checks_ranking_duplicates() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Priority ranking",
+            "slug": "priority-ranking",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "priorities",
+                                "type": "ranking",
+                                "label": "Priority Ranking",
+                                "options": [
+                                    {"label": "Water", "value": "water"},
+                                    {"label": "Roads", "value": "roads"},
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"priorities": ["water", "water", "power"]},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Priority Ranking includes values outside the approved option list.",
+        "Priority Ranking can rank each option only once.",
+    ]
+
+
+def test_validate_submission_payload_checks_media_rules() -> None:
+    schema = DataFormCreate.model_validate(
+        {
+            "project_id": uuid4(),
+            "survey_id": uuid4(),
+            "name": "Media checks",
+            "slug": "media-checks",
+            "schema": {
+                "sections": [
+                    {
+                        "id": "main",
+                        "title": "Main",
+                        "fields": [
+                            {
+                                "id": "proof",
+                                "type": "photo",
+                                "label": "Proof Photo",
+                                "validation": {
+                                    "allowedFileTypes": "jpg,png",
+                                    "maxFileSizeMb": 1,
+                                    "maxAttachmentCount": 1,
+                                },
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+    ).form_schema
+
+    issues = validate_submission_payload(
+        schema=schema,
+        payload={"proof": [{"fileName": "proof.pdf", "mimeType": "application/pdf", "size": 2 * 1024 * 1024}, {"fileName": "extra.jpg"}]},
+        location_accuracy=None,
+    )
+
+    assert issues == [
+        "Proof Photo allows at most 1 attachment(s).",
+        "Proof Photo file size must be 1 MB or smaller.",
+        "Proof Photo file type is not allowed.",
+    ]
 
 
 @pytest.mark.asyncio
@@ -754,6 +1103,58 @@ async def test_cleaned_imported_form_row_can_be_confirmed_and_used() -> None:
 
 
 @pytest.mark.asyncio
+async def test_import_form_rows_parses_repeat_and_matrix_json_cells() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        version = await session.scalar(select(DataFormVersion).where(DataFormVersion.form_id == env["form_id"]))
+        assert version is not None
+        schema_json = dict(version.schema_json)
+        sections = list(schema_json["sections"])
+        section = dict(sections[0])
+        fields = list(section["fields"])
+        fields.append(
+            {
+                "id": "service_matrix",
+                "variable_name": "service_matrix",
+                "type": "matrix_single",
+                "label": "Service Matrix",
+                "matrix": {"rows": ["Cleanliness"], "columns": ["Good", "Poor"]},
+            }
+        )
+        section["fields"] = fields
+        sections[0] = section
+        schema_json["sections"] = sections
+        version.schema_json = schema_json
+        await session.commit()
+
+        service = SubmissionService(session)
+        imported = await service.import_form_rows(
+            organization_id=env["organization_id"],
+            actor_user_id=env["manager_user_id"],
+            form_id=env["form_id"],
+            payload=FormDataImportRequest(
+                rows=[
+                    {
+                        "farmer_name": "Import Complex Farmer",
+                        "household_members": '[{"member_name":"Imported Member","age":14}]',
+                        "service_matrix": '{"Cleanliness":"Good"}',
+                    }
+                ],
+                source_name="complex.csv",
+                source_system="Form spreadsheet upload",
+                import_reason="Backfill complex form data",
+            ),
+        )
+        submission_id = imported.submissions[0].id
+        submission = await session.get(Submission, submission_id)
+        assert submission is not None
+
+        assert submission.payload_json["household_members"] == [{"member_name": "Imported Member", "age": 14}]
+        assert submission.payload_json["service_matrix"] == {"Cleanliness": "Good"}
+
+
+@pytest.mark.asyncio
 async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after_approval() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
@@ -875,6 +1276,7 @@ async def test_mobile_synced_submission_is_visible_and_creates_beneficiary_after
         submission = submissions[0]
         assert submission.source_system == "Mobile"
         assert submission.payload_json["entity_name"] == "Mobile Farmer"
+        assert submission.payload_json["q_name"] == "Mobile Farmer"
         assert submission.payload_json["_mobile_responses"][0]["questionId"] == "q_name"
         assert submission.offline_created is True
         assert submission.field_officer_id == officer_id
@@ -1712,6 +2114,199 @@ async def test_create_submission_with_repeat_group_persists_repeat_rows() -> Non
         assert rows[0].parent_submission_key == "repeat-001"
         assert rows[0].row_json == {"member_name": "Member One", "age": 12}
         assert rows[1].row_json == {"member_name": "Member Two", "age": 34}
+
+
+@pytest.mark.asyncio
+async def test_create_submission_with_repeat_group_variable_name_persists_repeat_rows() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        version = await session.scalar(select(DataFormVersion).where(DataFormVersion.form_id == env["form_id"]))
+        assert version is not None
+        schema_json = dict(version.schema_json)
+        sections = list(schema_json["sections"])
+        section = dict(sections[0])
+        fields = list(section["fields"])
+        repeat_field = dict(fields[-1])
+        repeat_field["id"] = "q_household_members"
+        repeat_field["variable_name"] = "household_members"
+        fields[-1] = repeat_field
+        section["fields"] = fields
+        sections[0] = section
+        schema_json["sections"] = sections
+        version.schema_json = schema_json
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="repeat-variable-001",
+                payload={
+                    "farmer_name": "Variable Household Head",
+                    "household_members": [{"member_name": "Member One", "age": 12}],
+                },
+            ),
+        )
+        await session.commit()
+
+        rows = await service.list_repeat_rows(
+            organization_id=env["organization_id"],
+            submission_id=submission.id,
+        )
+        assert len(rows) == 1
+        assert rows[0].field_id == "q_household_members"
+        assert rows[0].row_json == {"member_name": "Member One", "age": 12}
+
+
+@pytest.mark.asyncio
+async def test_mobile_submission_upload_persists_repeat_group_rows() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        version = await session.scalar(select(DataFormVersion).where(DataFormVersion.form_id == env["form_id"]))
+        assert version is not None
+        schema_json = dict(version.schema_json)
+        sections = list(schema_json["sections"])
+        section = dict(sections[0])
+        fields = list(section["fields"])
+        repeat_field = dict(fields[-1])
+        repeat_field["id"] = "q_household_members"
+        repeat_field["variable_name"] = "household_members"
+        fields[-1] = repeat_field
+        section["fields"] = fields
+        sections[0] = section
+        schema_json["sections"] = sections
+        version.schema_json = schema_json
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(env["field_user_id"]),
+            organization_id=str(env["organization_id"]),
+            email="field@example.org",
+            full_name="Field Officer",
+            organization_slug="mobile-org",
+            organization_name="Mobile Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+        uploaded = await MobileService(session).upload_submission(
+            principal=principal,
+            payload=MobileSubmissionUpload(
+                local_id="mobile-repeat-001",
+                project_id=str(env["project_id"]),
+                form_id=str(env["form_id"]),
+                form_version_id=str(version.id),
+                entity_type="Farmer",
+                responses=[
+                    {"questionId": "q_name", "variableName": "farmer_name", "value": "Repeat Farmer", "updatedAt": env["now"]},
+                    {
+                        "questionId": "q_household_members",
+                        "variableName": "household_members",
+                        "value": [{"member_name": "Mobile Member", "age": 9}],
+                        "updatedAt": env["now"],
+                    },
+                ],
+                location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": env["now"]},
+                device_id="android-repeat-test",
+                app_version="1.0.0-test",
+                created_at=env["now"],
+                submitted_at=env["now"],
+            ),
+        )
+        assert uploaded.status == "synced"
+
+        submission = await session.get(Submission, UUID(uploaded.server_submission_id))
+        assert submission is not None
+        assert submission.payload_json["q_household_members"] == [{"member_name": "Mobile Member", "age": 9}]
+        assert submission.payload_json["household_members"] == [{"member_name": "Mobile Member", "age": 9}]
+
+        rows = await SubmissionService(session).list_repeat_rows(
+            organization_id=env["organization_id"],
+            submission_id=submission.id,
+        )
+        assert len(rows) == 1
+        assert rows[0].field_id == "q_household_members"
+        assert rows[0].row_json == {"member_name": "Mobile Member", "age": 9}
+
+
+@pytest.mark.asyncio
+async def test_repeat_group_child_controls_create_data_quality_signals() -> None:
+    env = await _seed_dedup_environment({"entity_controls": {}})
+    session: object = env["session"]
+    async with session:
+        version = await session.scalar(select(DataFormVersion).where(DataFormVersion.form_id == env["form_id"]))
+        assert version is not None
+        schema_json = dict(version.schema_json)
+        sections = list(schema_json["sections"])
+        section = dict(sections[0])
+        fields = list(section["fields"])
+        repeat_field = dict(fields[-1])
+        repeat_field["children"] = [
+            {
+                "id": "member_photo",
+                "variable_name": "member_photo",
+                "type": "photo",
+                "label": "Member Photo",
+                "appearance": {"helpText": "[photo-evidence]"},
+            },
+            {
+                "id": "member_consent",
+                "variable_name": "member_consent",
+                "type": "consent",
+                "label": "Member Consent",
+                "appearance": {"helpText": "[consent-required]"},
+            },
+            {
+                "id": "member_id",
+                "variable_name": "member_id",
+                "type": "text",
+                "label": "Member ID",
+                "appearance": {"helpText": "[sensitivity:pii]"},
+            },
+        ]
+        fields[-1] = repeat_field
+        section["fields"] = fields
+        sections[0] = section
+        schema_json["sections"] = sections
+        version.schema_json = schema_json
+        await session.commit()
+
+        service = SubmissionService(session)
+        submission = await service.create_submission(
+            organization_id=env["organization_id"],
+            actor_user_id=env["field_user_id"],
+            payload=_dedup_submission_payload(
+                env,
+                client_submission_id="repeat-quality-001",
+                payload={
+                    "farmer_name": "Quality Household Head",
+                    "household_members": [{"member_photo": "", "member_consent": "", "member_id": "ID-001"}],
+                },
+            ),
+        )
+        await session.commit()
+
+        signals = (
+            await session.execute(
+                select(DataQualitySignal.signal_type, DataQualitySignal.evidence_json).where(
+                    DataQualitySignal.submission_id == submission.id
+                )
+            )
+        ).all()
+
+        assert {signal_type for signal_type, _ in signals} >= {
+            "photo_evidence_missing",
+            "consent_missing",
+            "privacy_masking_missing",
+        }
+        labels = {evidence["label"] for _, evidence in signals if "label" in evidence}
+        assert "Household Members row 1: Member Photo" in labels
+        assert "Household Members row 1: Member Consent" in labels
+        assert "Household Members row 1: Member ID" in labels
 
 
 @pytest.mark.asyncio

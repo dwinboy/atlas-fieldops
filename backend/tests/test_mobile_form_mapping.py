@@ -1,4 +1,155 @@
+from app.schemas.collection import FormSchema
 from app.services.mobile import _build_question_field, _mobile_question_type, _validation_rules
+
+
+def test_form_schema_preserves_repeat_group_children_for_mobile_sync() -> None:
+    schema = FormSchema.model_validate(
+        {
+            "sections": [
+                {
+                    "id": "main",
+                    "title": "Main",
+                    "fields": [
+                        {
+                            "id": "household_members",
+                            "label": "Household members",
+                            "type": "repeat_group",
+                            "repeat": {"min": 1, "max": 4},
+                            "children": [
+                                {
+                                    "id": "member_status",
+                                    "label": "Member status",
+                                    "type": "select",
+                                    "variable_name": "member_status",
+                                    "options": [{"label": "Present", "value": "present"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    field = schema.sections[0].fields[0]
+
+    assert field.repeat == {"min": 1, "max": 4}
+    assert field.children[0].variable_name == "member_status"
+    assert field.model_dump(mode="json")["repeat"] == {"min": 1, "max": 4}
+    assert field.model_dump(mode="json")["children"][0]["options"][0]["value"] == "present"
+
+
+def test_build_question_field_converts_repeat_group_children_to_mobile_fields() -> None:
+    field = {
+        "id": "household_members",
+        "label": "Household members",
+        "type": "repeat_group",
+        "repeat": {"min": 1, "max": 4, "addButtonLabel": "Add member"},
+        "children": [
+            {
+                "id": "member_status",
+                "label": "Member status",
+                "type": "select",
+                "variable_name": "member_status",
+                "required": True,
+                "options": [{"label": "Present", "value": "present"}],
+            }
+        ],
+    }
+
+    question = _build_question_field(field, field_id="household_members", section_id="main", order=1)
+    child = question["defaultValue"]["fields"][0]
+
+    assert question["type"] == "RepeatGroup"
+    assert question["repeatSettings"] == {"minRepeats": 1, "maxRepeats": 4, "addButtonLabel": "Add member"}
+    assert child["type"] == "SingleSelect"
+    assert child["variableName"] == "member_status"
+    assert child["options"][0]["value"] == "present"
+    assert child["required"] is True
+
+
+def test_form_schema_preserves_matrix_rows_and_columns_for_mobile_sync() -> None:
+    schema = FormSchema.model_validate(
+        {
+            "sections": [
+                {
+                    "id": "main",
+                    "title": "Main",
+                    "fields": [
+                        {
+                            "id": "service_matrix",
+                            "label": "Service matrix",
+                            "type": "matrix_single",
+                            "matrix": {"rows": ["Cleanliness", "Availability"], "columns": ["Good", "Poor"]},
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    field = schema.sections[0].fields[0]
+    question = _build_question_field(field.model_dump(mode="json"), field_id=field.id, section_id="main", order=1)
+
+    assert field.matrix == {"rows": ["Cleanliness", "Availability"], "columns": ["Good", "Poor"]}
+    assert question["defaultValue"]["rows"] == ["Cleanliness", "Availability"]
+    assert question["defaultValue"]["columns"] == ["Good", "Poor"]
+
+
+def test_build_question_field_sends_date_rules_to_mobile() -> None:
+    question = _build_question_field(
+        {
+            "id": "interview_date",
+            "label": "Interview date",
+            "type": "date",
+            "validation": {"blockFutureDates": True, "minDate": "2026-01-01", "maxDate": "2026-12-31"},
+        },
+        field_id="interview_date",
+        section_id="main",
+        order=1,
+    )
+
+    assert {rule["value"] for rule in question["validationRules"] if rule["ruleType"] == "Custom"} == {
+        "blockFutureDates:true",
+        "minDate:2026-01-01",
+        "maxDate:2026-12-31",
+    }
+
+
+def test_build_question_field_sends_integer_only_rule_to_mobile() -> None:
+    question = _build_question_field(
+        {
+            "id": "stock_count",
+            "label": "Stock count",
+            "type": "number",
+            "validation": {"integerOnly": True},
+        },
+        field_id="stock_count",
+        section_id="main",
+        order=1,
+    )
+
+    assert "integerOnly:true" in {rule["value"] for rule in question["validationRules"] if rule["ruleType"] == "Custom"}
+
+
+def test_build_question_field_sends_media_rules_to_mobile() -> None:
+    question = _build_question_field(
+        {
+            "id": "proof",
+            "label": "Proof photo",
+            "type": "photo",
+            "validation": {"allowedFileTypes": "jpg,png", "maxFileSizeMb": 2, "maxAttachmentCount": 1},
+        },
+        field_id="proof",
+        section_id="main",
+        order=1,
+    )
+
+    assert {rule["value"] for rule in question["validationRules"] if rule["ruleType"] == "Custom"} == {
+        "allowedFileTypes:jpg,png",
+        "maxFileSizeMb:2",
+        "maxAttachmentCount:1",
+    }
 
 
 def test_mobile_question_type_maps_polygon_to_polygon() -> None:

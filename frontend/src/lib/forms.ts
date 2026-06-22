@@ -209,6 +209,27 @@ export type XlsFormWorkbook = {
   };
 };
 
+type ExportedSchemaField = {
+  id: string;
+  type: FieldType;
+  label: string;
+  hint?: string;
+  required: boolean;
+  page_id?: string;
+  section_id: string;
+  variable_name: string;
+  options: Array<{ label: string; value: string }>;
+  validation: FormField["validation"] | Record<string, never>;
+  logic: LogicRule[];
+  appearance: FormField["appearance"] | Record<string, never>;
+  calculation?: string;
+  matrix?: FormField["matrix"];
+  repeat?: FormField["repeat"];
+  media?: FormField["media"];
+  gps?: FormField["gps"];
+  children: ExportedSchemaField[];
+};
+
 export type FormReadinessFlags = {
   hasProject: boolean;
   hasSurvey: boolean;
@@ -355,7 +376,7 @@ export function createField(type: FieldType, sectionId: string, pageId?: string)
     id,
     label: catalogField?.label ?? "Untitled field",
     type,
-    required: ["text", "number", "gps", "geolocation"].includes(type),
+    required: false,
     pageId,
     sectionId,
     hint: catalogField?.description,
@@ -408,16 +429,56 @@ export function removeField(form: DynamicForm, fieldId: string): DynamicForm {
   };
 }
 
+function uniqueCopiedVariableName(base: string, existingNames: Set<string>): string {
+  const normalizedBase = base || "field";
+  let candidate = `${normalizedBase}_copy`;
+  let index = 2;
+  while (existingNames.has(candidate)) {
+    candidate = `${normalizedBase}_copy_${index}`;
+    index += 1;
+  }
+  existingNames.add(candidate);
+  return candidate;
+}
+
+function fieldVariableName(field: FormField): string {
+  return slugifyName(field.variableName?.trim() || field.label || field.id);
+}
+
+function uniqueExportName(base: string, usedNames: Set<string>): string {
+  const normalizedBase = slugifyName(base);
+  let candidate = normalizedBase;
+  let index = 2;
+  while (usedNames.has(candidate)) {
+    candidate = `${normalizedBase}_${index}`;
+    index += 1;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
+function exportedOptions(options: string[] | undefined): Array<{ label: string; value: string }> {
+  const usedValues = new Set<string>();
+  return (options ?? []).map((option) => ({
+    label: option,
+    value: uniqueExportName(option, usedValues),
+  }));
+}
+
 export function duplicateField(form: DynamicForm, fieldId: string): DynamicForm {
   const field = form.fields.find((candidate) => candidate.id === fieldId);
   if (!field) {
     return form;
   }
+  const existingNames = new Set(
+    form.fields.map((candidate) => candidate.variableName ?? slugifyName(candidate.id)),
+  );
+  const sourceVariable = field.variableName ?? slugifyName(field.id);
   const copy = {
     ...field,
     id: `${field.type}-${Date.now()}`,
     label: `${field.label} copy`,
-    variableName: `${field.variableName ?? slugifyName(field.id)}_copy`
+    variableName: uniqueCopiedVariableName(sourceVariable, existingNames)
   };
   const index = form.fields.findIndex((candidate) => candidate.id === fieldId);
   return {
@@ -451,16 +512,21 @@ export function duplicatePage(form: DynamicForm, pageId: string): DynamicForm {
       sectionIdMap.set(section.id, nextSectionId);
       return { ...section, id: nextSectionId, pageId: nextPageId, title: `${section.title} copy` };
     });
+  const existingNames = new Set(
+    normalized.fields.map((candidate) => candidate.variableName ?? slugifyName(candidate.id)),
+  );
   const copiedFields = normalized.fields
     .filter((field) => field.pageId === pageId)
-    .map((field) => ({
-      ...field,
-      id: `${field.id}-copy-${Date.now()}`,
-      pageId: nextPageId,
-      sectionId: sectionIdMap.get(field.sectionId) ?? field.sectionId,
-      label: `${field.label} copy`,
-      variableName: `${field.variableName ?? slugifyName(field.id)}_copy`
-    }));
+    .map((field) => {
+      return {
+        ...field,
+        id: `${field.id}-copy-${Date.now()}`,
+        pageId: nextPageId,
+        sectionId: sectionIdMap.get(field.sectionId) ?? field.sectionId,
+        label: `${field.label} copy`,
+        variableName: uniqueCopiedVariableName(field.variableName ?? slugifyName(field.id), existingNames)
+      };
+    });
   return {
     ...normalized,
     pages: [...defaultPages(normalized), { ...page, id: nextPageId, title: `${page.title} copy` }],
@@ -497,15 +563,20 @@ export function duplicateSection(form: DynamicForm, sectionId: string): DynamicF
   const section = normalized.sections.find((candidate) => candidate.id === sectionId);
   if (!section) return normalized;
   const nextSectionId = `${section.id}-copy-${Date.now()}`;
+  const existingNames = new Set(
+    normalized.fields.map((candidate) => candidate.variableName ?? slugifyName(candidate.id)),
+  );
   const copiedFields = normalized.fields
     .filter((field) => field.sectionId === sectionId)
-    .map((field) => ({
-      ...field,
-      id: `${field.id}-copy-${Date.now()}`,
-      sectionId: nextSectionId,
-      label: `${field.label} copy`,
-      variableName: `${field.variableName ?? slugifyName(field.id)}_copy`
-    }));
+    .map((field) => {
+      return {
+        ...field,
+        id: `${field.id}-copy-${Date.now()}`,
+        sectionId: nextSectionId,
+        label: `${field.label} copy`,
+        variableName: uniqueCopiedVariableName(field.variableName ?? slugifyName(field.id), existingNames)
+      };
+    });
   return {
     ...normalized,
     sections: [...normalized.sections, { ...section, id: nextSectionId, title: `${section.title} copy` }],
@@ -621,6 +692,30 @@ export function createDraftVersion(form: DynamicForm): DynamicForm {
 
 export function toMobileSchema(form: DynamicForm) {
   const normalized = normalizeForm(form);
+  const usedVariableNames = new Set<string>();
+  const exportField = (field: FormField): ExportedSchemaField => {
+    const variableName = uniqueExportName(fieldVariableName(field), usedVariableNames);
+    return {
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      hint: field.hint,
+      required: field.required,
+      page_id: field.pageId,
+      section_id: field.sectionId,
+      variable_name: variableName,
+      options: exportedOptions(field.options),
+      validation: field.validation ?? {},
+      logic: field.logic ?? [],
+      appearance: field.appearance ?? {},
+      calculation: field.calculation?.expression ?? field.logic?.find((rule) => rule.kind === "calculation")?.expression,
+      matrix: field.matrix,
+      repeat: field.repeat,
+      media: field.media,
+      gps: field.gps,
+      children: (field.children ?? []).map((child) => exportField(child)),
+    };
+  };
   return {
     id: normalized.id,
     name: normalized.name,
@@ -642,26 +737,7 @@ export function toMobileSchema(form: DynamicForm) {
       page_id: section.pageId,
       fields: normalized.fields
         .filter((field) => field.sectionId === section.id)
-        .map((field) => ({
-          id: field.id,
-          type: field.type,
-          label: field.label,
-          hint: field.hint,
-          required: field.required,
-          page_id: field.pageId,
-          section_id: field.sectionId,
-          variable_name: field.variableName,
-          options: field.options?.map((option) => ({ label: option, value: option.toLowerCase().replaceAll(" ", "_") })) ?? [],
-          validation: field.validation ?? {},
-          logic: field.logic ?? [],
-          appearance: field.appearance ?? {},
-          calculation: field.calculation?.expression ?? field.logic?.find((rule) => rule.kind === "calculation")?.expression,
-          matrix: field.matrix,
-          repeat: field.repeat,
-          media: field.media,
-          gps: field.gps,
-          children: field.children ?? []
-        }))
+        .map((field) => exportField(field))
     }))
   };
 }
@@ -675,12 +751,12 @@ function slugifyName(value: string): string {
   return normalized || "field";
 }
 
-function toXlsType(field: FormField): string {
+function toXlsType(field: FormField, listName = fieldVariableName(field)): string {
   if (field.options?.length && ["select", "dropdown", "radio", "likert"].includes(field.type)) {
-    return `select_one ${slugifyName(field.id)}`;
+    return `select_one ${listName}`;
   }
   if (field.options?.length && ["multiselect", "checkbox", "ranking"].includes(field.type)) {
-    return `select_multiple ${slugifyName(field.id)}`;
+    return `select_multiple ${listName}`;
   }
   const typeMap: Record<FieldType, string> = {
     text: "text",
@@ -741,10 +817,22 @@ function toConstraint(field: FormField): string | undefined {
   return constraints.length ? constraints.join(" and ") : undefined;
 }
 
+function exportHint(field: FormField): string | undefined {
+  const parts = [field.hint].filter(Boolean);
+  if (field.type === "repeat_group") {
+    parts.push('For spreadsheet upload, enter repeated rows as JSON: [{"field":"value"}].');
+  }
+  if (["matrix_single", "matrix_multi", "grid"].includes(field.type)) {
+    parts.push('For spreadsheet upload, enter matrix answers as JSON: {"Row label":"Choice"}.');
+  }
+  return parts.length ? parts.join(" ") : undefined;
+}
+
 export function toXlsFormWorkbook(form: DynamicForm): XlsFormWorkbook {
   const normalized = normalizeForm(form);
   const survey: XlsFormSurveyRow[] = [];
   const choices: XlsFormChoiceRow[] = [];
+  const usedSurveyNames = new Set<string>();
 
   for (const page of defaultPages(normalized)) {
     survey.push({
@@ -765,39 +853,47 @@ export function toXlsFormWorkbook(form: DynamicForm): XlsFormWorkbook {
     });
 
     for (const field of normalized.fields.filter((candidate) => candidate.sectionId === section.id)) {
-      const name = slugifyName(field.id);
+      const name = uniqueExportName(fieldVariableName(field), usedSurveyNames);
       const calculation = field.calculation?.expression ?? field.logic?.find((rule) => rule.kind === "calculation")?.expression;
       const relevant = field.logic?.find((rule) => ["visibility", "show", "hide"].includes(rule.kind))?.expression;
 
       survey.push({
-        type: toXlsType(field),
+        type: toXlsType(field, name),
         name,
         label: field.label,
-        hint: field.hint,
+        hint: exportHint(field),
         required: field.required ? "yes" : "no",
         constraint: toConstraint(field),
         relevant,
         calculation
       });
 
-      for (const option of field.options ?? []) {
+      for (const option of exportedOptions(field.options)) {
         choices.push({
           list_name: name,
-          name: slugifyName(option),
-          label: option
+          name: option.value,
+          label: option.label
         });
       }
 
       if (field.type === "repeat_group") {
         for (const child of field.children ?? []) {
+          const childName = uniqueExportName(child.variableName?.trim() || child.label || child.id, usedSurveyNames);
           survey.push({
-            type: toXlsType(child),
-            name: slugifyName(child.id),
+            type: toXlsType(child, childName),
+            name: childName,
             label: child.label,
-            hint: child.hint,
+            hint: exportHint(child),
             required: child.required ? "yes" : "no",
             constraint: toConstraint(child)
           });
+          for (const option of exportedOptions(child.options)) {
+            choices.push({
+              list_name: childName,
+              name: option.value,
+              label: option.label
+            });
+          }
         }
         survey.push({ type: "end_repeat", name: `${name}_end`, label: `End ${field.label}` });
       }
@@ -870,8 +966,8 @@ export function buildFormReadinessChecklist(
       id: "required-rules",
       label: "Required fields reviewed",
       description: `${requiredFieldCount} required field${requiredFieldCount === 1 ? "" : "s"} configured for collection.`,
-      complete: requiredFieldCount > 0,
-      required: true
+      complete: true,
+      required: false
     },
     {
       id: "evidence",

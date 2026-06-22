@@ -112,9 +112,10 @@ def _flatten_mobile_responses(responses: list[dict[str, Any]]) -> dict[str, Any]
     for response in responses:
         variable_name = str(response.get("variableName") or response.get("variable_name") or "").strip()
         question_id = str(response.get("questionId") or response.get("question_id") or "").strip()
-        key = variable_name or question_id
-        if key:
-            flattened[key] = response.get("value")
+        value = response.get("value")
+        for key in {variable_name, question_id}:
+            if key:
+                flattened[key] = value
     return flattened
 
 
@@ -193,6 +194,20 @@ def _field_options(options: list[Any]) -> list[dict[str, Any]]:
             value = label
         normalized.append({"id": value, "label": label, "value": value, "order": index + 1})
     return normalized
+
+
+def _repeat_settings(field: dict[str, Any]) -> dict[str, Any] | None:
+    existing = _as_dict(field.get("repeatSettings"))
+    repeat = _as_dict(field.get("repeat"))
+    if existing:
+        return existing
+    if not repeat:
+        return None
+    return {
+        "minRepeats": repeat.get("min"),
+        "maxRepeats": repeat.get("max"),
+        "addButtonLabel": repeat.get("addButtonLabel"),
+    }
 
 
 def _field_appearance_text(field: dict[str, Any]) -> str:
@@ -338,15 +353,39 @@ def _validation_rules(field: dict[str, Any]) -> list[dict[str, Any]]:
                     "severity": "Block",
                 }
             )
-        if field_type in {"date", "datetime"} and bool(validation.get("allowFuture")):
+        if field_type in {"number", "decimal", "currency"} and bool(validation.get("integerOnly")):
             rules.append(
                 {
                     "ruleType": "Custom",
-                    "value": "allowFuture:true",
-                    "message": "Future dates are allowed for this question.",
-                    "severity": "Warning",
+                    "value": "integerOnly:true",
+                    "message": blocked_help or "Enter a whole number without decimals.",
+                    "severity": "Block",
                 }
             )
+        if field_type in {"photo", "image", "signature", "audio", "video", "file"}:
+            for source in ("allowedFileTypes", "maxFileSizeMb", "maxAttachmentCount"):
+                if source in validation:
+                    rules.append(
+                        {
+                            "ruleType": "Custom",
+                            "value": f"{source}:{validation[source]}",
+                            "message": str(validation.get("message") or blocked_help or "Check the allowed attachment rules for this question."),
+                            "severity": "Block",
+                        }
+                    )
+        if field_type in {"date", "datetime"}:
+            for source in ("blockFutureDates", "blockPastDates", "minDate", "maxDate"):
+                if source in validation:
+                    rule_value = validation[source]
+                    serialized_value = str(rule_value).lower() if isinstance(rule_value, bool) else str(rule_value)
+                    rules.append(
+                        {
+                            "ruleType": "Custom",
+                            "value": f"{source}:{serialized_value}",
+                            "message": str(validation.get("message") or blocked_help or "Check the allowed date for this question."),
+                            "severity": "Block",
+                        }
+                    )
     if field_type == "polygon":
         polygon_config = _as_dict(field.get("polygon"))
         min_vertices = polygon_config.get("minVertices", 3)
@@ -598,7 +637,7 @@ def _build_question_field(
             field.get("sensitive", False)
             or privacy_controls["sensitivity"] in {"sensitive", "restricted", "pii"}
         ),
-        "repeatSettings": field.get("repeatSettings"),
+        "repeatSettings": _repeat_settings(field),
         "metadataTags": _field_metadata_tags(field),
         "indicatorMapping": _field_indicator_mapping(field),
         "beneficiaryMapping": _field_beneficiary_mapping(field),

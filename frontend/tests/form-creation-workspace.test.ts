@@ -14,7 +14,9 @@ import {
   duplicateReviewDefaults,
   lifecycleActionState,
   lifecycleCompletionState,
+  MINIMUM_PUBLISH_READINESS_SCORE,
   previewTestReviewDefaults,
+  publishBlockingFailures,
   quickSetupReviewDefaults,
   requiredQuestionsAdviceState,
   resolvePendingStarterTemplateId,
@@ -69,6 +71,20 @@ describe("enterprise form creation workspace", () => {
       fields: draft.fields.map((field) => ({ ...field, variableName: "duplicate_name" })),
     };
     const checklist = validateFormForPublish(duplicate, setup);
+
+    expect(checklist.find((item) => item.id === "variables")?.complete).toBe(false);
+  });
+
+  it("detects invalid variable names before publish", () => {
+    const draft = createEnterpriseDraftForm(setup, "template", []);
+    const invalid = {
+      ...draft,
+      fields: draft.fields.map((field, index) => ({
+        ...field,
+        variableName: index === 0 ? "bad variable name" : field.variableName,
+      })),
+    };
+    const checklist = validateFormForPublish(invalid, setup);
 
     expect(checklist.find((item) => item.id === "variables")?.complete).toBe(false);
   });
@@ -281,7 +297,7 @@ describe("enterprise form creation workspace", () => {
     expect(byLabel["Quantity"].type).toBe("number");
   });
 
-  it("keeps imported latitude and longitude as validated decimal coordinate fields", () => {
+  it("keeps imported latitude, longitude, and GPS accuracy as validated decimal fields", () => {
     const draft = createDraftFromSpreadsheetRows(
       setup,
       ["Latitude", "Longitude", "GPS Accuracy"],
@@ -293,7 +309,29 @@ describe("enterprise form creation workspace", () => {
     expect(byLabel["Latitude"].validation).toMatchObject({ max: 90, min: -90 });
     expect(byLabel["Longitude"].type).toBe("decimal");
     expect(byLabel["Longitude"].validation).toMatchObject({ max: 180, min: -180 });
-    expect(byLabel["GPS Accuracy"].type).toBe("gps");
+    expect(byLabel["GPS Accuracy"].type).toBe("decimal");
+    expect(byLabel["GPS Accuracy"].validation).toMatchObject({ min: 0 });
+  });
+
+  it("infers business import columns as scanner, link, money, percent, and time controls", () => {
+    const draft = createDraftFromSpreadsheetRows(
+      setup,
+      ["Product Barcode", "Package QR Code", "Website URL", "Sales Amount", "Completion %", "Visit Time", "Submitted Timestamp"],
+      [
+        ["978020137962", "QR-001", "https://atlasfieldops.com", "1200", "75%", "08:30", "2026-06-20 08:30"],
+        ["978020137963", "QR-002", "https://example.org", "1450", "80%", "14:45", "2026-06-21 14:45"],
+      ],
+    );
+    const byLabel = Object.fromEntries(draft.fields.map((field) => [field.label, field]));
+
+    expect(byLabel["Product Barcode"].type).toBe("barcode");
+    expect(byLabel["Package QR Code"].type).toBe("qr");
+    expect(byLabel["Website URL"].type).toBe("url");
+    expect(byLabel["Sales Amount"].type).toBe("currency");
+    expect(byLabel["Completion %"].type).toBe("decimal");
+    expect(byLabel["Completion %"].validation).toMatchObject({ max: 100, min: 0 });
+    expect(byLabel["Visit Time"].type).toBe("time");
+    expect(byLabel["Submitted Timestamp"].type).toBe("datetime");
   });
 
   it("offers sector-specific form types for every supported sector", () => {
@@ -520,6 +558,21 @@ describe("enterprise form creation workspace", () => {
 
     expect(allFailures.some((item) => item.id === "lifecycle-approved")).toBe(true);
     expect(approvalBlockingFailures(checklist).some((item) => item.id === "lifecycle-approved")).toBe(false);
+  });
+
+  it("keeps advanced governance checks as warnings instead of hard publish blockers", () => {
+    const checklist = validateFormForPublish(
+      createEnterpriseDraftForm(setup, "template", []),
+      setup,
+      true,
+    );
+    const blockers = publishBlockingFailures(checklist).map((item) => item.id);
+    const readinessScore = Math.round((checklist.filter((item) => item.status === "passed").length / checklist.length) * 100);
+
+    expect(blockers).toEqual([]);
+    expect(readinessScore).toBeGreaterThanOrEqual(MINIMUM_PUBLISH_READINESS_SCORE);
+    expect(checklist.find((item) => item.id === "lifecycle-approved")?.complete).toBe(false);
+    expect(checklist.find((item) => item.id === "certification")?.complete).toBe(false);
   });
 
   it("keeps the lifecycle stepper on review until the form is actually approved", () => {

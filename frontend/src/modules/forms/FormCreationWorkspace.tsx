@@ -1219,6 +1219,18 @@ export function approvalBlockingFailures(
   );
 }
 
+export const MINIMUM_PUBLISH_READINESS_SCORE = 60;
+
+const HARD_PUBLISH_BLOCKER_IDS = new Set(["name", "project", "questions", "variables"]);
+
+export function publishBlockingFailures(
+  checklist: PublishReadinessItem[],
+): PublishReadinessItem[] {
+  return checklist.filter(
+    (item) => HARD_PUBLISH_BLOCKER_IDS.has(item.id) && !item.complete,
+  );
+}
+
 export function lifecycleCompletionState(params: {
   checklist: PublishReadinessItem[];
   hasDraft: boolean;
@@ -1427,14 +1439,26 @@ const previewTeams: TeamRead[] = [
 ];
 
 function variableNameFromLabel(label: string, fallback: string): string {
+  const safeFallback =
+    fallback
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_")
+      .slice(0, 54) || "question";
   return (
     label
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
-      .slice(0, 54) || fallback
+      .slice(0, 54) || safeFallback
   );
+}
+
+function isValidVariableName(value: string): boolean {
+  return /^[a-z_][a-z0-9_]{0,63}$/.test(value);
 }
 
 function uniqueVariableName(label: string, used: Set<string>, fallback: string): string {
@@ -1844,13 +1868,25 @@ function inferFieldType(header: string, values: string[]): FieldType {
   const samples = values.map((value) => value.trim()).filter(Boolean);
   if (label.includes("email")) return "email";
   if (label.includes("phone") || label.includes("mobile") || label.includes("contact")) return "phone";
-  if (/\b(id|code|sku|barcode|serial|account|reference|ref|identifier)\b/.test(label)) return "text";
-  if (label.includes("gps") || label.includes("coordinate")) return "gps";
+  if (/\bqr(?:\s+code)?\b/.test(label)) return "qr";
+  if (/\bbar\s*code\b|\bbarcode\b/.test(label)) return "barcode";
+  if (/\b(url|website|web address|link)\b/.test(label)) return "url";
   if (label.includes("photo") || label.includes("image")) return "photo";
   if (label.includes("signature")) return "signature";
+  if (/\bgps\s+accuracy\b|\baccuracy\s*\(m\)\b|\baccuracy\s+meters?\b/.test(label)) return "decimal";
   if (/\b(lat|latitude|lon|lng|longitude)\b/.test(label)) return "decimal";
+  if (label.includes("gps") || label.includes("coordinate")) return "gps";
+  if (/\b(amount|price|cost|budget|revenue|sales value|expenditure|expense|income)\b/.test(label)) return "currency";
+  if (/%|\b(percent|percentage|pct)\b/.test(label)) return "decimal";
+  if (/\b(date\s*time|datetime|timestamp)\b/.test(label)) return "datetime";
+  if (/\btime\b/.test(label)) return "time";
+  if (/\b(id|code|sku|serial|account|reference|ref|identifier)\b/.test(label)) return "text";
+  if (samples.length && samples.every((value) => /^https?:\/\/|^www\./i.test(value))) return "url";
+  if (samples.length && samples.every((value) => /^([01]?\d|2[0-3]):[0-5]\d(:[0-5]\d)?(\s?(am|pm))?$/i.test(value))) return "time";
   if (samples.length && samples.every((value) => /^-?\d+$/.test(value))) return "number";
   if (samples.length && samples.every((value) => /^-?\d+(\.\d+)?$/.test(value))) return "decimal";
+  if (samples.length && samples.every((value) => /^-?\d+(\.\d+)?%$/.test(value))) return "decimal";
+  if (samples.length > 0 && samples.every((value) => !Number.isNaN(Date.parse(value)) && /\d{1,2}:\d{2}/.test(value))) return "datetime";
   if (label.includes("date") || (samples.length > 0 && samples.every((value) => !Number.isNaN(Date.parse(value))))) return "date";
   const normalized = new Set(samples.map((value) => value.toLowerCase()));
   if (normalized.size > 0 && normalized.size <= 8) {
@@ -1921,7 +1957,11 @@ export function createDraftFromSpreadsheetRows(setup: FormSetupDraft, rows: stri
             ? { ...field.validation, max: 90, min: -90 }
             : /\b(lon|lng|longitude)\b/i.test(header)
               ? { ...field.validation, max: 180, min: -180 }
-              : field.validation,
+              : /%|\b(percent|percentage|pct)\b/i.test(header)
+                ? { ...field.validation, max: 100, min: 0 }
+                : /\bgps\s+accuracy\b|\baccuracy\s*\(m\)\b|\baccuracy\s+meters?\b/i.test(header)
+                  ? { ...field.validation, min: 0 }
+                  : field.validation,
         variableName: uniqueVariableName(header, used, field.id),
       };
     });
@@ -3624,6 +3664,7 @@ export function validateFormForPublish(
     .map((field) => (field.variableName?.trim() || variableNameFromLabel(field.label, field.id)).trim())
     .filter(Boolean) as string[];
   const uniqueVariableNames = new Set(variableNames);
+  const invalidVariableNameCount = variableNames.filter((name) => !isValidVariableName(name)).length;
   const hasGps = fields.some((field) =>
     ["gps", "geolocation", "map", "geofence"].includes(field.type),
   );
@@ -3838,7 +3879,8 @@ export function validateFormForPublish(
       category: "Question validation",
       complete:
         variableNames.length === fields.length &&
-        uniqueVariableNames.size === variableNames.length,
+        uniqueVariableNames.size === variableNames.length &&
+        invalidVariableNameCount === 0,
       description:
         "Variable names must be present, unique, stable, lowercase-friendly, and without spaces.",
       id: "variables",
@@ -4500,8 +4542,8 @@ function buildPublishAssistantAdvice({
   setup: FormSetupDraft;
 }): PublishAssistantAdvice[] {
   const fields = form?.fields ?? [];
-  const failedItems = checklist.filter((item) => item.required && !item.complete);
-  const warningItems = checklist.filter((item) => !item.required && !item.complete);
+  const failedItems = publishBlockingFailures(checklist);
+  const warningItems = checklist.filter((item) => !item.complete && !failedItems.some((failure) => failure.id === item.id));
   const formTypeQuickFix = quickFixForFormType(setup.formType);
   const missingStandardQuestions = missingRecommendedQuestions(form, setup, controls);
   const weakLabels = weakQuestionLabels(fields);
@@ -5549,12 +5591,20 @@ export function FormCreationWorkspace({
     () => validateFormForPublish(draftForm, setup, projectLinked, controlsDraft),
     [controlsDraft, draftForm, projectLinked, setup],
   );
-  const criticalFailures = checklist.filter(
-    (item) => item.required && !item.complete,
+  const readinessPassedCount = checklist.filter(
+    (item) => item.status === "passed",
+  ).length;
+  const readinessWarnings = checklist.filter(
+    (item) => item.status === "warning",
   );
+  const readinessScore = checklist.length
+    ? Math.round((readinessPassedCount / checklist.length) * 100)
+    : 0;
+  const readinessBelowPublishThreshold = readinessScore < MINIMUM_PUBLISH_READINESS_SCORE;
+  const criticalFailures = publishBlockingFailures(checklist);
   const approvalFailures = approvalBlockingFailures(checklist);
   const publishDisabled =
-    !draftForm || controlsDraft.lifecycleStatus !== "approved" || criticalFailures.length > 0 || publishing;
+    !draftForm || criticalFailures.length > 0 || readinessBelowPublishThreshold || publishing;
   const publishAssistantAdvice = useMemo(
     () =>
       buildPublishAssistantAdvice({
@@ -5580,12 +5630,6 @@ export function FormCreationWorkspace({
   const warningPublishAdvice = publishAssistantAdvice.filter(
     (advice) => advice.severity === "Warning",
   );
-  const readinessPassedCount = checklist.filter(
-    (item) => item.status === "passed",
-  ).length;
-  const readinessWarnings = checklist.filter(
-    (item) => item.status === "warning",
-  );
   const reviewChecklist = useMemo(
     () =>
       [...checklist].sort((a, b) => {
@@ -5597,17 +5641,14 @@ export function FormCreationWorkspace({
       }),
     [checklist],
   );
-  const readinessScore = checklist.length
-    ? Math.round((readinessPassedCount / checklist.length) * 100)
-    : 0;
   const readinessLabel =
-    criticalFailures.length > 0
+    criticalFailures.length > 0 || readinessBelowPublishThreshold
       ? "Not Ready"
       : readinessScore >= 90
         ? "Ready"
         : "Needs Review";
   const readinessTone =
-    criticalFailures.length > 0
+    criticalFailures.length > 0 || readinessBelowPublishThreshold
       ? "danger"
       : readinessScore >= 90
         ? "success"
@@ -6746,7 +6787,11 @@ export function FormCreationWorkspace({
       return;
     }
     if (criticalFailures.length) {
-      setPublishMessage("Resolve the required readiness checks before publishing.");
+      setPublishMessage("Resolve the hard publish blockers first: project, form name, at least one question, and valid variable names.");
+      return;
+    }
+    if (readinessBelowPublishThreshold) {
+      setPublishMessage(`Complete at least ${MINIMUM_PUBLISH_READINESS_SCORE}% readiness before publishing. Optional governance and advanced controls can be finished later.`);
       return;
     }
     if (token && !preview) {

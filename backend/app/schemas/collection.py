@@ -244,6 +244,9 @@ class FormField(BaseModel):
     appearance: dict[str, Any] = Field(default_factory=dict)
     options: list[dict[str, Any]] = Field(default_factory=list)
     calculation: str | None = None
+    matrix: dict[str, Any] = Field(default_factory=dict)
+    repeat: dict[str, Any] = Field(default_factory=dict)
+    children: list["FormField"] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def normalize_type_aliases(self) -> "FormField":
@@ -309,10 +312,14 @@ class FormSchema(BaseModel):
             "calculated",
             "grid",
         }
-        for section in self.sections:
-            for field in section.fields:
+        def validate_fields(fields: list[FormField]) -> None:
+            for field in fields:
                 if field.type not in supported:
                     raise ValueError(f"Unsupported field type: {field.type}")
+                validate_fields(field.children)
+
+        for section in self.sections:
+            validate_fields(section.fields)
         return self
 
 

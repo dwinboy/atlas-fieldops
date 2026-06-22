@@ -147,6 +147,9 @@ export class FormValidationService {
         addIssue("Enter a valid number.", "Error", "Use digits only. If the answer is unknown, choose a configured 'Don't know' option instead of typing text.");
         return issues;
       }
+      if (hasCustomRule(question, "integerOnly:true") && !Number.isInteger(numeric)) {
+        addIssue("Enter a whole number without decimals.", "Error", "Use a count such as 1, 2, or 10. Do not enter 1.5 for this question.");
+      }
       for (const rule of question.validationRules) {
         if (rule.ruleType === "Min" && typeof rule.value === "number" && numeric < rule.value) {
           addIssue(rule.message || `Value must be at least ${rule.value}.`, rule.severity === "Warning" ? "Warning" : "Error", `Enter a value from ${rule.value} upward, or ask your supervisor if the form limit is wrong.`);
@@ -167,9 +170,21 @@ export class FormValidationService {
           question.type === "DateTime" ? "Use the date buttons when possible, or type 2026-06-08 14:30." : "Use the 'Use today' button when the date is today, or type the date as 2026-06-08.");
         return issues;
       }
-      const allowsFuture = question.validationRules.some((rule) => rule.ruleType === "Custom" && rule.value === "allowFuture:true");
-      if (!allowsFuture && parsed.getTime() > Date.now()) {
+      const blockFutureDates = hasCustomRule(question, "blockFutureDates:true");
+      const blockPastDates = hasCustomRule(question, "blockPastDates:true");
+      const minDate = customRuleDate(question, "minDate");
+      const maxDate = customRuleDate(question, "maxDate");
+      if (minDate && parsed.getTime() < minDate.getTime()) {
+        addIssue(`Date must be on or after ${formatRuleDate(minDate)}.`, "Error", "Choose a date inside the allowed range for this question.");
+      }
+      if (maxDate && parsed.getTime() > maxDate.getTime()) {
+        addIssue(`Date must be on or before ${formatRuleDate(maxDate)}.`, "Error", "Choose a date inside the allowed range for this question.");
+      }
+      if (blockFutureDates && parsed.getTime() > Date.now()) {
         addIssue("Date cannot be in the future.", "Error", "Enter the date when the event already happened. If this is meant to be a planned future date, ask your manager to allow future dates for this question.");
+      }
+      if (blockPastDates && parsed.toDateString() !== new Date().toDateString() && parsed.getTime() < Date.now()) {
+        addIssue("Date cannot be in the past.", "Error", "Enter today or a future date, or ask your manager to change the date rule for this question.");
       }
     }
 
@@ -314,6 +329,22 @@ export class FormValidationService {
     }
     return { answered, total, percent: total === 0 ? 0 : Math.round((answered / total) * 100) };
   }
+}
+
+function hasCustomRule(question: MobileQuestion, value: string): boolean {
+  return question.validationRules.some((rule) => rule.ruleType === "Custom" && rule.value === value);
+}
+
+function customRuleDate(question: MobileQuestion, prefix: "minDate" | "maxDate"): Date | null {
+  const rule = question.validationRules.find(
+    (candidate) => candidate.ruleType === "Custom" && typeof candidate.value === "string" && candidate.value.startsWith(`${prefix}:`),
+  );
+  if (!rule || typeof rule.value !== "string") return null;
+  return parseFieldDate(rule.value.slice(prefix.length + 1), "Date");
+}
+
+function formatRuleDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function parseFieldDate(value: string, questionType: MobileQuestion["type"]): Date | null {
