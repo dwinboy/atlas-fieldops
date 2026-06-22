@@ -16,6 +16,7 @@ watchPatterns = [
 
 [deploy]
 preDeployCommand = "python -m alembic upgrade head"
+startCommand = "python -m app.cli.serve"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

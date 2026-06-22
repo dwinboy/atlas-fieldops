@@ -3,6 +3,7 @@
     "builder": "dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "python -m alembic upgrade head"
+    "preDeployCommand": "python -m alembic upgrade head",
+    "startCommand": "python -m app.cli.serve"
   }
 }
