@@ -1243,6 +1243,21 @@ export const MINIMUM_PUBLISH_READINESS_SCORE = 60;
 
 const HARD_PUBLISH_BLOCKER_IDS = new Set(["name", "project", "questions", "variables"]);
 
+// Readiness items that genuinely block approval — structural data integrity plus the
+// review/approve/publish governance gates. Every other check is advisory (a warning), so
+// the design checklist surfaces best practices without forcing a long required list.
+const READINESS_BLOCKER_IDS = new Set([
+  "name",
+  "form-type",
+  "project",
+  "sections",
+  "questions",
+  "variables",
+  "testing",
+  "certification",
+  "lifecycle-approved",
+]);
+
 export function publishBlockingFailures(
   checklist: PublishReadinessItem[],
 ): PublishReadinessItem[] {
@@ -4008,16 +4023,23 @@ export function validateFormForPublish(
     label: string;
     required: boolean;
     warning?: boolean;
-  }): PublishReadinessItem => ({
-    category,
-    complete,
-    description,
-    id,
-    jumpTo,
-    label,
-    required,
-    status: complete ? "passed" : required && !warning ? "failed" : "warning",
-  });
+  }): PublishReadinessItem => {
+    // Only whitelisted items hard-block; any other "required" check is demoted to an
+    // advisory warning so it no longer gates approval — just nudges best practice.
+    const isBlocker = READINESS_BLOCKER_IDS.has(id);
+    const effectiveRequired = required && isBlocker;
+    const effectiveWarning = warning || (required && !isBlocker);
+    return {
+      category,
+      complete,
+      description,
+      id,
+      jumpTo,
+      label,
+      required: effectiveRequired,
+      status: complete ? "passed" : effectiveRequired && !effectiveWarning ? "failed" : "warning",
+    };
+  };
 
   return [
     item({
