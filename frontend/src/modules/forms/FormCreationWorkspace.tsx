@@ -6188,60 +6188,6 @@ export function FormCreationWorkspace({
     }));
   }
 
-  function updateRequiresEntity(requiresEntity: boolean): void {
-    setControlsDraft((current) => {
-      if (requiresEntity) {
-        return {
-          ...current,
-          allowAnonymous: false,
-          beneficiarySearch: "required",
-          requiresEntity: true,
-          respondentIdentification: "existing_beneficiary",
-        };
-      }
-      const respondentIdentification =
-        current.allowAnonymous
-          ? "anonymous_allowed"
-          : current.beneficiarySearch === "disabled"
-            ? "new_registration"
-            : "existing_or_new";
-      return {
-        ...current,
-        beneficiarySearch:
-          respondentIdentification === "existing_or_new" ? "optional" : current.beneficiarySearch,
-        requiresEntity: false,
-        respondentIdentification,
-      };
-    });
-  }
-
-  function updateAllowAnonymous(allowAnonymous: boolean): void {
-    setControlsDraft((current) => {
-      if (allowAnonymous) {
-        return {
-          ...current,
-          allowAnonymous: true,
-          beneficiarySearch: "disabled",
-          requiresEntity: false,
-          respondentIdentification: "anonymous_allowed",
-        };
-      }
-      if (current.respondentIdentification !== "anonymous_allowed") {
-        return { ...current, allowAnonymous: false };
-      }
-      const respondentIdentification =
-        current.profileUpdateMode !== "never" ? "existing_or_new" : "new_registration";
-      return {
-        ...current,
-        allowAnonymous: false,
-        beneficiarySearch:
-          respondentIdentification === "existing_or_new" ? "optional" : "disabled",
-        requiresEntity: false,
-        respondentIdentification,
-      };
-    });
-  }
-
   function updateBeneficiarySearch(
     beneficiarySearch: FormControlsDraft["beneficiarySearch"],
   ): void {
@@ -9963,23 +9909,67 @@ export function FormCreationWorkspace({
                   entity so records can be tracked over time when the project needs it.
                 </HelpHint>
               </div>
+              <fieldset className="mt-3">
+                <legend className="text-sm font-medium">What does this form do with an entity?</legend>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  One choice sets the whole behavior. The {primaryEntityLabel.toLowerCase()} profile mapping below
+                  then says which answers fill the record.
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        value: "new_registration",
+                        title: `Registers a new ${primaryEntityLabel.toLowerCase()}`,
+                        help: "Creates a new record when the submission is approved.",
+                      },
+                      {
+                        value: "existing_beneficiary",
+                        title: `Updates an existing ${primaryEntityLabel.toLowerCase()}`,
+                        help: "The collector must pick an existing record before collecting.",
+                      },
+                      {
+                        value: "existing_or_new",
+                        title: "Find existing, or register new",
+                        help: "Match an existing record, or create one when none is found.",
+                      },
+                      {
+                        value: "anonymous_allowed",
+                        title: "Not linked to an entity",
+                        help: "Standalone submission — event, checklist, transaction, or survey.",
+                      },
+                    ] satisfies {
+                      value: FormControlsDraft["respondentIdentification"];
+                      title: string;
+                      help: string;
+                    }[]
+                  ).map((option) => {
+                    const selected = controlsDraft.respondentIdentification === option.value;
+                    return (
+                      <label
+                        className={cn(
+                          "flex cursor-pointer gap-2 rounded-lg border p-2.5 text-sm transition",
+                          selected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30",
+                        )}
+                        key={option.value}
+                      >
+                        <input
+                          checked={selected}
+                          className="mt-0.5"
+                          name="respondent-identification"
+                          onChange={() => updateRespondentIdentification(option.value)}
+                          type="radio"
+                        />
+                        <span>
+                          <span className="font-medium text-foreground">{option.title}</span>
+                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{option.help}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    checked={controlsDraft.requiresEntity}
-                    onChange={(event) => updateRequiresEntity(event.target.checked)}
-                    type="checkbox"
-                  />
-                  Require existing entity record
-                </label>
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    checked={controlsDraft.allowAnonymous}
-                    onChange={(event) => updateAllowAnonymous(event.target.checked)}
-                    type="checkbox"
-                  />
-                  Allow anonymous submission
-                </label>
                 <label className="text-sm font-medium">
                   Entity type
                   <Select
