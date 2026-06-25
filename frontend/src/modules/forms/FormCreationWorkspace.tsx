@@ -2763,9 +2763,12 @@ function controlsDraftToApiControls(
     instrument: {
       purpose: {
         form_objective: controls.formObjective,
-        business_purpose: controls.businessPurpose,
+        // Business purpose and expected use are no longer separate inputs — the single
+        // "What is this form for?" field drives them, while any previously-set values are
+        // preserved when present, so existing forms and the backend keep working.
+        business_purpose: controls.businessPurpose || controls.formObjective,
         program_objective: controls.programObjective,
-        expected_use: controls.expectedUse,
+        expected_use: controls.expectedUse || controls.formObjective,
         decision_use: controls.decisionUse,
         reporting_period: controls.reportingPeriod,
         result_area: controls.resultArea,
@@ -4065,13 +4068,9 @@ export function validateFormForPublish(
     }),
     item({
       category: "Purpose",
-      complete: Boolean(
-        controls.formObjective.trim() &&
-          controls.businessPurpose.trim() &&
-          controls.expectedUse.trim(),
-      ),
+      complete: Boolean(controls.formObjective.trim()),
       description:
-        "Managed data collection instruments need an objective, business purpose, and expected use before field deployment.",
+        "State what this form is for in one sentence before field deployment.",
       id: "purpose",
       jumpTo: "controls",
       label: "Form purpose and business context defined",
@@ -8684,25 +8683,19 @@ export function FormCreationWorkspace({
                   Purpose and results context
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm font-medium">
-                    Form objective
+                  <label className="text-sm font-medium sm:col-span-2">
+                    What is this form for?
                     <Textarea
                       className="mt-2"
                       onChange={(event) =>
                         updateControlsDraft({ formObjective: event.target.value })
                       }
+                      placeholder="One sentence: why we collect this and how the data will be used."
                       value={controlsDraft.formObjective}
                     />
-                  </label>
-                  <label className="text-sm font-medium">
-                    Business purpose
-                    <Textarea
-                      className="mt-2"
-                      onChange={(event) =>
-                        updateControlsDraft({ businessPurpose: event.target.value })
-                      }
-                      value={controlsDraft.businessPurpose}
-                    />
+                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      This single statement covers the form&apos;s objective, business purpose, and expected use.
+                    </span>
                   </label>
                   <label className="text-sm font-medium">
                     Program objective
@@ -8746,16 +8739,6 @@ export function FormCreationWorkspace({
                       }
                       placeholder="Farmers trained and monitored"
                       value={controlsDraft.linkedOutput}
-                    />
-                  </label>
-                  <label className="text-sm font-medium sm:col-span-2">
-                    Expected use
-                    <Textarea
-                      className="mt-2"
-                      onChange={(event) =>
-                        updateControlsDraft({ expectedUse: event.target.value })
-                      }
-                      value={controlsDraft.expectedUse}
                     />
                   </label>
                   <label className="text-sm font-medium">
