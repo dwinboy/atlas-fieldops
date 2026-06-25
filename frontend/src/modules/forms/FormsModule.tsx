@@ -52,6 +52,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import type { BeneficiaryRead, CurrentPrincipal, DataFormSchemaRead, SubmissionRead } from "@/lib/api";
 import { ApiError, archiveForm, bulkUpdateImportCleaningRows, confirmImportedFormDataRows, getFormSchema, governExport, importFormDataRows, listBeneficiaries, listForms, listFormTemplates, listProjects, listSubmissions, restoreForm, returnImportedFormDataRows, updateForm, updateSubmissionResponses } from "@/lib/api";
+import { formatSubmissionId } from "@/lib/identifiers";
 import { cn } from "@/lib/utils";
 import { fieldOperationsAssignmentRoute } from "@/modules/field-operations/data";
 import { FormCreationWorkspace, readSpreadsheetRows } from "@/modules/forms/FormCreationWorkspace";
@@ -146,12 +147,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function displaySubmissionId(submission: Pick<SubmissionRead, "client_submission_id" | "submitted_at" | "imported_at" | "is_imported">): string {
-  const raw = submission.client_submission_id;
-  if (/^(MOB|UPL|IMP|SUB|WEB)-\d{4}-[A-Z0-9-]+$/i.test(raw)) return raw.toUpperCase();
-  const year = new Date(submission.imported_at ?? submission.submitted_at).getFullYear();
-  const suffix = raw.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "000001";
-  const prefix = submission.is_imported ? "IMP" : raw.startsWith("draft_") || raw.startsWith("submission_") ? "MOB" : "SUB";
-  return `${prefix}-${Number.isFinite(year) ? year : new Date().getFullYear()}-${suffix}`;
+  return formatSubmissionId(submission);
 }
 
 function downloadJson(filename: string, data: unknown): void {
@@ -7037,6 +7033,9 @@ function FormDataGridWorkspace({
                             {spreadsheetColumnLabel(questionIndex)}
                           </span>
 	                      <span className="line-clamp-1 normal-case tracking-normal text-foreground">{question.label}</span>
+                          {question.required ? (
+                            <span aria-label="Required" className="text-danger" title="Required">*</span>
+                          ) : null}
 	                      {!compactCleaningSheet ? (
                           <HelpHint label={`About ${question.label}`} title="Data dictionary">
 	                        <div className="space-y-1">
@@ -7047,9 +7046,8 @@ function FormDataGridWorkspace({
                           </HelpHint>
                         ) : null}
                     </div>
-                    <div className="mt-0.5 truncate normal-case tracking-normal text-[9px] text-muted-foreground">
-                      {question.key} · {question.type}
-                      {question.required ? " · required" : ""}
+                    <div className="mt-0.5 truncate font-mono normal-case tracking-normal text-[9px] text-muted-foreground">
+                      {question.key}
                     </div>
                   </th>
                 ))}

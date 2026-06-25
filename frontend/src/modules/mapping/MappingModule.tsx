@@ -58,6 +58,7 @@ import {
 import { previewOfficers } from "@/modules/field-operations/data";
 import { previewForms } from "@/modules/forms/data";
 import { useSectorTerminology, type SectorTerminology } from "@/lib/sectorTerminology";
+import { formatSubmissionId } from "@/lib/identifiers";
 import { cn } from "@/lib/utils";
 import {
   mappingSections,
@@ -663,13 +664,13 @@ export function MappingModule({ principal, token }: MappingModuleProps) {
         district: "",
         gpsAccuracy: accuracy,
         id: `submission-${submission.id}`,
-        label: submission.client_submission_id || submission.id,
+        label: formatSubmissionId(submission),
         latitude: submission.latitude,
         location: "Field GPS capture",
         longitude: submission.longitude,
         popup: {
           "GPS accuracy": submission.accuracy != null ? `${submission.accuracy}m` : "Unknown",
-          "Submission ID": submission.client_submission_id,
+          "Submission ID": formatSubmissionId(submission),
           "Submission source": source,
           "Submitted by": submission.submitted_by_name ?? "Unknown",
           Status: submission.status,

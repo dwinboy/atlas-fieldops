@@ -56,6 +56,7 @@ import {
   updateSubmissionResponses,
 } from "@/lib/api";
 import type { EntityHierarchyRead } from "@/lib/api";
+import { formatSubmissionId } from "@/lib/identifiers";
 import { cn } from "@/lib/utils";
 import {
   submissionSectionFromPath,
@@ -213,12 +214,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function displaySubmissionId(submission: Pick<SubmissionRecord, "client_submission_id" | "submitted_at" | "imported_at" | "is_imported">): string {
-  const raw = submission.client_submission_id;
-  if (/^(MOB|UPL|IMP|SUB|WEB)-\d{4}-[A-Z0-9-]+$/i.test(raw)) return raw.toUpperCase();
-  const year = new Date(submission.imported_at ?? submission.submitted_at).getFullYear();
-  const suffix = raw.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "000001";
-  const prefix = submission.is_imported ? "IMP" : raw.startsWith("draft_") || raw.startsWith("submission_") ? "MOB" : "SUB";
-  return `${prefix}-${Number.isFinite(year) ? year : new Date().getFullYear()}-${suffix}`;
+  return formatSubmissionId(submission);
 }
 
 function submissionHasUsableGps(submission: SubmissionRecord): boolean {
@@ -695,11 +691,11 @@ export function SubmissionsModule({
           ? " Approved data is now eligible for beneficiary/entity linking, indicators, analysis, and reports."
           : "";
       setReviewResult(
-        `${submission.client_submission_id} is now ${formatSubmissionStatus(submission.status)}.${approvalNote}${processingNote} Reviewer note: ${variables.comment}`,
+        `${displaySubmissionId(submission)} is now ${formatSubmissionStatus(submission.status)}.${approvalNote}${processingNote} Reviewer note: ${variables.comment}`,
       );
       pushToast({
         title: "Submission updated",
-        description: submission.client_submission_id,
+        description: displaySubmissionId(submission),
         tone: "success",
       });
       await submissionsQuery.refetch();
@@ -735,8 +731,8 @@ export function SubmissionsModule({
         title: submission.status === "approved" ? "Change request created" : "Responses saved",
         description:
           submission.status === "approved"
-            ? `${submission.client_submission_id} is approved and locked. The proposed correction is waiting for review.`
-            : submission.client_submission_id,
+            ? `${displaySubmissionId(submission)} is approved and locked. The proposed correction is waiting for review.`
+            : displaySubmissionId(submission),
         tone: "success",
       });
       await submissionsQuery.refetch();
@@ -797,12 +793,12 @@ export function SubmissionsModule({
         ),
       );
       setReviewResult(
-        `${selectedSubmission.client_submission_id} was moved through ${action.replace("_", " ")}. Reviewer note: ${comment}`,
+        `${displaySubmissionId(selectedSubmission)} was moved through ${action.replace("_", " ")}. Reviewer note: ${comment}`,
       );
       setReviewComment("");
       pushToast({
         title: "Preview workflow updated",
-        description: selectedSubmission.client_submission_id,
+        description: displaySubmissionId(selectedSubmission),
         tone: "success",
       });
       return;
@@ -897,7 +893,7 @@ export function SubmissionsModule({
       );
       pushToast({
         title: "Preview responses saved",
-        description: submission.client_submission_id,
+        description: displaySubmissionId(submission),
         tone: "success",
       });
       return;
@@ -1623,7 +1619,7 @@ function SubmissionsDashboard({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium">
-                      {submission.client_submission_id}
+                      {displaySubmissionId(submission)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {submission.form_name} · {submission.reviewer}
@@ -1661,7 +1657,7 @@ function SubmissionsDashboard({
                   <div>
                     <p className="font-medium">{flag.check}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {submission.client_submission_id} · {flag.message}
+                      {displaySubmissionId(submission)} · {flag.message}
                     </p>
                   </div>
                   <Badge tone={severityTone(flag.severity)}>
@@ -1682,7 +1678,7 @@ function SubmissionsDashboard({
           <TimelineRows
             rows={recentActions.map(({ item, submission }) => ({
               label: item.action,
-              meta: `${submission.client_submission_id} · ${item.actor}`,
+              meta: `${displaySubmissionId(submission)} · ${item.actor}`,
               time: item.created_at,
             }))}
           />
@@ -1977,7 +1973,7 @@ function OverviewTab({
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {submission.entity_type ?? "Beneficiary"}
-                {submission.beneficiary_code ? ` · ${submission.beneficiary_code}` : ` · ${submission.entity_id}`}
+                {submission.beneficiary_code ? ` · ${submission.beneficiary_code}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2921,7 +2917,7 @@ function DataExplorerSection({
                         <tr className="odd:bg-background even:bg-muted/20" key={submission.id}>
                           <td className="sticky left-0 z-10 max-w-52 border-b bg-inherit px-2.5 py-2 font-medium">
                             <button className="text-left text-primary" onClick={() => onOpenSubmission(submission)} type="button">
-                              {submission.client_submission_id}
+                              {displaySubmissionId(submission)}
                             </button>
                           </td>
                           <td className="border-b px-2.5 py-2">

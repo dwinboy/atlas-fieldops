@@ -47,6 +47,7 @@ import {
   type DataQualitySignalRead,
   type ImportCleaningRowRead,
 } from "@/lib/api";
+import { formatSubmissionId } from "@/lib/identifiers";
 import { cn } from "@/lib/utils";
 import {
   dataQualitySectionFromPath,
@@ -1329,8 +1330,8 @@ function ImportCleaningSection({
               {visibleRows.map((row, rowIndex) => (
                 <tr className={cn("hover:bg-primary/5", rowIndex % 2 ? "bg-muted/10" : "bg-background")} key={row.id}>
                   <td className="sticky left-0 z-10 border-b border-r bg-inherit px-1.5 py-1 align-top">
-                    <button className="block max-w-32 truncate font-semibold text-primary hover:underline" onClick={() => onOpenRow(row)} title={row.client_submission_id} type="button">
-                      {row.client_submission_id}
+                    <button className="block max-w-32 truncate font-semibold text-primary hover:underline" onClick={() => onOpenRow(row)} title={formatSubmissionId(row)} type="button">
+                      {formatSubmissionId(row)}
                     </button>
                     <span className="block truncate text-[9px] text-muted-foreground">#{row.source_record_id ?? "?"}</span>
                   </td>
@@ -1389,6 +1390,13 @@ function ImportCleaningSection({
 function evidenceText(issue: QualityIssue, key: string): string {
   const value = issue.evidenceJson?.[key];
   return typeof value === "string" && value.trim() ? value : "";
+}
+
+/** Human-readable submission label for an issue — never the raw UUID. */
+function issueSubmissionLabel(issue: QualityIssue): string {
+  if (issue.submissionId === "Not linked") return "Not linked";
+  const clientId = evidenceText(issue, "client_submission_id");
+  return clientId ? formatSubmissionId({ client_submission_id: clientId }) : "Linked submission";
 }
 
 function ProfileChangeCards({
@@ -1728,7 +1736,7 @@ function ReconciliationSection({
                   <h3 className="mt-2 font-semibold">{issue.title}</h3>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{issue.description}</p>
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2 xl:grid-cols-4">
-                    <span>Submission: {issue.submissionId}</span>
+                    <span>Submission: {issueSubmissionLabel(issue)}</span>
                     <span>Candidate: {candidateUid || "None"}</span>
                     <span>Matched: {matchedFields || "Not recorded"}</span>
                     <span>Recommended: {issue.recommendedAction}</span>
@@ -2081,7 +2089,7 @@ function IssueOverview({ issue }: { issue: QualityIssue }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <div className="space-y-5">
-        <KeyValuePanel rows={[["Project", issue.project], ["Form", issue.form], ["Submission", issue.submissionId], ["Assigned to", issue.assignedTo], ["Detected", new Date(issue.detectedAt).toLocaleString()], ["Score impact", `${issue.scoreImpact} points`]]} title="Issue Summary" />
+        <KeyValuePanel rows={[["Project", issue.project], ["Form", issue.form], ["Submission", issueSubmissionLabel(issue)], ["Assigned to", issue.assignedTo], ["Detected", new Date(issue.detectedAt).toLocaleString()], ["Score impact", `${issue.scoreImpact} points`]]} title="Issue Summary" />
         {profileChanges.length ? (
           <Panel title="Profile Conflict Summary">
             <div className="grid gap-3 md:grid-cols-2">
