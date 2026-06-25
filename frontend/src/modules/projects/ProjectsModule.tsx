@@ -64,6 +64,7 @@ import {
   type PredefinedEntityCategoryRead,
 } from "@/lib/api";
 import { SECTOR_TERMINOLOGY } from "@/lib/sectorTerminology";
+import { OptionSetsProvider, useOptionChoices } from "@/lib/optionSets";
 import { cn } from "@/lib/utils";
 import { ProjectBeneficiariesPanel } from "@/modules/beneficiaries/BeneficiariesModule";
 import { previewEntities } from "@/modules/beneficiaries/data";
@@ -447,31 +448,6 @@ const countryOptions = countryCodes
   .map((code) => countryDisplayNames.of(code) ?? code)
   .sort((left, right) => left.localeCompare(right));
 
-const projectTypeOptions = [
-  "Agriculture",
-  "Asset Management",
-  "Audits",
-  "Health",
-  "Education",
-  "Evaluation",
-  "Government",
-  "HR",
-  "Humanitarian",
-  "Inspections",
-  "Inventory Management",
-  "Livelihood",
-  "Logistics",
-  "Manufacturing",
-  "Monitoring",
-  "Protection",
-  "Registration",
-  "Research",
-  "Retail",
-  "Sales",
-  "WASH",
-  "Custom",
-];
-
 const projectStatusOptions = [
   "draft",
   "planning",
@@ -481,55 +457,12 @@ const projectStatusOptions = [
   "archived",
 ];
 
-const projectEntityTypeOptions = [
-  "Asset",
-  "Audit Item",
-  "Customer",
-  "Employee",
-  "Farmer",
-  "Household",
-  "Beneficiary",
-  "Inspection Site",
-  "Product",
-  "Production Batch",
-  "School",
-  "Shipment",
-  "Stock Item",
-  "Facility",
-  "Village",
-  "Group",
-  "Health Worker",
-  "Custom Entity",
-];
-
-const duplicateFieldOptions = [
-  "External ID",
-  "Code / SKU",
-  "Phone",
-  "National ID",
-  "Household ID",
-  "Name + Location",
-  "Name + Village",
-  "Name + Date of Birth",
-  "Serial Number",
-  "GPS",
-];
-
 const submissionSourceOptions = [
   "Field Submitted",
   "Mobile",
   "Web Entry",
   "Uploaded",
   "Imported",
-];
-
-const projectFrequencyOptions = [
-  "Monthly",
-  "Quarterly",
-  "Semi-annual",
-  "Annual",
-  "Seasonal",
-  "Event-based",
 ];
 
 const wizardSteps = ["Basics", "Setup", "Review & activate"] as const;
@@ -1622,6 +1555,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
   ];
 
   return (
+    <OptionSetsProvider token={token}>
     <section className="space-y-3">
       <div className="module-header rounded-xl p-3.5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -1895,6 +1829,7 @@ export function ProjectsModule({ principal, token }: ProjectsModuleProps) {
         setStep={setWizardStep}
       />
     </section>
+    </OptionSetsProvider>
   );
 }
 
@@ -3720,6 +3655,12 @@ function ProjectWizardStepContent({
   updateSettings: (section: string, patch: ProjectSettingsSection) => void;
 }) {
   const activeSectorPack = selectedSectorPack(draft, sectorPacks);
+  // Owner-managed reference data (falls back to bundled defaults when not customized).
+  const projectTypeChoices = useOptionChoices("project.type");
+  const entityTypeChoices = useOptionChoices("project.entity_type");
+  const frequencyChoices = useOptionChoices("project.frequency");
+  const duplicateFieldChoices = useOptionChoices("duplicate.field");
+  const submissionSourceChoices = useOptionChoices("submission.source");
 
   const basics = (
       <div className="grid gap-3">
@@ -3827,9 +3768,9 @@ function ProjectWizardStepContent({
             }
           >
             <option value="">Project type</option>
-            {projectTypeOptions.map((type) => (
-              <option key={type} value={type}>
-                {type}
+            {projectTypeChoices.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
               </option>
             ))}
           </Select>
@@ -4087,9 +4028,9 @@ function ProjectWizardStepContent({
             }
           >
             <option value="">Primary entity type</option>
-            {projectEntityTypeOptions.map((type) => (
-              <option key={type} value={type}>
-                {type}
+            {entityTypeChoices.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
               </option>
             ))}
           </Select>
@@ -4140,19 +4081,19 @@ function ProjectWizardStepContent({
         <div className="rounded-2xl border bg-background/50 p-4">
           <p className="font-medium">Duplicate detection fields</p>
           <div className="mt-3 grid gap-2 md:grid-cols-3">
-            {duplicateFieldOptions.map((field) => (
+            {duplicateFieldChoices.map((choice) => (
               <label
                 className="flex items-center gap-2 rounded-xl border bg-panel px-3 py-2 text-sm"
-                key={field}
+                key={choice.value}
               >
                 <input
-                  checked={duplicateFields.includes(field)}
+                  checked={duplicateFields.includes(choice.value)}
                   onChange={(event) =>
-                    setDuplicateField(field, event.target.checked)
+                    setDuplicateField(choice.value, event.target.checked)
                   }
                   type="checkbox"
                 />
-                {field}
+                {choice.label}
               </label>
             ))}
           </div>
@@ -4188,9 +4129,9 @@ function ProjectWizardStepContent({
             updateSettings("indicators", { frequency: event.target.value })
           }
         >
-          {projectFrequencyOptions.map((frequency) => (
-            <option key={frequency} value={frequency}>
-              {frequency}
+          {frequencyChoices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
             </option>
           ))}
         </Select>
@@ -4261,9 +4202,9 @@ function ProjectWizardStepContent({
         <div className="rounded-2xl border bg-background/50 p-4">
           <p className="font-medium">Submission sources tracked</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {submissionSourceOptions.map((source) => (
-              <Badge key={source} tone="neutral">
-                {source}
+            {submissionSourceChoices.map((choice) => (
+              <Badge key={choice.value} tone="neutral">
+                {choice.label}
               </Badge>
             ))}
           </div>

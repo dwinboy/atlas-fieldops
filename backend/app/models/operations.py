@@ -849,3 +849,25 @@ class BulkEditBatch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     conflict_count: Mapped[int] = mapped_column(Integer, default=0)
     change_set_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     undo_available: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class TenantOptionItem(UUIDPrimaryKeyMixin, SoftDeleteMixin, TimestampMixin, Base):
+    """An owner-managed reference-data option (e.g. a project type or entity type).
+
+    Grouped by ``set_key``. ``value`` is the stable code stored on records; ``label`` is
+    display-only. ``is_system`` marks a seeded default (deactivate, never hard-delete, so
+    a set can always be reset); custom items can be deleted.
+    """
+
+    __tablename__ = "tenant_option_items"
+    __table_args__ = (UniqueConstraint("organization_id", "set_key", "value"),)
+
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    set_key: Mapped[str] = mapped_column(String(80), index=True)
+    value: Mapped[str] = mapped_column(String(120), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)

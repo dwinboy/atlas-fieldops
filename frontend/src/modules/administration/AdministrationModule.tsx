@@ -80,6 +80,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ImportsMigrationModule } from "@/modules/imports-migration/ImportsMigrationModule";
+import { OptionSetsManager } from "@/modules/administration/OptionSetsManager";
 import {
   administrationSectionFromPath,
   administrationPages,
@@ -698,6 +699,12 @@ export function AdministrationModule({
   );
   const hasPlatformAccess = Boolean(
     token && token !== "preview-token" && principal?.platform_admin,
+  );
+  // Tenant option sets are owner-managed (organization.manage), not platform-only.
+  const canManageReference = Boolean(
+    token &&
+      token !== "preview-token" &&
+      (principal?.platform_admin || principal?.permissions?.includes("organization.manage")),
   );
   const administrationDataEnabled = hasPlatformAccess;
 
@@ -2185,6 +2192,12 @@ export function AdministrationModule({
           selectedReferenceList={selectedReferenceList}
           tableColumns={referenceColumns}
         />
+      ) : null}
+
+      {activeSection === "reference-data" ? (
+        <div className="mt-6 border-t border-border pt-6">
+          <OptionSetsManager token={token} canManage={canManageReference} />
+        </div>
       ) : null}
 
       {activeSection === "notification-settings" ? (

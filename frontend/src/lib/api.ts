@@ -3309,6 +3309,72 @@ export async function resetRolePermissions(token: string, roleId: string): Promi
   return request<RoleRead>(`/roles/${roleId}/reset-permissions`, { method: "POST", token });
 }
 
+// --- Tenant reference data (owner-managed option sets) ---
+export type OptionItem = {
+  id: string;
+  set_key: string;
+  value: string;
+  label: string;
+  description: string;
+  sort_order: number;
+  is_active: boolean;
+  is_system: boolean;
+  metadata: Record<string, unknown>;
+};
+
+export type OptionSet = {
+  key: string;
+  label: string;
+  description: string;
+  module: string;
+  items: OptionItem[];
+};
+
+export type OptionSetCatalog = { sets: OptionSet[] };
+
+export type OptionItemCreate = {
+  value: string;
+  label?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type OptionItemUpdate = {
+  label?: string;
+  description?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export async function getOptionSets(token: string): Promise<OptionSetCatalog> {
+  return request<OptionSetCatalog>("/reference/option-sets", { token });
+}
+
+export async function getOptionSet(token: string, setKey: string): Promise<OptionSet> {
+  return request<OptionSet>(`/reference/option-sets/${setKey}`, { token });
+}
+
+export async function createOptionItem(token: string, setKey: string, payload: OptionItemCreate): Promise<OptionItem> {
+  return request<OptionItem>(`/reference/option-sets/${setKey}/items`, { method: "POST", token, bodyJson: payload });
+}
+
+export async function updateOptionItem(token: string, setKey: string, itemId: string, payload: OptionItemUpdate): Promise<OptionItem> {
+  return request<OptionItem>(`/reference/option-sets/${setKey}/items/${itemId}`, { method: "PATCH", token, bodyJson: payload });
+}
+
+export async function deleteOptionItem(token: string, setKey: string, itemId: string): Promise<void> {
+  await request<null>(`/reference/option-sets/${setKey}/items/${itemId}`, { method: "DELETE", token });
+}
+
+export async function reorderOptionSet(token: string, setKey: string, itemIds: string[]): Promise<OptionSet> {
+  return request<OptionSet>(`/reference/option-sets/${setKey}/reorder`, { method: "POST", token, bodyJson: { item_ids: itemIds } });
+}
+
+export async function resetOptionSet(token: string, setKey: string): Promise<OptionSet> {
+  return request<OptionSet>(`/reference/option-sets/${setKey}/reset`, { method: "POST", token });
+}
+
 export async function getAccessCatalog(token: string): Promise<AccessCatalog> {
   return request<AccessCatalog>("/roles/catalog", { token });
 }
