@@ -86,12 +86,9 @@ type CollectionMethod = "web" | "mobile" | "web_mobile";
 type ControlStep =
   | "essentials"
   | "beneficiaries"
-  | "questions"
-  | "evidence"
-  | "quality"
+  | "instrument"
   | "access"
-  | "governance"
-  | "advanced";
+  | "governance";
 
 type PublishSuccessSummary = {
   deliveredOfficerCount: number;
@@ -674,7 +671,7 @@ const controlSteps: {
     mustDo: "Explain why this form exists and confirm the operational context.",
   },
   {
-    categories: ["Entity settings", "Entity identity", "Record linkage", "Submission rules", "Submission frequency"],
+    categories: ["Entity settings", "Entity identity", "Entity profile", "Record linkage", "Submission rules", "Submission frequency"],
     decisions: ["Who or what is this record about?", "Does it create or update an entity?", "How often can it be submitted?"],
     helper: "Entity rules, record search, and profile mappings.",
     id: "beneficiaries",
@@ -682,52 +679,63 @@ const controlSteps: {
     mustDo: "Decide whether this form creates, updates, or requires a linked record.",
   },
   {
-    categories: ["Structure", "Question validation", "Data dictionary", "Logic rules", "Metric mapping"],
-    decisions: ["Are questions clear and structured?", "Are variable names and dictionary fields usable?", "Do required and exception answers make sense?"],
-    helper: "Question standards, dictionary, required policy, and logic checks.",
-    id: "questions",
-    label: "3. Questions",
-    mustDo: "Confirm the questions are reportable, understandable, and clean enough for field collection.",
-  },
-  {
-    categories: ["Reference data", "GPS", "GPS settings", "Media settings", "Consent", "Offline readiness", "Mapping settings", "Mobile package"],
-    decisions: ["What evidence is required?", "Can it work offline?", "What must be downloaded to mobile?"],
-    helper: "GPS, consent, media, reference data, and mobile/offline readiness.",
-    id: "evidence",
-    label: "4. Fieldwork",
-    mustDo: "Set field evidence requirements and mobile readiness rules.",
-  },
-  {
-    categories: ["Duplicate prevention", "Data quality", "Enumerator quality", "Duration", "Repeat groups", "Field integrity", "Back-checks"],
-    decisions: ["What should block collection?", "What should warn reviewers?", "How should suspicious entries be flagged?"],
-    helper: "Duplicate checks, validation behavior, suspicious activity, and back-check rules.",
-    id: "quality",
-    label: "5. Quality",
-    mustDo: "Choose how errors and duplicate risks are handled before review.",
+    categories: [
+      "Structure",
+      "Question validation",
+      "Data dictionary",
+      "Logic rules",
+      "Metric mapping",
+      "Reference data",
+      "GPS",
+      "GPS settings",
+      "Media settings",
+      "Consent",
+      "Offline readiness",
+      "Mapping settings",
+      "Mobile package",
+    ],
+    decisions: ["Are the questions clear and reportable?", "What evidence is required?", "Can it work offline on mobile?"],
+    helper: "Question standards and field evidence — dictionary, validation, GPS, media, consent, and mobile readiness.",
+    id: "instrument",
+    label: "3. Questions & fieldwork",
+    mustDo: "Confirm the questions are clean and set the field evidence and mobile readiness rules.",
   },
   {
     categories: ["Permissions", "Workflow", "Assignment rules", "Review escalation"],
     decisions: ["Who can collect this form?", "Who reviews and approves?", "When should slow reviews escalate?"],
     helper: "Who can collect, review, approve, and see the form.",
     id: "access",
-    label: "6. Access",
+    label: "4. Access",
     mustDo: "Select the field officers or project team who can use this form.",
   },
   {
-    categories: ["Governance", "Version information", "Privacy", "Retention", "Export governance", "Testing", "Source-of-truth"],
-    decisions: ["How sensitive is the data?", "Can approved data be edited?", "What approval and export controls apply?"],
-    helper: "Risk, locking, audit trail, version notes, and reviewer sign-off.",
+    categories: [
+      "Governance",
+      "Version information",
+      "Privacy",
+      "Retention",
+      "Export governance",
+      "Testing",
+      "Source-of-truth",
+      "Duplicate prevention",
+      "Data quality",
+      "Enumerator quality",
+      "Duration",
+      "Repeat groups",
+      "Field integrity",
+      "Back-checks",
+      "Tracking",
+      "Sampling",
+      "Localization",
+      "Trigger rules",
+      "Partner rules",
+      "Case escalation",
+    ],
+    decisions: ["How is data quality and duplication handled?", "Can approved data be edited?", "What approval, export, and study controls apply?"],
+    helper: "Quality and duplicate rules, risk and locking, audit trail, and optional study-management settings.",
     id: "governance",
-    label: "7. Governance",
-    mustDo: "Make approvals and published-version behavior safe and traceable.",
-  },
-  {
-    categories: ["Tracking", "Sampling", "Localization", "Trigger rules", "Partner rules", "Case escalation"],
-    decisions: ["Is this part of a form journey?", "Does it need sampling or waves?", "Should it trigger follow-up work?"],
-    helper: "Longitudinal tracking, sampling, translations, triggers, and automation.",
-    id: "advanced",
-    label: "8. Advanced",
-    mustDo: "Add optional study-management settings only when the program needs them.",
+    label: "5. Governance & quality",
+    mustDo: "Set how errors and duplicates are handled, and make approvals and published versions safe and traceable.",
   },
 ];
 
@@ -5085,7 +5093,7 @@ function buildPublishAssistantAdvice({
             "Open Controls > Questions and review the data dictionary. Make sure each question has a label, variable name, type, allowed values where needed, and sensitivity level.",
           mneTip:
             "A data dictionary helps teams understand what each field means after staff changes or when reports are audited.",
-          targetControlStep: "questions",
+          targetControlStep: "instrument",
           why:
             "The data dictionary cannot be generated cleanly because question metadata is incomplete.",
         });
@@ -5118,7 +5126,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can set standard disaggregation categories; you still need matching questions in the Builder.",
           quickFixId: "mne_context_defaults",
-          targetControlStep: "questions",
+          targetControlStep: "instrument",
           why:
             "This form is intended for reporting, but it does not yet prove that required breakdown categories are captured.",
         });
@@ -5252,7 +5260,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can apply a strong duplicate-review setup using phone, household ID, name, village, and GPS-related checks.",
           quickFixId: "duplicate_review_defaults",
-          targetControlStep: "quality",
+          targetControlStep: "governance",
           why:
             `Duplicate prevention is not configured strongly enough, so approved registration or intake data could create multiple ${entityLabelLower} records for the same real-world record.`,
         });
@@ -5267,7 +5275,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can apply standard duration and daily-volume quality rules that you can adjust for shorter or longer forms.",
           quickFixId: "evidence_defaults",
-          targetControlStep: "quality",
+          targetControlStep: "governance",
           why:
             "Interview duration rules are invalid or missing, so Data Quality cannot flag submissions completed too quickly or unusually slowly.",
         });
@@ -5282,7 +5290,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can add the missing GPS question with the configured accuracy threshold.",
           quickFixId: "add_gps_question",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "GPS is marked as required, but the questionnaire does not contain a GPS question for field officers to capture.",
         });
@@ -5297,7 +5305,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can set a safe rural-friendly GPS and offline evidence default.",
           quickFixId: "evidence_defaults",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "The GPS accuracy threshold is missing or outside the allowed range.",
         });
@@ -5312,7 +5320,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can add the missing photo or signature question according to the media rule.",
           quickFixId: "add_media_question",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "The media rule requires evidence, but the form does not include a matching media capture question.",
         });
@@ -5327,7 +5335,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can add a consent question and keep consent blocking enabled.",
           quickFixId: "add_consent_question",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "Consent is required, but the form does not yet have a complete consent configuration.",
         });
@@ -5342,7 +5350,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can apply standard data quality controls for point-of-entry checks and reviewer warnings.",
           quickFixId: "evidence_defaults",
-          targetControlStep: "quality",
+          targetControlStep: "governance",
           why:
             "The form does not define how missing data, outliers, GPS issues, and validation failures should be handled.",
         });
@@ -5357,7 +5365,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can enable future-date prevention now.",
           quickFixId: "evidence_defaults",
-          targetControlStep: "quality",
+          targetControlStep: "governance",
           why:
             "The form contains date questions but has no protection against impossible future dates.",
         });
@@ -5372,7 +5380,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can set invalid age handling to reviewer decision.",
           quickFixId: "evidence_defaults",
-          targetControlStep: "quality",
+          targetControlStep: "governance",
           why:
             "The form asks for age or date of birth but does not yet define how impossible ages should be handled.",
         });
@@ -5549,7 +5557,7 @@ function buildPublishAssistantAdvice({
           platformAction:
             "The platform can apply mobile reliability defaults for low-bandwidth field collection.",
           quickFixId: "mobile_readiness_defaults",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "The form has enough questions, media, repeat groups, or reference data to require explicit mobile readiness settings.",
         });
@@ -5561,7 +5569,7 @@ function buildPublishAssistantAdvice({
             "Open Controls > Evidence and confirm GPS accuracy settings. If the form includes GPS, set a threshold and review boundary or duplicate GPS settings.",
           mneTip:
             "GPS quality controls help detect static GPS, outside-area collection, and weak location evidence.",
-          targetControlStep: "evidence",
+          targetControlStep: "instrument",
           why:
             "The mapping/GPS configuration is incomplete for a form that captures location.",
         });
@@ -6781,11 +6789,11 @@ export function FormCreationWorkspace({
       quickFixId === "access_defaults"
         ? "access"
         : quickFixId === "mobile_readiness_defaults"
-          ? "evidence"
+          ? "instrument"
           : quickFixId === "duplicate_review_defaults"
-            ? "quality"
+            ? "governance"
           : quickFixId === "evidence_defaults"
-            ? "quality"
+            ? "governance"
           : quickFixId === "governance_defaults"
             ? "governance"
             : quickFixId === "mne_context_defaults"
@@ -7683,7 +7691,7 @@ export function FormCreationWorkspace({
                 onClick={() => {
                   if (activeControlStepIndex + 1 < controlSteps.length) {
                     setActiveControlStep(
-                      controlSteps[activeControlStepIndex + 1]?.id ?? "advanced",
+                      controlSteps[activeControlStepIndex + 1]?.id ?? "governance",
                     );
                     return;
                   }
@@ -8311,7 +8319,7 @@ export function FormCreationWorkspace({
                   onClick={() => {
                     if (activeControlStepIndex + 1 < controlSteps.length) {
                       setActiveControlStep(
-                        controlSteps[activeControlStepIndex + 1]?.id ?? "advanced",
+                        controlSteps[activeControlStepIndex + 1]?.id ?? "governance",
                       );
                       return;
                     }
@@ -8795,7 +8803,7 @@ export function FormCreationWorkspace({
               <details
                 className={cn(
                   "rounded-lg border bg-background/70 p-3",
-                  activeControlStep !== "questions" && "hidden",
+                  activeControlStep !== "instrument" && "hidden",
                 )}
                 open
               >
@@ -8934,9 +8942,9 @@ export function FormCreationWorkspace({
               <details
                 className={cn(
                   "rounded-lg border bg-background/70 p-3",
-                  activeControlStep !== "advanced" && "hidden",
+                  activeControlStep !== "governance" && "hidden",
                 )}
-                open={activeControlStep === "advanced"}
+                open={activeControlStep === "governance"}
               >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Tracking, events, waves, and seasons
@@ -9042,9 +9050,9 @@ export function FormCreationWorkspace({
               <details
                 className={cn(
                   "rounded-lg border bg-background/70 p-3",
-                  activeControlStep !== "advanced" && "hidden",
+                  activeControlStep !== "governance" && "hidden",
                 )}
-                open={activeControlStep === "advanced"}
+                open={activeControlStep === "governance"}
               >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Sampling, geography, duration, and localization
@@ -9181,9 +9189,9 @@ export function FormCreationWorkspace({
               <details
                 className={cn(
                   "rounded-lg border bg-background/70 p-3 xl:col-span-2",
-                  activeControlStep !== "advanced" && "hidden",
+                  activeControlStep !== "governance" && "hidden",
                 )}
-                open={activeControlStep === "advanced"}
+                open={activeControlStep === "governance"}
               >
                 <summary className="cursor-pointer text-sm font-semibold">
                   Certification, triggers, accessibility, and AI-ready metadata
@@ -9674,7 +9682,7 @@ export function FormCreationWorkspace({
             <section
               className={cn(
                 "rounded-xl border bg-panel p-3.5 shadow-line",
-                activeControlStep !== "quality" && "hidden",
+                activeControlStep !== "governance" && "hidden",
               )}
             >
               <div className="flex items-center gap-2">
@@ -10223,7 +10231,7 @@ export function FormCreationWorkspace({
             <section
               className={cn(
                 "rounded-xl border bg-panel p-3.5 shadow-line",
-                activeControlStep !== "evidence" && "hidden",
+                activeControlStep !== "instrument" && "hidden",
               )}
             >
               <div className="flex items-center gap-2">
@@ -10305,7 +10313,7 @@ export function FormCreationWorkspace({
             <section
               className={cn(
                 "rounded-xl border bg-panel p-3.5 shadow-line",
-                activeControlStep !== "evidence" && "hidden",
+                activeControlStep !== "instrument" && "hidden",
               )}
             >
               <div className="flex items-center gap-2">
@@ -10414,7 +10422,7 @@ export function FormCreationWorkspace({
             <section
               className={cn(
                 "rounded-xl border bg-panel p-3.5 shadow-line",
-                activeControlStep !== "evidence" && "hidden",
+                activeControlStep !== "instrument" && "hidden",
               )}
             >
               <div className="flex items-center gap-2">
@@ -10747,7 +10755,7 @@ export function FormCreationWorkspace({
                     setActiveControlStep(
                       controlSteps[
                         Math.min(activeControlStepIndex + 1, controlSteps.length - 1)
-                      ]?.id ?? "advanced",
+                      ]?.id ?? "governance",
                     )
                   }
                   type="button"
