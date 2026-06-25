@@ -247,7 +247,9 @@ export function getSubmissionsTrend(submissions: SubmissionRead[], days = 14): T
   const now = new Date();
   for (let offset = days - 1; offset >= 0; offset -= 1) {
     const date = new Date(now);
-    date.setDate(date.getDate() - offset);
+    // Step in UTC to match the UTC date keys below — stepping in local time collides two
+    // offsets onto one UTC day across a DST transition, yielding fewer buckets than `days`.
+    date.setUTCDate(date.getUTCDate() - offset);
     buckets.set(date.toISOString().slice(0, 10), 0);
   }
   for (const submission of submissions) {
