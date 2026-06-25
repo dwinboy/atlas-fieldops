@@ -205,6 +205,8 @@ type FormControlsDraft = {
     fullName: string;
     gender: string;
     gps: string;
+    householdId: string;
+    nationalId: string;
     phone: string;
     village: string;
   };
@@ -1338,6 +1340,8 @@ const defaultControlsDraft: FormControlsDraft = {
     fullName: "",
     gender: "",
     gps: "",
+    householdId: "",
+    nationalId: "",
     phone: "",
     village: "",
   },
@@ -1606,6 +1610,10 @@ function prefillSourceFieldForProfileTarget(
       return "name";
     case "phone":
       return "phone";
+    case "nationalId":
+      return "nationalId";
+    case "householdId":
+      return "householdId";
     case "gender":
       return "gender";
     case "dob":
@@ -1625,16 +1633,56 @@ function prefillSourceFieldForProfileTarget(
 const PROFILE_TARGET_TO_BENEFICIARY_FIELD: Record<keyof FormControlsDraft["profileMappings"], string> = {
   fullName: "full_name",
   phone: "phone",
+  nationalId: "national_id",
+  householdId: "household_id",
   gender: "gender",
   dob: "dob",
   village: "village",
   gps: "gps",
 };
 
+// Profile targets that identify an entity — checking "duplicate key" on these is the
+// common case. Used to order the mapping panel and to suggest dedup keys.
+const IDENTITY_PROFILE_TARGETS: ReadonlyArray<keyof FormControlsDraft["profileMappings"]> = [
+  "fullName",
+  "phone",
+  "nationalId",
+  "householdId",
+  "village",
+  "gps",
+];
+
+const DUPLICATE_FIELD_LABEL_TO_KEY: Record<string, string> = {
+  phone: "phone",
+  "phone number": "phone",
+  phone_number: "phone",
+  "national id": "national_id",
+  national_id: "national_id",
+  "household id": "household_id",
+  household_id: "household_id",
+  "name + village": "village",
+  village: "village",
+  community: "village",
+  gps: "gps",
+  location: "gps",
+  name: "full_name",
+  "full name": "full_name",
+  full_name: "full_name",
+};
+
+function normalizeDuplicateFieldKey(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return (
+    DUPLICATE_FIELD_LABEL_TO_KEY[normalized] ??
+    normalized.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+  );
+}
+
 function stripBeneficiaryProfileTags(text: string): string {
   return text
     .replace(/\[profile-impact:[^\]]*\]/g, "")
     .replace(/\[beneficiary-field:[^\]]*\]/g, "")
+    .replace(/\[duplicate-key\]/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -1654,6 +1702,7 @@ function applyProfileMappingsToForm(form: DynamicForm, controls: FormControlsDra
       profileFieldByVariable.set(normalizedVariable, profileField);
     }
   }
+  const duplicateKeyFields = new Set(controls.duplicateFields.map(normalizeDuplicateFieldKey));
   return {
     ...form,
     fields: form.fields.map((field) => {
@@ -1662,8 +1711,9 @@ function applyProfileMappingsToForm(form: DynamicForm, controls: FormControlsDra
       // Only touch fields explicitly mapped to a profile target. Fields tagged by other
       // sources (e.g. imported entity-category attributes) are left untouched.
       if (!profileField) return field;
+      const isDuplicateKey = duplicateKeyFields.has(profileField);
       const base = stripBeneficiaryProfileTags(field.appearance?.helpText ?? "");
-      const helpText = `${base} [profile-impact:updates_profile] [beneficiary-field:${profileField}]`.trim();
+      const helpText = `${base} [profile-impact:updates_profile] [beneficiary-field:${profileField}]${isDuplicateKey ? " [duplicate-key]" : ""}`.trim();
       return {
         ...field,
         beneficiary: { ...(field.beneficiary ?? {}), profileField, profileImpact: "updates_profile" as const },
@@ -1798,6 +1848,8 @@ function suggestedProfileMappingsFromFields(
     fullName: findVariable([/full.*name/, /beneficiary.*name/, /farmer.*name/, /respondent.*name/]),
     gender: findVariable([/gender/, /\bsex\b/]),
     gps: findVariable([/gps/, /location/, /coordinate/]),
+    householdId: findVariable([/household.*id/, /\bhh.*id\b/]),
+    nationalId: findVariable([/national.*id/, /\bnid\b/, /id.*number/]),
     phone: findVariable([/phone/, /mobile/, /contact/]),
     village: findVariable([/village/, /community/, /location/]),
   };
@@ -3260,10 +3312,14 @@ function controlsDraftFromApiControls(
       entity.duplicate_action,
       defaultControlsDraft.duplicateAction,
     ) as FormControlsDraft["duplicateAction"],
-    duplicateFields:
-      stringArrayValue(entity.matching_fields).length > 0
-        ? stringArrayValue(entity.matching_fields)
-        : stringArrayValue(asRecord(duplicateRule).fields),
+    duplicateFields: Array.from(
+      new Set(
+        (stringArrayValue(entity.matching_fields).length > 0
+          ? stringArrayValue(entity.matching_fields)
+          : stringArrayValue(asRecord(duplicateRule).fields)
+        ).map(normalizeDuplicateFieldKey),
+      ),
+    ),
     duplicateSeverity: stringValue(
       asRecord(duplicateRule).severity,
       defaultControlsDraft.duplicateSeverity,
@@ -4025,6 +4081,38 @@ export function validateFormForPublish(
       id: "results-linkage",
       jumpTo: "controls",
       label: "Result linkage reviewed",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Entity profile",
+      complete:
+        !(
+          controls.respondentIdentification === "new_registration" ||
+          controls.respondentIdentification === "existing_or_new" ||
+          controls.respondentIdentification === "existing_beneficiary" ||
+          controls.profileUpdateMode !== "never"
+        ) || Boolean(controls.profileMappings.fullName),
+      description:
+        "This form creates or updates an entity, so map a question to the entity name in the profile mapping panel — otherwise new entities are auto-named and need manual fixing.",
+      id: "entity-name-mapping",
+      jumpTo: "controls",
+      label: "Entity name is mapped to a question",
+      required: false,
+      warning: true,
+    }),
+    item({
+      category: "Entity profile",
+      complete:
+        !(
+          controls.respondentIdentification === "new_registration" ||
+          controls.respondentIdentification === "existing_or_new"
+        ) || controls.duplicateFields.length > 0,
+      description:
+        "Pick at least one identifying field (e.g. National ID or Phone) as a duplicate-detection key so registrations don't create duplicate entities.",
+      id: "entity-duplicate-key",
+      jumpTo: "controls",
+      label: "Duplicate-detection key chosen for registrations",
       required: false,
       warning: true,
     }),
@@ -9716,22 +9804,16 @@ export function FormCreationWorkspace({
                     <option value="low">Low</option>
                   </Select>
                 </label>
-                <label className="text-sm font-medium sm:col-span-2">
-                  Duplicate matching fields
-                  <Input
-                    className="mt-2"
-                    onChange={(event) =>
-                      updateControlsDraft({
-                        duplicateFields: event.target.value
-                          .split(",")
-                          .map((value) => value.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    placeholder="phone_number, national_id, household_id, full_name, village"
-                    value={controlsDraft.duplicateFields.join(", ")}
-                  />
-                </label>
+                <p className="text-sm text-muted-foreground sm:col-span-2">
+                  Duplicate matching fields are set in the{" "}
+                  <strong>{primaryEntityLabel} Profile Mapping</strong> panel — tick <strong>Use to detect duplicates</strong>
+                  {" "}on the identifying fields there. This keeps mapping and duplicate detection in one place.
+                  {controlsDraft.duplicateFields.length ? (
+                    <span className="mt-1 block text-xs">
+                      Current duplicate keys: {controlsDraft.duplicateFields.join(", ")}
+                    </span>
+                  ) : null}
+                </p>
                 <label className="text-sm font-medium">
                   Repeat group handling
                   <Select
@@ -10077,40 +10159,74 @@ export function FormCreationWorkspace({
                   when the form is only an event, checklist, transaction, or survey record.
                 </HelpHint>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Map each question to its entity profile field, and tick <strong>Use to detect duplicates</strong> on the
+                fields that identify the same entity (e.g. National ID, Phone). This is the single place that controls
+                naming, profile updates, and duplicate detection — no separate list to keep in sync.
+              </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {(
                   [
                     ["fullName", "Primary name / display name"],
                     ["phone", "Phone"],
+                    ["nationalId", "National ID"],
+                    ["householdId", "Household ID"],
                     ["village", "Village / location"],
                     ["gps", "GPS"],
                     ["gender", "Gender"],
                     ["dob", "Date of birth"],
                   ] satisfies [keyof FormControlsDraft["profileMappings"], string][]
-                ).map(([fieldKey, label]) => (
-                  <label className="text-sm font-medium" key={fieldKey}>
-                    {label}
-                    <Select
-                      className="mt-2"
-                      onChange={(event) =>
-                        updateControlsDraft({
-                          profileMappings: {
-                            ...controlsDraft.profileMappings,
-                            [fieldKey]: event.target.value,
-                          },
-                        })
-                      }
-                      value={controlsDraft.profileMappings[fieldKey]}
-                    >
-                      <option value="">Not mapped yet</option>
-                      {questionMappingOptions.map((question) => (
-                        <option key={question.id} value={question.variableName}>
-                          {question.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                ))}
+                ).map(([fieldKey, label]) => {
+                  const mappedVariable = controlsDraft.profileMappings[fieldKey];
+                  const dedupKey = PROFILE_TARGET_TO_BENEFICIARY_FIELD[fieldKey];
+                  const isIdentity = IDENTITY_PROFILE_TARGETS.includes(fieldKey);
+                  const isDuplicateKey = controlsDraft.duplicateFields.some(
+                    (value) => normalizeDuplicateFieldKey(value) === dedupKey,
+                  );
+                  return (
+                    <div className="text-sm font-medium" key={fieldKey}>
+                      <label className="block">
+                        {label}
+                        <Select
+                          className="mt-2"
+                          onChange={(event) =>
+                            updateControlsDraft({
+                              profileMappings: {
+                                ...controlsDraft.profileMappings,
+                                [fieldKey]: event.target.value,
+                              },
+                            })
+                          }
+                          value={mappedVariable}
+                        >
+                          <option value="">Not mapped yet</option>
+                          {questionMappingOptions.map((question) => (
+                            <option key={question.id} value={question.variableName}>
+                              {question.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </label>
+                      {isIdentity && mappedVariable ? (
+                        <label className="mt-1.5 flex items-center gap-2 text-xs font-normal text-muted-foreground">
+                          <input
+                            checked={isDuplicateKey}
+                            onChange={(event) => {
+                              const others = controlsDraft.duplicateFields.filter(
+                                (value) => normalizeDuplicateFieldKey(value) !== dedupKey,
+                              );
+                              updateControlsDraft({
+                                duplicateFields: event.target.checked ? [...others, dedupKey] : others,
+                              });
+                            }}
+                            type="checkbox"
+                          />
+                          Use to detect duplicates
+                        </label>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </section>
 

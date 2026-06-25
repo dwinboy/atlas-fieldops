@@ -480,6 +480,8 @@ describe("enterprise form creation workspace", () => {
           fullName: "",
           gender: "",
           gps: "",
+          householdId: "",
+          nationalId: "",
           phone: "",
           village: "",
         },

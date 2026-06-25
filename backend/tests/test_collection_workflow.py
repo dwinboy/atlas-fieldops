@@ -1921,6 +1921,152 @@ async def test_non_person_registration_names_entity_from_typed_name_field() -> N
 
 
 @pytest.mark.asyncio
+async def test_question_mapped_to_identity_field_dedups_without_form_level_config() -> None:
+    """Mapping a question to an identity field (National ID) makes it a duplicate key with
+    no form-level unique_fields config: a second registration with the same National ID
+    links to the existing entity instead of creating a duplicate."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        organization_id = uuid4()
+        field_user_id = uuid4()
+        manager_user_id = uuid4()
+        project_id = uuid4()
+        survey_id = uuid4()
+        form_id = uuid4()
+        version_id = uuid4()
+        officer_id = uuid4()
+        now = datetime.now(UTC)
+        session.add_all(
+            [
+                Organization(id=organization_id, name="Dedup Org", slug="dedup-org"),
+                User(id=field_user_id, email="field5@example.org", full_name="Field Officer", password_hash="x"),
+                User(id=manager_user_id, email="manager5@example.org", full_name="Manager", password_hash="x"),
+                FieldOfficerProfile(id=officer_id, organization_id=organization_id, user_id=field_user_id, is_active=True),
+                Project(id=project_id, organization_id=organization_id, name="Dedup Project", slug="dedup-project", status="active"),
+                Survey(
+                    id=survey_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    created_by_user_id=manager_user_id,
+                    owner_user_id=manager_user_id,
+                    title="Reg",
+                    code="DEDUP",
+                    survey_type="registration",
+                    status="active",
+                ),
+                DataForm(
+                    id=form_id,
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    survey_id=survey_id,
+                    created_by_user_id=manager_user_id,
+                    name="Member Registration",
+                    slug="dedup-member-registration",
+                    status="published",
+                    current_version=1,
+                    # No form-level unique_fields/matching_fields configured.
+                    controls_json={
+                        "entity_controls": {
+                            "linked_to_entity": True,
+                            "entity_type": "Member",
+                            "creates_new_entity": True,
+                            "requires_existing_entity": False,
+                        }
+                    },
+                ),
+                DataFormVersion(
+                    id=version_id,
+                    organization_id=organization_id,
+                    form_id=form_id,
+                    version=1,
+                    schema_json={
+                        "sections": [
+                            {
+                                "id": "identity",
+                                "title": "Identity",
+                                "fields": [
+                                    {"id": "q_name", "variable_name": "entity_name", "type": "text", "label": "Name"},
+                                    {
+                                        "id": "q_nid",
+                                        "variable_name": "national_id",
+                                        "type": "text",
+                                        "label": "National ID",
+                                        "appearance": {"helpText": "[profile-impact:updates_profile] [beneficiary-field:national_id]"},
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    offline_compatible=True,
+                    published_at=now,
+                ),
+            ]
+        )
+        await session.commit()
+
+        principal = CurrentPrincipal(
+            user_id=str(field_user_id),
+            organization_id=str(organization_id),
+            email="field5@example.org",
+            full_name="Field Officer",
+            organization_slug="dedup-org",
+            organization_name="Dedup Org",
+            roles=["field_officer"],
+            permissions=["submission.create", "sync.mobile"],
+            scope_type="own",
+        )
+
+        async def register(local_id: str, name: str) -> None:
+            await MobileService(session).upload_submission(
+                principal=principal,
+                payload=MobileSubmissionUpload(
+                    local_id=local_id,
+                    project_id=str(project_id),
+                    form_id=str(form_id),
+                    form_version_id=str(version_id),
+                    entity_type="Member",
+                    responses=[
+                        {"questionId": "q_name", "variableName": "entity_name", "value": name, "updatedAt": now},
+                        {"questionId": "q_nid", "variableName": "national_id", "value": "ID-100", "updatedAt": now},
+                    ],
+                    location={"latitude": 5.9, "longitude": 10.1, "accuracy": 8, "timestamp": now},
+                    device_id="android-test",
+                    app_version="1.0.0-test",
+                    created_at=now,
+                    submitted_at=now,
+                ),
+            )
+
+        await register("dedup-1", "Awa Ndip")
+        await register("dedup-2", "Awa N.")  # same National ID, slightly different name
+        await session.commit()
+
+        all_subs = await SubmissionService(session).list_submissions(
+            organization_id=organization_id, status=None, actor_user_id=field_user_id, scope_type="own"
+        )
+        for submission in all_subs:
+            await SubmissionService(session).review_submission(
+                organization_id=organization_id,
+                actor_user_id=manager_user_id,
+                submission_id=submission.id,
+                payload=SubmissionReviewAction(action="approve", comment="Approved"),
+            )
+        await session.commit()
+
+        # The shared National ID collapses both registrations onto one entity.
+        beneficiaries = (await session.execute(select(Beneficiary))).scalars().all()
+        assert len(beneficiaries) == 1
+        entity_ids = {
+            (await session.get(Submission, submission.id)).entity_id for submission in all_subs
+        }
+        assert entity_ids == {beneficiaries[0].id}
+
+
+@pytest.mark.asyncio
 async def test_mobile_follow_up_submission_requires_existing_entity_before_sync() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:

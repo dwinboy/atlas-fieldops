@@ -3657,9 +3657,15 @@ class SubmissionService:
             "district": self._string_from_object(mapped_profile_values.get("district")) or self._string_value(values, "district"),
             "sex": self._string_from_object(mapped_profile_values.get("sex")) or self._string_value(values, "gender", "sex"),
         }
-        unique_field_keys = [
+        control_unique_keys = [
             key for key in (self._profile_key_from_mapping(field) for field in _as_list(controls.get("unique_fields"))) if key
         ]
+        # The per-question entity bindings are the single source for duplicate matching:
+        # union the form-level unique_fields with the keys derived from mapped/identity
+        # questions, so a question mapped to an identity field dedups with no extra setup.
+        unique_field_keys = list(
+            dict.fromkeys(control_unique_keys + sorted(self._binding_duplicate_match_keys(submission.payload_json or {})))
+        )
         candidate_beneficiary_uids = list(
             self._extract_beneficiary_uids_from_payload(submission.payload_json or {}).keys()
         )
@@ -4639,6 +4645,35 @@ class SubmissionService:
             "latitude": "latitude",
             "longitude": "longitude",
         }.get(normalized, normalized or None)
+
+    # Profile fields that are inherently entity identifiers: mapping a question to one of
+    # these means it should be used to detect duplicates, with no extra configuration.
+    _IDENTITY_PROFILE_KEYS = frozenset({"national_id", "household_id", "phone_number"})
+
+    def _binding_duplicate_match_keys(self, payload_json: dict[str, object]) -> set[str]:
+        """Duplicate-match profile keys derived from the per-question entity bindings.
+
+        A question contributes a match key when it is mapped to a profile field and either
+        the form builder marked it a duplicate key, or the field is inherently an identity
+        field. This is the single source for "which answers identify the same entity", so
+        the per-question setting is honored instead of silently ignored.
+        """
+        metadata = payload_json.get("_question_control_metadata")
+        if not isinstance(metadata, dict):
+            return set()
+        keys: set[str] = set()
+        for entry in metadata.values():
+            if not isinstance(entry, dict):
+                continue
+            beneficiary = entry.get("beneficiary")
+            if not isinstance(beneficiary, dict):
+                continue
+            profile_key = self._profile_key_from_mapping(beneficiary.get("profileField"))
+            if not profile_key:
+                continue
+            if beneficiary.get("duplicateKey") or profile_key in self._IDENTITY_PROFILE_KEYS:
+                keys.add(profile_key)
+        return keys
 
     def _mapped_beneficiary_profile_values(
         self,
